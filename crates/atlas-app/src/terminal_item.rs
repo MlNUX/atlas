@@ -117,6 +117,16 @@ pub mod qobject {
         #[cxx_name = "scrollTo"]
         fn scroll_to(self: Pin<&mut TerminalView>, offset: i32);
 
+        /// Selected text ("" if nothing is selected).
+        #[qinvokable]
+        #[cxx_name = "selectedText"]
+        fn selected_text(self: &TerminalView) -> QString;
+
+        /// Screen text plus up to `history` lines of scrollback.
+        #[qinvokable]
+        #[cxx_name = "screenText"]
+        fn screen_text(self: &TerminalView, history: i32) -> QString;
+
         /// Current working directory of the shell ("" if unknown).
         #[qinvokable]
         #[cxx_name = "currentDirectory"]
@@ -277,7 +287,10 @@ impl qobject::TerminalView {
         let size = self.grid_size();
         let wd = self.working_directory.to_string();
         let mut command = self.command.iter().map(|s| s.to_string());
-        let shell = command.next().map(|program| (program, command.collect()));
+        let shell = command.next().map(|program| (program, command.collect())).or_else(|| {
+            let configured = atlas_core::config::Config::load().terminal.shell;
+            (!configured.is_empty() && std::path::Path::new(&configured).exists()).then(|| (configured, Vec::new()))
+        });
         let options = Options { working_directory: (!wd.is_empty()).then(|| wd.into()), shell, ..Default::default() };
         let thread = self.qt_thread();
         let redraw_queued = self.redraw_queued.clone();
@@ -547,6 +560,16 @@ impl qobject::TerminalView {
             self.as_mut().sync_scroll_state();
             self.update();
         }
+    }
+
+    pub fn selected_text(&self) -> QString {
+        let text = self.terminal.as_ref().and_then(Terminal::selection_text).unwrap_or_default();
+        QString::from(text.as_str())
+    }
+
+    pub fn screen_text(&self, history: i32) -> QString {
+        let text = self.terminal.as_ref().map(|t| t.text(history.max(0) as usize)).unwrap_or_default();
+        QString::from(text.as_str())
     }
 
     pub fn current_directory(&self) -> QString {

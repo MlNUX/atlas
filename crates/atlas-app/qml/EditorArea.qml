@@ -141,7 +141,7 @@ SplitView {
         for (const gs of groupStates) {
             const g = addGroup(groups.length, gs.temporary)
             for (const t of gs.tabs || []) {
-                const path = t.path ? area.app.resolveDocument(t.path) : ""
+                const path = !t.path ? "" : t.path.startsWith("terminal:") ? t.path : area.app.resolveDocument(t.path)
                 if (!path) continue
                 g.openTab(path, t.line || 0, t.preview ? "preview" : "tab", t)
             }
@@ -151,6 +151,12 @@ SplitView {
         if (groups.length === 0) addGroup()
         activeIndex = state && state.active !== undefined ? Math.max(0, Math.min(state.active, groups.length - 1)) : 0
         equalize()
+    }
+
+    /// Viewer of an open tab showing `path` (null if none).
+    function viewerFor(path) {
+        for (const g of groups) for (const t of g.tabs) if (t.path === path) return t.viewerItem
+        return null
     }
 
     function documents() {

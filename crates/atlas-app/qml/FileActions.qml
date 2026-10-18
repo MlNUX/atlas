@@ -25,6 +25,10 @@ Item {
     signal quickLookRequested(string path, var navigate)
     /// Run `command` (program + arguments) in an Atlas terminal in `cwd`.
     signal runInTerminal(var command, string cwd)
+    /// Open a terminal in `dir`; `where`: "panel", "tab" or "split".
+    signal openTerminalRequested(string dir, string where)
+    /// Put `text` (terminal output) into a note; `cwd` suggests a folder.
+    signal sendToNoteRequested(string text, string cwd)
 
     FileOps {
         id: ops
@@ -57,6 +61,11 @@ Item {
     }
 
     function configureEditor() { editorDialog.open() }
+
+    function sendToNote(text, cwd) {
+        if (text.trim()) sendToNoteRequested(text, cwd)
+        else showMessage(qsTr("Keine Ausgabe zum Übernehmen"))
+    }
 
     function newFile(dir) {
         nameDialog.ask(qsTr("Neue Datei in „%1“").arg(baseName(dir)), qsTr("Neue Datei.md"), false, (name) => {
@@ -163,6 +172,8 @@ Item {
         property string dir
         readonly property bool single: paths.length === 1
         readonly property bool any: paths.length > 0
+        /// The clicked folder, or the folder the menu was opened in.
+        function terminalDir() { return single && ops.isDir(paths[0]) ? paths[0] : dir }
 
         MenuItem {
             text: qsTr("Öffnen")
@@ -183,6 +194,15 @@ Item {
             onTriggered: actions.openInEditor(menu.paths[0], 0)
         }
         MenuSeparator { visible: menu.single; height: visible ? implicitHeight : 0 }
+        MenuItem {
+            text: qsTr("Terminal hier öffnen")
+            onTriggered: actions.openTerminalRequested(menu.terminalDir(), "panel")
+        }
+        MenuItem {
+            text: qsTr("Terminal als Tab öffnen")
+            onTriggered: actions.openTerminalRequested(menu.terminalDir(), "tab")
+        }
+        MenuSeparator {}
         MenuItem { text: qsTr("Neue Datei …"); onTriggered: actions.newFile(menu.dir) }
         MenuItem { text: qsTr("Neuer Ordner …"); onTriggered: actions.newFolder(menu.dir) }
         MenuSeparator {}

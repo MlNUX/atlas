@@ -53,6 +53,25 @@ ApplicationWindow {
             terminalPanel.visible = true
             terminalPanel.runCommand(command, cwd)
         }
+        function onOpenTerminalRequested(dir, where) { window.openTerminal(dir, where) }
+        function onSendToNoteRequested(text, cwd) { sendToNote.ask(text, cwd) }
+    }
+    SendToNoteDialog {
+        id: sendToNote
+        app: app
+        editor: editor
+        actions: fileActions
+    }
+
+    /// Opens a terminal in `dir`: "panel" (bottom panel), "tab" or "split".
+    property int terminalTabs: 0
+    function openTerminal(dir, where) {
+        if (where === "panel") {
+            terminalPanel.visible = true
+            terminalPanel.newTerminal(dir)
+        } else {
+            editor.open("terminal:" + (dir || app.projectRoot) + "#" + (++terminalTabs), 0, where === "split" ? "split" : "tab")
+        }
     }
     Connections {
         target: fileActions.ops
@@ -270,6 +289,10 @@ ApplicationWindow {
 
 
 
+
+
+
+
     // -------------------------------------------------------------- shortcuts
 
     Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.open() }
@@ -287,7 +310,7 @@ ApplicationWindow {
 
     function toggleTerminal() {
         if (terminalPanel.visible && terminalPanel.currentGroup && terminalPanel.currentGroup.activeTerminal
-                && !terminalPanel.currentGroup.activeTerminal.view.activeFocus) {
+                && !terminalPanel.currentGroup.activeTerminal.terminalView.activeFocus) {
             terminalPanel.focusTerminal()
             return
         }
@@ -436,6 +459,7 @@ ApplicationWindow {
                 SplitView.preferredHeight: 280
                 SplitView.minimumHeight: 90
                 workingDirectory: app.projectRoot
+                actions: fileActions
                 onHideRequested: { visible = false; saveTimer.restart() }
                 onHeightChanged: saveTimer.restart()
                 onTerminalCountChanged: saveTimer.restart()

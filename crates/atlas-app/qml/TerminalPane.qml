@@ -13,9 +13,18 @@ Rectangle {
     /// Program and arguments instead of the shell (e.g. an editor).
     property var command: []
     property bool active: false
+    /// FileActions (notes, messages); optional.
+    property var actions: null
+
+    /// Selection, or the screen with recent scrollback.
+    function outputText() { return term.selectedText() || term.screenText(200) }
+    /// Quotes a path for POSIX shells and fish when needed.
+    function shellQuote(path) {
+        return /^[A-Za-z0-9_@%+=:,.\/-]+$/.test(path) ? path : "'" + path.replace(/'/g, "'\\''") + "'"
+    }
     readonly property alias title: term.title
     function cwd() { return term.currentDirectory() || pane.workingDirectory }
-    readonly property alias view: term
+    readonly property alias terminalView: term
 
     signal closed()
     signal activated()
@@ -115,6 +124,27 @@ Rectangle {
         MenuItem { text: qsTr("Kopieren"); enabled: term.hasSelection(); onTriggered: term.copy() }
         MenuItem { text: qsTr("Einfügen"); onTriggered: term.paste() }
         MenuSeparator {}
+        MenuItem {
+            text: term.hasSelection() ? qsTr("Auswahl in Notiz übernehmen …") : qsTr("Ausgabe in Notiz übernehmen …")
+            enabled: !!pane.actions
+            onTriggered: pane.actions.sendToNote(pane.outputText(), pane.cwd())
+        }
+        MenuItem { text: qsTr("Ausgabe kopieren"); onTriggered: pane.actions.app.copyToClipboard(pane.outputText()) }
+        MenuSeparator {}
         MenuItem { text: qsTr("Auswahl aufheben"); onTriggered: term.clearSelection() }
+    }
+
+    // Dropped files and folders are inserted as shell-quoted paths.
+    DropArea {
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        onEntered: (drag) => drag.accept(Qt.CopyAction)
+        onDropped: (drop) => {
+            const paths = drop.urls.map(u => decodeURIComponent(u.toString().replace(/^file:\/\//, "")))
+            term.sendText(paths.map(pane.shellQuote).join(" ") + " ")
+            drop.accept(Qt.CopyAction)
+            pane.focusTerminal()
+        }
+        Rectangle { anchors.fill: parent; color: "transparent"; border.color: Theme.accent; visible: parent.containsDrag }
     }
 }

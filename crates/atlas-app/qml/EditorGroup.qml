@@ -70,6 +70,7 @@ Rectangle {
             else group.openTab(p, l, where)
         })
         tab.pinRequested.connect(() => { tab.preview = false; group.changed() })
+        tab.closeRequested.connect(() => group.closeTab(group.tabs.indexOf(tab)))
         tab.pathChanged.connect(group.changed)
         const insertAt = current >= 0 ? current + 1 : tabs.length
         const list = tabs.slice()
@@ -105,7 +106,7 @@ Rectangle {
         }
     }
 
-    function documents() { return tabs.map(t => t.path).filter(p => p.length > 0) }
+    function documents() { return tabs.map(t => t.path).filter(p => p.length > 0 && !p.startsWith("terminal:")) }
 
     function pathMoved(from, to) {
         for (const t of tabs) {
@@ -120,7 +121,7 @@ Rectangle {
     /// Path segments for the breadcrumbs: inside the project relative to its
     /// root, otherwise from "/".
     function crumbs(path) {
-        if (!path) return []
+        if (!path || path.startsWith("terminal:")) return []
         const root = group.app.projectRoot
         const inside = root && (path === root || path.startsWith(root + "/"))
         const base = inside ? root : ""
@@ -322,8 +323,9 @@ Rectangle {
     DropArea {
         id: drop
         anchors.fill: parent
-        // Folder tabs take drops themselves (move/copy into the folder).
-        enabled: !group.currentTab || (group.currentTab.kind !== "dir" && group.currentTab.kind !== "trash")
+        // Folder tabs take drops themselves (move/copy into the folder),
+        // terminal tabs insert the paths.
+        enabled: !group.currentTab || ["dir", "trash", "terminal"].indexOf(group.currentTab.kind) < 0
         keys: ["text/uri-list"]
         readonly property string side: !containsDrag ? "" : drag.x < width * 0.2 ? "left" : drag.x > width * 0.8 ? "right" : "center"
         onDropped: (event) => {

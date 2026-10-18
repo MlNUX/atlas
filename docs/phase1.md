@@ -26,7 +26,7 @@ Schritt ein Commit und ein Zwischenstand.
 | 4 | PDF-Anzeige und Schnellansicht | ✅ |
 | 5 | Markdown sowie Metadaten und Linkverhalten | ✅ |
 | 6 | Codevorschau und externer Editor | ✅ |
-| 7 | Terminal-Integration | offen |
+| 7 | Terminal-Integration | ✅ |
 | 8 | Suche und universelle Arbeitsleiste | offen |
 | 9 | Berechtigungen, Besitzer, Gruppe und Linux-Politur | offen |
 | 10 | Paketierung, Tests und Stabilisierung | offen |
@@ -254,3 +254,37 @@ Kern: `atlas_core::symbols` und `atlas_core::config` (mit Tests).
 
 Geprüft (offscreen): `--open src/main.rs:11` springt zur Zeile, Symbolleiste
 für Rust, externer Editor (losgelöst und im Terminal) erhält Datei und Zeile.
+
+### Schritt 7 – Terminal-Integration
+
+- **Terminal als Tab oder Split** im Editorbereich (Kontextmenü „Terminal als
+  Tab öffnen“; per Drag in einen Split verschiebbar wie andere Tabs) und wie
+  bisher im **unteren Panel**. Terminal-Tabs werden mit ihrem aktuellen
+  Arbeitsordner in der Session gespeichert und beim Start neu gestartet;
+  laufende Prozesse werden nicht fortgesetzt. Endet die Shell, schließt sich
+  der Tab.
+- **Start im Projektstamm oder im ausgewählten Ordner**: Kontextmenü
+  „Terminal hier öffnen“ (Panel) bzw. „… als Tab öffnen“ im Explorer und in
+  Dateilisten; für Dateien gilt ihr Ordner.
+- **Mehrere Terminal-Tabs** und **Splits rechts (◫) oder unten (⬒)** im Panel;
+  ein Panel-Tab ordnet seine Terminals in eine Richtung an.
+- **Bash, Zsh und Fish**: Atlas startet die Login-Shell aus der
+  Benutzerdatenbank (nicht das `$SHELL` einer `nix develop`-Umgebung);
+  abweichend über `[terminal] shell = "…"` in `config.toml` oder
+  `ATLAS_SHELL`. Ein Test startet alle drei interaktiv und führt einen Befehl
+  aus (`nix shell nixpkgs#zsh nixpkgs#fish -c cargo test -p atlas-core`).
+- **Drag-and-drop** von Dateien/Ordnern (Explorer, Dateiliste, andere
+  Programme) fügt die Pfade in die Eingabe ein – für Shells passend
+  gequotet (`'Mein Ordner'`).
+- **Ausgabe als Codeblock in eine Notiz**: Kontextmenü im Terminal
+  „Auswahl/Ausgabe in Notiz übernehmen …“ – die Auswahl oder der Bildschirm
+  samt der letzten 200 Zeilen Verlauf, weich umbrochene Zeilen wieder
+  zusammengefügt. Ziel ist eine geöffnete Markdown-Datei (wird im Editor
+  eingefügt und gespeichert), eine beliebige Notiz des Projekts (atomar
+  angehängt) oder eine neue Notiz im aktuellen Terminal-Ordner. Der Zaun des
+  Codeblocks wird verlängert, falls die Ausgabe selbst ``` enthält.
+- Atlas bewertet oder blockiert keine eingegebenen Befehle.
+
+Geprüft (offscreen): Terminal-Tab startet im gewählten Ordner, Session merkt
+den aktuellen Ordner, vertikaler Split im Panel, Ausgabe landet als
+`console`-Codeblock in der Notiz.

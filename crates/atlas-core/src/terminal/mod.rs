@@ -256,6 +256,42 @@ impl Terminal {
         self.term.lock().selection_to_string().filter(|s| !s.is_empty())
     }
 
+    /// Plain text of the screen plus up to `history` lines of scrollback,
+    /// without trailing blanks (for "copy output into a note").
+    pub fn text(&self, history: usize) -> String {
+        let term = self.term.lock();
+        let grid = term.grid();
+        let first = -(grid.history_size().min(history) as i32);
+        let mut lines: Vec<String> = Vec::new();
+        // A row ending in a soft wrap continues on the next one.
+        let mut continued = false;
+        for line in first..grid.screen_lines() as i32 {
+            let row = &grid[Line(line)];
+            let mut text = String::new();
+            for col in 0..grid.columns() {
+                let cell = &row[Column(col)];
+                if cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                text.push(cell.c);
+            }
+            let wraps = row[Column(grid.columns() - 1)].flags.contains(Flags::WRAPLINE);
+            let text = if wraps { text } else { text.trim_end().to_owned() };
+            match lines.last_mut() {
+                Some(last) if continued => last.push_str(&text),
+                _ => lines.push(text),
+            }
+            continued = wraps;
+        }
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        while lines.first().is_some_and(|l| l.is_empty()) {
+            lines.remove(0);
+        }
+        lines.join("\n")
+    }
+
     /// Takes a snapshot of the visible screen.
     pub fn frame(&self, focused: bool) -> Frame {
         Frame::build(&self.term.lock(), focused)
@@ -544,5 +580,56 @@ mod tests {
         let term = Terminal::spawn(options, size, |_| {}).unwrap();
         term.resize(GridSize { cols: 60, lines: 7, ..size });
         wait_for(&term, |f| (0..f.lines.len()).any(|l| line_text(f, l).contains("7 60")));
+    }
+
+    #[test]
+    fn exports_screen_text() {
+        let size = GridSize { cols: 40, lines: 5, cell_width: 8, cell_height: 16 };
+        let options = Options {
+            shell: Some((
+                "/bin/sh".into(),
+                vec![
+                    "-c".into(),
+                    "printf 'eins\\nzwei  \\nä😀x\\n0123456789abcdefghijklmnopqrstuvwxyz0123456789\\n'; sleep 5".into(),
+                ],
+            )),
+            ..Default::default()
+        };
+        let term = Terminal::spawn(options, size, |_| {}).unwrap();
+        wait_for(&term, |f| (0..f.lines.len()).any(|l| line_text(f, l).starts_with("456789")));
+        // The last line is wider than the terminal: it wraps, but exports as
+        // one line.
+        assert_eq!(term.text(100), "eins\nzwei\nä😀x\n0123456789abcdefghijklmnopqrstuvwxyz0123456789");
+    }
+
+    /// Bash, Zsh and Fish start interactively and run commands (each only
+    /// if installed; `nix shell nixpkgs#zsh nixpkgs#fish` provides them).
+    #[test]
+    fn interactive_shells() {
+        let size = GridSize { cols: 80, lines: 10, cell_width: 8, cell_height: 16 };
+        let home = tempfile::tempdir().unwrap();
+        for name in ["bash", "zsh", "fish"] {
+            let Some(path) = std::env::var_os("PATH")
+                .and_then(|p| std::env::split_paths(&p).map(|d| d.join(name)).find(|p| p.exists()))
+            else {
+                eprintln!("{name} not installed, skipped");
+                continue;
+            };
+            let options = Options {
+                shell: Some((path.to_string_lossy().into_owned(), Vec::new())),
+                working_directory: Some(home.path().to_path_buf()),
+                ..Default::default()
+            };
+            let term = Terminal::spawn(options, size, |_| {}).unwrap();
+            // Typed like a user; the quotes keep the echo of the input itself
+            // from matching.
+            std::thread::sleep(Duration::from_millis(300));
+            term.write(b"echo atlas\"\"-ok\r".to_vec());
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !term.text(100).lines().any(|l| l.trim() == "atlas-ok") {
+                assert!(Instant::now() < deadline, "{name}: {}", term.text(100));
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
     }
 }

@@ -228,6 +228,22 @@ pub mod qobject {
         #[cxx_name = "openInEditor"]
         fn open_in_editor(self: &AppController, path: &QString, line: i32) -> QString;
 
+        /// All Markdown files of the project (absolute paths, sorted).
+        #[qinvokable]
+        #[cxx_name = "noteList"]
+        fn note_list(self: &AppController) -> QStringList;
+
+        /// Wraps `text` in a fenced code block (`language` may be "").
+        #[qinvokable]
+        #[cxx_name = "codeBlock"]
+        fn code_block(self: &AppController, text: &QString, language: &QString) -> QString;
+
+        /// Appends `block` to the note at `path` (created if missing) with an
+        /// atomic save; returns an error text ("" on success).
+        #[qinvokable]
+        #[cxx_name = "appendToNote"]
+        fn append_to_note(self: Pin<&mut AppController>, path: &QString, block: &QString) -> QString;
+
         /// Notes linking to `path` (JSON list of {source, line, raw}).
         #[qinvokable]
         fn backlinks(self: &AppController, path: &QString) -> QString;
@@ -531,6 +547,9 @@ impl qobject::AppController {
     }
 
     pub fn exists(&self, path: &QString) -> bool {
+        if is_terminal_path(&path_of(path)) {
+            return true;
+        }
         self.absolute(&path_of(path)).is_some_and(|p| p.exists())
     }
 
@@ -815,6 +834,43 @@ impl qobject::AppController {
         qs(result.to_string())
     }
 
+    pub fn note_list(&self) -> QStringList {
+        let mut out = QStringList::default();
+        for path in self.with_notes(|n| n.paths().cloned().collect::<Vec<_>>()).unwrap_or_default() {
+            out.append(qs(path.to_string_lossy()));
+        }
+        out
+    }
+
+    pub fn code_block(&self, text: &QString, language: &QString) -> QString {
+        qs(markdown::code_block(&text.to_string(), &language.to_string()))
+    }
+
+    pub fn append_to_note(self: Pin<&mut Self>, path: &QString, block: &QString) -> QString {
+        let file = path_of(path);
+        let result = match std::fs::read(&file) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(text) => {
+                    let hash = atlas_core::textfile::hash_bytes(text.as_bytes());
+                    atlas_core::textfile::save(&file, &markdown::append_block(&text, &block.to_string()), Some(&hash))
+                        .map_err(|e| e.to_string())
+                }
+                Err(_) => Err("Die Notiz ist kein gültiges UTF-8.".to_owned()),
+            },
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                atlas_core::textfile::save(&file, &block.to_string(), None).map_err(|e| e.to_string())
+            }
+            Err(err) => Err(err.to_string()),
+        };
+        match result {
+            Ok(_) => {
+                self.note_changed(path);
+                QString::default()
+            }
+            Err(err) => qs(err),
+        }
+    }
+
     pub fn backlinks(&self, path: &QString) -> QString {
         let path = path_of(path);
         let links = self.with_notes(|n| n.backlinks(&path)).unwrap_or_default();
@@ -965,8 +1021,16 @@ fn spawn_detached(command: &[String], dir: Option<&Path>) -> anyhow::Result<()> 
     Ok(())
 }
 
+fn is_terminal_path(path: &Path) -> bool {
+    path.as_os_str().as_encoded_bytes().starts_with(b"terminal:")
+}
+
 /// Coarse file type used to pick a viewer.
 pub fn file_kind(path: &Path) -> &'static str {
+    // Terminal tabs: `terminal:<start directory>#<id>`.
+    if is_terminal_path(path) {
+        return "terminal";
+    }
     if atlas_core::listing::trash_files_dir().is_some_and(|t| t == path) {
         return "trash";
     }

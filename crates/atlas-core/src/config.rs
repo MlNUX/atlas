@@ -9,6 +9,9 @@
 //! command = "code --goto {file}:{line}:{column}"
 //! # Run inside an Atlas terminal (for vim, helix, nano, …).
 //! terminal = false
+//!
+//! [terminal]
+//! shell = "/run/current-system/sw/bin/fish"   # default: login shell
 //! ```
 //!
 //! Without a configured command Atlas uses `$VISUAL` or `$EDITOR` (in a
@@ -28,9 +31,19 @@ pub struct EditorConfig {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerminalConfig {
+    /// Shell for new terminals ("" = login shell). Bash, Zsh and Fish are
+    /// tested.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub shell: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub editor: EditorConfig,
+    #[serde(default)]
+    pub terminal: TerminalConfig,
 }
 
 pub fn config_dir() -> PathBuf {

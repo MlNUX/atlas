@@ -18,7 +18,9 @@ Item {
     // `revision` re-evaluates the kind after the file was moved or deleted.
     property int revision: 0
     readonly property string kind: path && revision >= 0 ? app.fileKind(path) : ""
-    readonly property string title: kind === "trash" ? qsTr("Papierkorb") : path ? app.fileName(path) : qsTr("Leer")
+    readonly property string title: kind === "trash" ? qsTr("Papierkorb")
+        : kind === "terminal" ? (viewer.item && viewer.item.title ? viewer.item.title : qsTr("Terminal"))
+        : path ? app.fileName(path) : qsTr("Leer")
     property var pendingState: ({})
     property var backStack: []
     property var forwardStack: []
@@ -31,8 +33,12 @@ Item {
     signal openRequested(string path, int line, string where)
     /// The user interacted in a way that should pin a preview tab.
     signal pinRequested()
+    /// The tab should close (e.g. its terminal exited).
+    signal closeRequested()
 
     function refresh() { revision++ }
+    /// Start directory of a terminal tab (`terminal:<dir>#<id>`).
+    function terminalStartDir() { return path.slice(9, path.lastIndexOf("#") > 9 ? path.lastIndexOf("#") : path.length) }
 
     /// Shows `newPath` in this tab and remembers the old location.
     function navigate(newPath, newLine) {
@@ -84,6 +90,7 @@ Item {
         anchors.fill: parent
         sourceComponent: view.kind === "trash" ? trashComponent
             : view.kind === "dir" ? folderComponent
+            : view.kind === "terminal" ? terminalComponent
             : view.kind === "pdf" ? pdfComponent
             : view.kind === "markdown" ? markdownComponent
             : view.kind === "text" ? textComponent
@@ -110,6 +117,18 @@ Item {
                 if (isDir && !newPane) view.navigate(path, 0)
                 else view.openRequested(path, 0, newPane ? "split" : "tab")
             }
+        }
+    }
+    Component {
+        id: terminalComponent
+        // `terminal:<start directory>#<id>`; the session stores the current
+        // directory as state.
+        TerminalPane {
+            workingDirectory: (view.pendingState && view.pendingState.cwd) || view.terminalStartDir()
+            actions: view.actions
+            onClosed: view.closeRequested()
+            function viewState() { return { cwd: cwd() } }
+            Component.onCompleted: Qt.callLater(focusTerminal)
         }
     }
     Component {

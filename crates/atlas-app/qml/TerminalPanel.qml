@@ -11,6 +11,7 @@ import Atlas
 Rectangle {
     id: panel
     property string workingDirectory
+    property var actions: null
     property var groups: []
     property int currentIndex: 0
     readonly property var currentGroup: groups.length > 0 ? groups[Math.min(currentIndex, groups.length - 1)] : null
@@ -25,8 +26,9 @@ Rectangle {
         TerminalGroup {}
     }
 
-    function newTerminal() {
-        const group = groupComponent.createObject(stack, { workingDirectory: panel.workingDirectory })
+    /// New terminal tab, in `cwd` or the project root.
+    function newTerminal(cwd) {
+        const group = groupComponent.createObject(stack, { workingDirectory: cwd || panel.workingDirectory, actions: panel.actions })
         group.empty.connect(() => panel.removeGroup(group))
         groups = groups.concat([group])
         currentIndex = groups.length - 1
@@ -35,15 +37,18 @@ Rectangle {
 
     /// Runs `command` in a new terminal tab (closed when it exits).
     function runCommand(command, cwd) {
-        const group = groupComponent.createObject(stack, { workingDirectory: cwd || panel.workingDirectory })
+        const group = groupComponent.createObject(stack, { workingDirectory: cwd || panel.workingDirectory, actions: panel.actions })
         group.empty.connect(() => panel.removeGroup(group))
         groups = groups.concat([group])
         currentIndex = groups.length - 1
         group.addTerminal(cwd, command)
     }
 
-    function splitTerminal() {
+    /// Adds a terminal to the current tab, beside (`vertical` false) or
+    /// below the others. A tab arranges all its terminals in one direction.
+    function splitTerminal(vertical) {
         if (!currentGroup) return newTerminal()
+        currentGroup.orientation = vertical ? Qt.Vertical : Qt.Horizontal
         currentGroup.addTerminal()
     }
 
@@ -71,7 +76,7 @@ Rectangle {
     function restore(state) {
         const saved = state && state.groups && state.groups.length ? state.groups : [{ terminals: [{}] }]
         for (const gs of saved) {
-            const group = groupComponent.createObject(stack, { workingDirectory: panel.workingDirectory })
+            const group = groupComponent.createObject(stack, { workingDirectory: panel.workingDirectory, actions: panel.actions })
             group.empty.connect(() => panel.removeGroup(group))
             groups = groups.concat([group])
             group.restore(gs)
@@ -134,7 +139,8 @@ Rectangle {
             Item { Layout.fillWidth: true }
 
             IconButton { glyph: "+"; tip: qsTr("Neues Terminal (Strg+Umschalt+`)"); onClicked: panel.newTerminal() }
-            IconButton { glyph: "◫"; tip: qsTr("Terminal teilen"); onClicked: panel.splitTerminal() }
+            IconButton { glyph: "◫"; tip: qsTr("Terminal rechts teilen"); onClicked: panel.splitTerminal(false) }
+            IconButton { glyph: "⬒"; tip: qsTr("Terminal unten teilen"); onClicked: panel.splitTerminal(true) }
             IconButton { glyph: "🗑"; tip: qsTr("Terminal beenden"); enabled: panel.terminalCount > 0; onClicked: panel.killTerminal() }
             IconButton { glyph: "⌄"; tip: qsTr("Panel ausblenden (Strg+`)"); onClicked: panel.hideRequested() }
         }

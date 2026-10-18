@@ -516,6 +516,24 @@ pub fn rewrite_links(
     (out, count)
 }
 
+/// Wraps `text` in a fenced code block (fence longer than any backtick run
+/// inside, so terminal output containing ``` stays intact).
+pub fn code_block(text: &str, language: &str) -> String {
+    let longest = text.split(|c| c != '`').map(str::len).max().unwrap_or(0);
+    let fence = "`".repeat(longest.max(2) + 1);
+    format!("{fence}{language}\n{}\n{fence}\n", text.trim_end_matches('\n'))
+}
+
+/// Appends a block to Markdown source, separated by one blank line.
+pub fn append_block(source: &str, block: &str) -> String {
+    let mut out = source.trim_end_matches('\n').to_owned();
+    if !out.is_empty() {
+        out.push_str("\n\n");
+    }
+    out.push_str(block);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -601,5 +619,13 @@ mod tests {
     fn relative_paths() {
         assert_eq!(relative_path(Path::new("/p/notes"), Path::new("/p/docs/a.pdf")), PathBuf::from("../docs/a.pdf"));
         assert_eq!(relative_path(Path::new("/p"), Path::new("/p/a.md")), PathBuf::from("a.md"));
+    }
+
+    #[test]
+    fn code_blocks_for_terminal_output() {
+        assert_eq!(code_block("$ ls\na b\n", "console"), "```console\n$ ls\na b\n```\n");
+        assert_eq!(code_block("x ``` y", ""), "````\nx ``` y\n````\n");
+        assert_eq!(append_block("# Notiz\n", "```\nx\n```\n"), "# Notiz\n\n```\nx\n```\n");
+        assert_eq!(append_block("", "b\n"), "b\n");
     }
 }

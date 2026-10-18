@@ -9,6 +9,7 @@ import Atlas
 SplitView {
     id: group
     property string workingDirectory
+    property var actions: null
     property var terminals: []
     property int activeIndex: 0
     readonly property var activeTerminal: terminals.length > 0 ? terminals[Math.min(activeIndex, terminals.length - 1)] : null
@@ -19,6 +20,7 @@ SplitView {
     orientation: Qt.Horizontal
     handle: Rectangle {
         implicitWidth: 3
+        implicitHeight: 3
         color: SplitHandle.pressed ? Theme.accent : Theme.border
     }
 
@@ -27,6 +29,9 @@ SplitView {
         TerminalPane {
             SplitView.preferredWidth: group.width / Math.max(1, group.terminals.length + 1)
             SplitView.minimumWidth: 120
+            SplitView.preferredHeight: group.height / Math.max(1, group.terminals.length + 1)
+            SplitView.minimumHeight: 60
+            actions: group.actions
         }
     }
 
