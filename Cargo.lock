@@ -125,6 +125,7 @@ dependencies = [
  "cxx-qt-build",
  "cxx-qt-lib",
  "env_logger",
+ "libc",
  "log",
  "serde_json",
 ]
@@ -148,6 +149,7 @@ dependencies = [
  "poppler-sys-rs",
  "pulldown-cmark",
  "pulldown-cmark-escape",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

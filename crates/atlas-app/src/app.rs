@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+use atlas_core::config::{Config, EditorConfig, EditorLaunch, editor_launch};
 use atlas_core::markdown;
 use atlas_core::notes::NoteIndex;
 use atlas_core::project::Project;
@@ -41,6 +42,8 @@ pub mod qobject {
         #[qproperty(bool, index_ready, cxx_name = "indexReady", READ, NOTIFY)]
         #[qproperty(QString, index_status, cxx_name = "indexStatus", READ, NOTIFY)]
         #[qproperty(QStringList, open_files, cxx_name = "openFiles", READ, CONSTANT)]
+        // Line per entry of `openFiles` ("0" = none).
+        #[qproperty(QStringList, open_lines, cxx_name = "openLines", READ, CONSTANT)]
         #[qproperty(QStringList, place_names, cxx_name = "placeNames", READ, CONSTANT)]
         #[qproperty(QStringList, place_paths, cxx_name = "placePaths", READ, CONSTANT)]
         #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, CONSTANT)]
@@ -197,6 +200,34 @@ pub mod qobject {
         #[cxx_name = "headingLine"]
         fn heading_line(self: &AppController, path: &QString, slug: &QString) -> i32;
 
+        /// Symbol overview of source text (JSON list of {name, kind, line,
+        /// depth}; empty for unsupported languages).
+        #[qinvokable]
+        fn symbols(self: &AppController, path: &QString, text: &QString) -> QString;
+
+        /// Configured external editor command ("" = `$VISUAL`/`$EDITOR` or
+        /// the system default).
+        #[qinvokable]
+        #[cxx_name = "editorCommand"]
+        fn editor_command(self: &AppController) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "editorInTerminal"]
+        fn editor_in_terminal(self: &AppController) -> bool;
+
+        /// Saves the editor command in `config.toml`; returns an error text
+        /// ("" on success).
+        #[qinvokable]
+        #[cxx_name = "setEditorCommand"]
+        fn set_editor_command(self: &AppController, command: &QString, terminal: bool) -> QString;
+
+        /// Opens `path` at `line` in the external editor. JSON result:
+        /// {mode: "detached"|"terminal"|"system"|"error", command, error};
+        /// for "terminal" QML runs `command` in an Atlas terminal.
+        #[qinvokable]
+        #[cxx_name = "openInEditor"]
+        fn open_in_editor(self: &AppController, path: &QString, line: i32) -> QString;
+
         /// Notes linking to `path` (JSON list of {source, line, raw}).
         #[qinvokable]
         fn backlinks(self: &AppController, path: &QString) -> QString;
@@ -265,6 +296,7 @@ pub struct AppControllerRust {
     index_ready: bool,
     index_status: QString,
     open_files: QStringList,
+    open_lines: QStringList,
     place_names: QStringList,
     place_paths: QStringList,
     place_icons: QStringList,
@@ -300,6 +332,10 @@ impl Default for AppControllerRust {
     fn default() -> Self {
         let cli = Cli::get();
         let mut open_files = QStringList::default();
+        let mut open_lines = QStringList::default();
+        for line in &cli.open_lines {
+            open_lines.append(qs(line.to_string()));
+        }
         for f in &cli.open {
             open_files.append(qs(f.to_string_lossy()));
         }
@@ -319,6 +355,7 @@ impl Default for AppControllerRust {
             index_ready: false,
             index_status: QString::default(),
             open_files,
+            open_lines,
             place_names,
             place_paths,
             place_icons,
@@ -739,6 +776,45 @@ impl qobject::AppController {
         analysis.headings.iter().find(|h| h.slug == slug).map(|h| h.line as i32).unwrap_or(0)
     }
 
+    pub fn symbols(&self, path: &QString, text: &QString) -> QString {
+        let symbols = atlas_core::symbols::symbols(&path_of(path), &text.to_string());
+        qs(serde_json::to_string(&symbols).unwrap_or_else(|_| "[]".into()))
+    }
+
+    pub fn editor_command(&self) -> QString {
+        qs(Config::load().editor.command)
+    }
+
+    pub fn editor_in_terminal(&self) -> bool {
+        Config::load().editor.terminal.unwrap_or(false)
+    }
+
+    pub fn set_editor_command(&self, command: &QString, terminal: bool) -> QString {
+        let command = command.to_string();
+        if let Err(err) = atlas_core::config::split_words(&command) {
+            return qs(format!("{err:#}"));
+        }
+        let editor = EditorConfig { command, terminal: Some(terminal) };
+        match Config::save_editor(&editor) {
+            Ok(()) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        }
+    }
+
+    pub fn open_in_editor(&self, path: &QString, line: i32) -> QString {
+        let file = path_of(path);
+        let result = match editor_launch(&Config::load().editor, &file, line.max(0) as u32, 0) {
+            Ok(EditorLaunch::System) => serde_json::json!({ "mode": "system" }),
+            Ok(EditorLaunch::Terminal(command)) => serde_json::json!({ "mode": "terminal", "command": command }),
+            Ok(EditorLaunch::Detached(command)) => match spawn_detached(&command, file.parent()) {
+                Ok(()) => serde_json::json!({ "mode": "detached", "command": command }),
+                Err(err) => serde_json::json!({ "mode": "error", "command": command, "error": format!("{err:#}") }),
+            },
+            Err(err) => serde_json::json!({ "mode": "error", "error": format!("{err:#}") }),
+        };
+        qs(result.to_string())
+    }
+
     pub fn backlinks(&self, path: &QString) -> QString {
         let path = path_of(path);
         let links = self.with_notes(|n| n.backlinks(&path)).unwrap_or_default();
@@ -863,6 +939,30 @@ impl qobject::AppController {
     pub unsafe fn save_window_image(&self, window: *mut cxx_qt::QObject, path: &QString) -> bool {
         unsafe { crate::qt_helpers::save_window_image(window, path) }
     }
+}
+
+/// Starts a program in its own session, detached from Atlas (it keeps
+/// running when Atlas quits and never shares the terminal).
+fn spawn_detached(command: &[String], dir: Option<&Path>) -> anyhow::Result<()> {
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let (program, args) = command.split_first().ok_or_else(|| anyhow::anyhow!("leerer Befehl"))?;
+    let mut cmd = Command::new(program);
+    cmd.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    if let Some(dir) = dir {
+        cmd.current_dir(dir);
+    }
+    // SAFETY: setsid is async-signal-safe.
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    let mut child = cmd.spawn().map_err(|err| anyhow::anyhow!("„{program}“ kann nicht gestartet werden: {err}"))?;
+    // Reap the child in the background so it does not linger as a zombie.
+    std::thread::spawn(move || child.wait());
+    Ok(())
 }
 
 /// Coarse file type used to pick a viewer.

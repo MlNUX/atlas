@@ -32,6 +32,25 @@ Rectangle {
     readonly property real lineHeight: area.lineCount > 0 ? area.contentHeight / area.lineCount : 16
     readonly property bool large: area.length > 2 * 1024 * 1024
 
+    /// FileActions (for "open in editor"); optional.
+    property var actions: null
+    property bool showSymbols: false
+    property var symbolList: []
+    /// Index of the symbol containing the cursor.
+    readonly property int currentSymbol: {
+        let found = -1
+        for (let i = 0; i < symbolList.length && symbolList[i].line <= area.cursorLine; ++i) found = i
+        return found
+    }
+    function updateSymbols() { if (!root.wrap && !root.large) root.symbolList = JSON.parse(root.app.symbols(root.source, area.text)) }
+    function symbolGlyph(kind) {
+        return ({ function: "ƒ", method: "ƒ", type: "T", class: "C", interface: "I", impl: "⊞",
+                  module: "M", macro: "!", section: "§", property: "•", signal: "⚡", object: "◇",
+                  attribute: "=", target: "◎" })[kind] || "•"
+    }
+    onShowSymbolsChanged: if (showSymbols) updateSymbols()
+    Timer { id: symbolTimer; interval: 500; onTriggered: root.updateSymbols() }
+
     property int editGeneration: 0
     property int savedGeneration: 0
     property bool loading: false
@@ -73,6 +92,7 @@ Rectangle {
         area.cursorPosition = Math.min(cursor, area.length)
         flick.contentY = Math.min(top, Math.max(0, flick.contentHeight - flick.height))
         if (root.line > 0) Qt.callLater(root.reveal, root.line)
+        if (root.showSymbols) root.updateSymbols()
         root.synced()
     }
 
@@ -121,9 +141,10 @@ Rectangle {
         flick.contentY = Math.max(0, Math.min(rect.y, flick.contentHeight - flick.height))
     }
 
-    function viewState() { return { line: root.topLine, cursor: area.cursorPosition } }
+    function viewState() { return { line: root.topLine, cursor: area.cursorPosition, symbols: root.showSymbols } }
     function applyState(state) {
         if (state.cursor !== undefined) area.cursorPosition = Math.min(state.cursor, area.length)
+        if (state.symbols !== undefined) root.showSymbols = state.symbols
         if (state.line) Qt.callLater(root.scrollToLine, state.line)
     }
 
@@ -257,6 +278,7 @@ Rectangle {
                 id: flick
                 anchors.fill: parent
                 anchors.leftMargin: gutter.width
+                anchors.rightMargin: symbolPanel.width
                 clip: true
                 contentWidth: root.wrap ? width : Math.max(width, area.implicitWidth)
                 contentHeight: area.height
@@ -317,6 +339,7 @@ Rectangle {
                         root.edited()
                         recoveryTimer.restart()
                         if (root.autosave) autosaveTimer.restart()
+                        if (root.showSymbols) symbolTimer.restart()
                     }
                     Keys.onPressed: (event) => {
                         const ctrl = event.modifiers & Qt.ControlModifier
@@ -333,6 +356,60 @@ Rectangle {
                 textEdit: area
                 definition: root.large ? "None" : Repository.definitionForFileName(root.source).name
                 theme: Repository.theme("Breeze Dark")
+            }
+
+            // ---- symbol overview (where it can be determined reliably)
+            Rectangle {
+                id: symbolPanel
+                visible: root.showSymbols
+                anchors.right: parent.right
+                width: visible ? Math.min(260, parent.width * 0.4) : 0
+                height: parent.height
+                color: Theme.sidebar
+                Rectangle { width: 1; height: parent.height; color: Theme.border }
+                ListView {
+                    id: symbolList
+                    anchors.fill: parent
+                    anchors.leftMargin: 1
+                    clip: true
+                    model: root.symbolList
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {}
+                    header: Label {
+                        width: symbolList.width
+                        padding: 8
+                        text: qsTr("SYMBOLE")
+                        color: Theme.text
+                        font.bold: true
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                    delegate: ItemDelegate {
+                        required property var modelData
+                        required property int index
+                        width: ListView.view.width
+                        height: Theme.rowHeight
+                        highlighted: index === root.currentSymbol
+                        leftPadding: 8 + modelData.depth * 12
+                        background: Rectangle { color: parent.highlighted ? Theme.selection : parent.hovered ? Theme.hover : "transparent" }
+                        contentItem: Text {
+                            text: root.symbolGlyph(modelData.kind) + "  " + modelData.name
+                            color: Theme.text
+                            font.pixelSize: Theme.fontSize
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: { root.reveal(modelData.line); area.forceActiveFocus() }
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        width: parent.width - 24
+                        visible: symbolList.count === 0
+                        wrapMode: Text.Wrap
+                        horizontalAlignment: Text.AlignHCenter
+                        color: Theme.textFaint
+                        text: qsTr("Für diesen Dateityp ist keine Symbolübersicht verfügbar.")
+                    }
+                }
             }
         }
 
@@ -393,6 +470,22 @@ Rectangle {
                     text: root.large ? qsTr("Ohne Hervorhebung (große Datei)") : Repository.definitionForFileName(root.source).translatedName
                     color: Theme.textFaint
                     font.pixelSize: Theme.smallFontSize
+                }
+                IconButton {
+                    visible: !root.wrap
+                    implicitHeight: 20
+                    glyph: "☰"
+                    tip: qsTr("Symbolübersicht")
+                    checkable: true
+                    checked: root.showSymbols
+                    onClicked: root.showSymbols = !root.showSymbols
+                }
+                IconButton {
+                    visible: !!root.actions
+                    implicitHeight: 20
+                    glyph: "↗"
+                    tip: qsTr("Im Editor öffnen")
+                    onClicked: { root.save(); root.actions.openInEditor(root.source, Math.max(1, area.cursorLine)) }
                 }
             }
         }

@@ -12,7 +12,8 @@ Usage: atlas [OPTIONS] [PROJECT]
 Opens PROJECT (a folder) or the last used project.
 
 Options:
-  --open FILE          Open FILE in a new pane (repeatable; relative to PROJECT)
+  --open FILE[:LINE]   Open FILE (at LINE) in a new pane (repeatable; relative
+                       to PROJECT)
   --no-session         Neither restore nor remember the last project/session
   --search PATTERN     Start a project search for PATTERN
   --screenshot FILE    Save a PNG of the window after startup (for tests)
@@ -26,6 +27,8 @@ Options:
 pub struct Cli {
     pub project: Option<PathBuf>,
     pub open: Vec<PathBuf>,
+    /// Line per entry of `open` (0 = none).
+    pub open_lines: Vec<u32>,
     pub no_session: bool,
     pub screenshot: Option<PathBuf>,
     pub screenshot_delay_ms: Option<u32>,
@@ -65,7 +68,11 @@ impl Cli {
                     println!("atlas {}", env!("CARGO_PKG_VERSION"));
                     std::process::exit(0);
                 }
-                "--open" => cli.open.push(value("--open")?.into()),
+                "--open" => {
+                    let (path, line) = split_line(&value("--open")?);
+                    cli.open.push(path);
+                    cli.open_lines.push(line);
+                }
                 "--no-session" => cli.no_session = true,
                 "--screenshot" => cli.screenshot = Some(value("--screenshot")?.into()),
                 "--screenshot-delay" => {
@@ -101,5 +108,29 @@ impl Cli {
                 .collect();
         }
         Ok(cli)
+    }
+}
+
+/// `src/main.rs:42` → (`src/main.rs`, 42), unless a file with the full name
+/// exists.
+fn split_line(arg: &str) -> (PathBuf, u32) {
+    if let Some((path, line)) = arg.rsplit_once(':')
+        && let Ok(line) = line.parse::<u32>()
+        && !std::path::Path::new(arg).exists()
+    {
+        return (PathBuf::from(path), line);
+    }
+    (PathBuf::from(arg), 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_file_and_line() {
+        let cli = Cli::parse(["--open", "a.rs:12", "--open", "b.pdf"].into_iter().map(String::from)).unwrap();
+        assert_eq!(cli.open, [PathBuf::from("a.rs"), PathBuf::from("b.pdf")]);
+        assert_eq!(cli.open_lines, [12, 0]);
     }
 }

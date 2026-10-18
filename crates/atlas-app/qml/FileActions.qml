@@ -23,6 +23,8 @@ Item {
     signal created(string path)
     /// Space: large preview; `navigate(step)` returns the neighbour path.
     signal quickLookRequested(string path, var navigate)
+    /// Run `command` (program + arguments) in an Atlas terminal in `cwd`.
+    signal runInTerminal(var command, string cwd)
 
     FileOps {
         id: ops
@@ -42,6 +44,19 @@ Item {
     function baseName(path) { return path.slice(path.lastIndexOf("/") + 1) }
 
     // ------------------------------------------------------------ operations
+
+    /// Opens `path` at `line` in the configured external editor.
+    function openInEditor(path, line) {
+        const r = JSON.parse(app.openInEditor(path, line || 0))
+        if (r.mode === "system") Qt.openUrlExternally("file://" + encodeURI(path))
+        else if (r.mode === "terminal") actions.runInTerminal(r.command, ops.parentDir(path))
+        else if (r.mode === "error") {
+            errorDialog.text = qsTr("Externer Editor: %1").arg(r.error)
+            errorDialog.open()
+        } else showMessage(qsTr("Geöffnet mit %1").arg(r.command[0]))
+    }
+
+    function configureEditor() { editorDialog.open() }
 
     function newFile(dir) {
         nameDialog.ask(qsTr("Neue Datei in „%1“").arg(baseName(dir)), qsTr("Neue Datei.md"), false, (name) => {
@@ -161,6 +176,12 @@ Item {
             height: visible ? implicitHeight : 0
             onTriggered: actions.openRequested(menu.paths[0], true)
         }
+        MenuItem {
+            text: qsTr("Im Editor öffnen")
+            visible: menu.single && !ops.isDir(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.openInEditor(menu.paths[0], 0)
+        }
         MenuSeparator { visible: menu.single; height: visible ? implicitHeight : 0 }
         MenuItem { text: qsTr("Neue Datei …"); onTriggered: actions.newFile(menu.dir) }
         MenuItem { text: qsTr("Neuer Ordner …"); onTriggered: actions.newFolder(menu.dir) }
@@ -173,6 +194,8 @@ Item {
         MenuItem { text: qsTr("Pfad kopieren"); enabled: menu.any; onTriggered: actions.copyPaths(menu.paths) }
         MenuSeparator {}
         MenuItem { text: qsTr("In den Papierkorb\tEntf"); enabled: menu.any; onTriggered: actions.trash(menu.paths) }
+        MenuSeparator {}
+        MenuItem { text: qsTr("Externen Editor festlegen …"); onTriggered: actions.configureEditor() }
     }
 
     // --------------------------------------------------------------- dialogs
@@ -296,6 +319,51 @@ Item {
                     onClicked: { confirmDialog.close(); if (confirmDialog.confirmAction) confirmDialog.confirmAction() }
                 }
             }
+        }
+    }
+
+    // „Im Editor öffnen“: command template in ~/.config/atlas/config.toml.
+    Dialog {
+        id: editorDialog
+        anchors.centerIn: Overlay.overlay
+        width: 560
+        modal: true
+        title: qsTr("Externer Editor")
+        standardButtons: Dialog.Save | Dialog.Cancel
+        onAboutToShow: {
+            editorField.text = app.editorCommand()
+            editorTerminal.checked = app.editorInTerminal()
+            editorError.text = ""
+        }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Theme.textMuted
+                text: qsTr("Befehl für „Im Editor öffnen“. Platzhalter: {file}, {line}, {column}, {dir}. Leer lassen, um $VISUAL/$EDITOR oder das Standardprogramm des Systems zu verwenden.")
+            }
+            TextField {
+                id: editorField
+                Layout.fillWidth: true
+                placeholderText: "code --goto {file}:{line}:{column}"
+                onAccepted: editorDialog.accept()
+            }
+            CheckBox { id: editorTerminal; text: qsTr("Im Terminal von Atlas ausführen (vim, helix, nano …)") }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("Beispiele: kate --line {line} {file} · gnome-text-editor +{line} {file} · nvim +{line} {file}")
+            }
+            Label { id: editorError; Layout.fillWidth: true; wrapMode: Text.Wrap; color: Theme.error; visible: text !== "" }
+        }
+        onAccepted: {
+            const error = app.setEditorCommand(editorField.text.trim(), editorTerminal.checked)
+            if (error) { editorError.text = error; open() }
+            else showMessage(qsTr("Externer Editor gespeichert"))
         }
     }
 

@@ -24,6 +24,8 @@ Rectangle {
     property int previewLine: 1
     property real previewY: 0
     property var repairs: []
+    /// FileActions (for "open in editor"); optional.
+    property var actions: null
 
     /// Follow a link: `newPane` for Ctrl/middle click.
     signal linkActivated(string path, int line, bool newPane)
@@ -187,6 +189,7 @@ Rectangle {
                 app: root.app
                 source: root.source
                 wrap: true
+                actions: root.actions
                 onEdited: renderTimer.restart()
                 onSynced: { root.render(); root.app.noteChanged(root.source) }
                 onSavedAs: (path) => root.savedAs(path)

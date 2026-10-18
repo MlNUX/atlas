@@ -31,11 +31,12 @@ SplitView {
     }
 
     function shellName() {
-        return "terminal"
+        const command = activeTerminal ? activeTerminal.command : []
+        return command.length ? command[0].slice(command[0].lastIndexOf("/") + 1) : "terminal"
     }
 
-    function addTerminal(cwd) {
-        const pane = terminalComponent.createObject(null, { workingDirectory: cwd || group.workingDirectory })
+    function addTerminal(cwd, command) {
+        const pane = terminalComponent.createObject(null, { workingDirectory: cwd || group.workingDirectory, command: command || [] })
         group.addItem(pane)
         terminals = terminals.concat([pane])
         pane.closed.connect(() => group.removeTerminal(pane))
@@ -48,7 +49,8 @@ SplitView {
     function serialize() {
         return {
             orientation: group.orientation === Qt.Vertical ? "vertical" : "horizontal",
-            terminals: terminals.map(t => ({ cwd: t.cwd() }))
+            // Programs started by Atlas (editors) are not restored.
+            terminals: terminals.filter(t => t.command.length === 0).map(t => ({ cwd: t.cwd() }))
         }
     }
 

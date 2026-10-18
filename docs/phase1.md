@@ -25,7 +25,7 @@ Schritt ein Commit und ein Zwischenstand.
 | 3 | Tabs, Splits und Sitzungsmodell | ✅ |
 | 4 | PDF-Anzeige und Schnellansicht | ✅ |
 | 5 | Markdown sowie Metadaten und Linkverhalten | ✅ |
-| 6 | Codevorschau und externer Editor | offen |
+| 6 | Codevorschau und externer Editor | ✅ |
 | 7 | Terminal-Integration | offen |
 | 8 | Suche und universelle Arbeitsleiste | offen |
 | 9 | Berechtigungen, Besitzer, Gruppe und Linux-Politur | offen |
@@ -213,3 +213,44 @@ Recovery-Kopien verworfen. Es zählen jetzt nur echte Textänderungen.
 Geprüft (offscreen): Rendering inkl. KaTeX/Mermaid/Bild, Autosave, Backlinks,
 Tags, Überschriften-Link mit Zurück-Navigation, Konflikt bei externer
 Änderung, Recovery nach Neustart, CSP blockiert `onerror`-Skripte.
+
+### Schritt 6 – Codevorschau und externer Editor
+
+Kern: `atlas_core::symbols` und `atlas_core::config` (mit Tests).
+
+- **Codevorschau** über denselben Editor wie in Schritt 5: Syntaxhervorhebung
+  (KSyntaxHighlighting, über 300 Sprachen), Zeilennummern, aktuelle Zeile,
+  Suche im Dokument (Strg+F, Enter/Umschalt+Enter), Gehe zu Zeile (Strg+G),
+  kleine Änderungen mit Autosave, Recovery und Konfliktschutz.
+- **Symbolübersicht** (☰ in der Statuszeile, Zustand je Tab in der Session):
+  Funktionen, Methoden, Typen, Klassen, Module, Abschnitte – für Rust, Python,
+  JavaScript/TypeScript, Go, C/C++, Java/Kotlin, Shell, QML, Lua, Ruby, TOML,
+  INI/Desktop-Dateien, Nix und Makefiles. Bewusst konservativ über Zeilenmuster
+  (kein Parser, kein Language Server): lieber ein Symbol weniger als ein
+  falsches. Andere Dateitypen zeigen einen Hinweis. Klick springt zur Zeile, das
+  Symbol unter dem Cursor ist markiert.
+- **Sprung zu Datei und Zeile**: `atlas PROJEKT --open src/main.rs:42`, Links
+  `[x](/src/main.rs#L42)` aus Notizen, Suchtreffer; die Zeile wird kurz
+  hervorgehoben.
+- **„Im Editor öffnen“** (↗ in der Statuszeile, Kontextmenü im Explorer und in
+  Dateilisten) mit konfigurierbarem Befehl in `~/.config/atlas/config.toml`
+  (Dialog „Externen Editor festlegen …“ im Kontextmenü):
+
+  ```toml
+  [editor]
+  command = "code --goto {file}:{line}:{column}"   # {file} {line} {column} {dir}
+  terminal = false                                 # true: im Atlas-Terminal
+  ```
+
+  Der Befehl wird wie in einer Shell in Wörter zerlegt, aber nicht über eine
+  Shell ausgeführt (Dateinamen mit Leerzeichen oder `$` sind sicher). Ohne
+  Einstellung gilt `$VISUAL`/`$EDITOR` (Terminal-Editoren wie vim, nvim,
+  helix, nano starten mit `+ZEILE` in einem neuen Terminal-Tab von Atlas),
+  sonst das Standardprogramm des Systems. Grafische Editoren laufen
+  losgelöst in eigener Sitzung (`setsid`) weiter, auch wenn Atlas beendet
+  wird. Unbekannte Schlüssel in `config.toml` bleiben beim Speichern erhalten.
+- Terminal-Tabs mit einem Programm statt der Shell schließen sich, wenn das
+  Programm endet, und werden nicht in der Session wiederhergestellt.
+
+Geprüft (offscreen): `--open src/main.rs:11` springt zur Zeile, Symbolleiste
+für Rust, externer Editor (losgelöst und im Terminal) erhält Datei und Zeile.

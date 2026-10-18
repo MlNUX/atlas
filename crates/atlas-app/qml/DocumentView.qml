@@ -122,6 +122,7 @@ Item {
             source: view.path
             app: view.app
             line: view.line
+            actions: view.actions
             onSavedAs: (path) => { view.path = path }
         }
     }
@@ -136,6 +137,7 @@ Item {
                 else view.navigate(path, line)
             }
             onMessage: (text) => { if (view.actions) view.actions.showMessage(text) }
+            actions: view.actions
             onSavedAs: (path) => { view.path = path }
         }
     }

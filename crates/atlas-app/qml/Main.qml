@@ -49,6 +49,10 @@ ApplicationWindow {
     Connections {
         target: fileActions
         function onQuickLookRequested(path, navigate) { quickLook.show(path, navigate) }
+        function onRunInTerminal(command, cwd) {
+            terminalPanel.visible = true
+            terminalPanel.runCommand(command, cwd)
+        }
     }
     Connections {
         target: fileActions.ops
@@ -88,8 +92,14 @@ ApplicationWindow {
         if (term.height) terminalPanel.SplitView.preferredHeight = term.height
         terminalPanel.visible = term.visible !== undefined ? term.visible : (layout.terminalVisible !== undefined ? layout.terminalVisible : true)
         if (terminalPanel.visible && terminalPanel.groups.length === 0) terminalPanel.restore(term)
-        for (const file of app.openFiles) editor.open(app.absolutePath(file), 0, editor.documents().length > 0 ? "split" : "tab")
+        openCliFiles()
         restoring = false
+    }
+
+    /// Files from `--open FILE[:LINE]`.
+    function openCliFiles() {
+        for (let i = 0; i < app.openFiles.length; ++i)
+            editor.open(app.absolutePath(app.openFiles[i]), parseInt(app.openLines[i]) || 0, editor.documents().length > 0 ? "split" : "tab")
     }
 
     function readLayout() {
@@ -214,7 +224,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         if (app.projectRoot) restoreSession()
-        else if (app.openFiles.length > 0) for (const f of app.openFiles) editor.open(f, 0, editor.documents().length > 0 ? "split" : "tab")
+        else if (app.openFiles.length > 0) openCliFiles()
         else editor.addGroup()
         if (app.initialSearch) {
             sidebarTabs.currentIndex = 1
@@ -257,6 +267,8 @@ ApplicationWindow {
         }
     }
     Timer { id: quitTimer; interval: Math.max(1, app.quitAfterMs); onTriggered: { window.reportProbe(); Qt.quit() } }
+
+
 
     // -------------------------------------------------------------- shortcuts
 

@@ -16,7 +16,7 @@ use alacritty_terminal::vte::ansi::{CursorShape, Rgb};
 use atlas_core::terminal::input::{self, Mods, MouseAction, MouseButton};
 use atlas_core::terminal::{Frame, GridSize, Mode, Options, TermEvent, Terminal};
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::{QColor, QFont, QPoint, QRectF, QString};
+use cxx_qt_lib::{QColor, QFont, QPoint, QRectF, QString, QStringList};
 
 use crate::qt_helpers;
 
@@ -28,6 +28,8 @@ pub mod qobject {
         include!("cxx-qt-lib/qpainter.h");
         type QPainter = cxx_qt_lib::QPainter;
         include!("cxx-qt-lib/qstring.h");
+        include!("cxx-qt-lib/qstringlist.h");
+        type QStringList = cxx_qt_lib::QStringList;
         type QString = cxx_qt_lib::QString;
     }
 
@@ -36,6 +38,8 @@ pub mod qobject {
         #[qml_element]
         #[base = QQuickPaintedItem]
         #[qproperty(QString, working_directory, cxx_name = "workingDirectory", READ, WRITE, NOTIFY)]
+        /// Program and arguments to run instead of the login shell.
+        #[qproperty(QStringList, command, READ, WRITE, NOTIFY)]
         #[qproperty(QString, font_family, cxx_name = "fontFamily", READ, WRITE, NOTIFY)]
         #[qproperty(i32, font_pixel_size, cxx_name = "fontPixelSize", READ, WRITE, NOTIFY)]
         #[qproperty(QString, title, READ, NOTIFY)]
@@ -142,6 +146,7 @@ struct Metrics {
 
 pub struct TerminalViewRust {
     working_directory: QString,
+    command: QStringList,
     font_family: QString,
     font_pixel_size: i32,
     title: QString,
@@ -170,6 +175,7 @@ impl Default for TerminalViewRust {
     fn default() -> Self {
         Self {
             working_directory: QString::default(),
+            command: QStringList::default(),
             font_family: QString::from("monospace"),
             font_pixel_size: 14,
             title: QString::default(),
@@ -270,7 +276,9 @@ impl qobject::TerminalView {
         }
         let size = self.grid_size();
         let wd = self.working_directory.to_string();
-        let options = Options { working_directory: (!wd.is_empty()).then(|| wd.into()), ..Default::default() };
+        let mut command = self.command.iter().map(|s| s.to_string());
+        let shell = command.next().map(|program| (program, command.collect()));
+        let options = Options { working_directory: (!wd.is_empty()).then(|| wd.into()), shell, ..Default::default() };
         let thread = self.qt_thread();
         let redraw_queued = self.redraw_queued.clone();
         let on_event = move |event: TermEvent| {

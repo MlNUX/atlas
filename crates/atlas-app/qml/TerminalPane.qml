@@ -10,6 +10,8 @@ import Atlas
 Rectangle {
     id: pane
     property string workingDirectory
+    /// Program and arguments instead of the shell (e.g. an editor).
+    property var command: []
     property bool active: false
     readonly property alias title: term.title
     function cwd() { return term.currentDirectory() || pane.workingDirectory }
@@ -31,6 +33,7 @@ Rectangle {
         anchors.rightMargin: 14
         anchors.bottomMargin: 2
         workingDirectory: pane.workingDirectory
+        command: pane.command
         fontFamily: Theme.monoFont
         fontPixelSize: 14
         focus: true

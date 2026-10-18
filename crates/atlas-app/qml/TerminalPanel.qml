@@ -33,6 +33,15 @@ Rectangle {
         group.addTerminal()
     }
 
+    /// Runs `command` in a new terminal tab (closed when it exits).
+    function runCommand(command, cwd) {
+        const group = groupComponent.createObject(stack, { workingDirectory: cwd || panel.workingDirectory })
+        group.empty.connect(() => panel.removeGroup(group))
+        groups = groups.concat([group])
+        currentIndex = groups.length - 1
+        group.addTerminal(cwd, command)
+    }
+
     function splitTerminal() {
         if (!currentGroup) return newTerminal()
         currentGroup.addTerminal()
