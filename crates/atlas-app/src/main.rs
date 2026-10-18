@@ -5,11 +5,13 @@
 
 mod app;
 mod cli;
+mod file_ops;
 mod folder_model;
 mod pdf_items;
 mod qt_helpers;
 mod search_model;
 mod terminal_item;
+mod trash_model;
 mod tree_model;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};

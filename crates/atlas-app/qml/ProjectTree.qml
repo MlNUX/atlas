@@ -12,11 +12,30 @@ Rectangle {
     required property ProjectTreeModel model
     required property string projectName
     property string currentPath
+    property var actions
+    /// Selected row (file or folder); new items go into its folder.
+    property string selectedPath
 
     signal openRequested(string path, bool newPane)
     signal openProjectRequested()
 
     color: Theme.sidebar
+
+    /// Folder for new files/folders and paste: the selected folder, the
+    /// folder of the selected file, or the project root.
+    function targetDir() {
+        if (!selectedPath) return root.model.root
+        const row = root.model.rowOf(selectedPath)
+        if (row >= 0 && list.itemAtIndex(row) && list.itemAtIndex(row).isDir) return selectedPath
+        return root.actions.ops.parentDir(selectedPath) || root.model.root
+    }
+
+    function selectedList() { return root.selectedPath ? [root.selectedPath] : [] }
+
+    Connections {
+        target: root.actions ? root.actions : null
+        function onCreated(path) { root.selectedPath = path }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -35,6 +54,18 @@ Rectangle {
                 font.pixelSize: Theme.smallFontSize
                 font.bold: true
                 elide: Text.ElideRight
+            }
+            IconButton {
+                glyph: "+"
+                tip: qsTr("Neue Datei")
+                enabled: !!root.projectName
+                onClicked: root.actions.newFile(root.targetDir())
+            }
+            IconButton {
+                glyph: "📁"
+                tip: qsTr("Neuer Ordner")
+                enabled: !!root.projectName
+                onClicked: root.actions.newFolder(root.targetDir())
             }
             IconButton {
                 glyph: "◌"
@@ -58,7 +89,47 @@ Rectangle {
             model: root.model
             boundsBehavior: Flickable.StopAtBounds
             reuseItems: true
+            activeFocusOnTab: true
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            Keys.onPressed: (event) => {
+                const ctrl = event.modifiers & Qt.ControlModifier
+                const row = root.model.rowOf(root.selectedPath)
+                if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
+                    const next = Math.max(0, Math.min(list.count - 1, row + (event.key === Qt.Key_Down ? 1 : -1)))
+                    root.selectedPath = root.model.pathAt(next)
+                    list.positionViewAtIndex(next, ListView.Contain)
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    const item = list.itemAtIndex(row)
+                    if (item && item.isDir) root.model.toggle(row)
+                    else if (root.selectedPath) root.openRequested(root.selectedPath, ctrl)
+                } else if (event.key === Qt.Key_F2 && root.selectedPath) {
+                    root.actions.rename(root.selectedPath)
+                } else if (event.key === Qt.Key_Delete && root.selectedPath) {
+                    root.actions.trash([root.selectedPath])
+                } else if (ctrl && event.key === Qt.Key_C && root.selectedPath) {
+                    root.actions.copy([root.selectedPath])
+                } else if (ctrl && event.key === Qt.Key_X && root.selectedPath) {
+                    root.actions.cut([root.selectedPath])
+                } else if (ctrl && event.key === Qt.Key_V) {
+                    root.actions.paste(root.targetDir())
+                } else {
+                    return
+                }
+                event.accepted = true
+            }
+
+            footer: MouseArea {
+                width: list.width
+                height: Math.max(Theme.rowHeight, list.height - list.count * Theme.rowHeight)
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                enabled: !!root.projectName
+                onClicked: (mouse) => {
+                    list.forceActiveFocus()
+                    root.selectedPath = ""
+                    if (mouse.button === Qt.RightButton) root.actions.showMenu([], root.model.root)
+                }
+            }
 
             delegate: Rectangle {
                 id: row
@@ -74,7 +145,8 @@ Rectangle {
 
                 width: ListView.view.width
                 height: Theme.rowHeight
-                color: path === root.currentPath ? Theme.activeSelection
+                color: path === root.selectedPath ? (list.activeFocus ? Theme.activeSelection : Theme.selection)
+                     : path === root.currentPath ? Theme.selection
                      : hover.hovered ? Theme.hover : "transparent"
 
                 HoverHandler { id: hover }
@@ -105,8 +177,14 @@ Rectangle {
 
                 MouseArea {
                     anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                     onClicked: (mouse) => {
+                        root.selectedPath = row.path
+                        list.forceActiveFocus()
+                        if (mouse.button === Qt.RightButton) {
+                            root.actions.showMenu([row.path], root.targetDir())
+                            return
+                        }
                         const newPane = mouse.button === Qt.MiddleButton
                             || (mouse.modifiers & Qt.ControlModifier)
                         // Folders expand on click; Ctrl/middle click opens

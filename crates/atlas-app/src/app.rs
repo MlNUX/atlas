@@ -451,8 +451,14 @@ impl qobject::AppController {
 
 /// Coarse file type used to pick a viewer.
 pub fn file_kind(path: &Path) -> &'static str {
+    if atlas_core::listing::trash_files_dir().is_some_and(|t| t == path) {
+        return "trash";
+    }
     if path.is_dir() {
         return "dir";
+    }
+    if path.symlink_metadata().is_err() {
+        return "missing";
     }
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     match ext.as_str() {

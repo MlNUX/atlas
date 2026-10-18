@@ -11,6 +11,7 @@ Rectangle {
     id: root
     required property string source
     property alias showHidden: folder.showHidden
+    required property var actions
 
     /// A row was opened: folders navigate, files open a viewer.
     signal activated(string path, bool isDir, bool newPane)
@@ -39,6 +40,42 @@ Rectangle {
     function sortBy(key) {
         if (folder.sortKey === key) folder.sortAscending = !folder.sortAscending
         else { folder.sortKey = key; folder.sortAscending = true }
+    }
+
+    // Selection is keyed by path, so it survives external changes that
+    // shift rows.
+    property var selected: ({})
+    property string anchorPath
+    property bool mouseSelecting: false
+    onSourceChanged: { selected = ({}); anchorPath = "" }
+
+    function selectOnly(path) { selected = ({ [path]: true }); anchorPath = path }
+    function toggle(path) {
+        const s = Object.assign({}, selected)
+        if (s[path]) delete s[path]; else s[path] = true
+        selected = s
+        anchorPath = path
+    }
+    function selectRange(path) {
+        const a = folder.rowOf(anchorPath), b = folder.rowOf(path)
+        if (a < 0) { selectOnly(path); return }
+        const s = {}
+        for (let i = Math.min(a, b); i <= Math.max(a, b); ++i) s[folder.pathAt(i)] = true
+        selected = s
+    }
+    function selectAll() {
+        const s = {}
+        for (let i = 0; i < list.count; ++i) s[folder.pathAt(i)] = true
+        selected = s
+    }
+    /// Selected paths in list order (existing ones only).
+    function selectedPaths() {
+        const out = []
+        for (let i = 0; i < list.count; ++i) {
+            const p = folder.pathAt(i)
+            if (selected[p]) out.push(p)
+        }
+        return out
     }
 
     function openRow(row, newPane) {
@@ -142,9 +179,39 @@ Rectangle {
             Keys.onReturnPressed: (event) => root.openRow(currentIndex, event.modifiers & Qt.ControlModifier)
             Keys.onEnterPressed: (event) => root.openRow(currentIndex, event.modifiers & Qt.ControlModifier)
             Keys.onPressed: (event) => {
+                const ctrl = event.modifiers & Qt.ControlModifier
                 if ((event.key === Qt.Key_Up && (event.modifiers & Qt.AltModifier)) || event.key === Qt.Key_Backspace) {
                     root.activated(root.parentOf(root.source), true, false)
-                    event.accepted = true
+                } else if (event.key === Qt.Key_F2 && root.selectedPaths().length === 1) {
+                    root.actions.rename(root.selectedPaths()[0])
+                } else if (event.key === Qt.Key_Delete) {
+                    root.actions.trash(root.selectedPaths())
+                } else if (ctrl && event.key === Qt.Key_C) {
+                    root.actions.copy(root.selectedPaths())
+                } else if (ctrl && event.key === Qt.Key_X) {
+                    root.actions.cut(root.selectedPaths())
+                } else if (ctrl && event.key === Qt.Key_V) {
+                    root.actions.paste(root.source)
+                } else if (ctrl && event.key === Qt.Key_A) {
+                    root.selectAll()
+                } else {
+                    return
+                }
+                event.accepted = true
+            }
+            // Keyboard navigation moves the selection like a click would.
+            onCurrentIndexChanged: if (currentIndex >= 0 && !root.mouseSelecting) root.selectOnly(folder.pathAt(currentIndex))
+
+            // The empty area below the rows: clears the selection, right click
+            // offers new file/folder and paste.
+            footer: MouseArea {
+                width: list.width
+                height: Math.max(Theme.rowHeight, list.height - list.count * Theme.rowHeight)
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: (mouse) => {
+                    list.forceActiveFocus()
+                    root.selected = ({})
+                    if (mouse.button === Qt.RightButton) root.actions.showMenu([], root.source)
                 }
             }
 
@@ -158,9 +225,10 @@ Rectangle {
                 required property string sizeText
                 required property real modified
                 required property string kind
+                required property string path
                 width: ListView.view.width
                 height: Theme.rowHeight
-                color: ListView.isCurrentItem ? (list.activeFocus ? Theme.activeSelection : Theme.selection)
+                color: root.selected[path] ? (list.activeFocus ? Theme.activeSelection : Theme.selection)
                      : hover.hovered ? Theme.hover : "transparent"
                 HoverHandler { id: hover }
 
@@ -201,13 +269,25 @@ Rectangle {
 
                 MouseArea {
                     anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                     onClicked: (mouse) => {
-                        list.currentIndex = row.index
                         list.forceActiveFocus()
-                        if (mouse.button === Qt.MiddleButton) root.openRow(row.index, true)
+                        if (mouse.button === Qt.MiddleButton) {
+                            root.openRow(row.index, true)
+                            return
+                        }
+                        root.mouseSelecting = true
+                        list.currentIndex = row.index
+                        root.mouseSelecting = false
+                        if (mouse.modifiers & Qt.ControlModifier) root.toggle(row.path)
+                        else if (mouse.modifiers & Qt.ShiftModifier) root.selectRange(row.path)
+                        // Right click on a selected row keeps the selection.
+                        else if (!(mouse.button === Qt.RightButton && root.selected[row.path])) root.selectOnly(row.path)
+                        if (mouse.button === Qt.RightButton) root.actions.showMenu(root.selectedPaths(), root.source)
                     }
-                    onDoubleClicked: (mouse) => root.openRow(row.index, mouse.modifiers & Qt.ControlModifier)
+                    onDoubleClicked: (mouse) => {
+                        if (mouse.button === Qt.LeftButton) root.openRow(row.index, mouse.modifiers & Qt.ControlModifier)
+                    }
                 }
             }
 

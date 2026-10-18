@@ -9,6 +9,7 @@ const QML_FILES: &[&str] = &[
     "qml/Main.qml",
     "qml/DocumentPane.qml",
     "qml/EditorArea.qml",
+    "qml/FileActions.qml",
     "qml/FolderView.qml",
     "qml/IconButton.qml",
     "qml/PdfViewer.qml",
@@ -19,15 +20,18 @@ const QML_FILES: &[&str] = &[
     "qml/TerminalPane.qml",
     "qml/TerminalPanel.qml",
     "qml/TextViewer.qml",
+    "qml/TrashView.qml",
 ];
 
 const RUST_BRIDGES: &[&str] = &[
     "src/app.rs",
+    "src/file_ops.rs",
     "src/folder_model.rs",
     "src/pdf_items.rs",
     "src/qt_helpers.rs",
     "src/search_model.rs",
     "src/terminal_item.rs",
+    "src/trash_model.rs",
     "src/tree_model.rs",
 ];
 

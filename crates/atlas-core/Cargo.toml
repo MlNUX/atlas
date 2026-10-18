@@ -27,6 +27,7 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 toml = "1.1.8"
 ignore = "0.4.33"
 uuid = { version = "1.28.0", features = ["v4"] }
+trash = { version = "5.2.9", features = ["chrono"] }
 
 [dev-dependencies]
 cairo-rs = { version = "0.22", features = ["pdf", "png"] }

@@ -9,6 +9,7 @@ import Atlas
 SplitView {
     id: area
     required property AppController app
+    property var actions
     readonly property int maxPanes: 4
     property var panes: []
     property int activeIndex: 0
@@ -35,7 +36,7 @@ SplitView {
 
     function addPane(path, line, state, atIndex) {
         if (panes.length >= maxPanes) return activePane
-        const pane = paneComponent.createObject(null, { path: path || "", line: line || 0 })
+        const pane = paneComponent.createObject(null, { path: path || "", line: line || 0, actions: area.actions })
         if (state) pane.applyState(state)
         const index = atIndex === undefined ? panes.length : atIndex
         area.insertItem(index, pane)
@@ -127,6 +128,22 @@ SplitView {
     // area has a size.
     property bool sized: false
     onWidthChanged: if (!sized && width > 0) { sized = true; equalize() }
+
+    /// Panes follow files and folders that Atlas moved or renamed.
+    function pathMoved(from, to) {
+        for (const p of panes) {
+            if (p.path === from) p.path = to
+            else if (p.path.startsWith(from + "/")) p.path = to + p.path.slice(from.length)
+        }
+        layoutChanged()
+    }
+
+    /// Panes showing deleted items show a notice instead of stale content.
+    function pathsRemoved(paths) {
+        for (const p of panes) {
+            if (paths.some(r => p.path === r || p.path.startsWith(r + "/"))) p.refresh()
+        }
+    }
 
     function documents() {
         return panes.map(p => p.path).filter(p => p.length > 0)

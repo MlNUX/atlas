@@ -1,0 +1,292 @@
+// SPDX-FileCopyrightText: 2026 Minux
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import Atlas
+
+// File operations shared by project tree, file lists and trash view:
+// context menu, dialogs, clipboard and status messages.
+Item {
+    id: actions
+
+    readonly property alias ops: ops
+    readonly property alias busy: ops.busy
+    /// Last result or progress text for the status bar.
+    property string message: ops.busy ? ops.status : lastMessage
+    property string lastMessage
+
+    signal openRequested(string path, bool newPane)
+    /// A file or folder was created (e.g. to select or open it).
+    signal created(string path)
+
+    FileOps {
+        id: ops
+        onFinished: (message) => actions.showMessage(message)
+        onFailed: (message) => {
+            errorDialog.text = message
+            errorDialog.open()
+        }
+    }
+
+    Timer { id: messageTimer; interval: 6000; onTriggered: actions.lastMessage = "" }
+    function showMessage(text) {
+        lastMessage = text
+        messageTimer.restart()
+    }
+
+    function baseName(path) { return path.slice(path.lastIndexOf("/") + 1) }
+
+    // ------------------------------------------------------------ operations
+
+    function newFile(dir) {
+        nameDialog.ask(qsTr("Neue Datei in „%1“").arg(baseName(dir)), qsTr("Neue Datei.md"), false, (name) => {
+            const path = ops.newFile(dir, name)
+            if (path) { actions.created(path); actions.openRequested(path, false) }
+        })
+    }
+
+    function newFolder(dir) {
+        nameDialog.ask(qsTr("Neuer Ordner in „%1“").arg(baseName(dir)), qsTr("Neuer Ordner"), true, (name) => {
+            const path = ops.newFolder(dir, name)
+            if (path) actions.created(path)
+        })
+    }
+
+    function rename(path) {
+        nameDialog.ask(qsTr("Umbenennen"), baseName(path), ops.isDir(path), (name) => {
+            if (name !== baseName(path)) ops.rename(path, name)
+        })
+    }
+
+    function copy(paths) {
+        ops.setClipboard(paths, false)
+        showMessage(qsTr("%n Element(e) kopiert – mit Strg+V einfügen", "", paths.length))
+    }
+
+    function cut(paths) {
+        ops.setClipboard(paths, true)
+        showMessage(qsTr("%n Element(e) ausgeschnitten – mit Strg+V einfügen", "", paths.length))
+    }
+
+    function canPaste() { return ops.clipboardFiles().length > 0 }
+
+    function paste(dir) {
+        const files = ops.clipboardFiles()
+        if (files.length === 0) return
+        transfer(ops.clipboardIsCut() ? "move" : "copy", files, dir)
+    }
+
+    /// Copy or move with a question if names clash.
+    function transfer(kind, paths, dest) {
+        // Pasting a copy into its own folder never clashes: it creates "… (Kopie)".
+        const clashes = ops.conflicts(paths, dest).filter(p => kind === "move" || paths.indexOf(p) < 0)
+        if (clashes.length === 0) {
+            ops.transfer(kind, paths, dest, "abort")
+            return
+        }
+        conflictDialog.kind = kind
+        conflictDialog.paths = paths
+        conflictDialog.dest = dest
+        conflictDialog.clashes = clashes
+        conflictDialog.open()
+    }
+
+    function trash(paths) {
+        if (paths.length > 0) ops.moveToTrash(paths)
+    }
+
+    function restore(ids) { ops.restoreFromTrash(ids) }
+
+    function purge(ids, names) {
+        confirmDialog.ask(
+            qsTr("Endgültig löschen?"),
+            ids.length === 1 ? qsTr("„%1“ wird unwiderruflich gelöscht.").arg(names[0])
+                             : qsTr("%n Elemente werden unwiderruflich gelöscht.", "", ids.length),
+            qsTr("Endgültig löschen"),
+            () => ops.deleteFromTrash(ids))
+    }
+
+    function copyPaths(paths) {
+        ops.copyText(paths.join("\n"))
+        showMessage(qsTr("Pfad kopiert"))
+    }
+
+    // ---------------------------------------------------------- context menu
+
+    /// `paths`: selected items (may be empty); `dir`: folder for new items and paste.
+    function showMenu(paths, dir) {
+        menu.paths = paths
+        menu.dir = dir
+        menu.popup()
+    }
+
+    Menu {
+        id: menu
+        property var paths: []
+        property string dir
+        readonly property bool single: paths.length === 1
+        readonly property bool any: paths.length > 0
+
+        MenuItem {
+            text: qsTr("Öffnen")
+            visible: menu.single
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.openRequested(menu.paths[0], false)
+        }
+        MenuItem {
+            text: qsTr("In neuem Split öffnen")
+            visible: menu.single
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.openRequested(menu.paths[0], true)
+        }
+        MenuSeparator { visible: menu.single; height: visible ? implicitHeight : 0 }
+        MenuItem { text: qsTr("Neue Datei …"); onTriggered: actions.newFile(menu.dir) }
+        MenuItem { text: qsTr("Neuer Ordner …"); onTriggered: actions.newFolder(menu.dir) }
+        MenuSeparator {}
+        MenuItem { text: qsTr("Ausschneiden\tStrg+X"); enabled: menu.any; onTriggered: actions.cut(menu.paths) }
+        MenuItem { text: qsTr("Kopieren\tStrg+C"); enabled: menu.any; onTriggered: actions.copy(menu.paths) }
+        MenuItem { text: qsTr("Einfügen\tStrg+V"); enabled: actions.canPaste(); onTriggered: actions.paste(menu.dir) }
+        MenuSeparator {}
+        MenuItem { text: qsTr("Umbenennen …\tF2"); enabled: menu.single; onTriggered: actions.rename(menu.paths[0]) }
+        MenuItem { text: qsTr("Pfad kopieren"); enabled: menu.any; onTriggered: actions.copyPaths(menu.paths) }
+        MenuSeparator {}
+        MenuItem { text: qsTr("In den Papierkorb\tEntf"); enabled: menu.any; onTriggered: actions.trash(menu.paths) }
+    }
+
+    // --------------------------------------------------------------- dialogs
+
+    Dialog {
+        id: nameDialog
+        property var acceptAction: null
+        property bool isFolder: false
+        anchors.centerIn: Overlay.overlay
+        width: 420
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+
+        function ask(title, initial, isFolder, onAccept) {
+            nameDialog.title = title
+            nameDialog.acceptAction = onAccept
+            nameDialog.isFolder = isFolder
+            nameField.text = initial
+            nameField.textChanged()
+            open()
+            nameField.forceActiveFocus()
+            // Select the name without extension, like other file managers.
+            const dot = initial.lastIndexOf(".")
+            nameField.select(0, !isFolder && dot > 0 ? dot : initial.length)
+        }
+
+        onAccepted: if (acceptAction && !nameError.text) acceptAction(nameField.text.trim())
+
+        ColumnLayout {
+            anchors.fill: parent
+            TextField {
+                id: nameField
+                Layout.fillWidth: true
+                selectByMouse: true
+                onTextChanged: {
+                    nameError.text = ops.checkName(text.trim())
+                    const ok = nameDialog.standardButton(Dialog.Ok)
+                    if (ok) ok.enabled = !nameError.text
+                }
+                onAccepted: if (!nameError.text) nameDialog.accept()
+            }
+            Label {
+                id: nameError
+                Layout.fillWidth: true
+                visible: text.length > 0
+                color: Theme.error
+                wrapMode: Text.Wrap
+            }
+        }
+    }
+
+    Dialog {
+        id: conflictDialog
+        property string kind
+        property var paths: []
+        property string dest
+        property var clashes: []
+        anchors.centerIn: Overlay.overlay
+        width: 460
+        modal: true
+        title: qsTr("Namen bereits vorhanden")
+
+        function finish(policy) {
+            close()
+            ops.transfer(kind, paths, dest, policy)
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: conflictDialog.clashes.length === 1
+                    ? qsTr("„%1“ existiert bereits in „%2“.").arg(actions.baseName(conflictDialog.clashes[0] || "")).arg(actions.baseName(conflictDialog.dest))
+                    : qsTr("%1 Elemente existieren bereits in „%2“.").arg(conflictDialog.clashes.length).arg(actions.baseName(conflictDialog.dest))
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("„Ersetzen“ verschiebt die vorhandenen Dateien in den Papierkorb.")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Button { text: qsTr("Abbrechen"); onClicked: conflictDialog.close() }
+                Button { text: qsTr("Überspringen"); onClicked: conflictDialog.finish("skip") }
+                Button { text: qsTr("Beide behalten"); onClicked: conflictDialog.finish("keep-both") }
+                Button { text: qsTr("Ersetzen"); onClicked: conflictDialog.finish("replace") }
+            }
+        }
+    }
+
+    Dialog {
+        id: confirmDialog
+        property var confirmAction: null
+        property alias text: confirmLabel.text
+        property alias confirmText: confirmButton.text
+        anchors.centerIn: Overlay.overlay
+        width: 420
+        modal: true
+
+        function ask(title, text, confirmText, action) {
+            confirmDialog.title = title
+            confirmDialog.text = text
+            confirmDialog.confirmText = confirmText
+            confirmDialog.confirmAction = action
+            open()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+            Label { id: confirmLabel; Layout.fillWidth: true; wrapMode: Text.Wrap }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Button { text: qsTr("Abbrechen"); onClicked: confirmDialog.close() }
+                Button {
+                    id: confirmButton
+                    onClicked: { confirmDialog.close(); if (confirmDialog.confirmAction) confirmDialog.confirmAction() }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: errorDialog
+        property alias text: errorLabel.text
+        anchors.centerIn: Overlay.overlay
+        width: 460
+        modal: true
+        title: qsTr("Vorgang fehlgeschlagen")
+        standardButtons: Dialog.Ok
+        Label { id: errorLabel; width: parent.width; wrapMode: Text.Wrap }
+    }
+}

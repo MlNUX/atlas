@@ -6,6 +6,7 @@
 #pragma once
 
 #include <QtCore/QString>
+#include <QtCore/QStringList>
 #include <QtCore/QObject>
 #include <QtGui/QFont>
 
@@ -18,6 +19,13 @@ double fontAscent(const QFont& font);
 
 void clipboardSetText(const QString& text);
 QString clipboardText();
+
+// File clipboard compatible with other file managers: text/uri-list plus the
+// GNOME (x-special/gnome-copied-files) and KDE cut markers.
+void clipboardSetFiles(const QStringList& paths, bool cut);
+// Local files on the clipboard (empty if there are none).
+QStringList clipboardFiles();
+bool clipboardFilesCut();
 
 // Renders a QQuickWindow (passed from QML as QObject) into a PNG file.
 bool saveWindowImage(QObject* window, const QString& path);

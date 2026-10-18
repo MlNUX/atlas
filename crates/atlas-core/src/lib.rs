@@ -7,6 +7,7 @@
 //! without a display. The Qt/QML shell (`atlas-app`) only adapts these types
 //! to QObjects and item models.
 
+pub mod fileops;
 pub mod fs_tree;
 pub mod identity;
 pub mod listing;

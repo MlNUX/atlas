@@ -35,6 +35,16 @@ ApplicationWindow {
 
     AppController { id: app }
 
+    FileActions {
+        id: fileActions
+        onOpenRequested: (path, newPane) => editor.openFile(path, 0, newPane)
+    }
+    Connections {
+        target: fileActions.ops
+        function onMoved(from, to) { editor.pathMoved(from, to) }
+        function onTrashed(paths) { editor.pathsRemoved(paths) }
+    }
+
     ProjectTreeModel {
         id: treeModel
         root: app.projectRoot
@@ -282,6 +292,7 @@ ApplicationWindow {
                         }
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
                         ProjectTree {
+                            actions: fileActions
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             model: treeModel
@@ -310,6 +321,7 @@ ApplicationWindow {
             }
 
             EditorArea {
+                actions: fileActions
                 id: editor
                 app: app
                 SplitView.fillHeight: true
@@ -357,7 +369,7 @@ ApplicationWindow {
             }
             Item { Layout.fillWidth: true }
             Label {
-                text: app.indexStatus
+                text: fileActions.message || app.indexStatus
                 color: Theme.textMuted
                 font.pixelSize: Theme.smallFontSize
             }

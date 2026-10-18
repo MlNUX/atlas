@@ -9,11 +9,14 @@ pub mod ffi {
         include!("atlas-app/cpp/helpers.h");
         include!("cxx-qt-lib/qfont.h");
         include!("cxx-qt-lib/qstring.h");
+        include!("cxx-qt-lib/qstringlist.h");
 
         #[namespace = ""]
         type QFont = cxx_qt_lib::QFont;
         #[namespace = ""]
         type QString = cxx_qt_lib::QString;
+        #[namespace = ""]
+        type QStringList = cxx_qt_lib::QStringList;
         #[namespace = ""]
         type QObject = cxx_qt::QObject;
 
@@ -27,6 +30,12 @@ pub mod ffi {
         fn clipboard_set_text(text: &QString);
         #[cxx_name = "clipboardText"]
         fn clipboard_text() -> QString;
+        #[cxx_name = "clipboardSetFiles"]
+        fn clipboard_set_files(paths: &QStringList, cut: bool);
+        #[cxx_name = "clipboardFiles"]
+        fn clipboard_files() -> QStringList;
+        #[cxx_name = "clipboardFilesCut"]
+        fn clipboard_files_cut() -> bool;
         #[cxx_name = "saveWindowImage"]
         unsafe fn save_window_image(window: *mut QObject, path: &QString) -> bool;
     }

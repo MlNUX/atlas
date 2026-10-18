@@ -10,8 +10,11 @@ import Atlas
 Rectangle {
     id: pane
     required property AppController app
+    property var actions
     property string path
-    property string kind: path ? app.fileKind(path) : ""
+    // `revision` re-evaluates the kind after the file was moved or deleted.
+    property int revision: 0
+    property string kind: path && revision >= 0 ? app.fileKind(path) : ""
     property bool active: false
     property int line: 0
     property var pendingState: ({})
@@ -25,6 +28,8 @@ Rectangle {
     color: Theme.editor
     border.color: active ? Theme.accent : "transparent"
     border.width: active ? 1 : 0
+
+    function refresh() { revision++ }
 
     function open(newPath, newLine) {
         pane.line = newLine || 0
@@ -55,7 +60,7 @@ Rectangle {
                 anchors.rightMargin: 4
                 spacing: 6
                 Label {
-                    text: pane.path ? pane.app.fileName(pane.path) : qsTr("Leer")
+                    text: pane.kind === "trash" ? qsTr("Papierkorb") : pane.path ? pane.app.fileName(pane.path) : qsTr("Leer")
                     color: pane.active ? Theme.textStrong : Theme.textMuted
                     font.pixelSize: Theme.fontSize
                 }
@@ -76,10 +81,12 @@ Rectangle {
             id: viewer
             Layout.fillWidth: true
             Layout.fillHeight: true
-            sourceComponent: pane.kind === "dir" ? folderComponent
+            sourceComponent: pane.kind === "trash" ? trashComponent
+                : pane.kind === "dir" ? folderComponent
                 : pane.kind === "pdf" ? pdfComponent
                 : pane.kind === "markdown" || pane.kind === "text" ? textComponent
                 : pane.kind === "image" ? imageComponent
+                : pane.kind === "missing" ? missingComponent
                 : pane.path ? unsupportedComponent : emptyComponent
             onLoaded: if (item.applyState) item.applyState(pane.pendingState)
         }
@@ -93,8 +100,13 @@ Rectangle {
     }
 
     Component {
+        id: trashComponent
+        TrashView { actions: pane.actions }
+    }
+    Component {
         id: folderComponent
         FolderView {
+            actions: pane.actions
             source: pane.path
             onActivated: (path, isDir, newPane) => {
                 if (newPane) pane.openRequested(path, true)
@@ -135,6 +147,16 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
             color: Theme.textMuted
             text: qsTr("Keine Vorschau für diesen Dateityp.")
+        }
+    }
+    Component {
+        id: missingComponent
+        Label {
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
+            text: qsTr("„%1“ ist nicht mehr vorhanden.\nSie wurde gelöscht, verschoben oder umbenannt.").arg(pane.app.fileName(pane.path))
         }
     }
     Component {

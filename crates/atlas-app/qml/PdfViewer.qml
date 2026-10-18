@@ -41,12 +41,12 @@ Rectangle {
     }
 
     readonly property real fitScale: doc.maxPageWidth > 0 ? Math.max(0.1, (pages.width - 32) / doc.maxPageWidth) : 1
-    readonly property real scale: root.zoom > 0 ? root.zoom : fitScale
+    readonly property real zoomScale: root.zoom > 0 ? root.zoom : fitScale
     // Rendering follows the visible scale with a short delay so resizing a
     // split does not re-render every page on every frame.
-    property real renderScale: scale
-    onScaleChanged: renderTimer.restart()
-    Timer { id: renderTimer; interval: 120; onTriggered: root.renderScale = root.scale }
+    property real renderScale: zoomScale
+    onZoomScaleChanged: renderTimer.restart()
+    Timer { id: renderTimer; interval: 120; onTriggered: root.renderScale = root.zoomScale }
 
     ColumnLayout {
         anchors.fill: parent
@@ -61,15 +61,15 @@ Rectangle {
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
                 spacing: 4
-                IconButton { glyph: "−"; tip: qsTr("Verkleinern"); onClicked: root.zoom = Math.max(0.2, root.scale / 1.2) }
+                IconButton { glyph: "−"; tip: qsTr("Verkleinern"); onClicked: root.zoom = Math.max(0.2, root.zoomScale / 1.2) }
                 Label {
-                    text: Math.round(root.scale * 100) + " %"
+                    text: Math.round(root.zoomScale * 100) + " %"
                     color: Theme.text
                     font.pixelSize: Theme.smallFontSize
                     Layout.preferredWidth: 44
                     horizontalAlignment: Text.AlignHCenter
                 }
-                IconButton { glyph: "+"; tip: qsTr("Vergrößern"); onClicked: root.zoom = Math.min(6, root.scale * 1.2) }
+                IconButton { glyph: "+"; tip: qsTr("Vergrößern"); onClicked: root.zoom = Math.min(6, root.zoomScale * 1.2) }
                 IconButton { glyph: "↔"; tip: qsTr("Seitenbreite"); checkable: true; checked: root.zoom === 0; onClicked: root.zoom = 0 }
                 Label {
                     text: doc.pageCount > 0 ? qsTr("Seite %1 / %2").arg(Math.max(1, root.currentPage + 1)).arg(doc.pageCount) : ""
@@ -109,7 +109,7 @@ Rectangle {
             cacheBuffer: Math.max(0, height)
             boundsBehavior: Flickable.StopAtBounds
             flickableDirection: Flickable.AutoFlickIfNeeded
-            contentWidth: Math.max(width, doc.maxPageWidth * root.scale + 32)
+            contentWidth: Math.max(width, doc.maxPageWidth * root.zoomScale + 32)
             ScrollBar.vertical: ScrollBar {}
             ScrollBar.horizontal: ScrollBar {}
 
@@ -117,12 +117,12 @@ Rectangle {
                 id: pageDelegate
                 required property int index
                 width: pages.contentWidth
-                height: doc.pageHeight(index) * root.scale
+                height: doc.pageHeight(index) * root.zoomScale
 
                 Rectangle {
                     id: paper
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: doc.pageWidth(pageDelegate.index) * root.scale
+                    width: doc.pageWidth(pageDelegate.index) * root.zoomScale
                     height: parent.height
                     color: "white"
 
@@ -150,7 +150,7 @@ Rectangle {
                 acceptedModifiers: Qt.ControlModifier
                 onWheel: (event) => {
                     const factor = event.angleDelta.y > 0 ? 1.1 : 1 / 1.1
-                    root.zoom = Math.max(0.2, Math.min(6, root.scale * factor))
+                    root.zoom = Math.max(0.2, Math.min(6, root.zoomScale * factor))
                 }
             }
         }

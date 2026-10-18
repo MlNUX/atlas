@@ -21,7 +21,7 @@ Schritt ein Commit und ein Zwischenstand.
 | # | Schritt | Stand |
 |---|---|---|
 | 1 | Wayland-Fenster, Projektordner und Verzeichnisbaum | ✅ |
-| 2 | Dateioperationen und Dateisystem-Watcher | offen |
+| 2 | Dateioperationen und Dateisystem-Watcher | ✅ |
 | 3 | Tabs, Splits und Sitzungsmodell | offen |
 | 4 | PDF-Anzeige und Schnellansicht | offen |
 | 5 | Markdown sowie Metadaten und Linkverhalten | offen |
@@ -53,3 +53,40 @@ Neu:
 - Pfade aus `--open` werden normalisiert.
 
 Die Ordner-Tabs mit Vor-/Zurück-Navigation und Breadcrumbs folgen in Schritt 3.
+
+### Schritt 2 – Dateioperationen und Dateisystem-Watcher
+
+Kern: `atlas_core::fileops` (getestet, inkl. Papierkorb-Integrationstest mit
+eigenem `XDG_DATA_HOME`).
+
+- **Neue Datei / neuer Ordner** im ausgewählten Ordner (Projektbaum: Ordner
+  der Auswahl, sonst Projektwurzel; Dateiliste: angezeigter Ordner). Knöpfe
+  „+“ und „📁“ im Kopf des Projektbaums, Kontextmenü. Eine neue Datei wird
+  sofort geöffnet.
+- **Umbenennen** (F2, Kontextmenü) mit Namensprüfung im Dialog; vorhandene
+  Namen werden nie überschrieben.
+- **Kopieren, Ausschneiden, Einfügen** (Strg+C/X/V, Kontextmenü). Die
+  Zwischenablage nutzt `text/uri-list` sowie die GNOME- und KDE-Kennzeichnung
+  für „Ausschneiden“ – Kopieren/Einfügen funktioniert also auch zwischen Atlas
+  und Dolphin/Nautilus.
+- **Namenskonflikte**: Dialog mit „Ersetzen“ (die vorhandene Datei wandert in
+  den Papierkorb), „Beide behalten“ („Bericht (Kopie).pdf“), „Überspringen“.
+  Kopieren in denselben Ordner erzeugt immer eine Kopie; Ordner können nicht
+  in sich selbst kopiert/verschoben werden.
+- **Verschieben** per `rename`, über Dateisystemgrenzen hinweg als Kopie und
+  anschließendes Entfernen der Quelle.
+- **Löschen nur über den Papierkorb** (Entf, Kontextmenü) nach
+  freedesktop.org-Spezifikation (Crate `trash`), inklusive `.Trash-$UID` auf
+  anderen Dateisystemen.
+- **Papierkorb-Ansicht** (Ort „Papierkorb“): Name, ursprünglicher Ort,
+  Löschdatum, Größe; Wiederherstellen (bricht bei Namenskonflikt ab, statt zu
+  überschreiben), endgültig löschen und Papierkorb leeren mit Rückfrage.
+- **Dateiliste**: Mehrfachauswahl (Strg/Umschalt, Strg+A), Kontextmenü auch
+  auf freier Fläche.
+- **Offene Panes folgen** Dateien, die Atlas verschiebt oder umbenennt; zeigt
+  ein Pane eine gelöschte Datei, erscheint ein Hinweis statt veralteter Inhalte.
+- Langlaufende Operationen laufen im Hintergrund mit Fortschritt in der
+  Statusleiste; Fehler erscheinen als Dialog.
+
+Die Aktualisierung von Markdown-Links beim Verschieben folgt mit Schritt 5,
+Drag-and-drop mit Schritt 3.
