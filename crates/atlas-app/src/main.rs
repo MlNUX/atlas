@@ -11,6 +11,7 @@ mod pdf_items;
 mod qt_helpers;
 mod search_model;
 mod terminal_item;
+mod text_document;
 mod trash_model;
 mod tree_model;
 
@@ -31,9 +32,12 @@ fn main() {
         }
     }
 
+    // The Markdown preview uses QtWebEngine, which must be set up first.
+    qt_helpers::init_web_engine();
     let mut app = QGuiApplication::new();
     // Wayland app_id, used by compositors such as Hyprland for window rules.
     QGuiApplication::set_desktop_file_name(&QString::from("atlas"));
+    qt_helpers::install_web_scheme_handler();
     if let Some(mut app) = app.as_mut() {
         app.as_mut().set_application_name(&QString::from("Atlas"));
         app.as_mut().set_organization_name(&QString::from("atlas"));

@@ -22,6 +22,9 @@
           qtdeclarative
           qtwayland
           qtsvg
+          qtwebengine
+          qtwebchannel
+          qtpositioning
         ];
 
       # cxx-qt-build asks `qmake -query` where Qt headers, libraries and tools
@@ -68,6 +71,9 @@
           makeWrapper
         ];
 
+      # QML modules needed at run time (not part of the merged Qt prefix).
+      qmlDeps = pkgs: [ pkgs.kdePackages.syntax-highlighting ];
+
       libDeps =
         pkgs: with pkgs; [
           poppler # poppler-glib
@@ -85,7 +91,7 @@
           cargoLock.lockFile = ./Cargo.lock;
 
           nativeBuildInputs = nativeDeps pkgs ++ [ pkgs.qt6.wrapQtAppsHook ];
-          buildInputs = qtDeps pkgs ++ libDeps pkgs;
+          buildInputs = qtDeps pkgs ++ qmlDeps pkgs ++ libDeps pkgs;
 
           ATLAS_RG_BIN = "${pkgs.ripgrep}/bin/rg";
 
@@ -125,6 +131,7 @@
           packages =
             nativeDeps pkgs
             ++ qtDeps pkgs
+            ++ qmlDeps pkgs
             ++ libDeps pkgs
             ++ (with pkgs; [
               cargo
@@ -146,7 +153,7 @@
           shellHook = ''
             export QMAKE=${qtEnv pkgs}/bin/qmake
             export QT_PLUGIN_PATH="${pkgs.lib.makeSearchPath pkgs.qt6.qtbase.qtPluginPrefix (qtDeps pkgs)}"
-            export QML_IMPORT_PATH="${pkgs.lib.makeSearchPath pkgs.qt6.qtbase.qtQmlPrefix (qtDeps pkgs)}"
+            export QML_IMPORT_PATH="${pkgs.lib.makeSearchPath pkgs.qt6.qtbase.qtQmlPrefix (qtDeps pkgs ++ qmlDeps pkgs)}"
             export QT_QPA_PLATFORM="''${QT_QPA_PLATFORM:-wayland}"
           '';
         };

@@ -36,6 +36,10 @@ pub mod ffi {
         fn clipboard_files() -> QStringList;
         #[cxx_name = "clipboardFilesCut"]
         fn clipboard_files_cut() -> bool;
+        #[cxx_name = "initWebEngine"]
+        fn init_web_engine();
+        #[cxx_name = "installWebSchemeHandler"]
+        fn install_web_scheme_handler();
         #[cxx_name = "saveWindowImage"]
         unsafe fn save_window_image(window: *mut QObject, path: &QString) -> bool;
     }

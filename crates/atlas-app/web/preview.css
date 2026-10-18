@@ -1,0 +1,34 @@
+/* SPDX-FileCopyrightText: 2026 Minux
+   SPDX-License-Identifier: GPL-3.0-or-later */
+:root { color-scheme: dark; }
+html, body { margin: 0; background: #1f1f1f; color: #cccccc; }
+body { font: 15px/1.6 system-ui, "Noto Sans", sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 32px 50vh; }
+h1, h2, h3, h4, h5, h6 { color: #e7e7e7; line-height: 1.25; margin: 1.4em 0 0.6em; }
+h1 { font-size: 1.9em; border-bottom: 1px solid #2b2b2b; padding-bottom: 0.3em; }
+h2 { font-size: 1.45em; border-bottom: 1px solid #2b2b2b; padding-bottom: 0.25em; }
+a { color: #4daafc; text-decoration: none; }
+a:hover { text-decoration: underline; }
+a.broken { color: #f85149; text-decoration: line-through dotted; }
+a.broken::after { content: " ⚠"; font-size: 0.8em; }
+code { font: 0.9em/1.4 monospace; background: #2b2b2b; padding: 0.1em 0.35em; border-radius: 4px; }
+pre { background: #181818; border: 1px solid #2b2b2b; border-radius: 6px; padding: 12px 14px; overflow: auto; }
+pre code { background: none; padding: 0; }
+pre code.hljs { background: none; padding: 0; }
+pre.mermaid { background: #f6f6f6; color: #1f1f1f; text-align: center; }
+blockquote { margin: 0; padding: 0 1em; color: #9d9d9d; border-left: 3px solid #37373d; }
+table { border-collapse: collapse; margin: 1em 0; display: block; overflow: auto; }
+th, td { border: 1px solid #37373d; padding: 6px 12px; }
+th { background: #252526; color: #e7e7e7; }
+tr:nth-child(even) td { background: #232323; }
+img { max-width: 100%; }
+hr { border: 0; border-top: 1px solid #2b2b2b; }
+li.task-list-item, ul > li > input[type=checkbox] { list-style: none; }
+input[type=checkbox] { margin-right: 0.4em; }
+.atlas-tags { margin-bottom: 1em; }
+.tag { display: inline-block; font-size: 0.8em; color: #9dd1ff; background: #04395e; border-radius: 10px; padding: 1px 9px; margin: 0 6px 4px 0; }
+.math.display { display: block; text-align: center; margin: 1em 0; overflow-x: auto; }
+.math-error { color: #f85149; font-family: monospace; }
+a.line-marker { display: block; height: 0; }
+.footnote-definition { font-size: 0.9em; color: #9d9d9d; }
+::selection { background: #04395e; }

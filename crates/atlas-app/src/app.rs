@@ -6,8 +6,10 @@
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use atlas_core::markdown;
+use atlas_core::notes::NoteIndex;
 use atlas_core::project::Project;
 use atlas_core::project::index::{FileIndex, Previous, Report};
 use atlas_core::project::metadata::Metadata;
@@ -53,6 +55,10 @@ pub mod qobject {
         #[qproperty(QStringList, session_names, cxx_name = "sessionNames", READ, NOTIFY = sessions_changed)]
         #[qproperty(QString, active_session, cxx_name = "activeSession", READ, NOTIFY = sessions_changed)]
         #[qproperty(QString, active_session_name, cxx_name = "activeSessionName", READ, NOTIFY = sessions_changed)]
+        // Where recovery copies of edited files go.
+        #[qproperty(QString, recovery_dir, cxx_name = "recoveryDir", READ, NOTIFY = project_root_changed)]
+        // Incremented whenever the note index (links, tags) changed.
+        #[qproperty(i32, notes_revision, cxx_name = "notesRevision", READ, NOTIFY)]
         type AppController = super::AppControllerRust;
 
         #[qsignal]
@@ -170,6 +176,73 @@ pub mod qobject {
         #[cxx_name = "saveDocumentState"]
         fn save_document_state(self: &AppController, path: &QString, state_json: &QString);
 
+        /// Asks all editors to save now (before quitting or switching).
+        #[qsignal]
+        #[cxx_name = "saveAllRequested"]
+        fn save_all_requested(self: Pin<&mut AppController>);
+
+        #[qinvokable]
+        #[cxx_name = "requestSaveAll"]
+        fn request_save_all(self: Pin<&mut AppController>);
+
+        /// Renders Markdown of `path` for the preview: JSON with `html`,
+        /// `title`, `tags`, `headings` and the number of `broken` links.
+        #[qinvokable]
+        #[cxx_name = "renderMarkdown"]
+        fn render_markdown(self: &AppController, text: &QString, path: &QString) -> QString;
+
+        /// Line of the heading with anchor `slug` in a Markdown file (0 if
+        /// there is none).
+        #[qinvokable]
+        #[cxx_name = "headingLine"]
+        fn heading_line(self: &AppController, path: &QString, slug: &QString) -> i32;
+
+        /// Notes linking to `path` (JSON list of {source, line, raw}).
+        #[qinvokable]
+        fn backlinks(self: &AppController, path: &QString) -> QString;
+
+        /// All tags of the project (JSON list of {key, display, count}).
+        #[qinvokable]
+        #[cxx_name = "noteTags"]
+        fn note_tags(self: &AppController) -> QString;
+
+        /// Notes with `tag` or one of its sub tags (case-insensitive).
+        #[qinvokable]
+        #[cxx_name = "notesWithTag"]
+        fn notes_with_tag(self: &AppController, tag: &QString) -> QStringList;
+
+        /// Re-reads one note into the index (after saving or reloading).
+        #[qinvokable]
+        #[cxx_name = "noteChanged"]
+        fn note_changed(self: Pin<&mut AppController>, path: &QString);
+
+        /// Atlas moved/renamed `from` to `to`: update links in all notes.
+        /// Returns the number of rewritten files.
+        #[qinvokable]
+        #[cxx_name = "filesMoved"]
+        fn files_moved(self: Pin<&mut AppController>, from: &QString, to: &QString) -> i32;
+
+        /// Looks for repairs of broken links in `path` in the background;
+        /// answers with `linkRepairsFound`.
+        #[qinvokable]
+        #[cxx_name = "findLinkRepairs"]
+        fn find_link_repairs(self: Pin<&mut AppController>, path: &QString);
+
+        /// JSON list of {line, raw, broken, suggestion, label}.
+        #[qsignal]
+        #[cxx_name = "linkRepairsFound"]
+        fn link_repairs_found(self: Pin<&mut AppController>, path: QString, repairs: QString);
+
+        /// Applies confirmed repairs (JSON list of {broken, suggestion}).
+        #[qinvokable]
+        #[cxx_name = "applyLinkRepairs"]
+        fn apply_link_repairs(self: Pin<&mut AppController>, path: &QString, repairs: &QString) -> bool;
+
+        /// Status message about note links (shown in the status bar).
+        #[qsignal]
+        #[cxx_name = "notesMessage"]
+        fn notes_message(self: Pin<&mut AppController>, message: QString);
+
         #[qinvokable]
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: &AppController, text: &QString);
@@ -206,6 +279,8 @@ pub struct AppControllerRust {
     session_names: QStringList,
     active_session: QString,
     active_session_name: QString,
+    recovery_dir: QString,
+    notes_revision: i32,
 
     /// Root of the open project (also set when nothing is persisted).
     root: Option<PathBuf>,
@@ -215,6 +290,8 @@ pub struct AppControllerRust {
     metadata: Option<Metadata>,
     writer: Option<SessionWriter>,
     index: Option<FileIndex>,
+    /// Links and tags of the project's Markdown files.
+    notes: Option<Arc<Mutex<NoteIndex>>>,
     /// Incremented per opened project; drops index results of older ones.
     generation: u64,
 }
@@ -258,11 +335,14 @@ impl Default for AppControllerRust {
             session_names: QStringList::default(),
             active_session: QString::default(),
             active_session_name: QString::default(),
+            recovery_dir: QString::default(),
+            notes_revision: 0,
             root: None,
             project: None,
             metadata: None,
             writer: None,
             index: None,
+            notes: None,
             generation: 0,
         }
     }
@@ -329,6 +409,7 @@ impl qobject::AppController {
             }
         });
 
+        let root_for_index = root.clone();
         let generation = {
             let mut this = self.as_mut().rust_mut();
             this.generation += 1;
@@ -343,6 +424,12 @@ impl qobject::AppController {
             // Dropping the previous writer finishes its pending writes.
             this.writer = project.clone().map(SessionWriter::spawn);
             this.index = None;
+            this.notes = None;
+            this.recovery_dir = qs(project
+                .as_ref()
+                .map(|p| p.atlas_dir().join("recovery"))
+                .unwrap_or_else(|| atlas_core::paths::state_root().join("recovery"))
+                .to_string_lossy());
             this.index_ready = project.is_none();
             this.index_status = qs(if project.is_some() { "Index wird aufgebaut …" } else { "" });
             this.generation
@@ -350,30 +437,35 @@ impl qobject::AppController {
         self.as_mut().index_ready_changed();
         self.as_mut().index_status_changed();
 
-        // The index is rebuildable data: rescan in the background and swap
-        // it in atomically, repairing a missing or corrupted index on the way.
-        if let Some(project) = project {
-            let thread = self.qt_thread();
-            std::thread::spawn(move || {
-                let result = FileIndex::ensure(project.root(), &project.index_file());
-                let _ = thread.queue(move |mut app| {
-                    if app.generation != generation {
-                        return;
+        // The indexes are rebuildable data: rescan in the background and swap
+        // them in, repairing a missing or corrupted file index on the way. The
+        // note index (links, tags, backlinks) is kept in memory and also works
+        // without `.atlas/`.
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = project.as_ref().map(|p| FileIndex::ensure(p.root(), &p.index_file()));
+            let notes = NoteIndex::build(&root_for_index);
+            let _ = thread.queue(move |mut app| {
+                if app.generation != generation {
+                    return;
+                }
+                log::info!("note index: {} Markdown files", notes.len());
+                app.as_mut().rust_mut().notes = Some(Arc::new(Mutex::new(notes)));
+                app.as_mut().bump_notes();
+                let Some(result) = result else { return };
+                let status = match result {
+                    Ok((index, report)) => {
+                        app.as_mut().rust_mut().index = Some(index);
+                        describe(&report)
                     }
-                    let status = match result {
-                        Ok((index, report)) => {
-                            app.as_mut().rust_mut().index = Some(index);
-                            describe(&report)
-                        }
-                        Err(err) => format!("Index nicht verfügbar: {err:#}"),
-                    };
-                    app.as_mut().rust_mut().index_ready = true;
-                    app.as_mut().rust_mut().index_status = qs(status);
-                    app.as_mut().index_ready_changed();
-                    app.index_status_changed();
-                });
+                    Err(err) => format!("Index nicht verfügbar: {err:#}"),
+                };
+                app.as_mut().rust_mut().index_ready = true;
+                app.as_mut().rust_mut().index_status = qs(status);
+                app.as_mut().index_ready_changed();
+                app.index_status_changed();
             });
-        }
+        });
 
         if self.persist_session {
             let mut app = AppState::load();
@@ -508,6 +600,7 @@ impl qobject::AppController {
     }
 
     pub fn flush_session(&self) {
+        crate::text_document::flush_io();
         if let Some(writer) = self.writer.as_ref() {
             writer.flush();
         }
@@ -605,6 +698,161 @@ impl qobject::AppController {
         }
     }
 
+    pub fn request_save_all(self: Pin<&mut Self>) {
+        self.save_all_requested();
+    }
+
+    fn bump_notes(mut self: Pin<&mut Self>) {
+        let revision = self.notes_revision.wrapping_add(1);
+        self.as_mut().rust_mut().notes_revision = revision;
+        self.notes_revision_changed();
+    }
+
+    fn with_notes<T>(&self, f: impl FnOnce(&mut NoteIndex) -> T) -> Option<T> {
+        self.notes.as_ref().and_then(|n| n.lock().ok()).map(|mut n| f(&mut n))
+    }
+
+    pub fn render_markdown(&self, text: &QString, path: &QString) -> QString {
+        let path = path_of(path);
+        let r = markdown::render(&text.to_string(), &path, self.root.as_deref());
+        let headings: Vec<_> = r
+            .headings
+            .iter()
+            .map(|h| serde_json::json!({ "level": h.level, "text": h.text, "slug": h.slug, "line": h.line }))
+            .collect();
+        let broken = r.links.iter().filter(|l| l.is_broken()).count();
+        qs(serde_json::json!({
+            "html": r.html,
+            "title": r.title,
+            "tags": r.tags,
+            "headings": headings,
+            "broken": broken,
+        })
+        .to_string())
+    }
+
+    pub fn heading_line(&self, path: &QString, slug: &QString) -> i32 {
+        let path = path_of(path);
+        let Ok(text) = std::fs::read_to_string(&path) else { return 0 };
+        let slug = markdown::slugify(&slug.to_string());
+        let analysis = markdown::analyze(&text, &path, self.root.as_deref());
+        analysis.headings.iter().find(|h| h.slug == slug).map(|h| h.line as i32).unwrap_or(0)
+    }
+
+    pub fn backlinks(&self, path: &QString) -> QString {
+        let path = path_of(path);
+        let links = self.with_notes(|n| n.backlinks(&path)).unwrap_or_default();
+        let list: Vec<_> = links
+            .iter()
+            .map(|b| {
+                serde_json::json!({
+                    "source": b.source.to_string_lossy(),
+                    "relative": self.relative(&b.source).to_string_lossy(),
+                    "line": b.line,
+                    "raw": b.raw,
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn note_tags(&self) -> QString {
+        let tags = self.with_notes(|n| n.tags()).unwrap_or_default();
+        let list: Vec<_> =
+            tags.iter().map(|t| serde_json::json!({ "key": t.key, "display": t.display, "count": t.count })).collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn notes_with_tag(&self, tag: &QString) -> QStringList {
+        let mut out = QStringList::default();
+        for path in self.with_notes(|n| n.with_tag(&tag.to_string())).unwrap_or_default() {
+            out.append(qs(path.to_string_lossy()));
+        }
+        out
+    }
+
+    pub fn note_changed(self: Pin<&mut Self>, path: &QString) {
+        let path = path_of(path);
+        if self.root.as_ref().is_some_and(|r| path.starts_with(r)) && self.with_notes(|n| n.update(&path)).is_some() {
+            self.bump_notes();
+        }
+    }
+
+    pub fn files_moved(mut self: Pin<&mut Self>, from: &QString, to: &QString) -> i32 {
+        let moves = vec![(path_of(from), path_of(to))];
+        let Some(done) = self.with_notes(|n| {
+            let plan = n.plan_relink(&moves);
+            n.apply(&moves, &plan)
+        }) else {
+            return 0;
+        };
+        self.as_mut().bump_notes();
+        if !done.is_empty() {
+            let message = if done.len() == 1 {
+                format!("Links in {} aktualisiert", self.relative(&done[0]).display())
+            } else {
+                format!("Links in {} Notizen aktualisiert", done.len())
+            };
+            self.as_mut().notes_message(qs(message));
+        }
+        done.len() as i32
+    }
+
+    pub fn find_link_repairs(self: Pin<&mut Self>, path: &QString) {
+        let (Some(notes), Some(root)) = (self.notes.clone(), self.root.clone()) else { return };
+        let source = path_of(path);
+        // Identities of the broken targets as recorded in the file index
+        // (taken at startup, i.e. usually before the external move).
+        let mut known = std::collections::HashMap::new();
+        if let (Some(index), Ok(n)) = (self.index.as_ref(), notes.lock()) {
+            for (_, link) in n.broken_links(Some(&source)) {
+                if let Some(id) = link.target.strip_prefix(&root).ok().and_then(|rel| index.identity(rel)) {
+                    known.insert(link.target.clone(), id);
+                }
+            }
+        }
+        let thread = self.qt_thread();
+        let path = path.clone();
+        std::thread::spawn(move || {
+            let repairs = notes.lock().map(|n| n.repair_suggestions(Some(&source), |p| known.get(p).copied()));
+            let list: Vec<_> = repairs
+                .unwrap_or_default()
+                .iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "line": r.line,
+                        "raw": r.raw,
+                        "broken": r.broken.to_string_lossy(),
+                        "suggestion": r.suggestion.to_string_lossy(),
+                        "label": r.suggestion.strip_prefix(&root).unwrap_or(&r.suggestion).to_string_lossy(),
+                    })
+                })
+                .collect();
+            let json = qs(serde_json::Value::from(list).to_string());
+            let _ = thread.queue(move |app| app.link_repairs_found(path, json));
+        });
+    }
+
+    pub fn apply_link_repairs(mut self: Pin<&mut Self>, path: &QString, repairs: &QString) -> bool {
+        let source = path_of(path);
+        let Ok(serde_json::Value::Array(items)) = serde_json::from_str(&repairs.to_string()) else { return false };
+        let fixes: Vec<(PathBuf, PathBuf)> = items
+            .iter()
+            .filter_map(|i| Some((PathBuf::from(i["broken"].as_str()?), PathBuf::from(i["suggestion"].as_str()?))))
+            .collect();
+        let done = self
+            .with_notes(|n| match n.plan_repair(&source, &fixes) {
+                Some(rewrite) => !n.apply(&[], &[rewrite]).is_empty(),
+                None => false,
+            })
+            .unwrap_or(false);
+        if done {
+            self.as_mut().bump_notes();
+            self.as_mut().notes_message(qs(format!("{} Link(s) repariert", fixes.len())));
+        }
+        done
+    }
+
     pub fn copy_to_clipboard(&self, text: &QString) {
         crate::qt_helpers::clipboard_set_text(text);
     }
@@ -631,7 +879,7 @@ pub fn file_kind(path: &Path) -> &'static str {
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     match ext.as_str() {
         "pdf" => "pdf",
-        "md" | "markdown" | "mdown" => "markdown",
+        "md" | "markdown" | "mdown" | "mkd" => "markdown",
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" => "image",
         _ => {
             // Treat as text unless the first KiB contains NUL bytes.

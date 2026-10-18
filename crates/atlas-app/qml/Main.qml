@@ -52,7 +52,11 @@ ApplicationWindow {
     }
     Connections {
         target: fileActions.ops
-        function onMoved(from, to) { editor.pathMoved(from, to) }
+        function onMoved(from, to) {
+            editor.pathMoved(from, to)
+            // Links in notes follow moves and renames made in Atlas.
+            app.filesMoved(from, to)
+        }
         function onTrashed(paths) { editor.pathsRemoved(paths) }
     }
 
@@ -153,6 +157,7 @@ ApplicationWindow {
     /// Saves the active session, then activates `id` and applies its layout.
     function switchSession(id) {
         if (id === app.activeSession) return
+        app.requestSaveAll()
         saveSession()
         if (!app.switchSession(id)) return
         restoring = true
@@ -193,10 +198,15 @@ ApplicationWindow {
     Connections { target: editor; function onLayoutChanged() { saveTimer.restart() } }
     Connections { target: treeModel; function onRefreshCountChanged() { saveTimer.restart() } }
 
-    onClosing: saveSession()
+    onClosing: { app.requestSaveAll(); saveSession() }
+    Connections {
+        target: app
+        function onNotesMessage(message) { fileActions.showMessage(message) }
+    }
     Connections {
         target: Qt.application
         function onAboutToQuit() {
+            app.requestSaveAll()
             window.saveSession()
             app.flushSession()
         }

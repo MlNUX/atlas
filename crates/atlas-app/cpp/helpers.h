@@ -27,6 +27,11 @@ void clipboardSetFiles(const QStringList& paths, bool cut);
 QStringList clipboardFiles();
 bool clipboardFilesCut();
 
+// Sets up QtWebEngine; must run before the QGuiApplication is created.
+void initWebEngine();
+// Serves `atlas://` URLs for the Markdown preview; needs the application.
+void installWebSchemeHandler();
+
 // Renders a QQuickWindow (passed from QML as QObject) into a PNG file.
 bool saveWindowImage(QObject* window, const QString& path);
 

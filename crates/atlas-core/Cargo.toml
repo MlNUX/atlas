@@ -29,6 +29,9 @@ toml = "1.1.8"
 ignore = "0.4.33"
 uuid = { version = "1.28.0", features = ["v4"] }
 trash = { version = "5.2.9", features = ["chrono"] }
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+yaml-rust2 = "0.13.0"
+pulldown-cmark-escape = "0.11.0"
 
 [dev-dependencies]
 cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"] }

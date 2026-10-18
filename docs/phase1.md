@@ -24,7 +24,7 @@ Schritt ein Commit und ein Zwischenstand.
 | 2 | Dateioperationen und Dateisystem-Watcher | ✅ |
 | 3 | Tabs, Splits und Sitzungsmodell | ✅ |
 | 4 | PDF-Anzeige und Schnellansicht | ✅ |
-| 5 | Markdown sowie Metadaten und Linkverhalten | offen |
+| 5 | Markdown sowie Metadaten und Linkverhalten | ✅ |
 | 6 | Codevorschau und externer Editor | offen |
 | 7 | Terminal-Integration | offen |
 | 8 | Suche und universelle Arbeitsleiste | offen |
@@ -138,3 +138,78 @@ Drag-and-drop mit Schritt 3.
   ohne Tab und Split; ←/→ blättern durch die Liste, Enter öffnet einen festen
   Tab, Leertaste/Esc schließt.
 - Das Test-PDF des Fixture-Generators enthält jetzt ein Inhaltsverzeichnis.
+
+### Schritt 5 – Markdown sowie Metadaten und Linkverhalten
+
+Kern: `atlas_core::markdown` (Rendering, Links, Tags, Umschreiben),
+`atlas_core::notes` (Notizindex, Backlinks, Linkreparatur) und
+`atlas_core::textfile` (atomares Speichern, Konflikte, Recovery) – alle mit
+Tests.
+
+- **Markdown-Ansicht** mit drei Modi: *Bearbeiten*, *Geteilt* (Editor und
+  Live-Vorschau nebeneinander, Scrollen synchronisiert) und *Vorschau*. Der
+  Modus wird je Tab in der Session gespeichert. Markdown-Dateien sind normale
+  Dateien in beliebigen Ordnern; es gibt keinen Notizordner. Neue Dateien
+  entstehen im ausgewählten Ordner (Vorgabe „Neue Datei.md“).
+- **Vorschau** in QtWebEngine: Tabellen, Aufgabenlisten, Fußnoten,
+  Syntaxhervorhebung in Codeblöcken (highlight.js), LaTeX (`$…$`, `$$…$$`,
+  KaTeX) und Mermaid-Diagramme (erst bei Bedarf geladen). Alle Bibliotheken
+  sind gebündelt (`crates/atlas-app/web/vendor`, Lizenzen dort), die Vorschau
+  braucht kein Netz. Seite und lokale Bilder kommen über das eigene Schema
+  `atlas://`; eine Content-Security-Policy verhindert, dass HTML in Notizen
+  Skripte ausführt.
+- **Links**: führender `/` = Projektwurzel, sonst relativ zur Datei;
+  `#L120`/`#L120-L145` springt zu Codezeilen, `#page=8` (auch `?page=8`) zu
+  PDF-Seiten, sonstige Fragmente zu Überschriften (GitHub-Anker). Klick folgt
+  dem Link im selben Tab (Alt+← zurück), Strg-/Mittelklick öffnet einen Split,
+  externe Links gehen an den Browser. Nicht auflösbare Links sind rot
+  durchgestrichen markiert; die Werkzeugleiste zeigt ihre Anzahl (⚠).
+- **Tags** im YAML-Frontmatter (`tags: [Architektur/Backend, rust]`),
+  hierarchisch, Vergleich ohne Groß-/Kleinschreibung, Schreibweise bleibt.
+  Anzeige in Vorschau und Werkzeugleiste; Abfrage `notesWithTag` (für Suche
+  und Filter in Schritt 8).
+- **Notizindex** (im Speicher, beim Öffnen des Projekts im Hintergrund aus
+  allen Markdown-Dateien gebaut, `.gitignore` beachtet; nach Speichern
+  aktualisiert): **Rückverweise** (⇠-Leiste) zeigen, welche Notizen auf die
+  Datei verweisen.
+- **Verschieben/Umbenennen in Atlas** aktualisiert betroffene Links in allen
+  Notizen automatisch (auch relative Links einer verschobenen Notiz selbst);
+  Meldung in der Statusleiste. Grundlage ist der Stand auf der Platte; Dateien,
+  die sich zwischenzeitlich geändert haben, werden nicht überschrieben.
+- **Externe Verschiebungen**: Für defekte Links sucht Atlas (Klick auf ⚠ oder
+  den Link) das Ziel über Gerät/Inode aus dem Dateiindex oder einen eindeutigen
+  Dateinamen und schlägt die Reparatur in einem Dialog vor. Geändert wird erst
+  nach Bestätigung.
+- **Editor** (auch für Textdateien): KSyntaxHighlighting (KDE Frameworks, Thema
+  „Breeze Dark“), Zeilennummern bei Code, Suche im Dokument (Strg+F), Gehe zu
+  Zeile (Strg+G). Ab 2 MiB ohne Hervorhebung, ab 8 MiB nur lesen, ab 64 MiB
+  nicht als Text geöffnet.
+
+#### Autosave und Recovery
+
+- Speichern 1 s nach der letzten Änderung und mit Strg+S, außerdem beim
+  Schließen eines Tabs, Session-Wechsel und Beenden. Geschrieben wird atomar
+  (temporäre Datei, fsync, rename, fsync des Ordners) auf einem
+  Hintergrund-Thread; Berechtigungen bleiben erhalten, symbolische Links
+  werden zum Ziel durchgeschrieben.
+- Während ungespeicherter Änderungen liegt 300 ms nach jeder Eingabe eine
+  Recovery-Kopie in `.atlas/recovery/<hash>.json` (außerhalb eines Projekts
+  im Atlas-Zustandsordner); nach erfolgreichem Speichern wird sie entfernt.
+  Beim nächsten Öffnen bietet Atlas *Wiederherstellen* oder *Verwerfen* an.
+  Hat sich die Datei seit der Kopie geändert, landet die Wiederherstellung im
+  Konfliktzustand – keine Fassung geht verloren.
+- **Externe Änderungen** (Ordner-Watcher, Inhaltsvergleich per BLAKE3):
+  unveränderte Dokumente laden still neu; bei ungespeicherten Änderungen hält
+  Autosave an und Atlas bietet *Neu laden*, *Meine Fassung behalten* oder
+  *Als neue Datei speichern …* an. Gelöschte Dateien: *Erneut speichern* oder
+  *Als neue Datei speichern*.
+- Schreibgeschützte Dateien (Datei oder Ordner nicht schreibbar, kein gültiges
+  UTF-8, zu groß) werden nur angezeigt und nie überschrieben.
+
+Gefunden und behoben: Das Syntax-Highlighting meldet Formatänderungen als
+Textänderung – Atlas hätte jede geöffnete Datei sofort neu geschrieben und
+Recovery-Kopien verworfen. Es zählen jetzt nur echte Textänderungen.
+
+Geprüft (offscreen): Rendering inkl. KaTeX/Mermaid/Bild, Autosave, Backlinks,
+Tags, Überschriften-Link mit Zurück-Navigation, Konflikt bei externer
+Änderung, Recovery nach Neustart, CSP blockiert `onerror`-Skripte.

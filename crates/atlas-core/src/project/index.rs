@@ -98,6 +98,17 @@ impl FileIndex {
             .map(PathBuf::from)
     }
 
+    /// Device/inode of a relative path as recorded in the index.
+    pub fn identity(&self, relative: &Path) -> Option<(u64, u64)> {
+        self.conn
+            .query_row("SELECT dev, ino FROM files WHERE path = ?1", params![relative.to_string_lossy()], |r| {
+                Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64))
+            })
+            .optional()
+            .ok()
+            .flatten()
+    }
+
     /// Relative paths of all files with exactly this size.
     pub fn with_size(&self, size: u64) -> Vec<PathBuf> {
         let Ok(mut stmt) = self.conn.prepare("SELECT path FROM files WHERE size = ?1 AND is_dir = 0") else {

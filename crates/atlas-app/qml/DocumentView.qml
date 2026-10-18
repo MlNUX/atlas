@@ -85,11 +85,16 @@ Item {
         sourceComponent: view.kind === "trash" ? trashComponent
             : view.kind === "dir" ? folderComponent
             : view.kind === "pdf" ? pdfComponent
-            : view.kind === "markdown" || view.kind === "text" ? textComponent
+            : view.kind === "markdown" ? markdownComponent
+            : view.kind === "text" ? textComponent
             : view.kind === "image" ? imageComponent
             : view.kind === "missing" ? missingComponent
             : view.path ? unsupportedComponent : emptyComponent
-        onLoaded: if (item.applyState) item.applyState(view.pendingState)
+        onLoaded: {
+            // Links into PDFs carry a page (`#page=N`) as line.
+            if (view.kind === "pdf" && view.line > 0) view.pendingState = Object.assign({}, view.pendingState, { page: view.line - 1 })
+            if (item.applyState) item.applyState(view.pendingState)
+        }
     }
 
     Component {
@@ -113,11 +118,25 @@ Item {
     }
     Component {
         id: textComponent
-        TextViewer {
+        TextEditor {
             source: view.path
             app: view.app
-            markdown: view.kind === "markdown"
             line: view.line
+            onSavedAs: (path) => { view.path = path }
+        }
+    }
+    Component {
+        id: markdownComponent
+        MarkdownView {
+            source: view.path
+            app: view.app
+            line: view.line
+            onLinkActivated: (path, line, newPane) => {
+                if (newPane) view.openRequested(path, line, "split")
+                else view.navigate(path, line)
+            }
+            onMessage: (text) => { if (view.actions) view.actions.showMessage(text) }
+            onSavedAs: (path) => { view.path = path }
         }
     }
     Component {
