@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Atlas
+GenericName=Workspace
+Comment=File-centric workspace for project folders, PDFs, Markdown and terminal
+Exec=atlas %f
+Icon=folder
+Terminal=false
+Categories=Utility;FileManager;Office;Development;
+StartupWMClass=atlas
+MimeType=inode/directory;

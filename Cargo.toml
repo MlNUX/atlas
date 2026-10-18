@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+[workspace]
+resolver = "3"
+members = ["crates/atlas-core", "crates/atlas-app"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+license = "GPL-3.0-or-later"
+authors = ["Minux"]
+rust-version = "1.85"
+
+[profile.dev.package."*"]
+opt-level = 2

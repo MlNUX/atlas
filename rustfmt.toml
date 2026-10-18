@@ -1,0 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+max_width = 120
+use_small_heuristics = "Max"

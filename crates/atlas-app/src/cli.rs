@@ -1,0 +1,100 @@
+// SPDX-FileCopyrightText: 2026 Minux
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+//! Command line options.
+
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
+pub const USAGE: &str = "\
+Usage: atlas [OPTIONS] [PROJECT]
+
+Opens PROJECT (a folder) or the last used project.
+
+Options:
+  --open FILE          Open FILE in a new pane (repeatable; relative to PROJECT)
+  --no-session         Neither restore nor remember the last project/session
+  --search PATTERN     Start a project search for PATTERN
+  --screenshot FILE    Save a PNG of the window after startup (for tests)
+  --screenshot-delay MS  Delay before the screenshot (default 2500)
+  --quit-after MS      Quit MS milliseconds after startup (for tests)
+  -h, --help           Show this help
+  -V, --version        Show the version
+";
+
+#[derive(Debug, Default)]
+pub struct Cli {
+    pub project: Option<PathBuf>,
+    pub open: Vec<PathBuf>,
+    pub no_session: bool,
+    pub screenshot: Option<PathBuf>,
+    pub screenshot_delay_ms: Option<u32>,
+    pub search: Option<String>,
+    pub quit_after_ms: Option<u32>,
+}
+
+static CLI: OnceLock<Cli> = OnceLock::new();
+
+impl Cli {
+    /// Parses `std::env::args`, exiting on `--help`, `--version` or errors.
+    pub fn init() -> &'static Cli {
+        CLI.get_or_init(|| match Self::parse(std::env::args().skip(1)) {
+            Ok(cli) => cli,
+            Err(msg) => {
+                if !msg.is_empty() {
+                    eprintln!("atlas: {msg}\n");
+                }
+                eprint!("{USAGE}");
+                std::process::exit(if msg.is_empty() { 0 } else { 2 });
+            }
+        })
+    }
+
+    pub fn get() -> &'static Cli {
+        CLI.get_or_init(Cli::default)
+    }
+
+    fn parse(args: impl Iterator<Item = String>) -> Result<Cli, String> {
+        let mut cli = Cli::default();
+        let mut args = args.peekable();
+        while let Some(arg) = args.next() {
+            let mut value = |name: &str| args.next().ok_or_else(|| format!("{name} needs a value"));
+            match arg.as_str() {
+                "-h" | "--help" => return Err(String::new()),
+                "-V" | "--version" => {
+                    println!("atlas {}", env!("CARGO_PKG_VERSION"));
+                    std::process::exit(0);
+                }
+                "--open" => cli.open.push(value("--open")?.into()),
+                "--no-session" => cli.no_session = true,
+                "--screenshot" => cli.screenshot = Some(value("--screenshot")?.into()),
+                "--screenshot-delay" => {
+                    let v = value("--screenshot-delay")?;
+                    cli.screenshot_delay_ms = Some(v.parse().map_err(|_| format!("invalid --screenshot-delay: {v}"))?);
+                }
+                "--search" => cli.search = Some(value("--search")?),
+                "--quit-after" => {
+                    let v = value("--quit-after")?;
+                    cli.quit_after_ms = Some(v.parse().map_err(|_| format!("invalid --quit-after: {v}"))?);
+                }
+                // Qt's own options (e.g. `-platform wayland`) are left to Qt.
+                "-platform" | "-platformtheme" | "-plugin" | "-style" | "-qwindowgeometry" | "-qwindowtitle"
+                | "-qwindowicon" => {
+                    args.next();
+                }
+                s if s.starts_with('-') && !s.starts_with("--") => {}
+                s if s.starts_with("--") => return Err(format!("unknown option {s}")),
+                s => {
+                    if cli.project.is_some() {
+                        return Err(format!("unexpected argument {s}"));
+                    }
+                    cli.project = Some(s.into());
+                }
+            }
+        }
+        if let Some(project) = &cli.project {
+            cli.open = cli.open.iter().map(|f| if f.is_relative() { project.join(f) } else { f.clone() }).collect();
+        }
+        Ok(cli)
+    }
+}
