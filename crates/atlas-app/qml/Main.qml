@@ -40,6 +40,16 @@ ApplicationWindow {
         app: app
         onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
     }
+    QuickLook {
+        id: quickLook
+        app: app
+        actions: fileActions
+        onOpenRequested: (path) => editor.open(path, 0, "tab")
+    }
+    Connections {
+        target: fileActions
+        function onQuickLookRequested(path, navigate) { quickLook.show(path, navigate) }
+    }
     Connections {
         target: fileActions.ops
         function onMoved(from, to) { editor.pathMoved(from, to) }

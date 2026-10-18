@@ -87,6 +87,13 @@ fn make_pdf(path: &Path, pages: usize) -> anyhow::Result<()> {
         cr.set_font_size(20.0);
         cr.move_to(56.0, 72.0);
         cr.show_text(&format!("Kapitel {} – Atlas Testdokument", page + 1))?;
+        let chapter = surface.add_outline(
+            0,
+            &format!("Kapitel {}", page + 1),
+            &format!("page={}", page + 1),
+            cairo::PdfOutline::empty(),
+        )?;
+        surface.add_outline(chapter, "Abbildung", &format!("page={}", page + 1), cairo::PdfOutline::empty())?;
 
         cr.select_font_face("Serif", cairo::FontSlant::Normal, cairo::FontWeight::Normal);
         cr.set_font_size(10.5);

@@ -139,6 +139,7 @@ dependencies = [
  "log",
  "notify",
  "poppler-rs",
+ "poppler-sys-rs",
  "rusqlite",
  "serde",
  "serde_json",

@@ -23,7 +23,7 @@ Schritt ein Commit und ein Zwischenstand.
 | 1 | Wayland-Fenster, Projektordner und Verzeichnisbaum | ✅ |
 | 2 | Dateioperationen und Dateisystem-Watcher | ✅ |
 | 3 | Tabs, Splits und Sitzungsmodell | ✅ |
-| 4 | PDF-Anzeige und Schnellansicht | offen |
+| 4 | PDF-Anzeige und Schnellansicht | ✅ |
 | 5 | Markdown sowie Metadaten und Linkverhalten | offen |
 | 6 | Codevorschau und externer Editor | offen |
 | 7 | Terminal-Integration | offen |
@@ -119,3 +119,22 @@ Drag-and-drop mit Schritt 3.
   Laufende Terminals bleiben beim Session-Wechsel bestehen; neu angelegt werden
   sie beim Start.
 - Dateilisten blenden in schmalen Splits Typ- und Datumsspalte aus.
+
+### Schritt 4 – PDF-Anzeige und Schnellansicht
+
+- **Seitenleiste** im PDF-Viewer (☰): Seitenminiaturen und Inhaltsverzeichnis
+  (Gliederung des PDFs inkl. benannter Ziele; Klick springt zur Seite).
+- **Volltextsuche im Dokument** (Strg+F): alle Treffer werden auf den Seiten
+  markiert, der aktuelle hervorgehoben; Enter/F3 und Umschalt+F3 springen
+  vor/zurück. Die Suche läuft im PDF-Worker, die Oberfläche bleibt bedienbar.
+- **Navigation**: Seitenzahl eingeben, Bild↑/↓, Strg+Pos1/Ende;
+  **Zoom**: Strg+Mausrad, Strg++/−, Seitenbreite (Strg+0), ganze Seite.
+- **Letzte Seite und Zoom pro Dokument** werden in `.atlas/metadata.sqlite`
+  (Tabelle `document_state`, Schema v2 mit Migration) gemerkt und beim
+  nächsten Öffnen wiederhergestellt – auch in anderen Sessions. Die Session
+  selbst speichert zusätzlich Seite, Zoom und Seitenleiste je Tab.
+- Zwei PDFs oder PDF und Markdown nebeneinander: über Splits (Schritt 3).
+- **Schnellansicht** (Leertaste in Explorer und Dateiliste): großes Overlay
+  ohne Tab und Split; ←/→ blättern durch die Liste, Enter öffnet einen festen
+  Tab, Leertaste/Esc schließt.
+- Das Test-PDF des Fixture-Generators enthält jetzt ein Inhaltsverzeichnis.

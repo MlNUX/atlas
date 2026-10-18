@@ -16,7 +16,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::identity::{FileId, Fingerprint};
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub struct Metadata {
     conn: Connection,
@@ -29,25 +29,36 @@ impl Metadata {
         conn.pragma_update(None, "synchronous", "FULL")?;
         conn.busy_timeout(std::time::Duration::from_secs(2))?;
         let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        match version {
-            0 => {
-                conn.execute_batch(
-                    "BEGIN;
-                     CREATE TABLE documents (
-                         path        TEXT PRIMARY KEY,  -- relative to the project root
-                         dev         INTEGER NOT NULL,
-                         ino         INTEGER NOT NULL,
-                         size        INTEGER,
-                         head        TEXT,              -- BLAKE3 of the first 64 KiB
-                         seen_unix   INTEGER NOT NULL
-                     );
-                     PRAGMA user_version = 1;
-                     COMMIT;",
-                )?;
-            }
-            SCHEMA_VERSION => {}
-            v if v > SCHEMA_VERSION => bail!("{} has a newer schema ({v})", path.display()),
-            v => bail!("{} has an unknown schema ({v})", path.display()),
+        // Migrations run in order; each step is one transaction.
+        if version > SCHEMA_VERSION {
+            bail!("{} has a newer schema ({version})", path.display());
+        }
+        if version < 1 {
+            conn.execute_batch(
+                "BEGIN;
+                 CREATE TABLE documents (
+                     path        TEXT PRIMARY KEY,  -- relative to the project root
+                     dev         INTEGER NOT NULL,
+                     ino         INTEGER NOT NULL,
+                     size        INTEGER,
+                     head        TEXT,              -- BLAKE3 of the first 64 KiB
+                     seen_unix   INTEGER NOT NULL
+                 );
+                 PRAGMA user_version = 1;
+                 COMMIT;",
+            )?;
+        }
+        if version < 2 {
+            conn.execute_batch(
+                "BEGIN;
+                 CREATE TABLE document_state (
+                     path        TEXT PRIMARY KEY,  -- relative to the project root
+                     state       TEXT NOT NULL,     -- JSON owned by the viewer (page, zoom, …)
+                     updated_unix INTEGER NOT NULL
+                 );
+                 PRAGMA user_version = 2;
+                 COMMIT;",
+            )?;
         }
         Ok(Self { conn })
     }
@@ -102,6 +113,26 @@ impl Metadata {
         }))
     }
 
+    /// Viewer state of a document (page, zoom …) as JSON.
+    pub fn document_state(&self, relative: &Path) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT state FROM document_state WHERE path = ?1", params![relative.to_string_lossy()], |r| {
+                r.get(0)
+            })
+            .optional()?)
+    }
+
+    pub fn set_document_state(&mut self, relative: &Path, state: &str) -> Result<()> {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        self.conn.execute(
+            "INSERT INTO document_state (path, state, updated_unix) VALUES (?1, ?2, ?3)
+             ON CONFLICT(path) DO UPDATE SET state = ?2, updated_unix = ?3",
+            params![relative.to_string_lossy(), state, now as i64],
+        )?;
+        Ok(())
+    }
+
     pub fn document_paths(&self) -> Result<Vec<PathBuf>> {
         let mut stmt = self.conn.prepare("SELECT path FROM documents ORDER BY path")?;
         let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
@@ -128,5 +159,15 @@ mod tests {
         let stored = meta.document(root, Path::new("docs/a.pdf")).unwrap().unwrap();
         assert_eq!(stored, id);
         assert!(meta.document(root, Path::new("missing")).unwrap().is_none());
+    }
+
+    #[test]
+    fn stores_document_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut meta = Metadata::open(&dir.path().join("m.sqlite")).unwrap();
+        assert_eq!(meta.document_state(Path::new("a.pdf")).unwrap(), None);
+        meta.set_document_state(Path::new("a.pdf"), r#"{"page":3}"#).unwrap();
+        meta.set_document_state(Path::new("a.pdf"), r#"{"page":4}"#).unwrap();
+        assert_eq!(meta.document_state(Path::new("a.pdf")).unwrap().as_deref(), Some(r#"{"page":4}"#));
     }
 }

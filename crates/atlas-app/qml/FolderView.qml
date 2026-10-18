@@ -184,6 +184,14 @@ Rectangle {
                 const ctrl = event.modifiers & Qt.ControlModifier
                 if ((event.key === Qt.Key_Up && (event.modifiers & Qt.AltModifier)) || event.key === Qt.Key_Backspace) {
                     root.activated(root.parentOf(root.source), true, false)
+                } else if (event.key === Qt.Key_Space && list.currentIndex >= 0) {
+                    root.actions.quickLook(folder.pathAt(list.currentIndex), (step) => {
+                        const next = list.currentIndex + step
+                        if (next < 0 || next >= list.count) return ""
+                        list.currentIndex = next
+                        list.positionViewAtIndex(next, ListView.Contain)
+                        return folder.pathAt(next)
+                    })
                 } else if (event.key === Qt.Key_F2 && root.selectedPaths().length === 1) {
                     root.actions.rename(root.selectedPaths()[0])
                 } else if (event.key === Qt.Key_Delete) {

@@ -37,11 +37,35 @@ pub struct RenderedPage {
     pub elapsed: Duration,
 }
 
+/// One entry of the document outline (table of contents).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutlineItem {
+    pub title: String,
+    /// 0-based target page, if the entry points into this document.
+    pub page: Option<usize>,
+    pub depth: usize,
+}
+
+/// A text match: page and rectangle in PDF points, origin top left.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchHit {
+    pub page: usize,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Upper bound for search hits in one document.
+pub const MAX_SEARCH_HITS: usize = 5000;
+
 /// Engine specific implementation; lives on the worker thread.
 trait Backend {
     fn open(&mut self, path: &Path) -> Result<Vec<(f64, f64)>>;
     fn render(&mut self, path: &Path, page: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)>;
     fn text(&mut self, path: &Path, page: usize) -> Result<String>;
+    fn outline(&mut self, path: &Path) -> Result<Vec<OutlineItem>>;
+    fn search(&mut self, path: &Path, query: &str, limit: usize) -> Result<Vec<SearchHit>>;
     fn close(&mut self, path: &Path);
 }
 
@@ -162,6 +186,26 @@ impl PdfService {
         }));
     }
 
+    /// Reads the outline (table of contents).
+    pub fn outline(&self, path: PathBuf, done: impl FnOnce(Result<Vec<OutlineItem>>) + Send + 'static) {
+        self.submit(Box::new(move |backend, _| done(backend.outline(&path))));
+    }
+
+    /// Finds `query` (case insensitive) in all pages.
+    pub fn search(
+        &self,
+        path: PathBuf,
+        query: String,
+        cancel: CancelToken,
+        done: impl FnOnce(Result<Vec<SearchHit>>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, _| {
+            if !cancel.is_cancelled() {
+                done(backend.search(&path, &query, MAX_SEARCH_HITS))
+            }
+        }));
+    }
+
     /// Synchronous helpers for benchmarks and tests.
     pub fn open_blocking(&self, path: &Path) -> Result<DocInfo> {
         let (tx, rx) = crossbeam_channel::bounded(1);
@@ -248,5 +292,50 @@ pub(crate) mod tests {
         assert_eq!(&page.bgra[row + 8..row + 12], &[0, 0, 255, 255], "output must be BGRA");
         let text = service.text_blocking(&path, 0).unwrap();
         assert!(text.contains("Hello Atlas"), "text: {text:?}");
+    }
+}
+
+#[cfg(test)]
+mod outline_tests {
+    use super::*;
+
+    /// Three pages, an outline with a nested entry, and "Suchwort" on page 2
+    /// at (100, 200) from the top left.
+    fn outlined_pdf(path: &Path) {
+        let surface = cairo::PdfSurface::new(595.0, 842.0, path).unwrap();
+        let cr = cairo::Context::new(&surface).unwrap();
+        surface.add_outline(0, "Kapitel 1", "page=1", cairo::PdfOutline::empty()).unwrap();
+        let k2 = surface.add_outline(0, "Kapitel 2", "page=2", cairo::PdfOutline::OPEN).unwrap();
+        surface.add_outline(k2, "Abschnitt 2.1", "page=3", cairo::PdfOutline::empty()).unwrap();
+        cr.set_font_size(20.0);
+        for page in 0..3 {
+            cr.move_to(100.0, 200.0);
+            cr.show_text(if page == 1 { "Ein Suchwort hier" } else { "Andere Seite" }).unwrap();
+            cr.show_page().unwrap();
+        }
+        surface.finish();
+    }
+
+    #[test]
+    fn reads_outline_and_finds_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("outline.pdf");
+        outlined_pdf(&path);
+        let service = PdfService::get();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        service.outline(path.clone(), move |r| tx.send(r).unwrap());
+        let outline = rx.recv().unwrap().unwrap();
+        let summary: Vec<_> = outline.iter().map(|o| (o.title.as_str(), o.page, o.depth)).collect();
+        assert_eq!(summary, [("Kapitel 1", Some(0), 0), ("Kapitel 2", Some(1), 0), ("Abschnitt 2.1", Some(2), 1)]);
+
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        service.search(path, "suchwort".into(), CancelToken::default(), move |r| tx.send(r).unwrap());
+        let hits = rx.recv().unwrap().unwrap();
+        assert_eq!(hits.len(), 1);
+        let hit = &hits[0];
+        assert_eq!(hit.page, 1);
+        // Baseline at y = 200 from the top: the box spans just above it.
+        assert!(hit.y > 170.0 && hit.y < 200.0 && hit.y + hit.height > 195.0, "{hit:?}");
+        assert!(hit.x > 100.0 && hit.width > 40.0, "{hit:?}");
     }
 }

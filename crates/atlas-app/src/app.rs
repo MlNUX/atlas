@@ -160,6 +160,16 @@ pub mod qobject {
         #[cxx_name = "resolveDocument"]
         fn resolve_document(self: &AppController, path: &QString) -> QString;
 
+        /// Remembered viewer state of a document (JSON, "" if none).
+        #[qinvokable]
+        #[cxx_name = "documentState"]
+        fn document_state(self: &AppController, path: &QString) -> QString;
+
+        /// Remembers the viewer state of a document (written in the background).
+        #[qinvokable]
+        #[cxx_name = "saveDocumentState"]
+        fn save_document_state(self: &AppController, path: &QString, state_json: &QString);
+
         #[qinvokable]
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: &AppController, text: &QString);
@@ -578,6 +588,21 @@ impl qobject::AppController {
             .locate(self.metadata.as_ref(), self.index.as_ref(), &relative)
             .map(|p| qs(p.to_string_lossy()))
             .unwrap_or_default()
+    }
+
+    pub fn document_state(&self, path: &QString) -> QString {
+        let relative = self.relative(&path_of(path));
+        self.metadata.as_ref().and_then(|m| m.document_state(&relative).ok().flatten()).map(qs).unwrap_or_default()
+    }
+
+    pub fn save_document_state(&self, path: &QString, state_json: &QString) {
+        // Only files inside the project are remembered.
+        let path = path_of(path);
+        if let (Some(writer), Some(root)) = (self.writer.as_ref(), self.root.as_ref())
+            && let Ok(relative) = path.strip_prefix(root)
+        {
+            writer.save_document_state(relative.to_path_buf(), state_json.to_string());
+        }
     }
 
     pub fn copy_to_clipboard(&self, text: &QString) {

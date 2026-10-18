@@ -21,6 +21,7 @@ use crate::session::ProjectSession;
 
 enum Job {
     Save { id: String, session: ProjectSession, documents: Vec<PathBuf> },
+    DocState { relative: PathBuf, state: String },
     Flush(Sender<()>),
 }
 
@@ -44,6 +45,13 @@ impl SessionWriter {
     pub fn save(&self, id: String, session: ProjectSession, documents: Vec<PathBuf>) {
         if let Some(jobs) = &self.jobs {
             let _ = jobs.send(Job::Save { id, session, documents });
+        }
+    }
+
+    /// Queues the viewer state (JSON) of a document, by relative path.
+    pub fn save_document_state(&self, relative: PathBuf, state: String) {
+        if let Some(jobs) = &self.jobs {
+            let _ = jobs.send(Job::DocState { relative, state });
         }
     }
 
@@ -78,10 +86,14 @@ fn run(project: Arc<Project>, jobs: Receiver<Job>) {
     while let Ok(job) = jobs.recv() {
         // Coalesce: of all saves waiting right now, only the last one counts.
         let mut latest = None;
+        let mut states = std::collections::HashMap::new();
         let mut flushes = Vec::new();
         for job in std::iter::once(job).chain(jobs.try_iter()) {
             match job {
                 Job::Save { id, session, documents } => latest = Some((id, session, documents)),
+                Job::DocState { relative, state } => {
+                    states.insert(relative, state);
+                }
                 Job::Flush(done) => flushes.push(done),
             }
         }
@@ -94,6 +106,13 @@ fn run(project: Arc<Project>, jobs: Receiver<Job>) {
                 && let Err(err) = metadata.remember(project.root(), &ids)
             {
                 log::warn!("cannot store document metadata: {err:#}");
+            }
+        }
+        if let Some(metadata) = metadata.as_mut() {
+            for (relative, state) in states {
+                if let Err(err) = metadata.set_document_state(&relative, &state) {
+                    log::warn!("cannot store document state: {err:#}");
+                }
             }
         }
         for done in flushes {

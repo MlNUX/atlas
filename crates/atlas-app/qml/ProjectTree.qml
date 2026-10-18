@@ -105,6 +105,14 @@ Rectangle {
                     const item = list.itemAtIndex(row)
                     if (item && item.isDir) root.model.toggle(row)
                     else if (root.selectedPath) root.openRequested(root.selectedPath, ctrl)
+                } else if (event.key === Qt.Key_Space && root.selectedPath) {
+                    root.actions.quickLook(root.selectedPath, (step) => {
+                        const next = root.model.rowOf(root.selectedPath) + step
+                        if (next < 0 || next >= list.count) return ""
+                        root.selectedPath = root.model.pathAt(next)
+                        list.positionViewAtIndex(next, ListView.Contain)
+                        return root.selectedPath
+                    })
                 } else if (event.key === Qt.Key_F2 && root.selectedPath) {
                     root.actions.rename(root.selectedPath)
                 } else if (event.key === Qt.Key_Delete && root.selectedPath) {

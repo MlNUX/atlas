@@ -21,6 +21,8 @@ Item {
     signal openRequested(string path, bool newPane)
     /// A file or folder was created (e.g. to select or open it).
     signal created(string path)
+    /// Space: large preview; `navigate(step)` returns the neighbour path.
+    signal quickLookRequested(string path, var navigate)
 
     FileOps {
         id: ops
@@ -108,6 +110,8 @@ Item {
         drop.accept(copy ? Qt.CopyAction : Qt.MoveAction)
         transfer(copy ? "copy" : "move", paths, dir)
     }
+
+    function quickLook(path, navigate) { if (path) quickLookRequested(path, navigate) }
 
     function trash(paths) {
         if (paths.length > 0) ops.moveToTrash(paths)

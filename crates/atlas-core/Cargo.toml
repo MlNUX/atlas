@@ -18,6 +18,7 @@ dirs = "6"
 log = "0.4"
 notify = "8"
 poppler-rs = "0.26"
+poppler-sys-rs = "0.26"
 glib = "0.22"
 cairo-rs = "0.22"
 serde = { version = "1", features = ["derive"] }
@@ -30,5 +31,5 @@ uuid = { version = "1.28.0", features = ["v4"] }
 trash = { version = "5.2.9", features = ["chrono"] }
 
 [dev-dependencies]
-cairo-rs = { version = "0.22", features = ["pdf", "png"] }
+cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"] }
 tempfile = "3"

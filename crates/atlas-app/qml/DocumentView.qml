@@ -24,6 +24,7 @@ Item {
     property var forwardStack: []
     readonly property bool canGoBack: backStack.length > 0
     readonly property bool canGoForward: forwardStack.length > 0
+    readonly property alias viewerItem: viewer.item
 
     /// Open `path` in another tab or split (e.g. a file chosen in a folder).
     /// `where`: "tab", "preview" or "split".
@@ -108,7 +109,7 @@ Item {
     }
     Component {
         id: pdfComponent
-        PdfViewer { source: view.path }
+        PdfViewer { source: view.path; app: view.app }
     }
     Component {
         id: textComponent

@@ -32,6 +32,8 @@ pub mod qobject {
         #[qproperty(QString, error, READ, NOTIFY)]
         #[qproperty(i32, open_ms, cxx_name = "openMs", READ, NOTIFY)]
         #[qproperty(f64, max_page_width, cxx_name = "maxPageWidth", READ, NOTIFY)]
+        /// Outline as JSON: [{title, page, depth}], page -1 if unknown.
+        #[qproperty(QString, outline_json, cxx_name = "outlineJson", READ, NOTIFY)]
         type PdfDocument = super::PdfDocumentRust;
 
         /// Page width in PDF points.
@@ -56,6 +58,15 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "textReady"]
         fn text_ready(self: Pin<&mut PdfDocument>, page: i32, text: QString, ms: i32);
+
+        /// Searches the whole document; results arrive via `searchFinished`.
+        #[qinvokable]
+        fn search(self: Pin<&mut PdfDocument>, query: &QString);
+
+        /// `hits_json`: [{page, x, y, w, h}] in PDF points, origin top left.
+        #[qsignal]
+        #[cxx_name = "searchFinished"]
+        fn search_finished(self: Pin<&mut PdfDocument>, query: QString, hits_json: QString, ms: i32);
     }
 
     unsafe extern "RustQt" {
@@ -96,6 +107,8 @@ pub struct PdfDocumentRust {
     max_page_width: f64,
     page_sizes: Vec<(f64, f64)>,
     generation: u64,
+    outline_json: QString,
+    search_cancel: CancelToken,
 }
 
 impl Default for PdfDocumentRust {
@@ -109,6 +122,8 @@ impl Default for PdfDocumentRust {
             max_page_width: 0.0,
             page_sizes: Vec::new(),
             generation: 0,
+            outline_json: QString::default(),
+            search_cancel: CancelToken::default(),
         }
     }
 }
@@ -154,7 +169,8 @@ impl qobject::PdfDocument {
                         doc.as_mut().page_count_changed();
                         doc.as_mut().max_page_width_changed();
                         doc.as_mut().open_ms_changed();
-                        doc.set_status("ready", "");
+                        doc.as_mut().set_status("ready", "");
+                        doc.load_outline(generation);
                     }
                     Err(err) => {
                         doc.as_mut().rust_mut().page_count = 0;
@@ -163,6 +179,52 @@ impl qobject::PdfDocument {
                     }
                 }
             });
+        });
+    }
+
+    fn load_outline(self: Pin<&mut Self>, generation: u64) {
+        let thread = self.qt_thread();
+        PdfService::get().outline(PathBuf::from(self.source.to_string()), move |result| {
+            let json = match result {
+                Ok(items) => serde_json::Value::Array(
+                    items
+                        .into_iter()
+                        .map(|i| serde_json::json!({ "title": i.title, "page": i.page.map_or(-1, |p| p as i64), "depth": i.depth }))
+                        .collect(),
+                )
+                .to_string(),
+                Err(_) => "[]".to_owned(),
+            };
+            let _ = thread.queue(move |mut doc| {
+                if doc.generation == generation {
+                    doc.as_mut().rust_mut().outline_json = QString::from(json.as_str());
+                    doc.outline_json_changed();
+                }
+            });
+        });
+    }
+
+    pub fn search(mut self: Pin<&mut Self>, query: &QString) {
+        self.search_cancel.cancel();
+        let token = CancelToken::default();
+        self.as_mut().rust_mut().search_cancel = token.clone();
+        let text = query.to_string();
+        let query = query.clone();
+        if text.trim().is_empty() {
+            self.search_finished(query, QString::from("[]"), 0);
+            return;
+        }
+        let started = Instant::now();
+        let thread = self.qt_thread();
+        PdfService::get().search(PathBuf::from(self.source.to_string()), text, token, move |result| {
+            let hits: Vec<serde_json::Value> = result
+                .unwrap_or_default()
+                .into_iter()
+                .map(|h| serde_json::json!({ "page": h.page, "x": h.x, "y": h.y, "w": h.width, "h": h.height }))
+                .collect();
+            let json = serde_json::Value::Array(hits).to_string();
+            let ms = started.elapsed().as_millis() as i32;
+            let _ = thread.queue(move |doc| doc.search_finished(query, QString::from(json.as_str()), ms));
         });
     }
 
