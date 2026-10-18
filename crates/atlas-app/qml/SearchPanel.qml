@@ -21,6 +21,18 @@ Rectangle {
         query.selectAll()
     }
 
+    function viewState() {
+        return { query: query.text, regex: regex.checked, caseSensitive: caseSensitive.checked, globs: globs.text }
+    }
+    function applyState(state) {
+        query.text = state.query || ""
+        regex.checked = !!state.regex
+        caseSensitive.checked = !!state.caseSensitive
+        globs.text = state.globs || ""
+        if (query.text) root.run()
+        else root.model.clear()
+    }
+
     function setQuery(text) {
         query.text = text
         root.run()

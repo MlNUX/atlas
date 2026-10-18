@@ -83,9 +83,10 @@ Rectangle {
         root.activated(folder.pathAt(row), folder.isDirAt(row), newPane)
     }
 
-    readonly property int sizeWidth: 90
-    readonly property int dateWidth: 140
-    readonly property int kindWidth: 150
+    // Narrow splits drop the type and date columns before the name gets cramped.
+    readonly property int sizeWidth: width < 300 ? 0 : 90
+    readonly property int dateWidth: width < 420 ? 0 : 140
+    readonly property int kindWidth: width < 600 ? 0 : 150
 
     ColumnLayout {
         anchors.fill: parent
@@ -147,8 +148,9 @@ Rectangle {
                     delegate: Item {
                         id: column
                         required property var modelData
-                        width: modelData.width > 0 ? modelData.width
-                            : parent.width - root.sizeWidth - root.dateWidth - root.kindWidth - 10
+                        width: modelData.key === "name" ? parent.width - root.sizeWidth - root.dateWidth - root.kindWidth - 10
+                            : modelData.width
+                        visible: width > 0
                         height: parent.height
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
@@ -213,6 +215,11 @@ Rectangle {
                     root.selected = ({})
                     if (mouse.button === Qt.RightButton) root.actions.showMenu([], root.source)
                 }
+                DropArea {
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onDropped: (drop) => root.actions.dropInto(root.source, drop)
+                }
             }
 
             delegate: Rectangle {
@@ -245,6 +252,7 @@ Rectangle {
                     }
                     Text {
                         width: root.sizeWidth
+                        visible: width > 0
                         anchors.verticalCenter: parent.verticalCenter
                         text: row.sizeText
                         color: Theme.textMuted
@@ -252,6 +260,7 @@ Rectangle {
                     }
                     Text {
                         width: root.dateWidth
+                        visible: width > 0
                         anchors.verticalCenter: parent.verticalCenter
                         text: Qt.formatDateTime(new Date(row.modified), "dd.MM.yyyy  HH:mm")
                         color: Theme.textMuted
@@ -259,6 +268,7 @@ Rectangle {
                     }
                     Text {
                         width: root.kindWidth
+                        visible: width > 0
                         anchors.verticalCenter: parent.verticalCenter
                         text: row.kind
                         color: Theme.textMuted
@@ -267,7 +277,31 @@ Rectangle {
                     }
                 }
 
+                // Drag source (all selected rows if this row is selected).
+                Item { id: dragProxy }
+                Drag.active: rowMouse.drag.active
+                Drag.dragType: Drag.Automatic
+                Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+                Drag.proposedAction: Qt.MoveAction
+                Drag.mimeData: ({ "text/uri-list": root.actions.uriList(root.selected[row.path] ? root.selectedPaths() : [row.path]) })
+
+                // Drop target: into this folder, or the shown folder.
+                DropArea {
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onDropped: (drop) => root.actions.dropInto(row.isDir ? row.path : root.source, drop)
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: parent.containsDrag && row.isDir
+                        color: "transparent"
+                        border.color: Theme.accent
+                    }
+                }
+
                 MouseArea {
+                    id: rowMouse
+                    drag.target: dragProxy
+                    drag.threshold: 8
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                     onClicked: (mouse) => {

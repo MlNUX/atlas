@@ -25,6 +25,7 @@
 
 pub mod index;
 pub mod metadata;
+pub mod sessions;
 pub mod writer;
 
 use std::path::{Component, Path, PathBuf};
@@ -33,7 +34,6 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::paths;
-use crate::session::ProjectSession;
 
 pub const ATLAS_DIR: &str = ".atlas";
 pub const FORMAT_VERSION: u32 = 1;
@@ -115,10 +115,6 @@ impl Project {
         self.root.join(ATLAS_DIR)
     }
 
-    pub fn session_file(&self) -> PathBuf {
-        self.atlas_dir().join("sessions").join(&self.device).join("active.json")
-    }
-
     pub fn metadata_file(&self) -> PathBuf {
         self.atlas_dir().join("metadata.sqlite")
     }
@@ -129,23 +125,6 @@ impl Project {
 
     pub fn cache_dir(&self) -> PathBuf {
         self.atlas_dir().join("cache")
-    }
-
-    pub fn load_session(&self) -> ProjectSession {
-        let file = self.session_file();
-        match std::fs::read(&file) {
-            Ok(data) => serde_json::from_slice(&data).unwrap_or_else(|err| {
-                log::warn!("ignoring unreadable session {}: {err}", file.display());
-                ProjectSession::default()
-            }),
-            Err(_) => ProjectSession::default(),
-        }
-    }
-
-    pub fn save_session(&self, session: &ProjectSession) -> Result<()> {
-        let mut session = session.clone();
-        session.version = FORMAT_VERSION;
-        paths::write_atomic(&self.session_file(), &serde_json::to_vec_pretty(&session)?)
     }
 
     pub fn metadata(&self) -> Result<metadata::Metadata> {
@@ -214,24 +193,6 @@ mod tests {
         assert_eq!(p.config().id, open(dir.path()).config().id);
         // User files are untouched.
         assert_eq!(std::fs::read_to_string(dir.path().join("paper.pdf")).unwrap(), "x");
-    }
-
-    #[test]
-    fn session_roundtrip_with_relative_paths() {
-        let dir = tempfile::tempdir().unwrap();
-        let p = open(dir.path());
-        let session = ProjectSession {
-            expanded: vec!["src".into()],
-            documents: vec!["docs/a.pdf".into()],
-            layout: serde_json::json!({ "panes": 2 }),
-            ..Default::default()
-        };
-        p.save_session(&session).unwrap();
-        let loaded = p.load_session();
-        assert_eq!(loaded.expanded, session.expanded);
-        assert_eq!(loaded.documents, session.documents);
-        assert_eq!(loaded.layout, session.layout);
-        assert!(p.session_file().ends_with(".atlas/sessions/test-device/active.json"));
     }
 
     #[test]

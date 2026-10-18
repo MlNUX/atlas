@@ -16,6 +16,7 @@ Item {
     /// Last result or progress text for the status bar.
     property string message: ops.busy ? ops.status : lastMessage
     property string lastMessage
+    required property AppController app
 
     signal openRequested(string path, bool newPane)
     /// A file or folder was created (e.g. to select or open it).
@@ -91,6 +92,21 @@ Item {
         conflictDialog.dest = dest
         conflictDialog.clashes = clashes
         conflictDialog.open()
+    }
+
+    /// `text/uri-list` for drags (each path segment percent-encoded).
+    function uriList(paths) {
+        return paths.map(p => "file://" + p.split("/").map(encodeURIComponent).join("/")).join("\r\n")
+    }
+
+    /// Handles a drop of files onto folder `dir`: move by default, copy
+    /// when the user holds Ctrl (or the source only allows copying).
+    function dropInto(dir, drop) {
+        const paths = drop.urls.map(u => actions.app.urlToPath(u.toString())).filter(p => p && p !== dir)
+        if (paths.length === 0) return
+        const copy = drop.proposedAction === Qt.CopyAction
+        drop.accept(copy ? Qt.CopyAction : Qt.MoveAction)
+        transfer(copy ? "copy" : "move", paths, dir)
     }
 
     function trash(paths) {

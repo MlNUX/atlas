@@ -34,8 +34,8 @@ SplitView {
         return "terminal"
     }
 
-    function addTerminal() {
-        const pane = terminalComponent.createObject(null, { workingDirectory: group.workingDirectory })
+    function addTerminal(cwd) {
+        const pane = terminalComponent.createObject(null, { workingDirectory: cwd || group.workingDirectory })
         group.addItem(pane)
         terminals = terminals.concat([pane])
         pane.closed.connect(() => group.removeTerminal(pane))
@@ -43,6 +43,19 @@ SplitView {
         activeIndex = terminals.length - 1
         Qt.callLater(pane.focusTerminal)
         return pane
+    }
+
+    function serialize() {
+        return {
+            orientation: group.orientation === Qt.Vertical ? "vertical" : "horizontal",
+            terminals: terminals.map(t => ({ cwd: t.cwd() }))
+        }
+    }
+
+    function restore(state) {
+        if (state.orientation === "vertical") group.orientation = Qt.Vertical
+        const list = state.terminals && state.terminals.length ? state.terminals : [{}]
+        for (const t of list) addTerminal(t.cwd)
     }
 
     function removeTerminal(pane) {

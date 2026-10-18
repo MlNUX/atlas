@@ -37,7 +37,8 @@ ApplicationWindow {
 
     FileActions {
         id: fileActions
-        onOpenRequested: (path, newPane) => editor.openFile(path, 0, newPane)
+        app: app
+        onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
     }
     Connections {
         target: fileActions.ops
@@ -62,31 +63,55 @@ ApplicationWindow {
 
     property bool restoring: false
 
+    /// Restores the active session after a project was opened. Terminals are
+    /// only created at startup; switching sessions keeps running terminals.
     function restoreSession() {
         restoring = true
         searchModel.clear()
-        let layout = {}
-        if (app.restoreSession) {
-            try { layout = JSON.parse(app.loadLayout() || "{}") } catch (e) { layout = {} }
-            treeModel.restoreExpanded(app.loadExpanded())
-        }
+        const layout = readLayout()
+        applyLayout(layout)
+        const term = layout.terminal || {}
+        if (term.height) terminalPanel.SplitView.preferredHeight = term.height
+        terminalPanel.visible = term.visible !== undefined ? term.visible : (layout.terminalVisible !== undefined ? layout.terminalVisible : true)
+        if (terminalPanel.visible && terminalPanel.groups.length === 0) terminalPanel.restore(term)
+        for (const file of app.openFiles) editor.open(app.absolutePath(file), 0, editor.documents().length > 0 ? "split" : "tab")
+        restoring = false
+    }
+
+    function readLayout() {
+        if (!app.restoreSession) return {}
+        try { return JSON.parse(app.loadLayout() || "{}") } catch (e) { return {} }
+    }
+
+    /// Applies tabs, splits, tree, sidebar and search of a session layout.
+    function applyLayout(layout) {
+        treeModel.collapseAll()
+        if (app.restoreSession) treeModel.restoreExpanded(app.loadExpanded())
         restoreEditor(layout.editor || {})
         if (layout.sidebarWidth) sidebar.SplitView.preferredWidth = layout.sidebarWidth
-        if (layout.sidebarTab !== undefined) sidebarTabs.currentIndex = layout.sidebarTab
-        if (layout.terminalHeight) terminalPanel.SplitView.preferredHeight = layout.terminalHeight
-        terminalPanel.visible = layout.terminalVisible !== undefined ? layout.terminalVisible : true
-        const terminals = Math.max(layout.terminals || 1, 1)
-        if (terminalPanel.visible && terminalPanel.groups.length === 0)
-            for (let i = 0; i < Math.min(terminals, 4); ++i) terminalPanel.newTerminal()
-        for (const file of app.openFiles) editor.openFile(app.absolutePath(file), 0, editor.documents().length > 0)
-        restoring = false
+        sidebar.visible = layout.sidebarVisible !== undefined ? layout.sidebarVisible : true
+        sidebarTabs.currentIndex = layout.sidebarTab || 0
+        searchPanel.applyState(layout.search || {})
+    }
+
+    function currentLayout() {
+        return {
+            version: 2,
+            editor: editor.serialize(),
+            sidebarVisible: sidebar.visible,
+            sidebarWidth: sidebar.width,
+            sidebarTab: sidebarTabs.currentIndex,
+            search: searchPanel.viewState(),
+            terminal: Object.assign(terminalPanel.serialize(), { visible: terminalPanel.visible, height: terminalPanel.height })
+        }
     }
 
     // Documents that moved since the last session are re-found through the
     // project index, which is rebuilt in the background after opening.
     property var pendingEditorState: null
     function restoreEditor(state) {
-        const missing = (state.panes || []).some(p => p.path && !app.exists(p.path))
+        const tabs = (state.groups || []).reduce((all, g) => all.concat(g.tabs || []), state.panes || [])
+        const missing = tabs.some(t => t.path && !app.exists(t.path))
         if (missing && !app.indexReady) {
             pendingEditorState = state
             editor.restore({})
@@ -104,20 +129,53 @@ ApplicationWindow {
                 window.restoring = false
             }
         }
+        function onSessionError(message) {
+            sessionError.text = message
+            sessionError.open()
+        }
     }
 
     function saveSession() {
         if (!app.projectRoot || restoring || !app.persistSession) return
-        const layout = {
-            version: 1,
-            editor: editor.serialize(),
-            sidebarWidth: sidebar.width,
-            sidebarTab: sidebarTabs.currentIndex,
-            terminalVisible: terminalPanel.visible,
-            terminalHeight: terminalPanel.height,
-            terminals: terminalPanel.terminalCount
+        app.saveSession(JSON.stringify(currentLayout()), treeModel.expandedDirs(), editor.documents())
+    }
+
+    /// Saves the active session, then activates `id` and applies its layout.
+    function switchSession(id) {
+        if (id === app.activeSession) return
+        saveSession()
+        if (!app.switchSession(id)) return
+        restoring = true
+        applyLayout(readLayout())
+        restoring = false
+    }
+
+    function createSession(name, duplicate) {
+        saveSession()
+        const id = app.createSession(name, duplicate ? JSON.stringify(currentLayout()) : "",
+                                     duplicate ? treeModel.expandedDirs() : [])
+        if (id) switchSession(id)
+    }
+
+    /// The active session is deleted only after another one is active.
+    function deleteSession(id) {
+        if (id === app.activeSession) {
+            const other = app.sessionIds.find(s => s !== id)
+            if (other) switchSession(other)
+            else createSession(qsTr("Neue Session"), false)
         }
-        app.saveSession(JSON.stringify(layout), treeModel.expandedDirs(), editor.documents())
+        if (id !== app.activeSession) app.deleteSession(id)
+    }
+
+    Dialog {
+        id: sessionError
+        property alias text: sessionErrorLabel.text
+        anchors.centerIn: Overlay.overlay
+        width: 420
+        modal: true
+        title: qsTr("Session")
+        standardButtons: Dialog.Ok
+        Label { id: sessionErrorLabel; width: parent.width; wrapMode: Text.Wrap }
     }
 
     Timer { id: saveTimer; interval: 1500; onTriggered: window.saveSession() }
@@ -136,8 +194,8 @@ ApplicationWindow {
 
     Component.onCompleted: {
         if (app.projectRoot) restoreSession()
-        else if (app.openFiles.length > 0) for (const f of app.openFiles) editor.openFile(f, 0, editor.documents().length > 0)
-        else editor.addPane("")
+        else if (app.openFiles.length > 0) for (const f of app.openFiles) editor.open(f, 0, editor.documents().length > 0 ? "split" : "tab")
+        else editor.addGroup()
         if (app.initialSearch) {
             sidebarTabs.currentIndex = 1
             searchPanel.setQuery(app.initialSearch)
@@ -187,8 +245,13 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+`"; context: Qt.ApplicationShortcut; onActivated: { terminalPanel.visible = true; terminalPanel.newTerminal() } }
     Shortcut { sequence: "Ctrl+Shift+F"; context: Qt.ApplicationShortcut; onActivated: { sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
     Shortcut { sequence: "Ctrl+Shift+E"; onActivated: sidebarTabs.currentIndex = 0 }
-    Shortcut { sequence: "Ctrl+\\"; onActivated: if (editor.activePane) editor.splitPane(editor.activePane) }
-    Shortcut { sequence: "Ctrl+W"; onActivated: if (editor.activePane) editor.closePane(editor.activePane) }
+    Shortcut { sequence: "Ctrl+\\"; onActivated: if (editor.activeGroup) editor.splitGroup(editor.activeGroup) }
+    Shortcut { sequence: "Ctrl+W"; onActivated: if (editor.activeGroup) editor.activeGroup.closeCurrent() }
+    Shortcut { sequence: "Ctrl+Tab"; onActivated: if (editor.activeGroup) editor.activeGroup.nextTab(1) }
+    Shortcut { sequence: "Ctrl+Shift+Tab"; onActivated: if (editor.activeGroup) editor.activeGroup.nextTab(-1) }
+    Shortcut { sequence: "Alt+Left"; onActivated: if (editor.activeTab) editor.activeTab.goBack() }
+    Shortcut { sequence: "Alt+Right"; onActivated: if (editor.activeTab) editor.activeTab.goForward() }
+    Shortcut { sequence: "Ctrl+B"; onActivated: { sidebar.visible = !sidebar.visible; saveTimer.restart() } }
 
     function toggleTerminal() {
         if (terminalPanel.visible && terminalPanel.currentGroup && terminalPanel.currentGroup.activeTerminal
@@ -222,6 +285,13 @@ ApplicationWindow {
                 flat: true
                 onClicked: folderDialog.open()
             }
+            SessionMenu {
+                app: app
+                onSwitchRequested: (id) => window.switchSession(id)
+                onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
+                onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }
+                onDeleteRequested: (id) => window.deleteSession(id)
+            }
             Label {
                 Layout.fillWidth: true
                 text: app.projectRoot
@@ -237,7 +307,7 @@ ApplicationWindow {
             IconButton {
                 glyph: "◫"
                 tip: qsTr("Editor teilen (Strg+\\)")
-                onClicked: if (editor.activePane) editor.splitPane(editor.activePane)
+                onClicked: if (editor.activeGroup) editor.splitGroup(editor.activeGroup)
             }
             IconButton {
                 glyph: "›_"
@@ -287,8 +357,8 @@ ApplicationWindow {
                             names: app.placeNames
                             paths: app.placePaths
                             icons: app.placeIcons
-                            currentPath: editor.activePane ? editor.activePane.path : ""
-                            onOpenRequested: (path, newPane) => editor.openFile(path, 0, newPane)
+                            currentPath: editor.activeTab ? editor.activeTab.path : ""
+                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
                         }
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
                         ProjectTree {
@@ -297,16 +367,17 @@ ApplicationWindow {
                             Layout.fillHeight: true
                             model: treeModel
                             projectName: app.projectName
-                            currentPath: editor.activePane ? editor.activePane.path : ""
-                            onOpenRequested: (path, newPane) => editor.openFile(path, 0, newPane)
+                            currentPath: editor.activeTab ? editor.activeTab.path : ""
+                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
                             onOpenProjectRequested: folderDialog.open()
+                            onPinRequested: (path) => editor.open(path, 0, "tab")
                         }
                     }
                     SearchPanel {
                         id: searchPanel
                         model: searchModel
                         projectRoot: app.projectRoot
-                        onOpenRequested: (path, line, newPane) => editor.openFile(path, line, newPane)
+                        onOpenRequested: (path, line, newPane) => editor.open(path, line, newPane ? "split" : "temporary")
                     }
                 }
             }

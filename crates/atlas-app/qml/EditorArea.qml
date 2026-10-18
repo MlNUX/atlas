@@ -5,15 +5,16 @@ import QtQuick
 import QtQuick.Controls
 import Atlas
 
-// Editor area with up to four document panes in a split view.
+// Editor area: up to four splits ("groups"), each with tabs.
 SplitView {
     id: area
     required property AppController app
     property var actions
-    readonly property int maxPanes: 4
-    property var panes: []
+    readonly property int maxGroups: 4
+    property var groups: []
     property int activeIndex: 0
-    readonly property var activePane: panes.length > 0 ? panes[Math.min(activeIndex, panes.length - 1)] : null
+    readonly property var activeGroup: groups.length > 0 ? groups[Math.min(activeIndex, groups.length - 1)] : null
+    readonly property var activeTab: activeGroup ? activeGroup.currentTab : null
 
     signal layoutChanged()
 
@@ -26,134 +27,162 @@ SplitView {
     }
 
     Component {
-        id: paneComponent
-        DocumentPane {
+        id: groupComponent
+        EditorGroup {
             app: area.app
-            SplitView.minimumWidth: 200
-            SplitView.minimumHeight: 120
+            actions: area.actions
+            SplitView.minimumWidth: 220
+            SplitView.minimumHeight: 140
         }
     }
 
-    function addPane(path, line, state, atIndex) {
-        if (panes.length >= maxPanes) return activePane
-        const pane = paneComponent.createObject(null, { path: path || "", line: line || 0, actions: area.actions })
-        if (state) pane.applyState(state)
-        const index = atIndex === undefined ? panes.length : atIndex
-        area.insertItem(index, pane)
-        const list = panes.slice()
-        list.splice(index, 0, pane)
-        panes = list
-        pane.activated.connect(() => { area.activeIndex = area.panes.indexOf(pane) })
-        pane.closeRequested.connect(() => area.closePane(pane))
-        pane.splitRequested.connect(() => area.splitPane(pane))
-        pane.openRequested.connect((path, newPane) => area.openFile(path, 0, newPane))
-        pane.pathChanged.connect(area.layoutChanged)
+    function addGroup(atIndex, temporary) {
+        if (groups.length >= maxGroups) return null
+        const group = groupComponent.createObject(null, { temporary: !!temporary })
+        const index = atIndex === undefined || atIndex < 0 ? groups.length : Math.min(atIndex, groups.length)
+        area.insertItem(index, group)
+        const list = groups.slice()
+        list.splice(index, 0, group)
+        groups = list
+        group.activated.connect(() => { area.activeIndex = area.groups.indexOf(group) })
+        group.emptied.connect(() => { if (area.groups.length > 1) area.closeGroup(group) })
+        group.closeRequested.connect(() => area.closeGroup(group))
+        group.splitRequested.connect(() => area.splitGroup(group))
+        group.openInSplit.connect((p, l, side) => area.openInSplit(group, p, l, side))
+        group.changed.connect(area.layoutChanged)
         activeIndex = index
         equalize()
         layoutChanged()
-        return pane
+        return group
     }
 
-    function closePane(pane) {
-        const index = panes.indexOf(pane)
+    function closeGroup(group) {
+        const index = groups.indexOf(group)
         if (index < 0) return
-        area.removeItem(pane)
-        const list = panes.slice()
+        area.removeItem(group)
+        const list = groups.slice()
         list.splice(index, 1)
-        panes = list
-        pane.destroy()
-        if (panes.length === 0) addPane("")
+        groups = list
+        group.destroy()
+        if (groups.length === 0) addGroup()
+        activeIndex = Math.max(0, Math.min(activeIndex, groups.length - 1))
         equalize()
-        activeIndex = Math.max(0, Math.min(activeIndex, panes.length - 1))
         layoutChanged()
     }
 
-    function splitPane(pane) {
-        const index = panes.indexOf(pane)
-        addPane(pane.path, 0, pane.viewState(), index + 1)
+    /// Duplicates the current tab of `group` into a new split to its right.
+    function splitGroup(group) {
+        const index = groups.indexOf(group)
+        const tab = group.currentTab
+        const target = addGroup(index + 1)
+        if (target && tab && tab.path) target.openTab(tab.path, 0, "tab", tab.viewState())
     }
 
-    /// Opens a file in the active pane, or in a new split.
-    function openFile(path, line, newPane) {
-        if (newPane && panes.length < maxPanes) {
-            addPane(path, line)
+    /// Opens next to `from`: on the given side, or in the next split.
+    function openInSplit(from, path, line, side) {
+        const index = groups.indexOf(from)
+        let target = null
+        if (side === "left" || side === "right") target = addGroup(side === "left" ? index : index + 1)
+        if (!target) target = groups.length < maxGroups ? addGroup(index + 1) : groups[(index + 1) % groups.length]
+        target.openTab(path, line, "tab")
+        activeIndex = groups.indexOf(target)
+    }
+
+    /// Opens a file. `where`:
+    ///   "preview"   – preview tab in the active split (single click)
+    ///   "tab"       – permanent tab in the active split
+    ///   "split"     – permanent tab in a new split
+    ///   "temporary" – the temporary split (created or reused)
+    function open(path, line, where) {
+        if (!path) return
+        if (where === "split") {
+            const g = groups.length < maxGroups ? addGroup(activeIndex + 1) : activeGroup
+            g.openTab(path, line, "tab")
             return
         }
-        if (!activePane) addPane("")
-        activePane.open(path, line)
-        layoutChanged()
+        if (where === "temporary") {
+            let g = groups.find(x => x.temporary)
+            if (!g) g = groups.length < maxGroups ? addGroup(groups.length, true) : activeGroup
+            const tab = g.openTab(path, line, "preview")
+            activeIndex = groups.indexOf(g)
+            return tab
+        }
+        if (!activeGroup) addGroup()
+        return activeGroup.openTab(path, line, where === "tab" ? "tab" : "preview")
+    }
+
+    /// Compatibility helper: `newPane` opens in a new split, otherwise preview.
+    function openFile(path, line, newPane) {
+        return open(path, line, newPane ? "split" : "preview")
     }
 
     function clear() {
-        for (const pane of panes) {
-            area.removeItem(pane)
-            pane.destroy()
+        for (const g of groups) {
+            area.removeItem(g)
+            g.destroy()
         }
-        panes = []
+        groups = []
     }
 
     function serialize() {
         return {
             orientation: area.orientation === Qt.Horizontal ? "horizontal" : "vertical",
             active: activeIndex,
-            // Paths relative to the project, so the session survives moving
-            // or syncing the project folder.
-            panes: panes.map(p => Object.assign(p.viewState(), { path: p.path ? area.app.relativePath(p.path) : "" }))
+            groups: groups.map(g => g.serialize())
         }
     }
 
     function restore(state) {
         clear()
         if (state && state.orientation) area.orientation = state.orientation === "vertical" ? Qt.Vertical : Qt.Horizontal
-        const list = state && state.panes ? state.panes : []
-        for (const p of list) {
-            const path = p.path ? area.app.resolveDocument(p.path) : ""
-            if (p.path && !path) continue  // gone for good
-            addPane(path, 0, p)
+        // Phase 0 layouts had one document per split ("panes").
+        const groupStates = state && state.groups ? state.groups
+            : state && state.panes ? state.panes.map(p => ({ tabs: [p], current: 0 })) : []
+        for (const gs of groupStates) {
+            const g = addGroup(groups.length, gs.temporary)
+            for (const t of gs.tabs || []) {
+                const path = t.path ? area.app.resolveDocument(t.path) : ""
+                if (!path) continue
+                g.openTab(path, t.line || 0, t.preview ? "preview" : "tab", t)
+            }
+            if (g.tabs.length === 0 && groupStates.length > 1) { closeGroup(g); continue }
+            g.current = Math.max(0, Math.min(gs.current || 0, g.tabs.length - 1))
         }
-        if (panes.length === 0) addPane("")
-        activeIndex = state && state.active !== undefined ? Math.min(state.active, panes.length - 1) : 0
-    }
-
-    /// Gives all panes the same share of the available space.
-    function equalize() {
-        const n = Math.max(1, panes.length)
-        for (const p of panes) {
-            p.SplitView.preferredWidth = area.width / n
-            p.SplitView.preferredHeight = area.height / n
-        }
-    }
-    onOrientationChanged: equalize()
-    // Panes created before the first layout pass get their share once the
-    // area has a size.
-    property bool sized: false
-    onWidthChanged: if (!sized && width > 0) { sized = true; equalize() }
-
-    /// Panes follow files and folders that Atlas moved or renamed.
-    function pathMoved(from, to) {
-        for (const p of panes) {
-            if (p.path === from) p.path = to
-            else if (p.path.startsWith(from + "/")) p.path = to + p.path.slice(from.length)
-        }
-        layoutChanged()
-    }
-
-    /// Panes showing deleted items show a notice instead of stale content.
-    function pathsRemoved(paths) {
-        for (const p of panes) {
-            if (paths.some(r => p.path === r || p.path.startsWith(r + "/"))) p.refresh()
-        }
+        if (groups.length === 0) addGroup()
+        activeIndex = state && state.active !== undefined ? Math.max(0, Math.min(state.active, groups.length - 1)) : 0
+        equalize()
     }
 
     function documents() {
-        return panes.map(p => p.path).filter(p => p.length > 0)
+        return groups.reduce((all, g) => all.concat(g.documents()), [])
     }
 
-    onActiveIndexChanged: {
-        for (let i = 0; i < panes.length; ++i) panes[i].active = (i === activeIndex)
+    /// Tabs follow files and folders that Atlas moved or renamed.
+    function pathMoved(from, to) {
+        for (const g of groups) g.pathMoved(from, to)
         layoutChanged()
     }
-    onPanesChanged: {
-        for (let i = 0; i < panes.length; ++i) panes[i].active = (i === activeIndex)
+
+    /// Tabs showing deleted items show a notice instead of stale content.
+    function pathsRemoved(paths) {
+        for (const g of groups) g.pathsRemoved(paths)
     }
+
+    /// Gives all groups the same share of the available space.
+    function equalize() {
+        const n = Math.max(1, groups.length)
+        for (const g of groups) {
+            g.SplitView.preferredWidth = area.width / n
+            g.SplitView.preferredHeight = area.height / n
+        }
+    }
+    onOrientationChanged: equalize()
+    property bool sized: false
+    onWidthChanged: if (!sized && width > 0) { sized = true; equalize() }
+
+    onActiveIndexChanged: {
+        for (let i = 0; i < groups.length; ++i) groups[i].active = (i === activeIndex)
+        layoutChanged()
+    }
+    onGroupsChanged: { for (let i = 0; i < groups.length; ++i) groups[i].active = (i === activeIndex) }
 }

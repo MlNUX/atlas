@@ -39,6 +39,9 @@ impl AppState {
 pub struct ProjectSession {
     #[serde(default)]
     pub version: u32,
+    /// Display name of the session ("Standard", "Literaturrecherche", …).
+    #[serde(default)]
+    pub name: String,
     /// Directories expanded in the project tree.
     #[serde(default)]
     pub expanded: Vec<PathBuf>,

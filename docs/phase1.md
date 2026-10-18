@@ -22,7 +22,7 @@ Schritt ein Commit und ein Zwischenstand.
 |---|---|---|
 | 1 | Wayland-Fenster, Projektordner und Verzeichnisbaum | ✅ |
 | 2 | Dateioperationen und Dateisystem-Watcher | ✅ |
-| 3 | Tabs, Splits und Sitzungsmodell | offen |
+| 3 | Tabs, Splits und Sitzungsmodell | ✅ |
 | 4 | PDF-Anzeige und Schnellansicht | offen |
 | 5 | Markdown sowie Metadaten und Linkverhalten | offen |
 | 6 | Codevorschau und externer Editor | offen |
@@ -90,3 +90,32 @@ eigenem `XDG_DATA_HOME`).
 
 Die Aktualisierung von Markdown-Links beim Verschieben folgt mit Schritt 5,
 Drag-and-drop mit Schritt 3.
+
+### Schritt 3 – Tabs, Splits und Sitzungsmodell
+
+- **Splits mit Tabs** (bis zu vier Splits, horizontal oder vertikal). Tabs für
+  Dateien und Ordner; dieselbe Datei darf in mehreren Splits offen sein.
+- **Vorschau-Tabs** (kursiv): ein Klick im Explorer öffnet eine Vorschau, die
+  beim nächsten Klick ersetzt wird; Doppelklick (Explorer oder Tab) heftet an.
+  Strg+W schließt den Tab, Strg+Tab/Strg+Umschalt+Tab wechseln.
+- **Temporärer Split** (gelber Rahmen, „Temporär“): Suchtreffer öffnen dort;
+  weitere temporäre Öffnungen ersetzen ihn, 📌 heftet ihn an.
+- **Breadcrumbs und Vor/Zurück** je Tab (Alt+←/→, Maus-Seitentasten); Klick
+  auf einen Pfadteil öffnet den Ordner im selben Tab, Mittelklick in neuem Tab.
+- **Drag-and-drop**: Dateien aus Explorer, Dateiliste oder anderen Programmen
+  auf einen Split ziehen öffnet sie; am linken/rechten Rand entsteht ein neuer
+  Split. Auf Ordner (Explorer, Dateiliste) gezogen werden sie verschoben, mit
+  Strg kopiert. Gezogene Dateien lassen sich auch in andere Programme ablegen.
+- **Sessions** (Dropdown in der Titelleiste): Standard-Session wird automatisch
+  angelegt; neue (leere) Session, Duplizieren (aktueller Zustand), Umbenennen,
+  „Jetzt speichern“ und Löschen im Untermenü. Vor jedem Wechsel wird die aktive
+  Session gespeichert; die aktive Session wird erst gelöscht, nachdem eine
+  andere aktiviert oder angelegt wurde. Ablage: `.atlas/sessions/<device-id>/<id>.json`,
+  `active.json` zeigt auf die aktive Session (Phase-0-Format wird übernommen).
+- Je Session gespeichert: Splits und Tabs (inkl. Vorschau-Status, PDF-Seite und
+  Zoom, Sortierung der Dateilisten), aufgeklappte Ordner, Seitenleiste
+  (sichtbar, Breite, Explorer/Suche; Strg+B blendet aus), Suchanfrage und
+  Filter, Terminal-Layout mit Arbeitsverzeichnissen (`/proc/<pid>/cwd`).
+  Laufende Terminals bleiben beim Session-Wechsel bestehen; neu angelegt werden
+  sie beim Start.
+- Dateilisten blenden in schmalen Splits Typ- und Datumsspalte aus.

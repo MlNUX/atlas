@@ -113,6 +113,11 @@ pub mod qobject {
         #[cxx_name = "scrollTo"]
         fn scroll_to(self: Pin<&mut TerminalView>, offset: i32);
 
+        /// Current working directory of the shell ("" if unknown).
+        #[qinvokable]
+        #[cxx_name = "currentDirectory"]
+        fn current_directory(self: &TerminalView) -> QString;
+
         #[qsignal]
         fn exited(self: Pin<&mut TerminalView>, code: i32);
 
@@ -534,6 +539,14 @@ impl qobject::TerminalView {
             self.as_mut().sync_scroll_state();
             self.update();
         }
+    }
+
+    pub fn current_directory(&self) -> QString {
+        self.terminal
+            .as_ref()
+            .and_then(Terminal::current_dir)
+            .map(|d| QString::from(d.to_string_lossy().as_ref()))
+            .unwrap_or_default()
     }
 
     pub fn scroll_to(mut self: Pin<&mut Self>, offset: i32) {

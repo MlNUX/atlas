@@ -127,6 +127,8 @@ pub struct Terminal {
     term: Arc<FairMutex<Term<Listener>>>,
     sender: EventLoopSender,
     size: Arc<Mutex<GridSize>>,
+    /// PID of the shell, for its current working directory.
+    pid: u32,
 }
 
 impl Terminal {
@@ -149,6 +151,7 @@ impl Terminal {
         let pty_options =
             tty::Options { shell: Some(shell), working_directory: options.working_directory, drain_on_exit: true, env };
         let pty = tty::new(&pty_options, size.window_size(), 0).context("cannot open PTY")?;
+        let pid = pty.child().id();
 
         let config = term::Config {
             scrolling_history: if options.scrollback == 0 { 10_000 } else { options.scrollback },
@@ -161,7 +164,12 @@ impl Terminal {
         *listener.sender.lock().unwrap() = Some(event_loop.channel());
         event_loop.spawn();
 
-        Ok(Self { term, sender, size: size_cell })
+        Ok(Self { term, sender, size: size_cell, pid })
+    }
+
+    /// Current working directory of the shell (Linux: `/proc/<pid>/cwd`).
+    pub fn current_dir(&self) -> Option<PathBuf> {
+        std::fs::read_link(format!("/proc/{}/cwd", self.pid)).ok()
     }
 
     pub fn size(&self) -> GridSize {
@@ -509,6 +517,21 @@ mod tests {
         let emoji = frame.lines[0].runs.iter().find(|r| r.text == "😀").unwrap();
         assert_eq!(emoji.cells, 2);
         assert_eq!(emoji.col, 6);
+    }
+
+    #[test]
+    fn tracks_current_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().canonicalize().unwrap();
+        let size = GridSize { cols: 40, lines: 5, cell_width: 8, cell_height: 16 };
+        let script = format!("cd {} && sleep 5", target.display());
+        let options = Options { shell: Some(("/bin/sh".into(), vec!["-c".into(), script])), ..Default::default() };
+        let term = Terminal::spawn(options, size, |_| {}).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while term.current_dir().as_deref() != Some(target.as_path()) {
+            assert!(Instant::now() < deadline, "cwd: {:?}", term.current_dir());
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     #[test]

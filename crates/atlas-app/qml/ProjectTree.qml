@@ -18,6 +18,8 @@ Rectangle {
 
     signal openRequested(string path, bool newPane)
     signal openProjectRequested()
+    /// Double click on a file: open as permanent tab.
+    signal pinRequested(string path)
 
     color: Theme.sidebar
 
@@ -129,6 +131,11 @@ Rectangle {
                     root.selectedPath = ""
                     if (mouse.button === Qt.RightButton) root.actions.showMenu([], root.model.root)
                 }
+                DropArea {
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onDropped: (drop) => root.actions.dropInto(root.model.root, drop)
+                }
             }
 
             delegate: Rectangle {
@@ -175,9 +182,38 @@ Rectangle {
                     }
                 }
 
+                // Drag source: files and folders can be dropped on splits
+                // (open), folders (move/copy), the terminal (insert path) and
+                // other applications.
+                Item { id: dragProxy }
+                Drag.active: rowMouse.drag.active
+                Drag.dragType: Drag.Automatic
+                Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+                Drag.proposedAction: Qt.MoveAction
+                Drag.mimeData: ({ "text/uri-list": root.actions ? root.actions.uriList([row.path]) : "" })
+
+                // Drop target: into this folder, or the folder of this file.
+                DropArea {
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onDropped: (drop) => root.actions.dropInto(row.isDir ? row.path : root.actions.ops.parentDir(row.path), drop)
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: parent.containsDrag && row.isDir
+                        color: "transparent"
+                        border.color: Theme.accent
+                    }
+                }
+
                 MouseArea {
+                    id: rowMouse
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                    drag.target: dragProxy
+                    drag.threshold: 8
+                    onDoubleClicked: (mouse) => {
+                        if (!row.isDir && mouse.button === Qt.LeftButton) root.pinRequested(row.path)
+                    }
                     onClicked: (mouse) => {
                         root.selectedPath = row.path
                         list.forceActiveFocus()

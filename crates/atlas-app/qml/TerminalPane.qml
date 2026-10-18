@@ -12,6 +12,7 @@ Rectangle {
     property string workingDirectory
     property bool active: false
     readonly property alias title: term.title
+    function cwd() { return term.currentDirectory() || pane.workingDirectory }
     readonly property alias view: term
 
     signal closed()

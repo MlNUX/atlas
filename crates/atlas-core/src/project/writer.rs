@@ -20,7 +20,7 @@ use crate::identity::FileId;
 use crate::session::ProjectSession;
 
 enum Job {
-    Save { session: ProjectSession, documents: Vec<PathBuf> },
+    Save { id: String, session: ProjectSession, documents: Vec<PathBuf> },
     Flush(Sender<()>),
 }
 
@@ -41,9 +41,9 @@ impl SessionWriter {
 
     /// Queues `session` (relative paths) and the identities of `documents`
     /// (absolute paths inside the project) for writing.
-    pub fn save(&self, session: ProjectSession, documents: Vec<PathBuf>) {
+    pub fn save(&self, id: String, session: ProjectSession, documents: Vec<PathBuf>) {
         if let Some(jobs) = &self.jobs {
-            let _ = jobs.send(Job::Save { session, documents });
+            let _ = jobs.send(Job::Save { id, session, documents });
         }
     }
 
@@ -81,12 +81,12 @@ fn run(project: Arc<Project>, jobs: Receiver<Job>) {
         let mut flushes = Vec::new();
         for job in std::iter::once(job).chain(jobs.try_iter()) {
             match job {
-                Job::Save { session, documents } => latest = Some((session, documents)),
+                Job::Save { id, session, documents } => latest = Some((id, session, documents)),
                 Job::Flush(done) => flushes.push(done),
             }
         }
-        if let Some((session, documents)) = latest {
-            if let Err(err) = project.save_session(&session) {
+        if let Some((id, session, documents)) = latest {
+            if let Err(err) = project.save_named(&id, &session) {
                 log::warn!("cannot save session: {err:#}");
             }
             let ids: Vec<FileId> = documents.iter().filter_map(|d| FileId::of(d).ok()).collect();
@@ -116,10 +116,10 @@ mod tests {
         let writer = SessionWriter::spawn(project.clone());
         for i in 0..50 {
             let session = ProjectSession { layout: serde_json::json!({ "n": i }), ..Default::default() };
-            writer.save(session, vec![root.join("a.md")]);
+            writer.save("standard".into(), session, vec![root.join("a.md")]);
         }
         writer.flush();
-        assert_eq!(project.load_session().layout, serde_json::json!({ "n": 49 }));
+        assert_eq!(project.load_named("standard").layout, serde_json::json!({ "n": 49 }));
         let meta = project.metadata().unwrap();
         assert!(meta.document(&root, Path::new("a.md")).unwrap().is_some());
         drop(writer);

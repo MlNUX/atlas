@@ -49,6 +49,10 @@ pub mod qobject {
         #[qproperty(bool, restore_session, cxx_name = "restoreSession", READ, CONSTANT)]
         #[qproperty(bool, persist_session, cxx_name = "persistSession", READ, CONSTANT)]
         #[qproperty(QString, version, READ, CONSTANT)]
+        #[qproperty(QStringList, session_ids, cxx_name = "sessionIds", READ, NOTIFY = sessions_changed)]
+        #[qproperty(QStringList, session_names, cxx_name = "sessionNames", READ, NOTIFY = sessions_changed)]
+        #[qproperty(QString, active_session, cxx_name = "activeSession", READ, NOTIFY = sessions_changed)]
+        #[qproperty(QString, active_session_name, cxx_name = "activeSessionName", READ, NOTIFY = sessions_changed)]
         type AppController = super::AppControllerRust;
 
         #[qsignal]
@@ -99,7 +103,7 @@ pub mod qobject {
         #[cxx_name = "loadExpanded"]
         fn load_expanded(self: &AppController) -> QStringList;
 
-        /// Queues the session for `.atlas/sessions/<device>/active.json` and
+        /// Queues the active session for `.atlas/sessions/<device>/<id>.json` and
         /// the identities of `documents` for `.atlas/metadata.sqlite`; the
         /// writing happens on a background thread. Paths may be absolute;
         /// they are stored relative to the project.
@@ -116,6 +120,39 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "flushSession"]
         fn flush_session(self: &AppController);
+
+        #[qsignal]
+        #[cxx_name = "sessionsChanged"]
+        fn sessions_changed(self: Pin<&mut AppController>);
+
+        /// A session operation failed (shown to the user).
+        #[qsignal]
+        #[cxx_name = "sessionError"]
+        fn session_error(self: Pin<&mut AppController>, message: QString);
+
+        /// Makes `id` the active session. Save the current one first.
+        #[qinvokable]
+        #[cxx_name = "switchSession"]
+        fn switch_session(self: Pin<&mut AppController>, id: &QString) -> bool;
+
+        /// Creates a session – empty, or with `layout_json` (duplicate) – and
+        /// returns its ID ("" on error).
+        #[qinvokable]
+        #[cxx_name = "createSession"]
+        fn create_session(
+            self: Pin<&mut AppController>,
+            name: &QString,
+            layout_json: &QString,
+            expanded: &QStringList,
+        ) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "renameSession"]
+        fn rename_session(self: Pin<&mut AppController>, id: &QString, name: &QString) -> bool;
+
+        #[qinvokable]
+        #[cxx_name = "deleteSession"]
+        fn delete_session(self: Pin<&mut AppController>, id: &QString) -> bool;
 
         /// Current absolute path of a session document (relative or
         /// absolute input), following external moves; "" if it is gone.
@@ -155,6 +192,10 @@ pub struct AppControllerRust {
     restore_session: bool,
     persist_session: bool,
     version: QString,
+    session_ids: QStringList,
+    session_names: QStringList,
+    active_session: QString,
+    active_session_name: QString,
 
     /// Root of the open project (also set when nothing is persisted).
     root: Option<PathBuf>,
@@ -203,6 +244,10 @@ impl Default for AppControllerRust {
             restore_session: cli.open.is_empty() && !cli.no_session,
             persist_session: !cli.no_session,
             version: qs(env!("CARGO_PKG_VERSION")),
+            session_ids: QStringList::default(),
+            session_names: QStringList::default(),
+            active_session: QString::default(),
+            active_session_name: QString::default(),
             root: None,
             project: None,
             metadata: None,
@@ -327,6 +372,7 @@ impl qobject::AppController {
                 log::warn!("cannot save app state: {err:#}");
             }
         }
+        self.as_mut().refresh_sessions();
         self.project_root_changed();
         true
     }
@@ -381,7 +427,35 @@ impl qobject::AppController {
     }
 
     fn session(&self) -> Option<ProjectSession> {
-        self.project.as_ref().map(|p| p.load_session())
+        self.project.as_ref().map(|p| p.load_named(&self.active_session.to_string()))
+    }
+
+    /// Re-reads the session list from `.atlas/` and notifies QML.
+    fn refresh_sessions(mut self: Pin<&mut Self>) {
+        let (mut ids, mut names) = (QStringList::default(), QStringList::default());
+        let (mut active, mut active_name) = (String::new(), String::new());
+        if let Some(project) = self.project.clone() {
+            active = project.active_session();
+            for s in project.list_sessions() {
+                if s.id == active {
+                    active_name = s.name.clone();
+                }
+                ids.append(qs(&s.id));
+                names.append(qs(&s.name));
+            }
+        }
+        {
+            let mut this = self.as_mut().rust_mut();
+            this.session_ids = ids;
+            this.session_names = names;
+            this.active_session = qs(active);
+            this.active_session_name = qs(active_name);
+        }
+        self.sessions_changed();
+    }
+
+    fn session_failed(self: Pin<&mut Self>, err: anyhow::Error) {
+        self.session_error(qs(format!("{err:#}")));
     }
 
     pub fn load_layout(&self) -> QString {
@@ -401,6 +475,15 @@ impl qobject::AppController {
         list
     }
 
+    fn build_session(&self, layout_json: &QString, expanded: &QStringList, documents: &[PathBuf]) -> ProjectSession {
+        ProjectSession {
+            expanded: expanded.iter().map(|d| self.relative(&path_of(d))).collect(),
+            documents: documents.iter().map(|d| self.relative(d)).collect(),
+            layout: serde_json::from_str(&layout_json.to_string()).unwrap_or(serde_json::Value::Null),
+            ..Default::default()
+        }
+    }
+
     pub fn save_session(
         self: Pin<&mut Self>,
         layout_json: &QString,
@@ -409,19 +492,79 @@ impl qobject::AppController {
     ) -> bool {
         let Some(writer) = self.writer.as_ref() else { return false };
         let documents: Vec<PathBuf> = documents.iter().filter_map(|d| self.absolute(&path_of(d))).collect();
-        let session = ProjectSession {
-            expanded: expanded.iter().map(|d| self.relative(&path_of(d))).collect(),
-            documents: documents.iter().map(|d| self.relative(d)).collect(),
-            layout: serde_json::from_str(&layout_json.to_string()).unwrap_or(serde_json::Value::Null),
-            ..Default::default()
-        };
-        writer.save(session, documents);
+        let session = self.build_session(layout_json, expanded, &documents);
+        writer.save(self.active_session.to_string(), session, documents);
         true
     }
 
     pub fn flush_session(&self) {
         if let Some(writer) = self.writer.as_ref() {
             writer.flush();
+        }
+    }
+
+    pub fn switch_session(mut self: Pin<&mut Self>, id: &QString) -> bool {
+        let Some(project) = self.project.clone() else { return false };
+        // Pending writes for the old session must land before switching.
+        self.flush_session();
+        match project.set_active_session(&id.to_string()) {
+            Ok(()) => {
+                self.refresh_sessions();
+                true
+            }
+            Err(err) => {
+                self.as_mut().session_failed(err);
+                false
+            }
+        }
+    }
+
+    pub fn create_session(
+        mut self: Pin<&mut Self>,
+        name: &QString,
+        layout_json: &QString,
+        expanded: &QStringList,
+    ) -> QString {
+        let Some(project) = self.project.clone() else { return QString::default() };
+        let from = (!layout_json.is_empty()).then(|| self.build_session(layout_json, expanded, &[]));
+        match project.create_session(&name.to_string(), from.as_ref()) {
+            Ok(id) => {
+                self.refresh_sessions();
+                qs(id)
+            }
+            Err(err) => {
+                self.as_mut().session_failed(err);
+                QString::default()
+            }
+        }
+    }
+
+    pub fn rename_session(mut self: Pin<&mut Self>, id: &QString, name: &QString) -> bool {
+        let Some(project) = self.project.clone() else { return false };
+        self.flush_session();
+        match project.rename_session(&id.to_string(), &name.to_string()) {
+            Ok(()) => {
+                self.refresh_sessions();
+                true
+            }
+            Err(err) => {
+                self.as_mut().session_failed(err);
+                false
+            }
+        }
+    }
+
+    pub fn delete_session(mut self: Pin<&mut Self>, id: &QString) -> bool {
+        let Some(project) = self.project.clone() else { return false };
+        match project.delete_session(&id.to_string()) {
+            Ok(()) => {
+                self.refresh_sessions();
+                true
+            }
+            Err(err) => {
+                self.as_mut().session_failed(err);
+                false
+            }
         }
     }
 

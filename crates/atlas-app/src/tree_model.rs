@@ -65,6 +65,11 @@ pub mod qobject {
         #[cxx_name = "restoreExpanded"]
         fn restore_expanded(self: Pin<&mut ProjectTreeModel>, dirs: &QStringList);
 
+        /// Collapses every folder (before applying another session).
+        #[qinvokable]
+        #[cxx_name = "collapseAll"]
+        fn collapse_all(self: Pin<&mut ProjectTreeModel>);
+
         #[qinvokable]
         #[cxx_name = "expandedDirs"]
         fn expanded_dirs(self: &ProjectTreeModel) -> QStringList;
@@ -211,6 +216,18 @@ impl qobject::ProjectTreeModel {
                 self.sync_watcher();
             }
             Toggle::None => {}
+        }
+    }
+
+    pub fn collapse_all(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().pending_expand.clear();
+        // Collapsing a top-level folder removes its whole subtree; going
+        // backwards keeps the remaining indices valid.
+        for i in (0..self.tree.len()).rev() {
+            let (depth, expanded) = (self.tree.rows()[i].depth, self.tree.rows()[i].expanded);
+            if depth == 0 && expanded {
+                self.as_mut().toggle(i as i32);
+            }
         }
     }
 

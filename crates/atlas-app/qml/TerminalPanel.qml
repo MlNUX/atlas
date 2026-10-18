@@ -53,6 +53,23 @@ Rectangle {
         if (groups.length === 0) panel.hideRequested()
     }
 
+    /// Layout for the session: terminals per tab and their folders.
+    function serialize() {
+        return { current: currentIndex, groups: groups.map(g => g.serialize()) }
+    }
+
+    /// Recreates the saved layout (processes are started fresh).
+    function restore(state) {
+        const saved = state && state.groups && state.groups.length ? state.groups : [{ terminals: [{}] }]
+        for (const gs of saved) {
+            const group = groupComponent.createObject(stack, { workingDirectory: panel.workingDirectory })
+            group.empty.connect(() => panel.removeGroup(group))
+            groups = groups.concat([group])
+            group.restore(gs)
+        }
+        currentIndex = Math.max(0, Math.min(state && state.current || 0, groups.length - 1))
+    }
+
     function focusTerminal() {
         if (!currentGroup) newTerminal()
         else if (currentGroup.activeTerminal) currentGroup.activeTerminal.focusTerminal()

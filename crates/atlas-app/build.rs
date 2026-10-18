@@ -7,8 +7,9 @@ use cxx_qt_build::{CxxQtBuilder, QmlFile, QmlModule};
 
 const QML_FILES: &[&str] = &[
     "qml/Main.qml",
-    "qml/DocumentPane.qml",
+    "qml/DocumentView.qml",
     "qml/EditorArea.qml",
+    "qml/EditorGroup.qml",
     "qml/FileActions.qml",
     "qml/FolderView.qml",
     "qml/IconButton.qml",
@@ -16,6 +17,7 @@ const QML_FILES: &[&str] = &[
     "qml/PlacesList.qml",
     "qml/ProjectTree.qml",
     "qml/SearchPanel.qml",
+    "qml/SessionMenu.qml",
     "qml/TerminalGroup.qml",
     "qml/TerminalPane.qml",
     "qml/TerminalPanel.qml",
