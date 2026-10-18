@@ -9,6 +9,7 @@
 
 pub mod fs_tree;
 pub mod identity;
+pub mod listing;
 pub mod paths;
 pub mod pdf;
 pub mod project;

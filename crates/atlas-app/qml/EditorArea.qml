@@ -45,6 +45,7 @@ SplitView {
         pane.activated.connect(() => { area.activeIndex = area.panes.indexOf(pane) })
         pane.closeRequested.connect(() => area.closePane(pane))
         pane.splitRequested.connect(() => area.splitPane(pane))
+        pane.openRequested.connect((path, newPane) => area.openFile(path, 0, newPane))
         pane.pathChanged.connect(area.layoutChanged)
         activeIndex = index
         equalize()

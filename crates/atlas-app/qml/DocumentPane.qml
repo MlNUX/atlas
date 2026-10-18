@@ -19,6 +19,8 @@ Rectangle {
     signal activated()
     signal closeRequested()
     signal splitRequested()
+    /// Open `path` elsewhere (e.g. a file chosen in a folder view).
+    signal openRequested(string path, bool newPane)
 
     color: Theme.editor
     border.color: active ? Theme.accent : "transparent"
@@ -74,7 +76,8 @@ Rectangle {
             id: viewer
             Layout.fillWidth: true
             Layout.fillHeight: true
-            sourceComponent: pane.kind === "pdf" ? pdfComponent
+            sourceComponent: pane.kind === "dir" ? folderComponent
+                : pane.kind === "pdf" ? pdfComponent
                 : pane.kind === "markdown" || pane.kind === "text" ? textComponent
                 : pane.kind === "image" ? imageComponent
                 : pane.path ? unsupportedComponent : emptyComponent
@@ -89,6 +92,16 @@ Rectangle {
         onTapped: pane.activated()
     }
 
+    Component {
+        id: folderComponent
+        FolderView {
+            source: pane.path
+            onActivated: (path, isDir, newPane) => {
+                if (newPane) pane.openRequested(path, true)
+                else pane.open(path, 0)
+            }
+        }
+    }
     Component {
         id: pdfComponent
         PdfViewer { source: pane.path }

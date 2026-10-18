@@ -5,6 +5,7 @@
 
 mod app;
 mod cli;
+mod folder_model;
 mod pdf_items;
 mod qt_helpers;
 mod search_model;

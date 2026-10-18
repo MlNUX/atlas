@@ -73,7 +73,6 @@
           poppler # poppler-glib
           cairo
           glib
-          pdfium
           fontconfig
         ];
     in
@@ -88,7 +87,6 @@
           nativeBuildInputs = nativeDeps pkgs ++ [ pkgs.qt6.wrapQtAppsHook ];
           buildInputs = qtDeps pkgs ++ libDeps pkgs;
 
-          ATLAS_PDFIUM_LIB = "${pkgs.pdfium}/lib/libpdfium.so";
           ATLAS_RG_BIN = "${pkgs.ripgrep}/bin/rg";
 
           # The qtbase setup hook exports QMAKE; point it at the merged prefix.
@@ -138,7 +136,6 @@
               hyperfine
             ]);
 
-          ATLAS_PDFIUM_LIB = "${pkgs.pdfium}/lib/libpdfium.so";
           ATLAS_RG_BIN = "${pkgs.ripgrep}/bin/rg";
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
           # Debug builds compile C++ without -O, which _FORTIFY_SOURCE warns about.

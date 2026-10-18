@@ -39,6 +39,9 @@ pub mod qobject {
         #[qproperty(bool, index_ready, cxx_name = "indexReady", READ, NOTIFY)]
         #[qproperty(QString, index_status, cxx_name = "indexStatus", READ, NOTIFY)]
         #[qproperty(QStringList, open_files, cxx_name = "openFiles", READ, CONSTANT)]
+        #[qproperty(QStringList, place_names, cxx_name = "placeNames", READ, CONSTANT)]
+        #[qproperty(QStringList, place_paths, cxx_name = "placePaths", READ, CONSTANT)]
+        #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, CONSTANT)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(i32, screenshot_delay_ms, cxx_name = "screenshotDelayMs", READ, CONSTANT)]
@@ -142,6 +145,9 @@ pub struct AppControllerRust {
     index_ready: bool,
     index_status: QString,
     open_files: QStringList,
+    place_names: QStringList,
+    place_paths: QStringList,
+    place_icons: QStringList,
     screenshot_path: QString,
     quit_after_ms: i32,
     screenshot_delay_ms: i32,
@@ -169,6 +175,14 @@ impl Default for AppControllerRust {
         for f in &cli.open {
             open_files.append(qs(f.to_string_lossy()));
         }
+        let mut place_names = QStringList::default();
+        let mut place_paths = QStringList::default();
+        let mut place_icons = QStringList::default();
+        for place in atlas_core::listing::places() {
+            place_names.append(qs(place.name));
+            place_paths.append(qs(place.path.to_string_lossy()));
+            place_icons.append(qs(place.icon));
+        }
         Self {
             project_root: QString::default(),
             project_name: QString::default(),
@@ -177,6 +191,9 @@ impl Default for AppControllerRust {
             index_ready: false,
             index_status: QString::default(),
             open_files,
+            place_names,
+            place_paths,
+            place_icons,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
             screenshot_delay_ms: cli.screenshot_delay_ms.unwrap_or(2500) as i32,

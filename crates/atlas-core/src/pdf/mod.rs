@@ -1,17 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! PDF rendering with two interchangeable engines (Phase 0 comparison).
+//! PDF rendering (Poppler, chosen in Phase 0, see docs/phase0.md).
 //!
-//! Both libraries are not thread safe in the way the UI needs, so each engine
-//! runs in its own worker thread ("actor") that owns the library handle and
-//! all open documents. Requests are queued; the result is handed to a
-//! callback on the worker thread.
+//! The library is not thread safe in the way the UI needs, so a worker
+//! thread ("actor") owns it and all open documents. Requests are queued; the
+//! result is handed to a callback on the worker thread. The engine sits
+//! behind the [`Backend`] trait so that it can be exchanged later.
 //!
 //! Rendered pages are BGRA, premultiplied, 4 bytes per pixel, rows without
 //! padding – i.e. `QImage::Format_ARGB32_Premultiplied` on little endian.
 
-mod pdfium;
 mod poppler;
 
 use std::collections::HashMap;
@@ -22,31 +21,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use crossbeam_channel::{Sender, unbounded};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Engine {
-    Poppler,
-    Pdfium,
-}
-
-impl Engine {
-    pub const ALL: [Engine; 2] = [Engine::Poppler, Engine::Pdfium];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Engine::Poppler => "poppler",
-            Engine::Pdfium => "pdfium",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name.to_ascii_lowercase().as_str() {
-            "poppler" => Some(Engine::Poppler),
-            "pdfium" => Some(Engine::Pdfium),
-            _ => None,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct DocInfo {
@@ -63,7 +37,7 @@ pub struct RenderedPage {
     pub elapsed: Duration,
 }
 
-/// Engine specific implementation; lives on the engine's worker thread.
+/// Engine specific implementation; lives on the worker thread.
 trait Backend {
     fn open(&mut self, path: &Path) -> Result<Vec<(f64, f64)>>;
     fn render(&mut self, path: &Path, page: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)>;
@@ -73,9 +47,8 @@ trait Backend {
 
 type Job = Box<dyn FnOnce(&mut dyn Backend, &mut HashMap<PathBuf, DocInfo>) + Send>;
 
-/// Handle to one engine's worker thread.
+/// Handle to the PDF worker thread.
 pub struct PdfService {
-    engine: Engine,
     jobs: Sender<Job>,
 }
 
@@ -94,40 +67,25 @@ impl CancelToken {
 }
 
 impl PdfService {
-    /// The process wide service of an engine (started on first use).
-    pub fn get(engine: Engine) -> &'static PdfService {
-        static POPPLER: OnceLock<PdfService> = OnceLock::new();
-        static PDFIUM: OnceLock<PdfService> = OnceLock::new();
-        let cell = match engine {
-            Engine::Poppler => &POPPLER,
-            Engine::Pdfium => &PDFIUM,
-        };
-        cell.get_or_init(|| PdfService::spawn(engine))
+    /// The process wide service (started on first use).
+    pub fn get() -> &'static PdfService {
+        static SERVICE: OnceLock<PdfService> = OnceLock::new();
+        SERVICE.get_or_init(PdfService::spawn)
     }
 
-    fn spawn(engine: Engine) -> Self {
+    fn spawn() -> Self {
         let (tx, rx) = unbounded::<Job>();
         std::thread::Builder::new()
-            .name(format!("atlas-pdf-{}", engine.name()))
+            .name("atlas-pdf".into())
             .spawn(move || {
-                let mut backend: Box<dyn Backend> = match engine {
-                    Engine::Poppler => Box::new(poppler::PopplerBackend::default()),
-                    Engine::Pdfium => match pdfium::PdfiumBackend::new() {
-                        Ok(b) => Box::new(b),
-                        Err(err) => Box::new(Unavailable(format!("{err:#}"))),
-                    },
-                };
+                let mut backend = poppler::PopplerBackend::default();
                 let mut docs = HashMap::new();
                 for job in rx {
-                    job(backend.as_mut(), &mut docs);
+                    job(&mut backend, &mut docs);
                 }
             })
             .expect("spawn pdf worker");
-        Self { engine, jobs: tx }
-    }
-
-    pub fn engine(&self) -> Engine {
-        self.engine
+        Self { jobs: tx }
     }
 
     fn submit(&self, job: Job) {
@@ -230,29 +188,13 @@ impl PdfService {
     }
 }
 
-/// Stand-in when an engine's library cannot be loaded.
-struct Unavailable(String);
-
-impl Backend for Unavailable {
-    fn open(&mut self, _: &Path) -> Result<Vec<(f64, f64)>> {
-        anyhow::bail!("{}", self.0)
-    }
-    fn render(&mut self, _: &Path, _: usize, _: u32) -> Result<(u32, u32, Vec<u8>)> {
-        anyhow::bail!("{}", self.0)
-    }
-    fn text(&mut self, _: &Path, _: usize) -> Result<String> {
-        anyhow::bail!("{}", self.0)
-    }
-    fn close(&mut self, _: &Path) {}
-}
-
 /// Pixel height for a page rendered at `width_px`.
 fn scaled_height(size: (f64, f64), width_px: u32) -> u32 {
     ((size.1 / size.0) * f64::from(width_px)).round().max(1.0) as u32
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Minimal one page PDF (A4) with a line of text, built by hand so that
@@ -286,19 +228,13 @@ mod tests {
         out
     }
 
-    fn check_engine(engine: Engine) {
+    #[test]
+    fn renders_and_extracts_text() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sample.pdf");
         std::fs::write(&path, sample_pdf()).unwrap();
-        let service = PdfService::get(engine);
-        let info = match service.open_blocking(&path) {
-            Ok(info) => info,
-            Err(err) if engine == Engine::Pdfium && format!("{err:#}").contains("load") => {
-                eprintln!("skipping pdfium test: {err:#}");
-                return;
-            }
-            Err(err) => panic!("{engine:?}: {err:#}"),
-        };
+        let service = PdfService::get();
+        let info = service.open_blocking(&path).unwrap();
         assert_eq!(info.page_sizes, vec![(595.0, 842.0)]);
         let page = service.render_blocking(&path, 0, 300).unwrap();
         assert_eq!(page.width, 300);
@@ -309,18 +245,8 @@ mod tests {
         assert!(page.bgra.chunks(4).any(|px| px[0] < 128));
         // The bottom left corner is pure red, in BGRA byte order.
         let row = (page.height as usize - 2) * page.width as usize * 4;
-        assert_eq!(&page.bgra[row + 8..row + 12], &[0, 0, 255, 255], "{engine:?} must produce BGRA");
+        assert_eq!(&page.bgra[row + 8..row + 12], &[0, 0, 255, 255], "output must be BGRA");
         let text = service.text_blocking(&path, 0).unwrap();
-        assert!(text.contains("Hello Atlas"), "{engine:?} text: {text:?}");
-    }
-
-    #[test]
-    fn poppler_renders() {
-        check_engine(Engine::Poppler);
-    }
-
-    #[test]
-    fn pdfium_renders() {
-        check_engine(Engine::Pdfium);
+        assert!(text.contains("Hello Atlas"), "text: {text:?}");
     }
 }

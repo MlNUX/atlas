@@ -7,12 +7,10 @@ import QtQuick.Layouts
 import QtQuick.Window
 import Atlas
 
-// PDF viewer used for the Poppler/PDFium comparison: the engine can be
-// switched at runtime, open/render times are shown in the toolbar.
+// PDF viewer (Poppler). Open and render times are shown in the toolbar.
 Rectangle {
     id: root
     required property string source
-    property alias engine: doc.engine
     /// 0 = fit width
     property real zoom: 0
     property int lastRenderMs: 0
@@ -21,10 +19,9 @@ Rectangle {
     color: Theme.pdfBackdrop
 
     function viewState() {
-        return { engine: doc.engine, zoom: root.zoom, page: Math.max(0, root.currentPage) }
+        return { zoom: root.zoom, page: Math.max(0, root.currentPage) }
     }
     function applyState(state) {
-        if (state.engine) doc.engine = state.engine
         if (state.zoom !== undefined) root.zoom = state.zoom
         if (state.page) restorePage = state.page
     }
@@ -33,12 +30,11 @@ Rectangle {
     PdfDocument {
         id: doc
         source: root.source
-        engine: "poppler"
         onStatusChanged: if (status === "ready" && root.restorePage > 0) {
             Qt.callLater(() => { pages.positionViewAtIndex(root.restorePage, ListView.Beginning); root.restorePage = 0 })
         }
         onTextReady: (page, text, ms) => {
-            textPopup.title = qsTr("Text von Seite %1 – %2 (%3 ms)").arg(page + 1).arg(doc.engine).arg(ms)
+            textPopup.title = qsTr("Text von Seite %1 (%2 ms)").arg(page + 1).arg(ms)
             textPopup.text = text
             textPopup.open()
         }
@@ -65,14 +61,6 @@ Rectangle {
                 anchors.leftMargin: 8
                 anchors.rightMargin: 8
                 spacing: 4
-                ComboBox {
-                    id: engineBox
-                    model: ["poppler", "pdfium"]
-                    implicitHeight: 24
-                    currentIndex: Math.max(0, model.indexOf(doc.engine))
-                    onActivated: doc.engine = currentText
-                    displayText: currentText === "pdfium" ? "PDFium" : "Poppler"
-                }
                 IconButton { glyph: "−"; tip: qsTr("Verkleinern"); onClicked: root.zoom = Math.max(0.2, root.scale / 1.2) }
                 Label {
                     text: Math.round(root.scale * 100) + " %"
@@ -142,7 +130,6 @@ Rectangle {
                         id: page
                         anchors.fill: parent
                         source: doc.source
-                        engine: doc.engine
                         page: pageDelegate.index
                         renderWidth: Math.round(doc.pageWidth(pageDelegate.index) * root.renderScale * Screen.devicePixelRatio)
                         onRenderMsChanged: root.lastRenderMs = renderMs

@@ -107,14 +107,23 @@ Rectangle {
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                     onClicked: (mouse) => {
-                        if (row.isDir) {
-                            root.model.toggle(row.index)
-                        } else {
-                            const newPane = mouse.button === Qt.MiddleButton
-                                || (mouse.modifiers & Qt.ControlModifier)
-                            root.openRequested(row.path, newPane)
-                        }
+                        const newPane = mouse.button === Qt.MiddleButton
+                            || (mouse.modifiers & Qt.ControlModifier)
+                        // Folders expand on click; Ctrl/middle click opens
+                        // them as file list in a new split.
+                        if (row.isDir && !newPane) root.model.toggle(row.index)
+                        else root.openRequested(row.path, newPane)
                     }
+                }
+
+                IconButton {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: row.isDir && hover.hovered
+                    glyph: "☰"
+                    tip: qsTr("Als Dateiliste öffnen")
+                    onClicked: root.openRequested(row.path, false)
                 }
             }
 

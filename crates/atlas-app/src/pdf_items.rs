@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! QML types for the PDF engine comparison: `PdfDocument` (page sizes,
+//! QML types for PDFs: `PdfDocument` (page sizes,
 //! open timing) and `PdfPage` (one asynchronously rendered page).
 
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Instant;
 
-use atlas_core::pdf::{CancelToken, Engine, PdfService, RenderedPage};
+use atlas_core::pdf::{CancelToken, PdfService, RenderedPage};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QImage, QImageFormat, QRect, QString};
 
@@ -27,7 +27,6 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qproperty(QString, source, READ, WRITE, NOTIFY)]
-        #[qproperty(QString, engine, READ, WRITE, NOTIFY)]
         #[qproperty(i32, page_count, cxx_name = "pageCount", READ, NOTIFY)]
         #[qproperty(QString, status, READ, NOTIFY)]
         #[qproperty(QString, error, READ, NOTIFY)]
@@ -64,7 +63,6 @@ pub mod qobject {
         #[qml_element]
         #[base = QQuickPaintedItem]
         #[qproperty(QString, source, READ, WRITE, NOTIFY)]
-        #[qproperty(QString, engine, READ, WRITE, NOTIFY)]
         #[qproperty(i32, page, READ, WRITE, NOTIFY)]
         #[qproperty(i32, render_width, cxx_name = "renderWidth", READ, WRITE, NOTIFY)]
         #[qproperty(bool, rendered, READ, NOTIFY)]
@@ -89,13 +87,8 @@ pub mod qobject {
     impl cxx_qt::Initialize for PdfPage {}
 }
 
-fn engine_of(name: &QString) -> Engine {
-    Engine::from_name(&name.to_string()).unwrap_or(Engine::Poppler)
-}
-
 pub struct PdfDocumentRust {
     source: QString,
-    engine: QString,
     page_count: i32,
     status: QString,
     error: QString,
@@ -109,7 +102,6 @@ impl Default for PdfDocumentRust {
     fn default() -> Self {
         Self {
             source: QString::default(),
-            engine: QString::from("poppler"),
             page_count: 0,
             status: QString::default(),
             error: QString::default(),
@@ -124,7 +116,6 @@ impl Default for PdfDocumentRust {
 impl cxx_qt::Initialize for qobject::PdfDocument {
     fn initialize(mut self: Pin<&mut Self>) {
         self.as_mut().on_source_changed(|doc| doc.load()).release();
-        self.as_mut().on_engine_changed(|doc| doc.load()).release();
     }
 }
 
@@ -146,7 +137,7 @@ impl qobject::PdfDocument {
         }
         self.as_mut().set_status("loading", "");
         let thread = self.qt_thread();
-        PdfService::get(engine_of(&self.engine)).open(path, move |result| {
+        PdfService::get().open(path, move |result| {
             let _ = thread.queue(move |mut doc| {
                 if doc.generation != generation {
                     return;
@@ -187,7 +178,7 @@ impl qobject::PdfDocument {
         let thread = self.qt_thread();
         let started = Instant::now();
         let path = PathBuf::from(self.source.to_string());
-        PdfService::get(engine_of(&self.engine)).text(path, page.max(0) as usize, move |result| {
+        PdfService::get().text(path, page.max(0) as usize, move |result| {
             let ms = started.elapsed().as_millis() as i32;
             let text = result.unwrap_or_else(|e| format!("[{e:#}]"));
             let _ = thread.queue(move |doc| doc.text_ready(page, QString::from(text.as_str()), ms));
@@ -196,16 +187,14 @@ impl qobject::PdfDocument {
 
     pub fn reload(self: Pin<&mut Self>) {
         let path = PathBuf::from(self.source.to_string());
-        for engine in Engine::ALL {
-            PdfService::get(engine).close(path.clone());
-        }
+        PdfService::get().close(path);
         self.load();
     }
 }
 
+#[derive(Default)]
 pub struct PdfPageRust {
     source: QString,
-    engine: QString,
     page: i32,
     render_width: i32,
     rendered: bool,
@@ -214,23 +203,6 @@ pub struct PdfPageRust {
     image: Option<QImage>,
     cancel: CancelToken,
     generation: u64,
-}
-
-impl Default for PdfPageRust {
-    fn default() -> Self {
-        Self {
-            source: QString::default(),
-            engine: QString::from("poppler"),
-            page: 0,
-            render_width: 0,
-            rendered: false,
-            render_ms: 0,
-            error: QString::default(),
-            image: None,
-            cancel: CancelToken::default(),
-            generation: 0,
-        }
-    }
 }
 
 impl Drop for PdfPageRust {
@@ -243,7 +215,6 @@ impl Drop for PdfPageRust {
 impl cxx_qt::Initialize for qobject::PdfPage {
     fn initialize(mut self: Pin<&mut Self>) {
         self.as_mut().on_source_changed(|p| p.schedule_render()).release();
-        self.as_mut().on_engine_changed(|p| p.schedule_render()).release();
         self.as_mut().on_page_changed(|p| p.schedule_render()).release();
         self.as_mut().on_render_width_changed(|p| p.schedule_render()).release();
     }
@@ -265,7 +236,7 @@ impl qobject::PdfPage {
         }
         let generation = self.generation;
         let thread = self.qt_thread();
-        PdfService::get(engine_of(&self.engine)).render(path, self.page as usize, width as u32, token, move |result| {
+        PdfService::get().render(path, self.page as usize, width as u32, token, move |result| {
             let _ = thread.queue(move |page| page.apply_render(generation, result));
         });
     }

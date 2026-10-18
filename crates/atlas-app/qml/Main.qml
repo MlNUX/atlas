@@ -270,12 +270,26 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     currentIndex: sidebarTabs.currentIndex
-                    ProjectTree {
-                        model: treeModel
-                        projectName: app.projectName
-                        currentPath: editor.activePane ? editor.activePane.path : ""
-                        onOpenRequested: (path, newPane) => editor.openFile(path, 0, newPane)
-                        onOpenProjectRequested: folderDialog.open()
+                    ColumnLayout {
+                        spacing: 0
+                        PlacesList {
+                            Layout.fillWidth: true
+                            names: app.placeNames
+                            paths: app.placePaths
+                            icons: app.placeIcons
+                            currentPath: editor.activePane ? editor.activePane.path : ""
+                            onOpenRequested: (path, newPane) => editor.openFile(path, 0, newPane)
+                        }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                        ProjectTree {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            model: treeModel
+                            projectName: app.projectName
+                            currentPath: editor.activePane ? editor.activePane.path : ""
+                            onOpenRequested: (path, newPane) => editor.openFile(path, 0, newPane)
+                            onOpenProjectRequested: folderDialog.open()
+                        }
                     }
                     SearchPanel {
                         id: searchPanel

@@ -93,7 +93,12 @@ impl Cli {
             }
         }
         if let Some(project) = &cli.project {
-            cli.open = cli.open.iter().map(|f| if f.is_relative() { project.join(f) } else { f.clone() }).collect();
+            cli.open = cli
+                .open
+                .iter()
+                .map(|f| if f.is_relative() { project.join(f) } else { f.clone() })
+                .map(|f| f.canonicalize().unwrap_or(f))
+                .collect();
         }
         Ok(cli)
     }

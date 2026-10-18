@@ -128,8 +128,9 @@ nachgeladen werden. Die Engine-Schnittstelle bleibt bestehen, sodass PDFium
 optional (z. B. Cargo-Feature) oder bei Problemen mit einzelnen Dokumenten
 nachrüstbar bleibt.
 
-> Entscheidung offen: Die Empfehlung ist ein Vorschlag. Bei Bedarf eigene PDFs
-> messen mit `cargo run --release -p atlas-core --example pdf_compare -- DATEI.pdf …`.
+> **Entschieden (2026-10-18): Poppler.** Zu Beginn von Phase 1 wurden PDFium,
+> die Engine-Umschaltung und das Vergleichsprogramm `pdf_compare` entfernt;
+> der Vergleichsstand ist im Commit `14de0dd` erhalten.
 
 Gefundener Fehler beim Vergleich: pdfium-render liefert standardmäßig RGBA
 (`FPDF_REVERSE_BYTE_ORDER`); Atlas arbeitet durchgängig mit BGRA. Behoben und

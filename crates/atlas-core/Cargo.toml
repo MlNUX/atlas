@@ -17,7 +17,6 @@ crossbeam-channel = "0.5"
 dirs = "6"
 log = "0.4"
 notify = "8"
-pdfium-render = { version = "0.9", default-features = false, features = ["pdfium_latest", "thread_safe"] }
 poppler-rs = "0.26"
 glib = "0.22"
 cairo-rs = "0.22"
