@@ -3,7 +3,6 @@
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import Atlas
 
@@ -147,7 +146,7 @@ ApplicationWindow {
             { name: qsTr("Session speichern"), hint: app.activeSessionName, run: () => { app.requestSaveAll(); saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) } },
             { name: qsTr("Neue Session …"), run: () => sessionMenu.askNew() },
             { name: qsTr("Alle Dateien speichern"), hint: "Strg+S", run: () => app.requestSaveAll() },
-            { name: qsTr("Projektordner öffnen …"), hint: "Strg+O", run: () => folderDialog.open() },
+            { name: qsTr("Projektordner öffnen …"), hint: "Strg+O", run: () => folderDialog.askProject() },
             { name: qsTr("Neue Datei …"), hint: app.relativePath(dir), run: () => fileActions.newFile(dir) },
             { name: qsTr("Neuer Ordner …"), hint: app.relativePath(dir), run: () => fileActions.newFolder(dir) },
             { name: qsTr("Projektweit suchen"), hint: "Strg+Umschalt+F", run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } },
@@ -275,10 +274,18 @@ ApplicationWindow {
 
     SearchModel { id: searchModel }
 
-    FolderDialog {
+    FolderChooser {
         id: folderDialog
-        title: qsTr("Projektordner öffnen")
-        onAccepted: app.openProject(app.urlToPath(selectedFolder.toString()))
+        app: app
+        function askProject() { ask("open", app.projectRoot ? parentOf(app.projectRoot) : "", "") }
+        function parentOf(path) { const i = path.lastIndexOf("/"); return i > 0 ? path.slice(0, i) : "/" }
+        onChosen: (path, name) => {
+            if (mode === "open") { app.openProject(path); return }
+            // A new session always belongs to the chosen project folder.
+            if (path !== app.projectRoot && !app.openProject(path)) return
+            window.createSession(name, false)
+            fileActions.showMessage(qsTr("Session „%1“ in %2 angelegt").arg(name).arg(app.projectName))
+        }
     }
 
     // ---------------------------------------------------------------- session
@@ -483,6 +490,8 @@ ApplicationWindow {
             const file = app.projectRoot + "/" + (app.openFiles.length ? app.openFiles[0] : "")
             const show = {
                 "sessions": () => sessionMenu.clicked(),
+                "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
+                "new-session": () => sessionMenu.askNew(),
                 "calendar-settings": () => fileActions.calendarSync.openSettings(),
                 "conflicts": () => fileActions.calendarSync.showConflicts(),
                 "extensions": () => extensionsDialog.open(),
@@ -531,7 +540,7 @@ ApplicationWindow {
             Object.assign(item, {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
-                sendToNote: sendToNote, sessionMenu: sessionMenu,
+                sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog,
             })
             item.start()
         }
@@ -539,7 +548,7 @@ ApplicationWindow {
 
     // -------------------------------------------------------------- shortcuts
 
-    Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.open() }
+    Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.askProject() }
     Shortcut { sequence: "Ctrl+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show("") }
     Shortcut { sequence: "Ctrl+Shift+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show(">") }
     Shortcut { sequence: "Ctrl+`"; context: Qt.ApplicationShortcut; onActivated: window.toggleTerminal() }
@@ -670,6 +679,7 @@ ApplicationWindow {
                     activeSplits: editor.groups.filter(g => g.tabs.length > 0).length
                     onSwitchRequested: (id) => window.switchSession(id)
                     onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
+                    onNewSessionRequested: (name) => folderDialog.ask("session", app.projectRoot, name || qsTr("Neue Session"))
                     onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }
                     onDeleteRequested: (id) => window.deleteSession(id)
                 }
@@ -702,7 +712,7 @@ ApplicationWindow {
                     onClicked: mainMenu.popup(0, height + 4)
                     Menu {
                         id: mainMenu
-                        MenuItem { text: qsTr("Projektordner öffnen …\tStrg+O"); onTriggered: folderDialog.open() }
+                        MenuItem { text: qsTr("Projektordner öffnen …\tStrg+O"); onTriggered: folderDialog.askProject() }
                         MenuItem { text: qsTr("Alle Befehle …\tStrg+Umschalt+P"); onTriggered: commandPalette.show(">") }
                         MenuSeparator {}
                         MenuItem { text: qsTr("Editor teilen\tStrg+\\"); onTriggered: if (editor.activeGroup) editor.splitGroup(editor.activeGroup) }
@@ -830,7 +840,7 @@ ApplicationWindow {
                             projectName: app.projectName
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
                             onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
-                            onOpenProjectRequested: folderDialog.open()
+                            onOpenProjectRequested: folderDialog.askProject()
                             onPinRequested: (path) => editor.open(path, 0, "tab")
                         }
                     }
@@ -894,7 +904,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 46
                     hoverEnabled: true
-                    onClicked: folderDialog.open()
+                    onClicked: folderDialog.askProject()
                     background: Rectangle { color: openProject.hovered ? Theme.hover : "transparent" }
                     contentItem: Item {
                         Row {

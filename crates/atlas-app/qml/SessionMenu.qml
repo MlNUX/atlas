@@ -18,11 +18,13 @@ AbstractButton {
 
     signal switchRequested(string id)
     signal createRequested(string name, bool duplicate)
+    /// A new, empty session: Main asks for the project folder and name.
+    signal newSessionRequested(string name)
     signal saveRequested()
     signal deleteRequested(string id)
 
-    /// Asks for the name of a new, empty session.
-    function askNew() { nameDialog.ask(qsTr("Neue Session"), "", "new", "") }
+    /// Asks for the project folder and name of a new, empty session.
+    function askNew() { root.newSessionRequested("") }
 
     enabled: !!app.projectRoot && app.persistSession
     hoverEnabled: true
@@ -213,7 +215,7 @@ AbstractButton {
                 PanelAction {
                     icon: "plus"
                     text: qsTr("Neue Session")
-                    onTriggered: { panel.close(); nameDialog.ask(qsTr("Neue Session"), search.text.trim(), "new", "") }
+                    onTriggered: { panel.close(); root.newSessionRequested(search.text.trim()) }
                     IconButton {
                         id: moreButton
                         anchors.right: parent.right

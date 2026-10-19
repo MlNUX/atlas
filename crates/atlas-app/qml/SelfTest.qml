@@ -21,6 +21,7 @@ Item {
     property var window
     property var sendToNote
     property var sessionMenu
+    property var folderDialog
 
     property int failures: 0
     property int step: 0
@@ -513,6 +514,31 @@ Item {
                 editor.restore({})
                 editor.open(path("notes/wiki.md"), 0, "temporary")
                 check("Temporärer Split ersetzt das leere Fenster", editor.groups.length === 1, names())
+            },
+            () => {
+                // "Neue Session" asks for the project folder (own dialog).
+                sessionMenu.askNew()
+                check("Neue Session fragt nach dem Projektordner", folderDialog.visible && folderDialog.mode === "session"
+                      && folderDialog.folderPath === app.projectRoot && folderDialog.sessionName.length > 0, folderDialog.folderPath)
+                folderDialog.navigate(path("notes"))
+            },
+            () => {
+                check("Ordnerauswahl: nur Ordner", folderDialog.folders.count === 0 && !folderDialog.folders.error, folderDialog.folders.count)
+                const crumbs = folderDialog.segments(path("notes"))
+                check("Pfadleiste endet im Ordner", crumbs[crumbs.length - 1].name === "notes" && crumbs[crumbs.length - 1].path === path("notes"))
+                folderDialog.navigate(app.projectRoot)
+            },
+            () => {
+                check("Ordnerauswahl listet Unterordner", folderDialog.folders.count >= 3, folderDialog.folders.count)
+                folderDialog.sessionName = "Selbsttest-Session"
+                folderDialog.accept()
+            },
+            () => {
+                check("Session im gewählten Projekt angelegt", !folderDialog.visible && app.sessionNames.indexOf("Selbsttest-Session") >= 0
+                      && app.sessionIds[app.sessionNames.indexOf("Selbsttest-Session")] === app.activeSession, app.sessionNames.join(", "))
+                folderDialog.askProject()
+                check("Projektordner öffnen: eigener Dialog", folderDialog.visible && folderDialog.mode === "open")
+                folderDialog.close()
             },
         ]
         timer.start()

@@ -31,6 +31,7 @@ const QML_FILES: &[&str] = &[
     "qml/ProjectTree.qml",
     "qml/PropertiesDialog.qml",
     "qml/QuickLook.qml",
+    "qml/FolderChooser.qml",
     "qml/SearchPanel.qml",
     "qml/SendToNoteDialog.qml",
     "qml/SelfTest.qml",

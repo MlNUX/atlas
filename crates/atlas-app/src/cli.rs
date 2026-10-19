@@ -21,7 +21,7 @@ Options:
   --screenshot-dialog NAME  Open a dialog for the screenshot (sessions,
                        calendar-settings, extensions, properties, entry,
                        editor, palette, menu, context-menu, conflicts,
-                       send-to-note, rename, confirm)
+                       send-to-note, rename, confirm, open-folder, new-session)
   --quit-after MS      Quit MS milliseconds after startup (for tests)
   --self-test          Run the built-in smoke test against PROJECT and exit
                        with its result (0 = passed; for tests)

@@ -40,6 +40,7 @@ pub mod qobject {
         #[base = QAbstractListModel]
         #[qproperty(QString, path, READ, WRITE = set_path, NOTIFY)]
         #[qproperty(bool, show_hidden, cxx_name = "showHidden", READ, WRITE = set_show_hidden, NOTIFY)]
+        #[qproperty(bool, folders_only, cxx_name = "foldersOnly", READ, WRITE = set_folders_only, NOTIFY)]
         #[qproperty(QString, sort_key, cxx_name = "sortKey", READ, WRITE = set_sort_key, NOTIFY)]
         #[qproperty(bool, sort_ascending, cxx_name = "sortAscending", READ, WRITE = set_sort_ascending, NOTIFY)]
         #[qproperty(i32, count, READ, NOTIFY)]
@@ -51,6 +52,8 @@ pub mod qobject {
         fn set_path(self: Pin<&mut FolderModel>, path: QString);
         #[cxx_name = "setShowHidden"]
         fn set_show_hidden(self: Pin<&mut FolderModel>, show: bool);
+        #[cxx_name = "setFoldersOnly"]
+        fn set_folders_only(self: Pin<&mut FolderModel>, only: bool);
         #[cxx_name = "setSortKey"]
         fn set_sort_key(self: Pin<&mut FolderModel>, key: QString);
         #[cxx_name = "setSortAscending"]
@@ -129,6 +132,7 @@ const ROLE_KIND: i32 = 0x0109;
 pub struct FolderModelRust {
     path: QString,
     show_hidden: bool,
+    folders_only: bool,
     sort_key: QString,
     sort_ascending: bool,
     count: i32,
@@ -145,6 +149,7 @@ impl Default for FolderModelRust {
         Self {
             path: QString::default(),
             show_hidden: false,
+            folders_only: false,
             sort_key: QString::from("name"),
             sort_ascending: true,
             count: 0,
@@ -202,6 +207,14 @@ impl qobject::FolderModel {
         }
     }
 
+    pub fn set_folders_only(mut self: Pin<&mut Self>, only: bool) {
+        if self.folders_only != only {
+            self.as_mut().rust_mut().folders_only = only;
+            self.as_mut().folders_only_changed();
+            self.reload();
+        }
+    }
+
     pub fn set_sort_key(mut self: Pin<&mut Self>, key: QString) {
         if self.sort_key != key {
             self.as_mut().rust_mut().sort_key = key;
@@ -234,9 +247,13 @@ impl qobject::FolderModel {
         self.as_mut().rust_mut().loading = true;
         self.as_mut().loading_changed();
         let (generation, show_hidden, key, asc) = (self.generation, self.show_hidden, self.key(), self.sort_ascending);
+        let folders_only = self.folders_only;
         let thread = self.qt_thread();
         std::thread::spawn(move || {
             let result = listing::list(std::path::Path::new(&path), show_hidden).map(|mut entries| {
+                if folders_only {
+                    entries.retain(|e| e.is_dir);
+                }
                 listing::sort(&mut entries, key, asc);
                 entries
             });
