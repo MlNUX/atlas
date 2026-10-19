@@ -73,7 +73,7 @@ Rectangle {
             return tab
         }
         const props = { app: group.app, actions: group.actions, path: path, line: line || 0, preview: mode === "preview" }
-        const tab = group.editorArea ? group.editorArea.createDocument(props) : tabComponent.createObject(content, props)
+        const tab = group.editorArea ? group.editorArea.createDocument(props, content) : tabComponent.createObject(content, props)
         tab.parent = content
         if (state) tab.applyState(state)
         // Connections go through `ownerGroup`, so a tab moved to another

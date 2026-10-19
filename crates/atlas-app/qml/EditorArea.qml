@@ -44,7 +44,16 @@ SplitView {
         id: documentComponent
         DocumentView { anchors.fill: parent }
     }
-    function createDocument(props) { return documentComponent.createObject(area, props) }
+    // Owner of all documents. Not an Item: children of the SplitView itself
+    // would become (hidden) splits with their own handles.
+    QtObject { id: documentOwner }
+    /// A document shown in `visualParent` (the content of a split) but
+    /// owned by the area.
+    function createDocument(props, visualParent) {
+        const doc = documentComponent.createObject(visualParent, props)
+        if (doc) area.app.setOwner(doc, documentOwner)
+        return doc
+    }
 
     Component {
         id: groupComponent
@@ -235,17 +244,47 @@ SplitView {
         for (const g of groups) g.pathsRemoved(paths)
     }
 
+    /// Share of each split in the available space; kept when the area
+    /// changes size (window, sidebar, context bar), so the splits always
+    /// fill it.
+    property var shares: []
+
     /// Gives all groups the same share of the available space.
     function equalize() {
-        const n = Math.max(1, groups.length)
-        for (const g of groups) {
-            g.SplitView.preferredWidth = area.width / n
-            g.SplitView.preferredHeight = area.height / n
+        shares = groups.map(() => 1)
+        relayout()
+    }
+
+    /// Sizes the splits by their shares; the last one takes what rounding
+    /// leaves.
+    function relayout() {
+        const n = groups.length
+        if (!n) return
+        const horizontal = orientation === Qt.Horizontal
+        const total = (horizontal ? width : height) - (n - 1) * Theme.gap
+        if (total <= 0) return
+        if (shares.length !== n) shares = groups.map(() => 1)
+        const sum = shares.reduce((a, b) => a + b, 0) || n
+        for (let i = 0; i < n; ++i) {
+            const g = groups[i]
+            const size = Math.max(140, total * shares[i] / sum)
+            g.SplitView.fillWidth = horizontal && i === n - 1
+            g.SplitView.fillHeight = !horizontal && i === n - 1
+            if (horizontal) g.SplitView.preferredWidth = size
+            else g.SplitView.preferredHeight = size
         }
     }
-    onOrientationChanged: equalize()
-    property bool sized: false
-    onWidthChanged: if (!sized && width > 0) { sized = true; equalize() }
+
+    // A split resized by hand keeps its new share.
+    onResizingChanged: {
+        if (resizing || !groups.length) return
+        const horizontal = orientation === Qt.Horizontal
+        shares = groups.map(g => Math.max(1, horizontal ? g.width : g.height))
+        relayout()
+    }
+    onOrientationChanged: relayout()
+    onWidthChanged: relayout()
+    onHeightChanged: relayout()
 
     onActiveIndexChanged: {
         for (let i = 0; i < groups.length; ++i) groups[i].active = (i === activeIndex)

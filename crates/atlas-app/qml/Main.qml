@@ -157,7 +157,7 @@ ApplicationWindow {
             { name: qsTr("Terminal als Tab öffnen"), run: () => window.openTerminal(dir, "tab") },
             { name: qsTr("Editor teilen"), hint: "Strg+\\", run: () => { if (editor.activeGroup) editor.splitGroup(editor.activeGroup) } },
             { name: qsTr("Tab schließen"), hint: "Strg+W", run: () => { if (editor.activeGroup) editor.activeGroup.closeCurrent() } },
-            { name: qsTr("Seitenleiste ein-/ausblenden"), hint: "Strg+B", run: () => { sidebar.visible = !sidebar.visible; saveTimer.restart() } },
+            { name: qsTr("Seitenleiste ein-/ausblenden"), hint: "Strg+B", run: () => window.toggleSidebar() },
             { name: qsTr("Explorer zeigen"), hint: "Strg+Umschalt+E", run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 0 } },
             { name: qsTr("Versteckte Dateien ein-/ausblenden"), run: () => { treeModel.showHidden = !treeModel.showHidden } },
             { name: qsTr("Papierkorb öffnen"), run: () => { const t = app.placePaths.find(p => app.fileKind(p) === "trash"); if (t) editor.open(t, 0, "tab") } },
@@ -544,7 +544,12 @@ ApplicationWindow {
     // In the calendar: previous / next week or month.
     Shortcut { sequence: "Alt+Left"; onActivated: if (editor.activeTab) { if (editor.activeTab.kind === "calendar") editor.activeTab.viewerItem.step(-1); else editor.activeTab.goBack() } }
     Shortcut { sequence: "Alt+Right"; onActivated: if (editor.activeTab) { if (editor.activeTab.kind === "calendar") editor.activeTab.viewerItem.step(1); else editor.activeTab.goForward() } }
-    Shortcut { sequence: "Ctrl+B"; onActivated: { sidebar.visible = !sidebar.visible; saveTimer.restart() } }
+    Shortcut { sequence: "Ctrl+B"; onActivated: window.toggleSidebar() }
+
+    function toggleSidebar() { setSidebarVisible(!sidebar.visible) }
+    function setSidebarVisible(visible) { sidebar.visible = visible; saveTimer.restart() }
+    /// For tests: the sidebar's width while it is shown.
+    function setSidebarWidth(width) { sidebar.SplitView.preferredWidth = width }
 
     function toggleTerminal() {
         if (terminalPanel.visible && terminalPanel.currentGroup && terminalPanel.currentGroup.activeTerminal
@@ -696,7 +701,7 @@ ApplicationWindow {
                             text: editor.orientation === Qt.Horizontal ? qsTr("Splits untereinander") : qsTr("Splits nebeneinander")
                             onTriggered: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
                         }
-                        MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: { sidebar.visible = !sidebar.visible; saveTimer.restart() } }
+                        MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: window.toggleSidebar() }
                         MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
                         MenuSeparator {}
                         MenuItem { text: qsTr("Kalender-Einstellungen …"); onTriggered: fileActions.calendarSync.openSettings() }

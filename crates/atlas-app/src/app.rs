@@ -450,6 +450,12 @@ pub mod qobject {
         #[cxx_name = "saveWindowImage"]
         unsafe fn save_window_image(self: &AppController, window: *mut QObject, path: &QString) -> bool;
 
+        /// Makes `owner` responsible for deleting `object` (QObject parent),
+        /// whatever its visual parent.
+        #[qinvokable]
+        #[cxx_name = "setOwner"]
+        unsafe fn set_owner(self: &AppController, object: *mut QObject, owner: *mut QObject);
+
         /// Sends a mouse event (0 press, 1 move, 2 release) at window
         /// coordinates after `delay_ms`; for the smoke test.
         #[qinvokable]
@@ -1709,6 +1715,12 @@ impl qobject::AppController {
     /// window object).
     pub unsafe fn save_window_image(&self, window: *mut cxx_qt::QObject, path: &QString) -> bool {
         unsafe { crate::qt_helpers::save_window_image(window, path) }
+    }
+
+    /// # Safety
+    /// Both must be null or live QObjects (passed from QML).
+    pub unsafe fn set_owner(&self, object: *mut cxx_qt::QObject, owner: *mut cxx_qt::QObject) {
+        unsafe { crate::qt_helpers::set_owner(object, owner) }
     }
 
     /// # Safety

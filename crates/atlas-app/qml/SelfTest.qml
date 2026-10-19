@@ -32,6 +32,15 @@ Item {
     property var moved: null
     property string before
 
+    property string layoutBefore
+    /// Widths of the editor area and its splits, for messages.
+    function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
+    /// The splits (with the gaps between them) cover the editor area.
+    function filled() {
+        const sum = editor.groups.reduce((n, g) => n + g.width, 0) + (editor.groups.length - 1) * 8
+        return editor.width > 100 && Math.abs(sum - editor.width) <= 2
+    }
+
     /// "a.md,b.md | c.md" – tabs per split, for messages.
     function names() { return editor.groups.map(g => g.tabs.map(t => t.title).join(",")).join(" | ") }
 
@@ -422,6 +431,29 @@ Item {
             },
             () => {
                 const [left, right] = editor.groups
+                check("An den linken Rand: neuer Split links", editor.groups.length === 2 && left.tabs.length === 1 && left.tabs[0] === test.moved
+                      && right.tabs.indexOf(test.moved) < 0 && editor.activeGroup === left, names())
+                // ---- layout: splits fill the editor area
+                editor.restore({})
+                editor.open(path("notes/idee.md"), 0, "tab")
+                editor.open(path("notes/wiki.md"), 0, "split")
+            },
+            () => {
+                test.layoutBefore = layoutText()
+                window.setSidebarVisible(false)
+            },
+            () => {
+                check("Seitenleiste zu: Splits füllen den Platz", filled(), layoutText() + " vorher " + test.layoutBefore)
+                window.setSidebarVisible(true)
+                window.setSidebarWidth(520)
+            },
+            () => {
+                check("Breitere Seitenleiste: Splits passen sich an", filled() && editor.groups.every(g => g.width > 80), layoutText())
+                window.setSidebarWidth(200)
+            },
+            () => {
+                check("Schmalere Seitenleiste: Splits wachsen mit", filled(), layoutText())
+                window.setSidebarWidth(280)
                 // Dialogs of the new design.
                 sendToNote.ask("ok", app.projectRoot)
                 check("„In Notiz übernehmen“ öffnet", sendToNote.visible && sendToNote.filtered.length > 0, sendToNote.filtered.length)
@@ -430,8 +462,6 @@ Item {
                 check("Sessionliste mit Umfang", sessions.length >= 1 && sessions.every(s => s.tabs >= 0 && s.splits >= 0 && !!s.kind), JSON.stringify(sessions))
                 sessionMenu.clicked()
                 check("Sessionfenster öffnet", sessionMenu.sessions.length === sessions.length)
-                check("An den linken Rand: neuer Split links", editor.groups.length === 2 && left.tabs.length === 1 && left.tabs[0] === test.moved
-                      && right.tabs.indexOf(test.moved) < 0 && editor.activeGroup === left, names())
             },
         ]
         timer.start()
@@ -446,7 +476,7 @@ Item {
                 try {
                     test.steps[test.step]()
                 } catch (e) {
-                    test.check("Schritt " + (test.step + 1), false, e)
+                    test.check("Schritt " + (test.step + 1), false, e + (e.lineNumber ? " (Zeile " + e.lineNumber + ")" : "") + (e.stack ? " " + e.stack.split("\n")[0] : ""))
                 }
                 test.step++
                 return

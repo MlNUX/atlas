@@ -64,6 +64,12 @@ bool saveWindowImage(QObject* window, const QString& path)
 }
 
 
+void setOwner(QObject* object, QObject* owner)
+{
+    if (object && owner)
+        object->setParent(owner);
+}
+
 void postMouse(QObject* window, int kind, double x, double y, int delayMs)
 {
     QPointer<QWindow> w = qobject_cast<QWindow*>(window);

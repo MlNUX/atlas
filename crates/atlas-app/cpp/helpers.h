@@ -35,6 +35,10 @@ void installWebSchemeHandler();
 // Renders a QQuickWindow (passed from QML as QObject) into a PNG file.
 bool saveWindowImage(QObject* window, const QString& path);
 
+// Makes `owner` the QObject parent of `object` (its lifetime owner),
+// independent of the visual parent.
+void setOwner(QObject* object, QObject* owner);
+
 // Sends a left mouse event at (x, y) in window coordinates after `delayMs`:
 // kind 0 press, 1 move, 2 release. Used by the smoke test to drive real
 // drag-and-drop.
