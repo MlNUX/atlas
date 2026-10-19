@@ -55,6 +55,8 @@ input[type=checkbox] {
   appearance: none; width: 16px; height: 16px; margin: 0 0.6em 0 0; vertical-align: -3px;
   border: 1.5px solid var(--muted); border-radius: 4px; background: transparent;
 }
+input.task { cursor: pointer; }
+input.task:hover { border-color: var(--accent); }
 input[type=checkbox]:checked { background: var(--accent); border-color: var(--accent); }
 input[type=checkbox]:checked::after { content: "✓"; display: block; color: white; font-size: 12px; line-height: 13px; text-align: center; }
 

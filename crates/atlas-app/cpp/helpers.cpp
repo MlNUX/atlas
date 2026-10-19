@@ -64,6 +64,17 @@ bool saveWindowImage(QObject* window, const QString& path)
 }
 
 
+void sendWheel(QObject* window, double x, double y, int delta, bool ctrl)
+{
+    auto* w = qobject_cast<QWindow*>(window);
+    if (!w)
+        return;
+    const QPointF local(x, y);
+    QWheelEvent event(local, w->mapToGlobal(local), QPoint(), QPoint(0, delta), Qt::NoButton,
+                      ctrl ? Qt::ControlModifier : Qt::NoModifier, Qt::NoScrollPhase, false);
+    QCoreApplication::sendEvent(w, &event);
+}
+
 void setOwner(QObject* object, QObject* owner)
 {
     if (object && owner)

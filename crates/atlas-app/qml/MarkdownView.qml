@@ -235,6 +235,10 @@ Rectangle {
                 onNewWindowRequested: (request) => Qt.openUrlExternally(request.requestedUrl)
                 onJavaScriptConsoleMessage: (level, text, lineNumber, sourceId) => {
                     if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
+                    else if (text.startsWith("atlas:task:")) {
+                        const t = JSON.parse(text.slice(11))
+                        if (!editor.toggleTask(t.line, t.checked)) root.render()
+                    }
                     else if (text.startsWith("atlas:scroll:")) {
                         const s = JSON.parse(text.slice(13))
                         root.previewLine = s.line

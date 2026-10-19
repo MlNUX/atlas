@@ -450,6 +450,11 @@ pub mod qobject {
         #[cxx_name = "saveWindowImage"]
         unsafe fn save_window_image(self: &AppController, window: *mut QObject, path: &QString) -> bool;
 
+        /// Sends a wheel event at window coordinates; for the smoke test.
+        #[qinvokable]
+        #[cxx_name = "sendWheel"]
+        unsafe fn send_wheel(self: &AppController, window: *mut QObject, x: f64, y: f64, delta: i32, ctrl: bool);
+
         /// Makes `owner` responsible for deleting `object` (QObject parent),
         /// whatever its visual parent.
         #[qinvokable]
@@ -1715,6 +1720,12 @@ impl qobject::AppController {
     /// window object).
     pub unsafe fn save_window_image(&self, window: *mut cxx_qt::QObject, path: &QString) -> bool {
         unsafe { crate::qt_helpers::save_window_image(window, path) }
+    }
+
+    /// # Safety
+    /// As for `save_window_image`.
+    pub unsafe fn send_wheel(&self, window: *mut cxx_qt::QObject, x: f64, y: f64, delta: i32, ctrl: bool) {
+        unsafe { crate::qt_helpers::send_wheel(window, x, y, delta, ctrl) }
     }
 
     /// # Safety

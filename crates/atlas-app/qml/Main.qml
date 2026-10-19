@@ -301,14 +301,23 @@ ApplicationWindow {
     }
 
     /// Files from `--open FILE[:LINE]`.
+    /// Only for the project Atlas started with: projects opened later get
+    /// their own session, not the files from the command line.
+    property bool cliFilesOpened: false
     function openCliFiles() {
-        for (let i = 0; i < app.openFiles.length; ++i)
-            if (app.openFiles[i] === "calendar:") openCalendar({})
-            else editor.open(app.absolutePath(app.openFiles[i]), parseInt(app.openLines[i]) || 0, editor.documents().length > 0 ? "split" : "tab")
+        if (cliFilesOpened) return
+        cliFilesOpened = true
+        for (let i = 0; i < app.openFiles.length; ++i) {
+            const file = app.openFiles[i]
+            if (file === "calendar:") openCalendar({})
+            else if (app.exists(app.absolutePath(file)))
+                editor.open(app.absolutePath(file), parseInt(app.openLines[i]) || 0, editor.documents().length > 0 ? "split" : "tab")
+        }
     }
 
     function readLayout() {
-        if (!app.restoreSession) return {}
+        // `--open` skips the session of the start project only.
+        if (!app.restoreSession && !(cliFilesOpened && app.persistSession)) return {}
         try { return JSON.parse(app.loadLayout() || "{}") } catch (e) { return {} }
     }
 

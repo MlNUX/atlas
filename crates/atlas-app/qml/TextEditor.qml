@@ -131,6 +131,22 @@ Rectangle {
         area.insert(atEnd ? area.length : area.cursorPosition, text)
         return true
     }
+    /// Checks (`done`) or unchecks the task list item on line `n` (1-based):
+    /// `- [ ]` ↔ `- [x]`, as an ordinary edit (undo, autosave). False if
+    /// the line holds no task or the file is read-only.
+    function toggleTask(n, done) {
+        if (root.readOnly) return false
+        const start = positionOfLine(n)
+        let end = area.text.indexOf("\n", start)
+        if (end < 0) end = area.length
+        const line = area.text.slice(start, end)
+        const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])\]/.exec(line)
+        if (!m) return false
+        const at = start + m[1].length
+        area.remove(at, at + 1)
+        area.insert(at, done ? "x" : " ")
+        return true
+    }
     function keepMine() { doc.saveKeepingMine(area.text, editGeneration) }
 
     function reveal(newLine) {

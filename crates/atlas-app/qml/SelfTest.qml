@@ -33,6 +33,7 @@ Item {
     property string before
 
     property string layoutBefore
+    property real zoomBefore
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -454,6 +455,21 @@ Item {
             () => {
                 check("Schmalere Seitenleiste: Splits wachsen mit", filled(), layoutText())
                 window.setSidebarWidth(280)
+                editor.open(path("docs/umbenannt.pdf"), 0, "tab")
+            },
+            () => {
+                // Ctrl+wheel over the pages zooms, the wheel alone scrolls.
+                const v = editor.activeTab.viewerItem
+                const p = v.mapToItem(null, v.width / 2, v.height * 0.6)
+                test.zoomBefore = v.zoomScale
+                app.sendWheel(window, p.x, p.y, 120, true)
+                check("Strg+Mausrad vergrößert die PDF", v.zoomScale > test.zoomBefore * 1.05, test.zoomBefore + " → " + v.zoomScale)
+                const zoomed = v.zoomScale
+                app.sendWheel(window, p.x, p.y, -240, true)
+                check("Strg+Mausrad zurück verkleinert", v.zoomScale < zoomed, zoomed + " → " + v.zoomScale)
+                const plain = v.zoomScale
+                app.sendWheel(window, p.x, p.y, -120, false)
+                check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
                 // Dialogs of the new design.
                 sendToNote.ask("ok", app.projectRoot)
                 check("„In Notiz übernehmen“ öffnet", sendToNote.visible && sendToNote.filtered.length > 0, sendToNote.filtered.length)
@@ -462,6 +478,27 @@ Item {
                 check("Sessionliste mit Umfang", sessions.length >= 1 && sessions.every(s => s.tabs >= 0 && s.splits >= 0 && !!s.kind), JSON.stringify(sessions))
                 sessionMenu.clicked()
                 check("Sessionfenster öffnet", sessionMenu.sessions.length === sessions.length)
+            },
+            () => {
+                // Task list checkboxes in the preview toggle the source line.
+                editor.open(path("notes/todo.md"), 0, "tab")
+                const md = editor.activeTab.viewerItem
+                md.mode = "preview"
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("document.querySelector('input.task[data-line=\"7\"]').click()")
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Checkbox in der Vorschau hakt ab", md.editorItem.text.indexOf("- [x] Literatur sichten") >= 0, md.editorItem.text)
+                md.previewItem.runJavaScript("document.querySelector('input.task[data-line=\"8\"]').click()")
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("… und wieder ab", md.editorItem.text.indexOf("- [ ] Gliederung") >= 0, md.editorItem.text)
+                md.editorItem.save()
+                check("Abhaken gespeichert", app.readTextFile(path("notes/todo.md")).indexOf("- [x] Literatur sichten") >= 0)
             },
         ]
         timer.start()

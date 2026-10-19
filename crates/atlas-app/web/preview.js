@@ -4,7 +4,8 @@
 // Markdown preview page. Atlas renders the HTML in Rust and passes it in via
 // `atlas.set()`; this page only adds math (KaTeX), diagrams (Mermaid, loaded
 // on first use) and code highlighting. Clicks on links and the scroll
-// position are reported to QML through console messages.
+// position are reported to QML through console messages, as are clicks on
+// task list checkboxes.
 "use strict";
 
 window.atlas = (function () {
@@ -75,6 +76,12 @@ window.atlas = (function () {
             broken: !!d.broken,
             newTab: ev.ctrlKey || ev.button === 1,
         });
+    });
+    // Task list checkboxes: QML toggles `[ ]`/`[x]` on that line of the
+    // source; the preview shows the change at once.
+    document.addEventListener("change", (ev) => {
+        const box = ev.target;
+        if (box.matches && box.matches("input.task")) post("task", { line: +box.dataset.line, checked: box.checked });
     });
     document.addEventListener("auxclick", (ev) => { if (ev.button === 1) ev.target.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true })); });
 

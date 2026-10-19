@@ -417,6 +417,8 @@ pub fn analyze(src: &str, file: &Path, root: Option<&Path>) -> Rendered {
 ///   blocks become `<pre class="mermaid">`, math becomes
 ///   `<span class="math" data-tex=…>` for KaTeX
 /// - every top level block gets a `data-line` marker for scroll sync
+/// - task list checkboxes are enabled and carry their source line
+///   (`<input type="checkbox" class="task" data-line=…>`)
 pub fn render(src: &str, file: &Path, root: Option<&Path>) -> Rendered {
     render_impl(src, file, root, true)
 }
@@ -600,6 +602,11 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
                     id: CowStr::from(""),
                 }));
             }
+            // Task list items: clickable in the preview (toggled in the source
+            // by line).
+            Event::TaskListMarker(done) if html => events.push(Event::Html(
+                format!("<input type=\"checkbox\" class=\"task\" data-line=\"{line}\"{}>", if done { " checked" } else { "" }).into(),
+            )),
             other => events.push(other),
         }
     }
@@ -788,6 +795,10 @@ mod tests {
         assert!(r.html.contains("data-atlas-line=\"3\""));
         assert!(r.html.contains("class=\"broken\""), "missing target is marked");
         assert!(r.html.contains("data-line=\"6\""), "line markers for scroll sync");
+        let tasks = render("# T\n\n- [ ] offen\n- [x] erledigt\n", Path::new("/p/t.md"), None).html;
+        assert!(tasks.contains("<input type=\"checkbox\" class=\"task\" data-line=\"3\">"), "{tasks}");
+        assert!(tasks.contains("data-line=\"4\" checked>"), "{tasks}");
+        assert!(!tasks.contains("disabled"), "{tasks}");
         assert!(!r.html.contains("tags:"), "front matter is not rendered");
         assert_eq!(r.links.iter().filter(|l| l.is_broken()).count(), 1);
         assert_eq!(normalize_tag("#Architektur/Backend/"), "architektur/backend");

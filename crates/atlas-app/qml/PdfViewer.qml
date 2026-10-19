@@ -790,6 +790,26 @@ Rectangle {
                 ScrollBar.vertical: ScrollBar {}
                 ScrollBar.horizontal: ScrollBar {}
 
+                // Ctrl+wheel zooms (on the list itself: it would take every
+                // wheel event for scrolling); the spot under the mouse stays.
+                WheelHandler {
+                    acceptedModifiers: Qt.ControlModifier
+                    onWheel: (event) => {
+                        const steps = event.angleDelta.y / 120
+                        if (!steps) return
+                        const at = Qt.point(pages.contentX + event.x - pages.originX, pages.contentY + event.y - pages.originY)
+                        const before = root.zoomScale
+                        root.zoomBy(Math.pow(1.1, steps))
+                        const k = root.zoomScale / before
+                        Qt.callLater(() => {
+                            pages.contentX = Math.max(0, at.x * k - event.x) + pages.originX
+                            pages.contentY = Math.max(0, at.y * k - event.y) + pages.originY
+                            pages.returnToBounds()
+                        })
+                        event.accepted = true
+                    }
+                }
+
                 delegate: Item {
                     id: pageDelegate
                     required property int index
@@ -1046,10 +1066,6 @@ Rectangle {
                     }
                 }
 
-                WheelHandler {
-                    acceptedModifiers: Qt.ControlModifier
-                    onWheel: (event) => root.zoomBy(event.angleDelta.y > 0 ? 1.1 : 1 / 1.1)
-                }
             }
 
             // Notes citing this PDF and the local graph.
