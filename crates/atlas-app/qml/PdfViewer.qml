@@ -26,6 +26,11 @@ Rectangle {
     property bool sidebarVisible: false
     /// 0 = thumbnails, 1 = outline, 2 = annotations.
     property int sidebarTab: 0
+    /// Notes citing or linking to this PDF, and the local graph.
+    property bool showContext: false
+
+    /// Open another file (from backlinks or the graph).
+    signal linkActivated(string path, int line, bool newPane, var state)
     readonly property int currentPage: Math.max(0, pages.indexAt(10, pages.contentY + pages.height / 3))
 
     // Search state.
@@ -73,7 +78,10 @@ Rectangle {
     focus: true
 
     function viewState() {
-        return { zoom: root.zoom, page: currentPage, sidebar: sidebarVisible, sidebarTab: sidebarTab }
+        return {
+            zoom: root.zoom, page: currentPage, sidebar: sidebarVisible, sidebarTab: sidebarTab,
+            context: showContext, contextTab: contextPanel.tab, graphDepth: contextPanel.depth,
+        }
     }
     function applyState(state) {
         let s = state || {}
@@ -88,6 +96,9 @@ Rectangle {
         if (s.zoom !== undefined) root.zoom = s.zoom
         if (s.sidebar !== undefined) root.sidebarVisible = s.sidebar
         if (s.sidebarTab !== undefined) root.sidebarTab = s.sidebarTab
+        if (s.context !== undefined) root.showContext = s.context
+        if (s.contextTab !== undefined) contextPanel.tab = s.contextTab
+        if (s.graphDepth !== undefined) contextPanel.depth = s.graphDepth
         restorePage = s.page || 0
         if (doc.status === "ready") Qt.callLater(root.restore)
     }
@@ -522,6 +533,21 @@ Rectangle {
                     onClicked: doc.extractText(root.currentPage)
                 }
                 IconButton { glyph: "⟳"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
+                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
+                IconButton {
+                    glyph: "⇠ " + contextPanel.count
+                    tip: qsTr("Notizen, die auf diese PDF verweisen oder daraus zitieren")
+                    checkable: true
+                    checked: root.showContext && contextPanel.tab === 0
+                    onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 0); contextPanel.tab = 0 }
+                }
+                IconButton {
+                    glyph: "◎"
+                    tip: qsTr("Lokaler Graph: verknüpfte Notizen und Dateien")
+                    checkable: true
+                    checked: root.showContext && contextPanel.tab === 1
+                    onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 1); contextPanel.tab = 1 }
+                }
             }
         }
 
@@ -1024,6 +1050,17 @@ Rectangle {
                     acceptedModifiers: Qt.ControlModifier
                     onWheel: (event) => root.zoomBy(event.angleDelta.y > 0 ? 1.1 : 1 / 1.1)
                 }
+            }
+
+            // Notes citing this PDF and the local graph.
+            ContextPanel {
+                id: contextPanel
+                Layout.preferredWidth: 280
+                Layout.fillHeight: true
+                visible: root.showContext
+                app: root.app
+                path: root.source
+                onOpenRequested: (path, line, newPane, state) => root.linkActivated(path, line, newPane, state)
             }
         }
 

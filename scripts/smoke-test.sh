@@ -33,6 +33,7 @@ fn main() {}
 ```
 MD
 printf '# Plan\n\n## Ziele\n\nZurück zur [Idee](idee.md).\n' > "$project/notes/plan.md"
+printf -- '---\ntags: [wiki]\n---\n# Wiki\n\nSiehe [[/notes/plan|Plan]] und [[/notes/idee.md#Einleitung|die Idee]].\n' > "$project/notes/wiki.md"
 cat > "$project/src/main.rs" <<'RS'
 pub struct Parser {
     pos: usize,

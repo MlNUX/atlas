@@ -34,6 +34,28 @@ Rectangle {
 
     /// FileActions (for "open in editor"); optional.
     property var actions: null
+    /// Suggest project files after `[[` (Markdown).
+    property bool wikiCompletion: false
+
+    /// Shows file suggestions while the cursor is inside an unfinished
+    /// `[[…` (no `|`, `#` or `]]` typed yet).
+    function updateCompletion() {
+        const pos = area.cursorPosition
+        const before = area.getText(Math.max(0, pos - 200), pos)
+        const open = before.lastIndexOf("[[")
+        const query = open >= 0 ? before.slice(open + 2) : ""
+        if (open < 0 || !area.activeFocus || /[\]\n|#]/.test(query) || area.selectionStart !== area.selectionEnd) {
+            completion.close()
+            return
+        }
+        const results = JSON.parse(root.app.quickOpen(query.replace(/^\//, ""), 12))
+            .filter(r => r.kind !== "dir" && root.app.exists(r.path)).slice(0, 8)
+        if (!results.length) { completion.close(); return }
+        completion.results = results
+        completion.current = 0
+        completion.start = pos - query.length
+        completion.open()
+    }
     property bool showSymbols: false
     property var symbolList: []
     /// Index of the symbol containing the cursor.
@@ -142,6 +164,11 @@ Rectangle {
     }
 
     function viewState() { return { line: root.topLine, cursor: area.cursorPosition, symbols: root.showSymbols } }
+    function focusText() { area.forceActiveFocus() }
+    /// Wiki link suggestions are shown (see `updateCompletion`).
+    readonly property bool completing: completion.visible
+    function acceptCompletion() { completion.accept() }
+
     function applyState(state) {
         if (state.cursor !== undefined) area.cursorPosition = Math.min(state.cursor, area.length)
         if (state.symbols !== undefined) root.showSymbols = state.symbols
@@ -341,15 +368,88 @@ Rectangle {
                         if (root.autosave) autosaveTimer.restart()
                         if (root.showSymbols) symbolTimer.restart()
                     }
+                    onCursorPositionChanged: if (root.wikiCompletion) completionTimer.restart()
                     Keys.onPressed: (event) => {
                         const ctrl = event.modifiers & Qt.ControlModifier
+                        if (completion.visible) {
+                            if (event.key === Qt.Key_Down) { completion.move(1); event.accepted = true; return }
+                            if (event.key === Qt.Key_Up) { completion.move(-1); event.accepted = true; return }
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Tab) {
+                                completion.accept(); event.accepted = true; return
+                            }
+                            if (event.key === Qt.Key_Escape) { completion.close(); event.accepted = true; return }
+                        }
                         if (ctrl && event.key === Qt.Key_S) { root.save(); event.accepted = true }
                         else if (ctrl && event.key === Qt.Key_F) { root.openFind(); event.accepted = true }
                         else if (ctrl && event.key === Qt.Key_G) { gotoBar.open(); event.accepted = true }
                         else if (event.key === Qt.Key_Escape && findBar.visible) { findBar.visible = false; event.accepted = true }
                     }
                     FontMetrics { id: fontMetrics; font: area.font }
+
+                    // Completion of wiki links: `[[` suggests project files.
+                    Popup {
+                        id: completion
+                        property var results: []
+                        property int current: 0
+                        /// Start of the typed path (after `[[`).
+                        property int start: -1
+                        x: area.cursorRectangle.x
+                        y: area.cursorRectangle.y + area.cursorRectangle.height + 2
+                        width: 420
+                        height: Math.min(8, results.length) * 26 + 8
+                        padding: 4
+                        focus: false
+                        closePolicy: Popup.CloseOnPressOutside
+                        background: Rectangle { color: Theme.header; border.color: Theme.border; radius: 4 }
+                        function move(step) { current = (current + step + results.length) % results.length }
+                        function accept() {
+                            const r = results[current]
+                            if (!r || start < 0) { close(); return }
+                            const end = area.cursorPosition
+                            const closing = area.text.slice(end, end + 2) === "]]" ? "" : "]]"
+                            area.remove(start, end)
+                            area.insert(start, "/" + r.relative + closing)
+                            area.cursorPosition = start + r.relative.length + 1 + 2
+                            close()
+                        }
+                        ListView {
+                            anchors.fill: parent
+                            model: completion.results
+                            currentIndex: completion.current
+                            clip: true
+                            delegate: Rectangle {
+                                required property var modelData
+                                required property int index
+                                width: ListView.view.width
+                                height: 26
+                                radius: 3
+                                color: index === completion.current ? Theme.activeSelection : "transparent"
+                                Row {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    x: 6
+                                    spacing: 8
+                                    Text { text: modelData.kind === "note" ? "📝" : "📄"; font.pixelSize: 12 }
+                                    Text {
+                                        text: modelData.title ? modelData.title + "  ·  " + modelData.relative : modelData.relative
+                                        color: Theme.text
+                                        font.pixelSize: Theme.smallFontSize
+                                        width: completion.width - 50
+                                        elide: Text.ElideMiddle
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: { completion.current = parent.index; completion.accept() }
+                                }
+                            }
+                        }
+                    }
                 }
+            }
+            Timer {
+                id: completionTimer
+                interval: 120
+                onTriggered: root.updateCompletion()
             }
 
             SyntaxHighlighter {

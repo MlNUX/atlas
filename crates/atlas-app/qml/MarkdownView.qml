@@ -19,7 +19,6 @@ Rectangle {
     property string mode: "preview"
     property bool showBacklinks: false
     property var info: ({ tags: [], headings: [], broken: 0 })
-    property var backlinkList: []
     property bool pageReady: false
     property int previewLine: 1
     property real previewY: 0
@@ -41,6 +40,8 @@ Rectangle {
         return {
             mode: root.mode,
             backlinks: root.showBacklinks,
+            contextTab: contextPanel.tab,
+            graphDepth: contextPanel.depth,
             line: root.mode === "edit" ? editor.topLine : root.previewLine,
             y: root.previewY,
             cursor: editor.viewState().cursor,
@@ -49,6 +50,8 @@ Rectangle {
     function applyState(state) {
         if (state.mode) root.mode = state.mode
         if (state.backlinks !== undefined) root.showBacklinks = state.backlinks
+        if (state.contextTab !== undefined) contextPanel.tab = state.contextTab
+        if (state.graphDepth !== undefined) contextPanel.depth = state.graphDepth
         if (state.cursor !== undefined) editor.applyState({ cursor: state.cursor })
         if (state.line) {
             root.previewLine = state.line
@@ -71,7 +74,6 @@ Rectangle {
         root.info = result
         web.runJavaScript("atlas.set(" + JSON.stringify(result.html) + ")")
     }
-    function refreshBacklinks() { root.backlinkList = JSON.parse(root.app.backlinks(root.source)) }
 
     function followLink(link) {
         if (link.external) { Qt.openUrlExternally(link.external); return }
@@ -87,13 +89,12 @@ Rectangle {
         root.linkActivated(link.path, target, link.newTab, link.annot ? { annot: link.annot } : {})
     }
 
-    onSourceChanged: { refreshBacklinks(); Qt.callLater(render) }
+    onSourceChanged: Qt.callLater(render)
     onLineChanged: reveal(line)
-    Component.onCompleted: { refreshBacklinks(); Qt.callLater(checkAttention) }
+    Component.onCompleted: Qt.callLater(checkAttention)
 
     Connections {
         target: root.app
-        function onNotesRevisionChanged() { root.refreshBacklinks() }
         function onLinkRepairsFound(path, json) {
             if (path !== root.source) return
             root.repairs = JSON.parse(json)
@@ -167,11 +168,24 @@ Rectangle {
                     onClicked: root.app.findLinkRepairs(root.source)
                 }
                 IconButton {
-                    glyph: "⇠ " + root.backlinkList.length
+                    glyph: "⇠ " + contextPanel.count
                     tip: qsTr("Rückverweise")
                     checkable: true
-                    checked: root.showBacklinks
-                    onClicked: root.showBacklinks = !root.showBacklinks
+                    checked: root.showBacklinks && contextPanel.tab === 0
+                    onClicked: {
+                        root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 0)
+                        contextPanel.tab = 0
+                    }
+                }
+                IconButton {
+                    glyph: "◎"
+                    tip: qsTr("Lokaler Graph: verknüpfte Notizen, PDFs und Dateien")
+                    checkable: true
+                    checked: root.showBacklinks && contextPanel.tab === 1
+                    onClicked: {
+                        root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 1)
+                        contextPanel.tab = 1
+                    }
                 }
             }
         }
@@ -189,6 +203,7 @@ Rectangle {
                 app: root.app
                 source: root.source
                 wrap: true
+                wikiCompletion: true
                 actions: root.actions
                 onEdited: renderTimer.restart()
                 onSynced: { root.render(); root.app.noteChanged(root.source) }
@@ -228,55 +243,15 @@ Rectangle {
                 }
             }
 
-            // ---- backlinks
-            Rectangle {
-                SplitView.preferredWidth: 240
-                SplitView.minimumWidth: 160
+            // ---- backlinks and local graph
+            ContextPanel {
+                id: contextPanel
+                SplitView.preferredWidth: 280
+                SplitView.minimumWidth: 180
                 visible: root.showBacklinks
-                color: Theme.sidebar
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
-                    Label {
-                        Layout.fillWidth: true
-                        Layout.margins: 10
-                        text: qsTr("RÜCKVERWEISE")
-                        color: Theme.text
-                        font.bold: true
-                        font.pixelSize: Theme.smallFontSize
-                    }
-                    ListView {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        clip: true
-                        model: root.backlinkList
-                        delegate: ItemDelegate {
-                            required property var modelData
-                            width: ListView.view.width
-                            contentItem: ColumnLayout {
-                                spacing: 0
-                                Label { text: root.app.fileName(modelData.source); color: Theme.text; elide: Text.ElideRight; Layout.fillWidth: true }
-                                Label {
-                                    text: modelData.relative + ":" + modelData.line
-                                    color: Theme.textFaint
-                                    font.pixelSize: Theme.smallFontSize
-                                    elide: Text.ElideMiddle
-                                    Layout.fillWidth: true
-                                }
-                            }
-                            onClicked: root.linkActivated(modelData.source, modelData.line, false, {})
-                        }
-                        Label {
-                            anchors.centerIn: parent
-                            visible: parent.count === 0
-                            width: parent.width - 24
-                            wrapMode: Text.Wrap
-                            horizontalAlignment: Text.AlignHCenter
-                            color: Theme.textFaint
-                            text: qsTr("Keine Notiz verweist auf diese Datei.")
-                        }
-                    }
-                }
+                app: root.app
+                path: root.source
+                onOpenRequested: (path, line, newPane, state) => root.linkActivated(path, line, newPane, state)
             }
         }
     }

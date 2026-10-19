@@ -142,9 +142,17 @@ ApplicationWindow {
             editor.pathMoved(from, to)
             // Links in notes follow moves and renames made in Atlas.
             app.filesMoved(from, to)
+            fileListTimer.restart()
         }
-        function onTrashed(paths) { editor.pathsRemoved(paths) }
+        function onTrashed(paths) { editor.pathsRemoved(paths); fileListTimer.restart() }
     }
+    Connections {
+        target: fileActions
+        function onCreated(path) { fileListTimer.restart() }
+    }
+    // The file list of quick open and wiki link completion follows file
+    // operations in Atlas (bundled, it is re-read in the background).
+    Timer { id: fileListTimer; interval: 300; onTriggered: app.refreshFileList() }
 
     ProjectTreeModel {
         id: treeModel

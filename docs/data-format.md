@@ -155,6 +155,14 @@ YAML-Frontmatter (`tags: [a, b/c]`) und `title:`, und es schreibt Links nur in
 der dokumentierten Form (`/pfad` ab Projektwurzel oder relativ, mit
 `#L10-L20`, `#page=3` oder Überschriften-Anker).
 
+**Wiki-Links** (`[[/docs/architektur.md#Parser|Architektur]]`): `/` ist die
+Projektwurzel, sonst relativ zur Notiz; Pfade stehen ohne
+Percent-Encoding; ohne Endung ist eine Markdown-Datei gemeint
+(`[[/docs/architektur]]`). Nach `#` folgt eine Überschrift, nach `|` der
+angezeigte Text. Verschieben in Atlas passt Wiki-Links, normale Links,
+Bilder und Referenzdefinitionen (`[x]: pfad`) an und behält dabei die
+Schreibweise (wurzelrelativ/relativ, mit/ohne Endung) bei.
+
 PDF-Zitate sind normales Markdown; der Link führt auf Seite und Anmerkung
 (`#page=8&annot=<id>`). Andere Programme öffnen damit die PDF (die Seite
 verstehen viele Betrachter), Atlas springt zusätzlich zur Markierung:

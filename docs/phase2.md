@@ -26,7 +26,7 @@ nach jedem Schritt ein Commit.
 | # | Schritt | Stand |
 |---|---|---|
 | 1 | PDF-Annotationen und Zitate | ✅ |
-| 2 | Notizverknüpfungen: Wiki-Links, Backlink-Filter, Kontextgraph | |
+| 2 | Notizverknüpfungen: Wiki-Links, Backlink-Filter, Kontextgraph | ✅ |
 | 3 | Benutzerdefinierte Aktionen | |
 | 4 | Kleines Erweiterungssystem | |
 | 5 | Projektkalender (lokal) | |
@@ -82,3 +82,43 @@ Original unverändert, Zuordnung nach Verschieben/Kopie/Änderung) und neue
 Rauchtest-Schritte: Auswahl → Markierung → Kommentar → Lesezeichen →
 Freihand → Zitat mit Quelle und Seite → `@`-Suche → Rücksprung zur Stelle →
 Export als Kopie → Umbenennen der PDF (Zitat-Link und Anmerkungen folgen).
+
+### Schritt 2 – Notizverknüpfungen
+
+Kern: `atlas_core::markdown` (Wiki-Links, Bilder und Referenzdefinitionen
+als Links, Umschreiben) und `atlas_core::notes` (Linkart, Kontextzeile,
+lokaler Graph) – mit Tests.
+
+- **Wiki-Links** `[[/docs/architektur.md]]`, mit Überschrift und Alias
+  `[[/docs/architektur.md#Parser|Architektur]]`; `/` ist die Projektwurzel,
+  sonst relativ zur Notiz; ohne Endung ist eine Markdown-Datei gemeint.
+  In der Vorschau gestrichelt unterstrichen, ohne Alias mit dem Notiznamen
+  („architektur › Parser“); defekte Wiki-Links sind wie andere markiert und
+  reparierbar.
+- **Vervollständigung**: `[[` im Markdown-Editor schlägt Notizen und
+  Dateien des Projekts vor (unscharfe Suche wie Strg+P) und setzt den
+  wurzelrelativen Pfad samt `]]` ein.
+- **Rückverweise mit Filtern** (⇠ in Markdown und PDF): nach Notiz
+  gruppiert, je Link Zeile, Kontext (die Zeile des Links) und Ziel
+  (Überschrift, Codezeile, Seite, Zitat); Filter nach Freitext, Art
+  (Wiki-Links, Markdown-Links, Zitate, mit Seite, auf Überschrift,
+  Bilder), Tag (hierarchisch) und Ordner der Quelle.
+- **Lokaler Kontextgraph** (◎) für die aktuelle Markdown-Datei oder PDF:
+  verlinkte und verlinkende Notizen, PDFs und andere Dateien, wahlweise mit
+  Nachbarn der Nachbarn; Farben nach Dateiart, fehlende Ziele
+  durchgestrichen, Zitate aus PDFs als gelbe Kanten, Pfeile in
+  Linkrichtung. Klick öffnet, Strg-/Mittelklick im Split. Panel, Tab und
+  Tiefe werden je Tab in der Session gespeichert.
+- **PDFs im Netz**: Notizen, die eine PDF zitieren oder verlinken,
+  erscheinen in deren Rückverweisen und Graph.
+- **Robuste Linkaktualisierung** beim Verschieben/Umbenennen in Atlas:
+  zusätzlich zu Phase 1 auch Wiki-Links (Schreibweise ohne Endung bleibt),
+  Bilder `![](…)` und Referenzdefinitionen `[x]: pfad`; Fragmente wie
+  `#page=3&annot=…` bleiben erhalten. Die Dateiliste der Arbeitsleiste
+  folgt Dateioperationen in Atlas sofort.
+
+Geprüft: Kern-Tests (Wiki-Links, Bilder, Definitionen inkl. Umschreiben,
+Graph um Notiz und PDF, Rückverweise mit Art/Kontext) und Rauchtest
+(Alias, Überschriftenziel, Rückverweis mit Tags, Graph der PDF mit
+Zitatkante, Tiefe 2, Wiki-Link folgt Umbenennung, Kontextpanel in der
+Session, Vervollständigung).

@@ -52,6 +52,8 @@ alle übrigen Tasten gehen dort an das Programm im Terminal.
 | Strg+F | Suchen im Dokument (Enter weiter, Umschalt+Enter zurück) |
 | Strg+G | Gehe zu Zeile |
 | Esc | Suche schließen |
+| `[[` (Markdown) | Wiki-Link: Vorschläge aus dem Projekt, ↑/↓ wählen, Enter/Tab übernehmen |
+| ⇠ / ◎ (Markdown, PDF) | Rückverweise mit Filtern / lokaler Graph |
 
 ## PDF
 

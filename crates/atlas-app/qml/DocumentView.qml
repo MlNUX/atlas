@@ -137,7 +137,15 @@ Item {
     }
     Component {
         id: pdfComponent
-        PdfViewer { source: view.path; app: view.app; actions: view.actions }
+        PdfViewer {
+            source: view.path
+            app: view.app
+            actions: view.actions
+            onLinkActivated: (path, line, newPane, state) => {
+                if (newPane) view.openRequested(path, line, "split", state)
+                else view.navigate(path, line, state)
+            }
+        }
     }
     Component {
         id: textComponent

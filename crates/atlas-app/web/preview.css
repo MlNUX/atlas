@@ -9,6 +9,9 @@ h1 { font-size: 1.9em; border-bottom: 1px solid #2b2b2b; padding-bottom: 0.3em; 
 h2 { font-size: 1.45em; border-bottom: 1px solid #2b2b2b; padding-bottom: 0.25em; }
 a { color: #4daafc; text-decoration: none; }
 a:hover { text-decoration: underline; }
+a.wikilink { border-bottom: 1px dashed rgba(77, 170, 252, 0.5); }
+a.wikilink:hover { text-decoration: none; border-bottom-style: solid; }
+a[data-atlas-annot] { color: #e6c84f; }
 a.broken { color: #f85149; text-decoration: line-through dotted; }
 a.broken::after { content: " ⚠"; font-size: 0.8em; }
 code { font: 0.9em/1.4 monospace; background: #2b2b2b; padding: 0.1em 0.35em; border-radius: 4px; }

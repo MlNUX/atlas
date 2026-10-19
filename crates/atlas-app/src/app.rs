@@ -266,9 +266,19 @@ pub mod qobject {
         #[cxx_name = "appendToNote"]
         fn append_to_note(self: Pin<&mut AppController>, path: &QString, block: &QString) -> QString;
 
-        /// Notes linking to `path` (JSON list of {source, line, raw}).
+        /// Notes linking to `path`: JSON list of {source, relative, line, raw,
+        /// kind ("link", "wiki", "image", "reference"), anchor (display text),
+        /// anchorKind ("", "heading", "lines", "page", "quote"), context,
+        /// title, tags} of the source note.
         #[qinvokable]
         fn backlinks(self: &AppController, path: &QString) -> QString;
+
+        /// Local context graph around `path` (`depth` 1 or 2): JSON
+        /// {nodes: [{path, relative, label, kind, depth, missing}],
+        /// edges: [{from, to, count, quotes}], truncated}.
+        #[qinvokable]
+        #[cxx_name = "contextGraph"]
+        fn context_graph(self: &AppController, path: &QString, depth: i32) -> QString;
 
         /// All tags of the project (JSON list of {key, display, count}).
         #[qinvokable]
@@ -822,7 +832,7 @@ impl qobject::AppController {
             .iter()
             .map(|h| serde_json::json!({ "level": h.level, "text": h.text, "slug": h.slug, "line": h.line }))
             .collect();
-        let broken = r.links.iter().filter(|l| l.is_broken()).count();
+        let broken = r.links.iter().filter(|l| l.kind != markdown::LinkKind::Definition && l.is_broken()).count();
         qs(serde_json::json!({
             "html": r.html,
             "title": r.title,
@@ -989,20 +999,72 @@ impl qobject::AppController {
     }
 
     pub fn backlinks(&self, path: &QString) -> QString {
+        use atlas_core::notes::LinkAnchor;
         let path = path_of(path);
-        let links = self.with_notes(|n| n.backlinks(&path)).unwrap_or_default();
-        let list: Vec<_> = links
-            .iter()
-            .map(|b| {
-                serde_json::json!({
-                    "source": b.source.to_string_lossy(),
-                    "relative": self.relative(&b.source).to_string_lossy(),
-                    "line": b.line,
-                    "raw": b.raw,
-                })
+        let list = self
+            .with_notes(|n| {
+                n.backlinks(&path)
+                    .iter()
+                    .map(|b| {
+                        let (anchor_kind, anchor) = match &b.anchor {
+                            LinkAnchor::None => ("", String::new()),
+                            LinkAnchor::Heading(h) => ("heading", format!("#{h}")),
+                            LinkAnchor::Lines(l) => ("lines", format!("Z. {l}")),
+                            LinkAnchor::Page(p) => ("page", format!("S. {p}")),
+                            LinkAnchor::Annotation(p, _) => ("quote", format!("Zitat S. {p}")),
+                        };
+                        let note = n.note(&b.source);
+                        serde_json::json!({
+                            "source": b.source.to_string_lossy(),
+                            "relative": self.relative(&b.source).to_string_lossy(),
+                            "line": b.line,
+                            "raw": b.raw,
+                            "kind": b.kind.as_str(),
+                            "anchor": anchor,
+                            "anchorKind": anchor_kind,
+                            "context": b.context,
+                            "title": note.and_then(|n| n.title.clone()),
+                            "tags": note.map(|n| n.tags.clone()).unwrap_or_default(),
+                        })
+                    })
+                    .collect::<Vec<_>>()
             })
-            .collect();
+            .unwrap_or_default();
         qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn context_graph(&self, path: &QString, depth: i32) -> QString {
+        const LIMIT: usize = 60;
+        let center = path_of(path);
+        let Some(json) = self.with_notes(|n| {
+            let graph = n.graph(&center, depth.clamp(1, 2) as u8, LIMIT);
+            let nodes: Vec<_> = graph
+                .nodes
+                .iter()
+                .map(|node| {
+                    let title = n.note(&node.path).and_then(|note| note.title.clone());
+                    let name = node.path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+                    let kind = if node.missing { "missing" } else { file_kind(&node.path) };
+                    serde_json::json!({
+                        "path": node.path.to_string_lossy(),
+                        "relative": self.relative(&node.path).to_string_lossy(),
+                        "label": title.unwrap_or(name),
+                        "kind": kind,
+                        "depth": node.depth,
+                        "missing": node.missing,
+                    })
+                })
+                .collect();
+            let edges: Vec<_> = graph
+                .edges
+                .iter()
+                .map(|e| serde_json::json!({ "from": e.from, "to": e.to, "count": e.count, "quotes": e.quotes }))
+                .collect();
+            serde_json::json!({ "nodes": nodes, "edges": edges, "truncated": graph.truncated })
+        }) else {
+            return qs(r#"{"nodes":[],"edges":[],"truncated":0}"#);
+        };
+        qs(json.to_string())
     }
 
     pub fn note_tags(&self) -> QString {

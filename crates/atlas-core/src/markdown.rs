@@ -39,6 +39,37 @@ pub enum Target {
     File { path: PathBuf, anchor: Anchor, root_relative: bool },
 }
 
+/// How a link is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkKind {
+    /// `[text](dest)`
+    Inline,
+    /// `[text][label]` – the destination is in a [`LinkKind::Definition`].
+    Reference,
+    /// `[label]: dest` (only used for rewriting, not counted as a link).
+    Definition,
+    /// `[[/pfad/notiz.md#Überschrift|Alias]]` – no percent-encoding, the
+    /// `.md` extension may be left out.
+    Wiki,
+    /// `![alt](bild.png)`
+    Image,
+    /// `<https://…>`
+    Autolink,
+}
+
+impl LinkKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LinkKind::Inline => "link",
+            LinkKind::Reference => "reference",
+            LinkKind::Definition => "definition",
+            LinkKind::Wiki => "wiki",
+            LinkKind::Image => "image",
+            LinkKind::Autolink => "autolink",
+        }
+    }
+}
+
 /// A link as written in a Markdown file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Link {
@@ -48,8 +79,9 @@ pub struct Link {
     /// 1-based line of the link.
     pub line: usize,
     /// Byte range of the destination inside the source (for rewriting);
-    /// `None` for reference-style links and autolinks.
+    /// `None` for reference-style uses and autolinks.
     pub dest_range: Option<Range<usize>>,
+    pub kind: LinkKind,
 }
 
 impl Link {
@@ -89,6 +121,7 @@ fn options() -> Options {
         | Options::ENABLE_YAML_STYLE_METADATA_BLOCKS
         | Options::ENABLE_MATH
         | Options::ENABLE_GFM
+        | Options::ENABLE_WIKILINKS
 }
 
 /// GitHub style heading anchor: lowercase, spaces to `-`, punctuation dropped.
@@ -225,6 +258,77 @@ pub fn resolve(raw: &str, file: &Path, root: Option<&Path>) -> Target {
     Target::File { path: normalize(&path), anchor, root_relative }
 }
 
+/// Resolves the target of a wiki link (`[[/docs/a.md#Abschnitt]]`):
+/// `/` is the project root, otherwise relative to the note; written
+/// literally (no percent-encoding). A target without extension means a
+/// Markdown file (`[[/docs/architektur]]` → `architektur.md`) unless a file
+/// or folder of exactly that name exists.
+pub fn resolve_wiki(raw: &str, file: &Path, root: Option<&Path>) -> Target {
+    let raw = raw.trim();
+    let (path_part, fragment) = match raw.split_once('#') {
+        Some((p, f)) => (p.trim(), f.trim()),
+        None => (raw, ""),
+    };
+    if path_part.is_empty() {
+        return Target::SameDocument(fragment.to_owned());
+    }
+    let root_relative = path_part.starts_with('/') && root.is_some();
+    let path = if root_relative {
+        root.unwrap_or(Path::new("/")).join(path_part.trim_start_matches('/'))
+    } else if path_part.starts_with('/') {
+        PathBuf::from(path_part)
+    } else {
+        file.parent().unwrap_or(Path::new("/")).join(path_part)
+    };
+    let mut path = normalize(&path);
+    if path.extension().is_none() && path.symlink_metadata().is_err() {
+        path.set_extension("md");
+    }
+    Target::File { path, anchor: parse_anchor(fragment), root_relative }
+}
+
+/// Link text of a wiki link without alias: the note's name and the
+/// heading (`[[/docs/architektur#Parser]]` → „architektur › Parser“).
+pub fn wiki_display(raw: &str) -> String {
+    let (path, fragment) = raw.split_once('#').unwrap_or((raw, ""));
+    let name = path.trim().trim_end_matches('/').rsplit('/').next().unwrap_or_default();
+    let name = name.strip_suffix(".md").unwrap_or(name);
+    match (name.is_empty(), fragment.trim().is_empty()) {
+        (true, _) => fragment.trim().to_owned(),
+        (false, true) => name.to_owned(),
+        (false, false) => format!("{name} › {}", fragment.trim()),
+    }
+}
+
+/// Destination part inside `[[dest|alias]]`.
+fn wiki_destination_range(src: &str, range: &Range<usize>) -> Option<Range<usize>> {
+    let slice = src.get(range.clone())?;
+    let start = slice.find("[[")? + 2;
+    let end = slice.rfind("]]")?;
+    let inner = slice.get(start..end)?;
+    let len = inner.find('|').unwrap_or(inner.len());
+    let lead = inner.len() - inner.trim_start().len();
+    let dest = inner[..len].trim();
+    let begin = range.start + start + lead;
+    Some(begin..begin + dest.len())
+}
+
+/// Destination inside a reference definition `[label]: <dest> "title"`.
+fn definition_destination_range(src: &str, span: &Range<usize>) -> Option<Range<usize>> {
+    let slice = src.get(span.clone())?;
+    let colon = slice.find("]:")? + 2;
+    let rest = &slice[colon..];
+    let lead = rest.len() - rest.trim_start().len();
+    let trimmed = rest.trim_start();
+    let (start, len) = if let Some(inner) = trimmed.strip_prefix('<') {
+        (lead + 1, inner.find('>')?)
+    } else {
+        (lead, trimmed.find(char::is_whitespace).unwrap_or(trimmed.len()))
+    };
+    let begin = span.start + colon + start;
+    Some(begin..begin + len)
+}
+
 fn line_starts(src: &str) -> Vec<usize> {
     std::iter::once(0).chain(src.match_indices('\n').map(|(i, _)| i + 1)).collect()
 }
@@ -304,8 +408,11 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
     let mut code: Option<(String, String)> = None; // (language, text)
     let mut heading: Option<(u8, usize, String, usize)> = None; // level, line, text, event index
     let mut slugs: Vec<String> = Vec::new();
+    // Display text of the current wiki link without alias.
+    let mut wiki_label: Option<String> = None;
 
-    for (event, range) in Parser::new_ext(src, options()).into_offset_iter() {
+    let mut parser = Parser::new_ext(src, options()).into_offset_iter();
+    for (event, range) in parser.by_ref() {
         let line = line_of(&starts, range.start);
         match &event {
             Event::Start(tag) => {
@@ -326,6 +433,8 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
                 result.title = title;
             }
             Event::Text(text) if in_metadata => metadata.push_str(&text),
+            // The text of a wiki link without alias is replaced by its label.
+            Event::Text(_) | Event::Code(_) if wiki_label.is_some() => {}
             Event::Start(Tag::CodeBlock(kind)) => {
                 let lang = match kind {
                     CodeBlockKind::Fenced(info) => info.split_whitespace().next().unwrap_or("").to_owned(),
@@ -384,12 +493,18 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
             }
             Event::Start(Tag::Link { link_type, dest_url, title, .. }) => {
                 let raw = dest_url.to_string();
-                let target = resolve(&raw, file, root);
-                let dest_range = match link_type {
-                    LinkType::Inline => destination_range(src, &range),
-                    _ => None,
+                let wiki = matches!(link_type, LinkType::WikiLink { .. });
+                let target = if wiki { resolve_wiki(&raw, file, root) } else { resolve(&raw, file, root) };
+                let (kind, dest_range) = match link_type {
+                    LinkType::Inline => (LinkKind::Inline, destination_range(src, &range)),
+                    LinkType::WikiLink { .. } => (LinkKind::Wiki, wiki_destination_range(src, &range)),
+                    LinkType::Autolink | LinkType::Email => (LinkKind::Autolink, None),
+                    _ => (LinkKind::Reference, None),
                 };
-                let link = Link { raw: raw.clone(), target: target.clone(), line, dest_range };
+                if let LinkType::WikiLink { has_pothole: false } = link_type {
+                    wiki_label = Some(wiki_display(&raw));
+                }
+                let link = Link { raw: raw.clone(), target: target.clone(), line, dest_range, kind };
                 let broken = link.is_broken();
                 result.links.push(link);
                 let mut attrs = format!(" href=\"{}\"", escape_attr(&raw));
@@ -415,14 +530,37 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
                             Anchor::None => {}
                         }
                         if broken {
-                            attrs += " class=\"broken\" data-broken=\"1\"";
+                            attrs += " data-broken=\"1\"";
                         }
                     }
                 }
+                let classes: Vec<&str> =
+                    [(wiki, "wikilink"), (broken, "broken")].into_iter().filter(|c| c.0).map(|c| c.1).collect();
+                if !classes.is_empty() {
+                    attrs += &format!(" class=\"{}\"", classes.join(" "));
+                }
                 events.push(Event::InlineHtml(format!("<a{attrs}>").into()));
             }
-            Event::End(TagEnd::Link) => events.push(Event::InlineHtml("</a>".into())),
-            Event::Start(Tag::Image { dest_url, title, .. }) => {
+            Event::End(TagEnd::Link) => {
+                if let Some(label) = wiki_label.take() {
+                    events.push(Event::Text(label.into()));
+                }
+                events.push(Event::InlineHtml("</a>".into()))
+            }
+            Event::Start(Tag::Image { link_type, dest_url, title, .. }) => {
+                // Images are links too: they follow moves and count as
+                // references to the file.
+                let image_target = resolve(&dest_url, file, root);
+                result.links.push(Link {
+                    raw: dest_url.to_string(),
+                    target: image_target,
+                    line,
+                    dest_range: match link_type {
+                        LinkType::Inline => destination_range(src, &range),
+                        _ => None,
+                    },
+                    kind: LinkKind::Image,
+                });
                 // Local images are served by the preview through `atlas://file/…`.
                 let dest = match resolve(&dest_url, file, root) {
                     Target::File { path, .. } => {
@@ -440,6 +578,17 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
             }
             other => events.push(other),
         }
+    }
+    // Destinations of reference-style links live in their definitions.
+    for (_, def) in parser.reference_definitions().iter() {
+        let raw = def.dest.to_string();
+        result.links.push(Link {
+            target: resolve(&raw, file, root),
+            raw,
+            line: line_of(&starts, def.span.start),
+            dest_range: definition_destination_range(src, &def.span),
+            kind: LinkKind::Definition,
+        });
     }
 
     if html {
@@ -515,11 +664,23 @@ pub fn rewrite_links(
             }
             _ => relative_path(new_file.parent().unwrap_or(Path::new("/")), &target).to_string_lossy().into_owned(),
         };
-        let new_raw = format!("{}{suffix}", percent_encode_path(&new_path));
+        let new_raw = if link.kind == LinkKind::Wiki {
+            // Written literally; keep a left-out `.md` left out.
+            let written = link.raw.split('#').next().unwrap_or_default().trim();
+            let new_path = match new_path.strip_suffix(".md") {
+                Some(stem) if Path::new(written).extension().is_none() => stem.to_owned(),
+                _ => new_path,
+            };
+            format!("{new_path}{suffix}")
+        } else {
+            format!("{}{suffix}", percent_encode_path(&new_path))
+        };
         if new_raw != link.raw {
             edits.push((range, new_raw));
         }
     }
+    edits.sort_by_key(|e| e.0.start);
+    edits.dedup_by_key(|e| e.0.start);
     let count = edits.len();
     let mut out = src.to_owned();
     for (range, text) in edits.into_iter().rev() {
@@ -629,6 +790,55 @@ mod tests {
         assert_eq!(n, 1);
         assert!(out.contains("[B](../../docs/b.pdf#page=2 \"Titel\")"), "{out}");
         assert!(out.contains("[P](/src/parser.rs#L1)"), "root-relative links stay");
+    }
+
+    #[test]
+    fn wiki_links_images_and_definitions() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::write(root.join("docs/architektur.md"), "# Parser\n").unwrap();
+        std::fs::write(root.join("docs/bild.png"), "x").unwrap();
+        let note = root.join("notes/a.md");
+        let src = "Siehe [[/docs/architektur.md#Parser|Architektur]] und [[/docs/architektur]] \
+                   und [[../docs/architektur.md]] und [[fehlt]].\n\n![Bild](../docs/bild.png)\n\n\
+                   [Ref][arch]\n\n[arch]: ../docs/architektur.md \"Titel\"\n";
+        let r = render(src, &note, Some(root));
+        let wiki: Vec<_> = r.links.iter().filter(|l| l.kind == LinkKind::Wiki).collect();
+        assert_eq!(wiki.len(), 4);
+        assert_eq!(
+            wiki[0].target,
+            Target::File {
+                path: root.join("docs/architektur.md"),
+                anchor: Anchor::Heading("Parser".into()),
+                root_relative: true
+            }
+        );
+        assert_eq!(&src[wiki[0].dest_range.clone().unwrap()], "/docs/architektur.md#Parser");
+        assert!(matches!(&wiki[1].target, Target::File { path, .. } if path == &root.join("docs/architektur.md")));
+        assert!(!wiki[2].is_broken() && wiki[3].is_broken(), "without extension: .md");
+        assert!(r.html.contains("class=\"wikilink\""), "{}", r.html);
+        assert!(r.html.contains(">Architektur</a>"), "alias is the link text: {}", r.html);
+        assert!(r.html.contains(">architektur</a>"), "without alias: the note's name: {}", r.html);
+        assert_eq!(wiki_display("/docs/a.md#Parser"), "a › Parser");
+        assert_eq!(wiki_display("#Abschnitt"), "Abschnitt");
+        assert!(r.html.contains("data-atlas-anchor=\"parser\""));
+        assert!(r.html.contains("class=\"wikilink broken\""));
+        assert!(r.links.iter().any(|l| l.kind == LinkKind::Image && !l.is_broken()));
+        let def = r.links.iter().find(|l| l.kind == LinkKind::Definition).unwrap();
+        assert_eq!(&src[def.dest_range.clone().unwrap()], "../docs/architektur.md");
+
+        // Everything follows when docs/ becomes doc/.
+        let (out, n) = rewrite_links(src, &note, &note, Some(root), |p| {
+            p.strip_prefix(root.join("docs")).ok().map(|rest| root.join("doc").join(rest))
+        });
+        assert_eq!(n, 5, "{out}");
+        assert!(out.contains("[[/doc/architektur.md#Parser|Architektur]]"), "{out}");
+        assert!(out.contains("[[/doc/architektur]]"), "a left-out extension stays left out: {out}");
+        assert!(out.contains("[[../doc/architektur.md]]"), "{out}");
+        assert!(out.contains("![Bild](../doc/bild.png)"), "{out}");
+        assert!(out.contains("[arch]: ../doc/architektur.md \"Titel\""), "{out}");
+        assert!(out.contains("[[fehlt]]"), "unrelated links stay: {out}");
     }
 
     #[test]

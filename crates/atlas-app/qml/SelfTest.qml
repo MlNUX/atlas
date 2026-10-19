@@ -144,6 +144,40 @@ Item {
                 check("Zitat-Link folgt Umbenennung", text.indexOf("(/docs/umbenannt.pdf#page=1&annot=" + test.annotId + ")") > 0, text)
                 const found = JSON.parse(app.annotationSearch("", 10))
                 check("Anmerkungen folgen der PDF", found.length === 3 && found.every(a => a.relative === "docs/umbenannt.pdf"), JSON.stringify(found))
+                // ---- Phase 2: wiki links, backlink filters, context graph
+                const wiki = path("notes/wiki.md")
+                const html = JSON.parse(app.renderMarkdown(app.readTextFile(wiki), wiki)).html
+                check("Wiki-Link mit Alias", html.indexOf("class=\"wikilink\"") > 0 && html.indexOf(">Plan</a>") > 0, html)
+                check("Wiki-Link auf Überschrift", html.indexOf("data-atlas-anchor=\"einleitung\"") > 0, html)
+                const back = JSON.parse(app.backlinks(path("notes/plan.md")))
+                const fromWiki = back.find(b => b.relative === "notes/wiki.md")
+                check("Rückverweis kennt Art, Kontext und Tags", !!fromWiki && fromWiki.kind === "wiki"
+                      && fromWiki.context.indexOf("Siehe") === 0 && fromWiki.tags[0] === "wiki", JSON.stringify(back))
+                const graph = JSON.parse(app.contextGraph(path("docs/umbenannt.pdf"), 1))
+                const zitate = graph.nodes.findIndex(n => n.relative === "notes/zitate.md")
+                check("Graph der PDF zeigt zitierende Notiz", zitate > 0 && graph.edges.some(e => e.from === zitate && e.to === 0 && e.quotes === 1), JSON.stringify(graph))
+                const graph2 = JSON.parse(app.contextGraph(wiki, 2))
+                check("Graph mit Tiefe 2", graph2.nodes.some(n => n.depth === 2), JSON.stringify(graph2.nodes.map(n => n.relative + ":" + n.depth)))
+                editor.open(wiki, 0, "tab", { backlinks: true, contextTab: 1 })
+                fileActions.ops.rename(path("notes/plan.md"), "plan-neu.md")
+            },
+            () => {
+                const text = app.readTextFile(path("notes/wiki.md"))
+                check("Wiki-Link folgt Umbenennung", text.indexOf("[[/notes/plan-neu|Plan]]") > 0, text)
+                const md = editor.activeTab.viewerItem
+                check("Kontextpanel mit Graph", !!md && md.showBacklinks && md.viewState().contextTab === 1, JSON.stringify(md ? md.viewState() : {}))
+                md.mode = "split"
+            },
+            () => {
+                // `[[` suggests project files.
+                const ed = editor.activeTab.viewerItem.editorItem
+                ed.insertText("\nNeu: [[plan", true)
+                ed.applyState({ cursor: ed.text.length })
+                ed.focusText()
+                ed.updateCompletion()
+                check("Wiki-Link-Vorschläge", ed.completing)
+                ed.acceptCompletion()
+                check("Wiki-Link vervollständigt", ed.text.indexOf("Neu: [[/notes/plan-neu.md]]") > 0, ed.text.slice(-60))
             },
         ]
         timer.start()

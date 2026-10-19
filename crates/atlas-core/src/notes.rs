@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use crate::markdown::{self, Target};
+use crate::markdown::{self, Anchor, LinkKind, Target};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoteLink {
@@ -20,6 +20,46 @@ pub struct NoteLink {
     pub target: PathBuf,
     pub raw: String,
     pub line: usize,
+    pub kind: LinkKind,
+    /// Where inside the target the link points.
+    pub anchor: LinkAnchor,
+    /// The line of the link (trimmed, shortened) for backlink lists.
+    pub context: String,
+}
+
+/// Where a link points inside its target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkAnchor {
+    None,
+    Heading(String),
+    Lines(u32),
+    Page(u32),
+    /// A quote of a PDF annotation.
+    Annotation(u32, String),
+}
+
+impl LinkAnchor {
+    fn from(anchor: &Anchor) -> Self {
+        match anchor {
+            Anchor::None => LinkAnchor::None,
+            Anchor::Heading(h) => LinkAnchor::Heading(h.clone()),
+            Anchor::Lines(a, _) => LinkAnchor::Lines(*a),
+            Anchor::Page(p) => LinkAnchor::Page(*p),
+            Anchor::Annotation(p, id) => LinkAnchor::Annotation(*p, id.clone()),
+        }
+    }
+}
+
+const CONTEXT_CHARS: usize = 160;
+
+fn context_of(text: &str, line: usize) -> String {
+    let line = text.lines().nth(line.saturating_sub(1)).unwrap_or_default().trim();
+    if line.chars().count() <= CONTEXT_CHARS {
+        return line.to_owned();
+    }
+    let mut out: String = line.chars().take(CONTEXT_CHARS).collect();
+    out.push('…');
+    out
 }
 
 #[derive(Debug, Clone, Default)]
@@ -35,6 +75,36 @@ pub struct Backlink {
     pub source: PathBuf,
     pub line: usize,
     pub raw: String,
+    pub kind: LinkKind,
+    pub anchor: LinkAnchor,
+    pub context: String,
+}
+
+/// A file in the local context graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphNode {
+    pub path: PathBuf,
+    /// 0 = the file itself, 1 = direct neighbour, 2 = neighbour of one.
+    pub depth: u8,
+    pub missing: bool,
+}
+
+/// Links between two files (aggregated, `from` is always a note).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphEdge {
+    pub from: usize,
+    pub to: usize,
+    pub count: usize,
+    /// Some links are quotes of PDF annotations.
+    pub quotes: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Graph {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+    /// Neighbours that were left out because of the size limit.
+    pub truncated: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,11 +210,21 @@ impl NoteIndex {
 
     pub fn update_text(&mut self, path: &Path, text: &str) {
         let analysis = markdown::analyze(text, path, Some(&self.root));
+        // Definitions only carry destinations of reference links (which are
+        // counted where they are used).
         let links = analysis
             .links
             .into_iter()
+            .filter(|l| l.kind != LinkKind::Definition)
             .filter_map(|l| match l.target {
-                Target::File { path, .. } => Some(NoteLink { target: path, raw: l.raw, line: l.line }),
+                Target::File { path, anchor, .. } => Some(NoteLink {
+                    target: path,
+                    context: context_of(text, l.line),
+                    raw: l.raw,
+                    line: l.line,
+                    kind: l.kind,
+                    anchor: LinkAnchor::from(&anchor),
+                }),
                 _ => None,
             })
             .collect();
@@ -161,11 +241,75 @@ impl NoteIndex {
         for (source, note) in &self.notes {
             for link in &note.links {
                 if link.target == target && source != target {
-                    out.push(Backlink { source: source.clone(), line: link.line, raw: link.raw.clone() });
+                    out.push(Backlink {
+                        source: source.clone(),
+                        line: link.line,
+                        raw: link.raw.clone(),
+                        kind: link.kind,
+                        anchor: link.anchor.clone(),
+                        context: link.context.clone(),
+                    });
                 }
             }
         }
         out
+    }
+
+    /// Local graph around `center` (a note, PDF or any file): notes linking
+    /// to it, files it links to (if it is a note) and – with `depth` 2 –
+    /// their neighbours. At most `limit` nodes; closer ones first.
+    pub fn graph(&self, center: &Path, depth: u8, limit: usize) -> Graph {
+        let mut nodes: Vec<GraphNode> = vec![GraphNode { path: center.to_path_buf(), depth: 0, missing: false }];
+        let mut index: BTreeMap<PathBuf, usize> = BTreeMap::from([(center.to_path_buf(), 0)]);
+        // (from, to) → (count, quotes)
+        let mut edges: BTreeMap<(usize, usize), (usize, usize)> = BTreeMap::new();
+        let mut truncated = 0;
+        let mut frontier = vec![center.to_path_buf()];
+        for level in 1..=depth.max(1) {
+            let mut next = Vec::new();
+            for path in &frontier {
+                let from = index[path];
+                // Links from `path` (if it is a note) and links to it.
+                let mut neighbours: Vec<(PathBuf, bool, &NoteLink)> = Vec::new();
+                if let Some(note) = self.notes.get(path) {
+                    neighbours.extend(note.links.iter().map(|l| (l.target.clone(), true, l)));
+                }
+                for (source, note) in &self.notes {
+                    for link in note.links.iter().filter(|l| &l.target == path && source != path) {
+                        neighbours.push((source.clone(), false, link));
+                    }
+                }
+                for (other, outgoing, link) in neighbours {
+                    if &other == path {
+                        continue;
+                    }
+                    let to = match index.get(&other) {
+                        Some(&i) => i,
+                        None if nodes.len() >= limit => {
+                            truncated += 1;
+                            continue;
+                        }
+                        None => {
+                            let missing = other.symlink_metadata().is_err();
+                            nodes.push(GraphNode { path: other.clone(), depth: level, missing });
+                            index.insert(other.clone(), nodes.len() - 1);
+                            next.push(other.clone());
+                            nodes.len() - 1
+                        }
+                    };
+                    let key = if outgoing { (from, to) } else { (to, from) };
+                    let entry = edges.entry(key).or_default();
+                    entry.0 += 1;
+                    if matches!(link.anchor, LinkAnchor::Annotation(..)) {
+                        entry.1 += 1;
+                    }
+                }
+            }
+            frontier = next;
+        }
+        let edges =
+            edges.into_iter().map(|((from, to), (count, quotes))| GraphEdge { from, to, count, quotes }).collect();
+        Graph { nodes, edges, truncated }
     }
 
     /// All tags, sorted by key.
@@ -346,7 +490,14 @@ mod tests {
         assert_eq!(index.len(), 2, "ignored folders are skipped");
         assert_eq!(
             index.backlinks(&parser),
-            vec![Backlink { source: a.clone(), line: 4, raw: "/src/parser.rs#L1".into() }]
+            vec![Backlink {
+                source: a.clone(),
+                line: 4,
+                raw: "/src/parser.rs#L1".into(),
+                kind: LinkKind::Inline,
+                anchor: LinkAnchor::Lines(1),
+                context: "[P](/src/parser.rs#L1) und [B](../docs/b.md#start)".into(),
+            }]
         );
         assert_eq!(index.backlinks(&a).len(), 1);
         let tags = index.tags();
@@ -398,5 +549,59 @@ mod tests {
         index.apply(&[], &[rewrite]);
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "[Bericht](archiv/bericht-final.pdf#page=2)\n");
         assert!(index.broken_links(None).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod graph_tests {
+    use super::*;
+
+    fn write(root: &Path, rel: &str, text: &str) -> PathBuf {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    #[test]
+    fn local_graph_connects_notes_and_pdfs() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let pdf = write(root, "docs/paper.pdf", "%PDF");
+        let a = write(
+            root,
+            "notes/a.md",
+            "[[/notes/b|B]] und [S. 3](/docs/paper.pdf#page=3) und\n> Zitat\n> — [paper](/docs/paper.pdf#page=4&annot=x1)\n",
+        );
+        let b = write(root, "notes/b.md", "[[/notes/c.md]] [[fehlt]]\n");
+        let c = write(root, "notes/c.md", "nichts\n");
+        let d = write(root, "notes/d.md", "Auch [paper](../docs/paper.pdf)\n");
+        let index = NoteIndex::build(root);
+
+        // Around the PDF: the two notes citing it.
+        let g = index.graph(&pdf, 1, 50);
+        let paths: Vec<_> = g.nodes.iter().map(|n| n.path.clone()).collect();
+        assert_eq!(paths, vec![pdf.clone(), a.clone(), d.clone()]);
+        let from_a = g.edges.iter().find(|e| e.from == 1 && e.to == 0).unwrap();
+        assert_eq!((from_a.count, from_a.quotes), (2, 1), "two links from a.md, one of them a quote");
+
+        // Around a.md with depth 2: b.md and its links, d.md via the PDF.
+        let g = index.graph(&a, 2, 50);
+        let find = |p: &Path| g.nodes.iter().find(|n| n.path == p).cloned();
+        assert_eq!(find(&b).unwrap().depth, 1);
+        assert_eq!(find(&pdf).unwrap().depth, 1);
+        assert_eq!(find(&c).unwrap().depth, 2);
+        assert_eq!(find(&d).unwrap().depth, 2);
+        assert!(find(&root.join("notes/fehlt.md")).unwrap().missing);
+        assert_eq!(index.graph(&a, 2, 3).nodes.len(), 3, "limited");
+        assert!(index.graph(&a, 2, 3).truncated > 0);
+
+        // Backlinks know the kind of link and the line.
+        let back = index.backlinks(&pdf);
+        assert_eq!(back.len(), 3);
+        assert!(back.iter().any(|b| matches!(&b.anchor, LinkAnchor::Annotation(4, id) if id == "x1")));
+        assert!(back.iter().any(|b| b.kind == LinkKind::Inline && b.context.starts_with("Auch")));
+        let to_b = index.backlinks(&b);
+        assert_eq!(to_b[0].kind, LinkKind::Wiki);
     }
 }
