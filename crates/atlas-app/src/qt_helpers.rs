@@ -42,6 +42,8 @@ pub mod ffi {
         fn install_web_scheme_handler();
         #[cxx_name = "saveWindowImage"]
         unsafe fn save_window_image(window: *mut QObject, path: &QString) -> bool;
+        #[cxx_name = "postMouse"]
+        unsafe fn post_mouse(window: *mut QObject, kind: i32, x: f64, y: f64, delay_ms: i32);
     }
 }
 

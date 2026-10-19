@@ -376,7 +376,8 @@ Rectangle {
                     }
 
                     Repeater {
-                        model: panel.graph.nodes
+                        // Alone, the file itself would sit on the hint below.
+                        model: panel.graph.nodes.length > 1 ? panel.graph.nodes : []
                         delegate: Item {
                             id: node
                             required property var modelData

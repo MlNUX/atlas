@@ -19,6 +19,8 @@ SplitView {
     signal layoutChanged()
     /// "+" in a tab strip.
     signal quickOpenRequested()
+    /// Tab being dragged: {group, tab} (null otherwise).
+    property var draggedTab: null
 
     orientation: Qt.Horizontal
 
@@ -36,9 +38,18 @@ SplitView {
         }
     }
 
+    // Documents belong to the area, not to a split: a tab can move to another
+    // split (and outlive the one it came from) without being recreated.
+    Component {
+        id: documentComponent
+        DocumentView { anchors.fill: parent }
+    }
+    function createDocument(props) { return documentComponent.createObject(area, props) }
+
     Component {
         id: groupComponent
         EditorGroup {
+            editorArea: area
             app: area.app
             actions: area.actions
             SplitView.minimumWidth: 220
@@ -87,6 +98,46 @@ SplitView {
         const tab = group.currentTab
         const target = addGroup(index + 1)
         if (target && tab && tab.path) target.openTab(tab.path, 0, "tab", tab.viewState())
+    }
+
+    /// Moves the dragged tab to `target` at index `at` (-1: end), or with
+    /// `side` "left"/"right" into a new split beside `target`. The tab keeps
+    /// its state; a split left empty closes.
+    function moveTab(target, at, side) {
+        const d = draggedTab
+        draggedTab = null
+        if (!d || !d.tab || !target) return
+        const source = d.group
+        const from = source.tabs.indexOf(d.tab)
+        if (from < 0) return
+        if (side === "left" || side === "right") {
+            // Alone in its split: moving it beside itself changes nothing.
+            if (source === target && source.tabs.length === 1) return
+            const index = groups.indexOf(target)
+            // At most four splits: then the tab goes into `target` itself.
+            const created = addGroup(side === "left" ? index : index + 1)
+            if (created) {
+                target = created
+                at = 0
+            } else {
+                at = -1
+            }
+        }
+        if (source === target) {
+            if (at < 0) at = target.tabs.length
+            if (at === from || at === from + 1) { target.current = from; return }
+            source.takeTab(from)
+            target.insertTab(d.tab, at > from ? at - 1 : at)
+        } else {
+            source.takeTab(from)
+            target.adoptTab(d.tab, at < 0 ? target.tabs.length : at)
+            // A tab with the same file may already be open there: keep one.
+            const twin = target.tabs.findIndex(t => t !== d.tab && t.path === d.tab.path && !t.path.startsWith("terminal:"))
+            if (twin >= 0) target.closeTab(twin)
+            if (source.tabs.length === 0 && groups.length > 1) closeGroup(source)
+        }
+        activeIndex = groups.indexOf(target)
+        layoutChanged()
     }
 
     /// Opens next to `from`: on the given side, or in the next split.

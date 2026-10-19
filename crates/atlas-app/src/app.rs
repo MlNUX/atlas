@@ -442,6 +442,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "saveWindowImage"]
         unsafe fn save_window_image(self: &AppController, window: *mut QObject, path: &QString) -> bool;
+
+        /// Sends a mouse event (0 press, 1 move, 2 release) at window
+        /// coordinates after `delay_ms`; for the smoke test.
+        #[qinvokable]
+        #[cxx_name = "postMouse"]
+        unsafe fn post_mouse(self: &AppController, window: *mut QObject, kind: i32, x: f64, y: f64, delay_ms: i32);
     }
 
     impl cxx_qt::Initialize for AppController {}
@@ -1673,6 +1679,12 @@ impl qobject::AppController {
     /// window object).
     pub unsafe fn save_window_image(&self, window: *mut cxx_qt::QObject, path: &QString) -> bool {
         unsafe { crate::qt_helpers::save_window_image(window, path) }
+    }
+
+    /// # Safety
+    /// As for `save_window_image`.
+    pub unsafe fn post_mouse(&self, window: *mut cxx_qt::QObject, kind: i32, x: f64, y: f64, delay_ms: i32) {
+        unsafe { crate::qt_helpers::post_mouse(window, kind, x, y, delay_ms) }
     }
 }
 

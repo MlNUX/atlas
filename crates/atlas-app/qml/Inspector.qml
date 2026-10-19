@@ -99,20 +99,28 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 42
             Row {
+                id: tabRow
                 anchors.left: parent.left
                 anchors.leftMargin: 10
                 anchors.bottom: parent.bottom
                 spacing: 2
+                // Tabs shrink (and elide) only when the bar is too narrow.
+                TextMetrics { id: tabMetrics; font.pixelSize: Theme.fontSize; text: tabRow.tabNames.join("") }
+                readonly property var tabNames: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Lokaler Graph"), qsTr("Aktionen")]
+                readonly property real shrink: Math.min(1, (inspector.width - 28) / (tabMetrics.advanceWidth + 16 * tabNames.length + 2 * 3))
                 Repeater {
-                    model: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Lokaler Graph"), qsTr("Aktionen")]
+                    model: parent.tabNames
                     Item {
                         required property string modelData
                         required property int index
-                        width: tabLabel.implicitWidth + 16
+                        width: (tabLabel.implicitWidth + 16) * parent.shrink
                         height: 40
                         Text {
                             id: tabLabel
                             anchors.centerIn: parent
+                            width: Math.min(implicitWidth, parent.width - 8)
+                            elide: Text.ElideRight
+                            horizontalAlignment: Text.AlignHCenter
                             text: parent.modelData
                             color: inspector.tab === parent.index ? Theme.accent : tabHover.hovered ? Theme.textStrong : Theme.text
                             font.pixelSize: Theme.fontSize

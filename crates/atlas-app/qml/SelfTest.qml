@@ -26,6 +26,28 @@ Item {
     property string annotId
     property string pdfBefore
     property string calUid
+    property var term: null
+    property var moved: null
+    property string before
+
+    /// "a.md,b.md | c.md" – tabs per split, for messages.
+    function names() { return editor.groups.map(g => g.tabs.map(t => t.title).join(",")).join(" | ") }
+
+    // Real drag-and-drop: mouse events through the window system, one
+    // every 40 ms.
+    function dragPoints(from, to) {
+        const pts = [[0, from.x, from.y]]
+        for (let i = 1; i <= 10; i++) pts.push([1, from.x + (to.x - from.x) * i / 10, from.y + (to.y - from.y) * i / 10])
+        pts.push([1, to.x, to.y], [2, to.x, to.y])
+        pts.forEach((e, i) => app.postMouse(window, e[0], e[1], e[2], 40 * (i + 1)))
+    }
+    /// Drags tab `index` of `group` to (`x`, `y`) in `target`.
+    function dragTabTo(group, index, target, x, y) {
+        const item = group.tabItemAt(index)
+        if (!item) { check("Tab " + index + " sichtbar", false, names()); return }
+        dragPoints(item.mapToItem(null, item.width / 2, item.height / 2), target.mapToItem(null, x, y))
+    }
+    function dragTab(group, index, target, x, y) { dragTabTo(group, index, target, x, y) }
 
     function check(name, ok, detail) {
         if (!ok) failures++
@@ -275,6 +297,131 @@ Item {
             () => {
                 const v = editor.activeTab.viewerItem
                 check("Agenda", v.mode === "agenda" && !!v.bodyItem)
+                // ---- moving tabs between splits by real drag-and-drop
+                editor.restore({})
+                editor.open(path("src/main.rs"), 0, "tab")
+                editor.open(path("notes/idee.md"), 0, "tab")
+                window.openTerminal(app.projectRoot, "tab")
+                editor.open(path("notes/wiki.md"), 0, "split")
+            },
+            () => {
+                const [a, b] = editor.groups
+                check("Ausgangslage: zwei Splits", editor.groups.length === 2 && a.tabs.length === 3 && b.tabs.length === 1, names())
+                test.term = a.tabs.find(t => t.kind === "terminal")
+                dragTab(a, a.tabs.indexOf(test.term), b, b.width / 2, b.height / 2)
+            },
+            () => {
+                const [a, b] = editor.groups
+                check("Tab in anderen Split: im alten verschwunden", a.tabs.indexOf(test.term) < 0 && a.tabs.length === 2, names())
+                check("Tab im neuen Split, aktiv", b.tabs.length === 2 && b.currentTab === test.term && editor.activeGroup === b, names())
+                check("Terminal läuft nach dem Ziehen weiter", test.term.viewerItem && test.term.viewerItem.terminalView.running)
+                check("Ziehzustand zurückgesetzt", editor.draggedTab === null)
+                check("Sichtbar: verschobener Tab im Ziel, nächster im alten Split", test.term.visible && !!a.currentTab && a.currentTab.visible
+                      && a.tabs.filter(t => t.visible).length === 1 && b.tabs.filter(t => t.visible).length === 1)
+                // To the right edge: a new split.
+                const idee = a.tabs.find(t => t.path === path("notes/idee.md"))
+                dragTab(a, a.tabs.indexOf(idee), b, b.width * 0.92, b.height / 2)
+            },
+            () => {
+                const [a, b, c] = editor.groups
+                check("An den Rand: neuer Split rechts", editor.groups.length === 3 && !!c && c.tabs.length === 1 && c.tabs[0].path === path("notes/idee.md"), names())
+                check("… und im alten Split verschwunden", a.tabs.length === 1 && a.tabs[0].path === path("src/main.rs"), names())
+                // The last tab of a split: the empty split closes.
+                dragTab(a, 0, b, b.width / 2, b.height / 2)
+            },
+            () => {
+                const [b, c] = editor.groups
+                check("Letzter Tab verschoben: leerer Split geschlossen", editor.groups.length === 2 && b.tabs.length === 3
+                      && b.tabs.some(t => t.path === path("src/main.rs")), names())
+                // Back onto its own split: nothing changes.
+                test.before = names()
+                dragTab(b, 0, b, b.width / 2, b.height / 2)
+            },
+            () => {
+                check("Auf den eigenen Split: unverändert", names() === test.before, names())
+                // Reorder: the last tab to the front of the strip (without
+                // the long terminal title all tabs fit side by side).
+                const b = editor.groups[0]
+                b.closeTab(b.tabs.indexOf(test.term))
+                test.moved = b.tabs[b.tabs.length - 1]
+                const first = b.tabItemAt(0)
+                dragTabTo(b, b.tabs.length - 1, first, 4, first.height / 2)
+            },
+            () => {
+                const b = editor.groups[0]
+                check("Im Tab-Streifen umsortiert", b.tabs[0] === test.moved && b.tabs.length === 2 && editor.groups.length === 2, names())
+                // The only tab of a split onto its own edge: no empty split.
+                const c = editor.groups[1]
+                dragTab(c, 0, c, c.width * 0.92, c.height / 2)
+            },
+            () => {
+                check("Einziger Tab an den eigenen Rand: kein leerer Split", editor.groups.length === 2 && editor.groups[1].tabs.length === 1, names())
+                // Released outside of any split: nothing changes.
+                test.before = names()
+                const b = editor.groups[0]
+                dragTabTo(b, 1, window.contentItem, 40, 5)
+            },
+            () => {
+                check("Abgebrochenes Ziehen: unverändert", names() === test.before && editor.draggedTab === null, names())
+                // The same file already open in the target: one tab remains.
+                const [b, c] = editor.groups
+                b.openTab(path("notes/idee.md"), 0, "tab")
+                dragTab(c, 0, b, b.width / 2, b.height / 2)
+            },
+            () => {
+                const b = editor.groups[0]
+                check("Gleiche Datei im Ziel: nur ein Tab", editor.groups.length === 1
+                      && b.tabs.filter(t => t.path === path("notes/idee.md")).length === 1, names())
+                // Four splits are the maximum: an edge drop moves into the split.
+                editor.open(path("notes/plan-neu.md"), 0, "split")
+                editor.open(path("notes/zitate.md"), 0, "split")
+                editor.open(path("notes/todo.md"), 0, "split")
+            },
+            () => {
+                check("Vier Splits", editor.groups.length === 4, names())
+                const [b, , , d] = editor.groups
+                test.moved = b.tabs[0]
+                dragTab(b, 0, d, d.width * 0.92, d.height / 2)
+            },
+            () => {
+                const d = editor.groups[3]
+                check("Bei vier Splits: in den Split statt neuem", editor.groups.length === 4 && d.tabs.indexOf(test.moved) >= 0
+                      && editor.groups[0].tabs.indexOf(test.moved) < 0, names())
+                // A split showing the calendar takes tabs too.
+                editor.groups[1].openTab("calendar:", 0, "tab", {})
+            },
+            () => {
+                const [b, cal] = editor.groups
+                check("Kalender im Split", cal.currentTab && cal.currentTab.kind === "calendar")
+                test.moved = b.tabs[0]
+                dragTab(b, 0, cal, cal.width / 2, cal.height / 2)
+            },
+            () => {
+                const cal = editor.groups[1]
+                check("Tab auf Split mit Kalender verschoben", cal.tabs.indexOf(test.moved) >= 0 && editor.groups[0].tabs.indexOf(test.moved) < 0, names())
+                window.saveSession()
+                app.flushSession()
+                const groups = JSON.parse(app.loadLayout()).editor.groups
+                const paths = groups.reduce((all, g) => all.concat(g.tabs.map(t => t.path)), [])
+                check("Session: jeder Tab genau einmal, in seinem Split", paths.length === new Set(paths).size
+                      && groups.length === editor.groups.length && groups[1].tabs.some(t => t.path === "calendar:"), JSON.stringify(paths))
+            },
+            () => {
+                // To the left edge: a new split on the left.
+                while (editor.groups.length > 1) editor.closeGroup(editor.groups[editor.groups.length - 1])
+                const g = editor.groups[0]
+                editor.open(path("src/main.rs"), 0, "tab")
+            },
+            () => {
+                // (Own step: the split has its final width now.)
+                const g = editor.groups[0]
+                test.moved = g.currentTab
+                dragTab(g, g.tabs.indexOf(test.moved), g, g.width * 0.08, g.height / 2)
+            },
+            () => {
+                const [left, right] = editor.groups
+                check("An den linken Rand: neuer Split links", editor.groups.length === 2 && left.tabs.length === 1 && left.tabs[0] === test.moved
+                      && right.tabs.indexOf(test.moved) < 0 && editor.activeGroup === left, names())
             },
         ]
         timer.start()
