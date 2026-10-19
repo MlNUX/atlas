@@ -132,7 +132,9 @@ fn describe(err: std::io::Error, path: &Path, what: &str) -> anyhow::Error {
             anyhow::anyhow!("„{name}“: {what} ist mit Ihren Rechten nicht erlaubt.")
         }
         Some(libc::EROFS) => anyhow::anyhow!("„{name}“ liegt auf einem schreibgeschützten Dateisystem."),
-        Some(libc::EINVAL) => anyhow::anyhow!("„{name}“: {what} ist hier nicht möglich (Benutzer oder Gruppe unbekannt)."),
+        Some(libc::EINVAL) => {
+            anyhow::anyhow!("„{name}“: {what} ist hier nicht möglich (Benutzer oder Gruppe unbekannt).")
+        }
         _ => anyhow::anyhow!("„{name}“: {what} fehlgeschlagen: {err}"),
     }
 }
