@@ -275,6 +275,36 @@ Item {
             () => {
                 const v = editor.activeTab.viewerItem
                 check("Agenda", v.mode === "agenda" && !!v.bodyItem)
+                // ---- moving tabs between splits
+                while (editor.groups.length > 1) editor.closeGroup(editor.groups[editor.groups.length - 1])
+                const g = editor.groups[0]
+                editor.open(path("src/main.rs"), 0, "tab")
+                editor.open(path("notes/idee.md"), 0, "tab")
+                window.openTerminal(app.projectRoot, "tab")
+            },
+            () => {
+                const g = editor.groups[0]
+                const term = g.tabs.find(t => t.kind === "terminal")
+                const before = g.tabs.length
+                // Into a new split on the right: the terminal keeps running.
+                editor.draggedTab = { group: g, tab: term }
+                editor.moveTab(g, -1, "right")
+                const right = editor.groups[1]
+                check("Tab in neuen Split verschoben", editor.groups.length === 2 && right.tabs.length === 1 && right.tabs[0] === term
+                      && g.tabs.length === before - 1 && term.ownerGroup === right, editor.groups.length + " / " + g.tabs.length)
+                check("Terminal läuft nach dem Verschieben weiter", term.viewerItem && term.viewerItem.terminalView.running)
+                // Back into the first split, at the front.
+                const md = g.tabs.find(t => t.path === path("notes/idee.md"))
+                editor.draggedTab = { group: right, tab: term }
+                editor.moveTab(g, 0, "")
+                check("Tab zurück, leerer Split geschlossen", editor.groups.length === 1 && g.tabs[0] === term && g.current === 0, editor.groups.length)
+                // Reorder inside the split.
+                editor.draggedTab = { group: g, tab: md }
+                editor.moveTab(g, 0, "")
+                check("Tab innerhalb des Splits umsortiert", g.tabs[0] === md && g.tabs[1] === term, g.tabs.map(t => t.title).join(","))
+                window.saveSession()
+                app.flushSession()
+                check("Reihenfolge in der Session", JSON.stringify(JSON.parse(app.loadLayout()).editor.groups[0].tabs.map(t => t.path)).indexOf("idee.md") > 0)
             },
         ]
         timer.start()

@@ -31,6 +31,7 @@ alle übrigen Tasten gehen dort an das Programm im Terminal.
 | Alt+← / Alt+→ | Zurück / vor (Ordner, gefolgte Links) |
 | Strg+Klick, Mittelklick | In neuem Split öffnen |
 | Doppelklick | Vorschau-Tab fest anheften |
+| Tab ziehen | Im Tab-Streifen umsortieren; auf einen anderen Split verschieben (Mitte) oder an dessen linken/rechten Rand für einen neuen Split – der Tab behält seinen Zustand, Terminals laufen weiter |
 
 ## Explorer und Dateilisten
 

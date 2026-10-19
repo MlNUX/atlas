@@ -17,6 +17,8 @@ Rectangle {
     readonly property var currentTab: current >= 0 && current < tabs.length ? tabs[current] : null
     /// A temporary split is replaced by the next temporary open until pinned.
     property bool temporary: false
+    /// The EditorArea (shared drag state for moving tabs between splits).
+    property var editorArea: null
     property bool active: false
 
     signal activated()
@@ -73,20 +75,51 @@ Rectangle {
         }
         const tab = tabComponent.createObject(content, { path: path, line: line || 0, preview: mode === "preview" })
         if (state) tab.applyState(state)
+        // Connections go through `ownerGroup`, so a tab moved to another
+        // split talks to its new group.
+        tab.ownerGroup = group
         tab.openRequested.connect((p, l, where, s) => {
-            if (where === "split") group.openInSplit(p, l, "", s || {})
-            else group.openTab(p, l, where, s)
+            const g = tab.ownerGroup
+            if (where === "split") g.openInSplit(p, l, "", s || {})
+            else g.openTab(p, l, where, s)
         })
-        tab.pinRequested.connect(() => { tab.preview = false; group.changed() })
-        tab.closeRequested.connect(() => group.closeTab(group.tabs.indexOf(tab)))
-        tab.pathChanged.connect(group.changed)
-        const insertAt = current >= 0 ? current + 1 : tabs.length
+        tab.pinRequested.connect(() => { tab.preview = false; tab.ownerGroup.changed() })
+        tab.closeRequested.connect(() => tab.ownerGroup.closeTab(tab.ownerGroup.tabs.indexOf(tab)))
+        tab.pathChanged.connect(() => tab.ownerGroup.changed())
+        insertTab(tab, current >= 0 ? current + 1 : tabs.length)
+        return tab
+    }
+
+    function insertTab(tab, at) {
+        const insertAt = Math.max(0, Math.min(at, tabs.length))
         const list = tabs.slice()
         list.splice(insertAt, 0, tab)
         tabs = list
         current = insertAt
         changed()
+    }
+
+    /// Removes tab `index` without closing it (it moves elsewhere).
+    function takeTab(index) {
+        const tab = tabs[index]
+        if (!tab) return null
+        const list = tabs.slice()
+        list.splice(index, 1)
+        tabs = list
+        if (current >= tabs.length) current = tabs.length - 1
+        else if (index < current) current--
+        changed()
         return tab
+    }
+
+    /// Takes over `tab` from another split (it keeps its state, terminals
+    /// keep running) and inserts it at `at`.
+    function adoptTab(tab, at) {
+        tab.parent = content
+        tab.ownerGroup = group
+        tab.preview = false
+        insertTab(tab, at)
+        group.activated()
     }
 
     function closeTab(index) {
@@ -162,6 +195,36 @@ Rectangle {
             color: Theme.header
             radius: Theme.radius
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.radius; color: Theme.header }
+            // A tab dropped on the strip goes to that position.
+            DropArea {
+                id: stripDrop
+                anchors.fill: parent
+                keys: ["text/x-atlas-tab"]
+                // Position among the tabs (the strip's coordinates).
+                readonly property int at: {
+                    if (!containsDrag) return -1
+                    const x = mapToItem(tabStrip.contentItem, drag.x, 0).x
+                    for (let i = 0; i < tabStrip.count; ++i) {
+                        const it = tabStrip.itemAtIndex(i)
+                        if (it && x < it.x + it.width / 2) return i
+                    }
+                    return tabStrip.count
+                }
+                onDropped: (drop) => {
+                    if (group.editorArea && group.editorArea.draggedTab) group.editorArea.moveTab(group, at, "")
+                    drop.accept(Qt.MoveAction)
+                }
+            }
+            Rectangle {
+                visible: stripDrop.containsDrag && stripDrop.at >= 0
+                readonly property var neighbour: tabStrip.itemAtIndex(Math.min(stripDrop.at, tabStrip.count - 1))
+                x: !neighbour ? 8 : tabStrip.x + (stripDrop.at < tabStrip.count ? neighbour.x : neighbour.x + neighbour.width) - tabStrip.contentX - 1
+                y: 8
+                width: 2
+                height: parent.height - 16
+                radius: 1
+                color: Theme.accent
+            }
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 8
@@ -196,6 +259,27 @@ Rectangle {
                             border.color: tabItem.isCurrent ? (group.active ? Qt.rgba(0.24, 0.55, 0.99, 0.4) : Theme.border) : "transparent"
                         }
                         HoverHandler { id: tabHover }
+                        // Drag source: to another position, another split, or
+                        // (as a file) onto the terminal or the calendar.
+                        Item { id: tabDragProxy }
+                        Drag.active: tabMouse.drag.active
+                        Drag.dragType: Drag.Automatic
+                        Drag.supportedActions: Qt.MoveAction | Qt.CopyAction | Qt.LinkAction
+                        Drag.proposedAction: Qt.MoveAction
+                        Drag.mimeData: {
+                            const data = { "text/x-atlas-tab": tabItem.tab ? tabItem.tab.path : "" }
+                            if (tabItem.tab && group.actions && ["terminal", "calendar", "trash", ""].indexOf(tabItem.tab.kind) < 0)
+                                data["text/uri-list"] = group.actions.uriList([tabItem.tab.path])
+                            return data
+                        }
+                        Connections {
+                            target: tabMouse.drag
+                            function onActiveChanged() {
+                                if (!group.editorArea) return
+                                if (tabMouse.drag.active) group.editorArea.draggedTab = { group: group, tab: tabItem.tab }
+                                else Qt.callLater(() => { if (group.editorArea) group.editorArea.draggedTab = null })
+                            }
+                        }
                         Icon {
                             x: 12
                             anchors.verticalCenter: parent.verticalCenter
@@ -215,8 +299,11 @@ Rectangle {
                             elide: Text.ElideRight
                         }
                         MouseArea {
+                            id: tabMouse
                             anchors.fill: parent
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                            drag.target: tabDragProxy
+                            drag.threshold: 10
                             onClicked: (mouse) => {
                                 if (mouse.button === Qt.MiddleButton) group.closeTab(tabItem.index)
                                 else { group.current = tabItem.index; group.activated() }
@@ -358,17 +445,26 @@ Rectangle {
     }
 
     // Drag-and-drop: drop in the middle opens here, on the left/right edge
-    // opens a new split on that side.
+    // opens a new split on that side. Tabs dragged from a tab strip move.
     DropArea {
         id: drop
         anchors.fill: parent
-        // Folder tabs take drops themselves (move/copy into the folder),
-        // terminal tabs insert the paths.
-        // The calendar links dropped files with entries.
-        enabled: !group.currentTab || ["dir", "trash", "terminal", "calendar"].indexOf(group.currentTab.kind) < 0
-        keys: ["text/uri-list"]
+        anchors.topMargin: 44
+        keys: ["text/uri-list", "text/x-atlas-tab"]
+        readonly property bool isTab: containsDrag && drag.hasFormat("text/x-atlas-tab") && !!group.editorArea && !!group.editorArea.draggedTab
         readonly property string side: !containsDrag ? "" : drag.x < width * 0.2 ? "left" : drag.x > width * 0.8 ? "right" : "center"
+        // Folder tabs take file drops themselves (move/copy into the
+        // folder), terminal tabs insert the paths, the calendar links them.
+        onEntered: (event) => {
+            const tabMove = event.hasFormat("text/x-atlas-tab") && !!group.editorArea && !!group.editorArea.draggedTab
+            if (!tabMove && group.currentTab && ["dir", "trash", "terminal", "calendar"].indexOf(group.currentTab.kind) >= 0) event.accepted = false
+        }
         onDropped: (event) => {
+            if (isTab) {
+                group.editorArea.moveTab(group, side === "center" ? group.tabs.length : -1, side === "center" ? "" : side)
+                event.accept(Qt.MoveAction)
+                return
+            }
             const paths = event.urls.map(u => group.app.urlToPath(u.toString()))
             if (paths.length === 0) return
             if (side === "center") for (const p of paths) group.openTab(p, 0, "tab")
@@ -380,6 +476,7 @@ Rectangle {
             visible: drop.containsDrag
             color: Theme.accent
             opacity: 0.18
+            radius: Theme.radius
             x: drop.side === "right" ? parent.width * 0.5 : 0
             width: drop.side === "center" ? parent.width : parent.width * 0.5
             height: parent.height

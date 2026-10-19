@@ -15,6 +15,8 @@ Item {
     property int line: 0
     /// Preview tabs are replaced by the next preview; pinning makes them stay.
     property bool preview: false
+    /// The EditorGroup showing this tab (changes when the tab is moved).
+    property var ownerGroup: null
     // `revision` re-evaluates the kind after the file was moved or deleted.
     property int revision: 0
     readonly property string kind: path && revision >= 0 ? app.fileKind(path) : ""
