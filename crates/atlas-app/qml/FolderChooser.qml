@@ -43,24 +43,7 @@ Dialog {
         return i > 0 ? path.slice(0, i) : "/"
     }
     function nameOf(path) { return path === "/" ? "/" : path.slice(path.lastIndexOf("/") + 1) }
-    /// Path bar segments: [{ name, path }] from the root down.
-    function segments(path) {
-        const out = [{ name: "/", path: "/" }]
-        let acc = ""
-        for (const part of path.split("/").filter(p => p)) {
-            acc += "/" + part
-            out.push({ name: part, path: acc })
-        }
-        // A folder below a place starts at that place (like Dolphin).
-        for (let i = 0; i < app.placePaths.length; ++i) {
-            const p = app.placePaths[i]
-            if (p !== "/" && (path === p || path.startsWith(p + "/"))) {
-                const depth = p.split("/").filter(x => x).length
-                return [{ name: app.placeNames[i], path: p, icon: app.placeIcons[i] }].concat(out.slice(depth + 1))
-            }
-        }
-        return out
-    }
+    function segments(path) { return pathEdit.segments(path) }
     function accept() {
         if (!chosenPath || folder.error) return
         if (mode === "session" && !nameField.text.trim()) { nameField.forceActiveFocus(); return }
@@ -199,109 +182,12 @@ Dialog {
                         enabled: root.folderPath !== "/"
                         onClicked: root.navigate(root.parentOf(root.folderPath))
                     }
-                    Rectangle {
+                    PathBar {
                         id: pathEdit
-                        property bool editing: false
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 32
-                        radius: 8
-                        color: Theme.editor
-                        border.color: editing ? Theme.accent : Theme.border
-                        clip: true
-
-                        ListView {
-                            id: crumbs
-                            visible: !pathEdit.editing
-                            anchors.fill: parent
-                            anchors.leftMargin: 6
-                            anchors.rightMargin: 6
-                            orientation: ListView.Horizontal
-                            interactive: false
-                            model: root.segments(root.folderPath)
-                            onCountChanged: Qt.callLater(positionViewAtEnd)
-                            delegate: Row {
-                                id: crumb
-                                required property var modelData
-                                required property int index
-                                height: crumbs.height
-                                spacing: 0
-                                Icon {
-                                    visible: crumb.index > 0
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    name: "chevron-right"
-                                    size: 12
-                                    color: Theme.textFaint
-                                }
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: crumbRow.width + 12
-                                    height: 24
-                                    radius: 6
-                                    color: crumbHover.hovered ? Theme.hover : "transparent"
-                                    Row {
-                                        id: crumbRow
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        Icon {
-                                            visible: !!crumb.modelData.icon
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            name: crumb.modelData.icon || "folder"
-                                            size: 14
-                                            color: Theme.textMuted
-                                        }
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: crumb.modelData.name
-                                            color: crumb.index === crumbs.count - 1 ? Theme.textStrong : Theme.text
-                                            font.pixelSize: Theme.fontSize
-                                            font.weight: crumb.index === crumbs.count - 1 ? Font.DemiBold : Font.Normal
-                                        }
-                                    }
-                                    HoverHandler { id: crumbHover }
-                                    MouseArea { anchors.fill: parent; onClicked: root.navigate(crumb.modelData.path) }
-                                }
-                            }
-                            // The free space right of the segments edits the path.
-                            footer: MouseArea {
-                                width: Math.max(40, crumbs.width - crumbs.contentWidth)
-                                height: crumbs.height
-                                cursorShape: Qt.IBeamCursor
-                                onClicked: pathEdit.startEditing()
-                            }
-                        }
-                        // Leading segments scrolled out of view.
-                        Rectangle {
-                            visible: !pathEdit.editing && crumbs.contentX > crumbs.originX + 1
-                            x: 1
-                            y: 1
-                            width: 28
-                            height: parent.height - 2
-                            radius: 8
-                            color: Theme.editor
-                            Text {
-                                anchors.centerIn: parent
-                                text: "…"
-                                color: Theme.textMuted
-                                font.pixelSize: Theme.fontSize
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: pathEdit.startEditing() }
-                        }
-                        TextField {
-                            id: pathField
-                            visible: pathEdit.editing
-                            anchors.fill: parent
-                            background: null
-                            font.pixelSize: Theme.fontSize
-                            onAccepted: { pathEdit.editing = false; root.navigate(text.trim()) }
-                            Keys.onEscapePressed: (event) => { pathEdit.editing = false; event.accepted = true }
-                            onActiveFocusChanged: if (!activeFocus) pathEdit.editing = false
-                        }
-                        function startEditing() {
-                            pathField.text = root.folderPath
-                            editing = true
-                            pathField.forceActiveFocus()
-                            pathField.selectAll()
-                        }
+                        app: root.app
+                        path: root.folderPath
+                        onNavigateRequested: (path) => root.navigate(path)
                     }
                     IconButton {
                         id: hiddenButton

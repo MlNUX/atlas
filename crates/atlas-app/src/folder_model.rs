@@ -14,7 +14,7 @@ use std::sync::Arc;
 use atlas_core::listing::{self, FileInfo, ListOp, SortKey};
 use atlas_core::watcher::DirWatcher;
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::{QByteArray, QHash, QHashPair_i32_QByteArray, QModelIndex, QString, QVariant, QVector};
+use cxx_qt_lib::{QByteArray, QHash, QHashPair_i32_QByteArray, QModelIndex, QString, QStringList, QVariant, QVector};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -32,6 +32,8 @@ pub mod qobject {
         type QVector_i32 = cxx_qt_lib::QVector<i32>;
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+        include!("cxx-qt-lib/qstringlist.h");
+        type QStringList = cxx_qt_lib::QStringList;
     }
 
     extern "RustQt" {
@@ -44,6 +46,8 @@ pub mod qobject {
         #[qproperty(QString, sort_key, cxx_name = "sortKey", READ, WRITE = set_sort_key, NOTIFY)]
         #[qproperty(bool, sort_ascending, cxx_name = "sortAscending", READ, WRITE = set_sort_ascending, NOTIFY)]
         #[qproperty(i32, count, READ, NOTIFY)]
+        /// JSON {dirs, files, sizeText} of the listed entries.
+        #[qproperty(QString, summary, READ, NOTIFY)]
         #[qproperty(bool, loading, READ, NOTIFY)]
         #[qproperty(QString, error, READ, NOTIFY)]
         type FolderModel = super::FolderModelRust;
@@ -61,6 +65,11 @@ pub mod qobject {
 
         #[qinvokable]
         fn reload(self: Pin<&mut FolderModel>);
+
+        /// Total size of the listed files among `paths`, formatted.
+        #[qinvokable]
+        #[cxx_name = "sizeTextOf"]
+        fn size_text_of(self: &FolderModel, paths: &QStringList) -> QString;
 
         #[qinvokable]
         #[cxx_name = "pathAt"]
@@ -136,6 +145,7 @@ pub struct FolderModelRust {
     sort_key: QString,
     sort_ascending: bool,
     count: i32,
+    summary: QString,
     loading: bool,
     error: QString,
 
@@ -153,6 +163,7 @@ impl Default for FolderModelRust {
             sort_key: QString::from("name"),
             sort_ascending: true,
             count: 0,
+            summary: QString::default(),
             loading: false,
             error: QString::default(),
             entries: Vec::new(),
@@ -316,7 +327,30 @@ impl qobject::FolderModel {
         self.update_count();
     }
 
+    pub fn size_text_of(&self, paths: &QStringList) -> QString {
+        let wanted: std::collections::HashSet<String> = paths.iter().map(|p| p.to_string()).collect();
+        let size: u64 = self
+            .entries
+            .iter()
+            .filter(|e| !e.is_dir && wanted.contains(e.path.to_string_lossy().as_ref()))
+            .map(|e| e.size)
+            .sum();
+        QString::from(listing::format_size(size).as_str())
+    }
+
     fn update_count(mut self: Pin<&mut Self>) {
+        let dirs = self.entries.iter().filter(|e| e.is_dir).count();
+        let size: u64 = self.entries.iter().filter(|e| !e.is_dir).map(|e| e.size).sum();
+        let summary = serde_json::json!({
+            "dirs": dirs,
+            "files": self.entries.len() - dirs,
+            "sizeText": listing::format_size(size),
+        });
+        let summary = QString::from(summary.to_string().as_str());
+        if self.summary != summary {
+            self.as_mut().rust_mut().summary = summary;
+            self.as_mut().summary_changed();
+        }
         let count = self.entries.len() as i32;
         if self.count != count {
             self.as_mut().rust_mut().count = count;

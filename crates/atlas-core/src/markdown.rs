@@ -605,7 +605,11 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
             // Task list items: clickable in the preview (toggled in the source
             // by line).
             Event::TaskListMarker(done) if html => events.push(Event::Html(
-                format!("<input type=\"checkbox\" class=\"task\" data-line=\"{line}\"{}>", if done { " checked" } else { "" }).into(),
+                format!(
+                    "<input type=\"checkbox\" class=\"task\" data-line=\"{line}\"{}>",
+                    if done { " checked" } else { "" }
+                )
+                .into(),
             )),
             other => events.push(other),
         }

@@ -403,3 +403,54 @@ Oberfläche an das dunkle „Navy“-Mockup angeglichen (Screenshot:
 
 Gefunden und behoben: „In Notiz übernehmen“ (Terminal-Ausgabe, PDF-Zitat)
 öffnete sich nicht – eine lokale Variable `open` verdeckte `open()`.
+
+### Nachtrag – Rückmeldungen aus dem Test
+
+Behoben:
+
+- **Splits füllen den Editorbereich immer**: Beim Vergrößern eines Splits
+  gegen die Seitenleiste, beim Ein-/Ausblenden und beim Ändern der Breite
+  der Seitenleiste blieben Lücken. Die Splits merken sich ihre Anteile und
+  werden bei jeder Größenänderung neu verteilt; Dokumente gehören nicht mehr
+  zur SplitView (dort zählten sie als zusätzliche Splits).
+- **Strg+Mausrad zoomt PDFs** um den Punkt unter der Maus.
+- **Projektwechsel** öffnete Dateien des vorherigen Projekts (z. B.
+  `paper.pdf`, `README.md`): Dateien von der Kommandozeile gelten nur beim
+  Start und nur, wenn sie existieren.
+- **Checkboxen in der Markdown-Vorschau** sind anklickbar und haken die
+  Zeile im Quelltext ab (wird wie jede Änderung gespeichert).
+- **Leeres Fenster**: ohne „Split teilen“/„Schließen“-Knopf; wer etwas im
+  Split oder temporären Split öffnet, während nur das leere Fenster da ist,
+  bekommt es dort – ein leeres Fenster bleibt nie neben einem Dokument
+  stehen.
+
+Neu gestaltet:
+
+- **Schnellansicht** nach
+  [previews/03-schnellansicht-dark.png](../previews/03-schnellansicht-dark.png):
+  Kopfzeile „Schnellansicht – Name“ mit Seitenwechsel, Zoom und „Ganze
+  Seite“, das Dokument ohne eigene Leisten (PDFs ganzseitig), rechts eine
+  Infospalte (Art, Größe, Änderung, Ordner; bei PDFs Seiten, Abmessungen und
+  Anmerkungen, bei Notizen Überschriften und Schlagwörter) mit „Im Tab
+  öffnen“ / „Im Split öffnen“, darunter die Tastenhinweise. **Strg+Klick auf
+  eine Datei im Projektbaum** öffnet sie in der Schnellansicht (Mittelklick
+  weiterhin im Split, Strg+Klick auf Ordner als Dateiliste im Split).
+- **Dateiansicht wie Dolphin**: Pfadleiste mit anklickbaren Abschnitten
+  (beginnt beim Projekt bzw. Ort, Klick auf die freie Fläche oder Strg+L zum
+  Eintippen), Symbolansicht mit großen Symbolen und Bildvorschau oder
+  Detailansicht mit Spalten, Zoom-Regler und Strg+Mausrad, Statusleiste mit
+  „5 Ordner, 3 Dateien (1,2 MB)“ bzw. der Auswahl und dem freien
+  Speicherplatz. Ansicht und Symbolgröße stehen in der Session.
+- **Ordnerauswahl** („Projektordner öffnen“, Strg+O) als eigenes Fenster im
+  Design statt des Systemdialogs: Projekt und Orte links, Pfadleiste,
+  Unterordner, Ordner per Doppelklick betreten, „Ordner öffnen“ übernimmt
+  den gezeigten oder markierten Ordner.
+- **Neue Session** (Sessionmenü oben rechts, Befehlspalette) fragt immer
+  nach dem Projektordner und dem Namen; liegt der Ordner außerhalb des
+  aktuellen Projekts, wird dieses Projekt geöffnet und die Session dort
+  angelegt.
+
+Geprüft im Rauchtest: echte Mausereignisse für Strg+Klick im Baum, Klick und
+Strg+Mausrad in der Dateiansicht, Wechsel Symbol-/Detailansicht mit
+erhaltener Auswahl, Ordnerauswahl und Anlegen einer Session, leeres Fenster
+und Splits, Checkbox-Klick in der Vorschau, PDF-Zoom.

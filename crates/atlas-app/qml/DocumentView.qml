@@ -133,6 +133,7 @@ Item {
         id: folderComponent
         FolderView {
             actions: view.actions
+            app: view.app
             source: view.path
             onActivated: (path, isDir, newPane) => {
                 if (isDir && !newPane) view.navigate(path, 0)

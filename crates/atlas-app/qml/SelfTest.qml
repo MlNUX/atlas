@@ -570,6 +570,36 @@ Item {
                 check("Schnellansicht → im Split öffnen", !quickLook.visible && editor.activeTab && editor.activeTab.path === path("docs/umbenannt.pdf")
                       && editor.groups.every(g => g.tabs.length > 0), names())
             },
+            () => {
+                // Folder tab like Dolphin: icons, details, zoom, status bar.
+                editor.open(path("notes"), 0, "tab")
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                check("Ordner: Symbolansicht", f.viewMode === "icons" && f.activeView.count === f.folderModel.count && f.folderModel.count > 3, f.viewMode + " " + f.folderModel.count)
+                const sum = JSON.parse(f.folderModel.summary)
+                check("Ordner: Statusleiste zählt", sum.files === f.folderModel.count && sum.dirs === 0, f.folderModel.summary)
+                check("Ordner: nichts vorausgewählt", f.selectedPaths().length === 0, f.selectedPaths().join(","))
+                const item = f.activeView.itemAtIndex(1)
+                const p = item.mapToItem(null, item.width / 2, item.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+                test.zoomBefore = f.iconSize
+                app.sendWheel(window, p.x, p.y, 120, true)
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                check("Ordner: Klick wählt aus", f.selectedPaths().length === 1 && f.selectedPaths()[0] === f.folderModel.pathAt(1), f.selectedPaths().join(","))
+                check("Ordner: Strg+Mausrad zoomt", f.iconSize > test.zoomBefore, test.zoomBefore + " → " + f.iconSize)
+                f.viewMode = "details"
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                check("Ordner: Detailansicht behält Auswahl", f.activeView.count === f.folderModel.count && f.activeView.currentIndex === 1
+                      && f.selectedPaths().length === 1, f.activeView.currentIndex)
+                const state = f.viewState()
+                check("Ordner: Ansicht im Sitzungszustand", state.viewMode === "details" && state.iconSize === f.iconSize)
+            },
         ]
         timer.start()
     }

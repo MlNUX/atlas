@@ -15,6 +15,7 @@ MenuSeparator 6.0 MenuSeparator.qml
 Popup 6.0 Popup.qml
 ScrollBar 6.0 ScrollBar.qml
 ScrollView 6.0 ScrollView.qml
+Slider 6.0 Slider.qml
 SpinBox 6.0 SpinBox.qml
 TabBar 6.0 TabBar.qml
 TabButton 6.0 TabButton.qml
