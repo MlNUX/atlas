@@ -12,6 +12,18 @@
 //!
 //! [terminal]
 //! shell = "/run/current-system/sw/bin/fish"   # default: login shell
+//!
+//! [calendar]                     # Nextcloud/CalDAV (never a password)
+//! server = "https://cloud.example.com"
+//! user = "minux"
+//! dav_url = ""                   # optional, if discovery fails
+//! default = "https://…/calendars/minux/personal/"   # "" = only in the project
+//!
+//! [[calendar.calendars]]
+//! url = "https://…/calendars/minux/personal/"
+//! name = "Persönlich"
+//! hidden = false
+//! projects = []                  # non-empty: only shown in these projects
 //! ```
 //!
 //! Without a configured command Atlas uses `$VISUAL` or `$EDITOR` (in a
@@ -45,6 +57,48 @@ pub struct ExtensionsConfig {
     pub disabled: Vec<String>,
 }
 
+/// A CalDAV calendar of the account as chosen by the user.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalendarChoice {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default)]
+    pub hidden: bool,
+    /// Project folders the calendar is limited to (empty = all projects).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub projects: Vec<String>,
+}
+
+impl CalendarChoice {
+    /// Shown (and synchronised) in the project at `root`.
+    pub fn visible_in(&self, root: &str) -> bool {
+        !self.hidden && (self.projects.is_empty() || self.projects.iter().any(|p| p == root))
+    }
+}
+
+/// Nextcloud/CalDAV account. The app password is never stored.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalendarConfig {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub server: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub dav_url: String,
+    /// Default calendar for new entries in all projects ("" = local).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub default: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub calendars: Vec<CalendarChoice>,
+}
+
+impl CalendarConfig {
+    pub fn connected(&self) -> bool {
+        !self.user.is_empty() && (!self.server.is_empty() || !self.dav_url.is_empty())
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -53,6 +107,8 @@ pub struct Config {
     pub terminal: TerminalConfig,
     #[serde(default)]
     pub extensions: ExtensionsConfig,
+    #[serde(default)]
+    pub calendar: CalendarConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -96,6 +152,11 @@ impl Config {
     /// Updates only the `[extensions]` table.
     pub fn save_extensions(extensions: &ExtensionsConfig) -> Result<()> {
         save_table(&config_file(), "extensions", extensions)
+    }
+
+    /// Updates only the `[calendar]` table.
+    pub fn save_calendar(calendar: &CalendarConfig) -> Result<()> {
+        save_table(&config_file(), "calendar", calendar)
     }
 }
 
@@ -265,5 +326,30 @@ mod tests {
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("[other]"), "{text}");
         assert_eq!(Config::load_from(&file).editor, editor);
+    }
+
+    #[test]
+    fn calendar_account_without_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config.toml");
+        let calendar = CalendarConfig {
+            server: "https://cloud.example.com".into(),
+            user: "minux".into(),
+            default: "https://cloud.example.com/remote.php/dav/calendars/minux/personal/".into(),
+            calendars: vec![CalendarChoice {
+                url: "https://x/a/".into(),
+                name: "A".into(),
+                hidden: false,
+                projects: vec!["/p".into()],
+            }],
+            ..Default::default()
+        };
+        save_table(&file, "calendar", &calendar).unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(!text.to_lowercase().contains("password"), "{text}");
+        let back = Config::load_from(&file).calendar;
+        assert_eq!(back, calendar);
+        assert!(back.connected());
+        assert!(back.calendars[0].visible_in("/p") && !back.calendars[0].visible_in("/q"));
     }
 }

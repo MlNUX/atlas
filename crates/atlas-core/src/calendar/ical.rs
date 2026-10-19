@@ -168,11 +168,11 @@ fn unfold(text: &str) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     for raw in text.split('\n') {
         let line = raw.strip_suffix('\r').unwrap_or(raw);
-        if let Some(rest) = line.strip_prefix(' ').or_else(|| line.strip_prefix('\t')) {
-            if let Some(last) = lines.last_mut() {
-                last.push_str(rest);
-                continue;
-            }
+        if let Some(rest) = line.strip_prefix(' ').or_else(|| line.strip_prefix('\t'))
+            && let Some(last) = lines.last_mut()
+        {
+            last.push_str(rest);
+            continue;
         }
         if !line.is_empty() {
             lines.push(line.to_owned());
@@ -243,10 +243,12 @@ pub fn parse(text: &str) -> Result<Vec<Component>> {
                     None => out.push(done),
                 }
             }
-            _ => match stack.last_mut() {
-                Some(c) => c.props.push(prop),
-                None => {} // garbage outside of components
-            },
+            _ => {
+                // Lines outside of components are ignored.
+                if let Some(c) = stack.last_mut() {
+                    c.props.push(prop);
+                }
+            }
         }
     }
     if let Some(open) = stack.last() {
@@ -349,12 +351,17 @@ impl Time {
     pub fn utc(&self, tz: Tz) -> DateTime<Utc> {
         match *self {
             Time::Utc(t) => t,
-            Time::Zoned(t, zone) => {
-                zone.from_local_datetime(&t).earliest().map(|d| d.with_timezone(&Utc)).unwrap_or_else(|| Utc.from_utc_datetime(&t))
-            }
+            Time::Zoned(t, zone) => zone
+                .from_local_datetime(&t)
+                .earliest()
+                .map(|d| d.with_timezone(&Utc))
+                .unwrap_or_else(|| Utc.from_utc_datetime(&t)),
             other => {
                 let local = other.local(tz);
-                tz.from_local_datetime(&local).earliest().map(|d| d.with_timezone(&Utc)).unwrap_or_else(|| Utc.from_utc_datetime(&local))
+                tz.from_local_datetime(&local)
+                    .earliest()
+                    .map(|d| d.with_timezone(&Utc))
+                    .unwrap_or_else(|| Utc.from_utc_datetime(&local))
             }
         }
     }
@@ -419,7 +426,8 @@ pub fn parse_duration(value: &str) -> Option<i64> {
     let (date, time) = rest.split_once('T').unwrap_or((rest, ""));
     let mut total = 0i64;
     let mut number = String::new();
-    for (part, units) in [(date, [('W', 604_800), ('D', 86_400), ('?', 0)]), (time, [('H', 3600), ('M', 60), ('S', 1)])] {
+    for (part, units) in [(date, [('W', 604_800), ('D', 86_400), ('?', 0)]), (time, [('H', 3600), ('M', 60), ('S', 1)])]
+    {
         for c in part.chars() {
             if c.is_ascii_digit() {
                 number.push(c);
@@ -477,13 +485,22 @@ mod tests {
         let ev = &cals[0].children[0];
         assert_eq!(ev.name, "VEVENT");
         assert_eq!(ev.text("SUMMARY").unwrap(), "Kapitel 3, Teil 2");
-        assert_eq!(ev.text("DESCRIPTION").unwrap(), "Zeile eins\nZeile zwei mit einer sehr langen Beschreibung die umbrochen wurde");
+        assert_eq!(
+            ev.text("DESCRIPTION").unwrap(),
+            "Zeile eins\nZeile zwei mit einer sehr langen Beschreibung die umbrochen wurde"
+        );
         assert_eq!(ev.get("CATEGORIES").unwrap().list(), ["Schreiben", "Projekt,X"]);
         assert_eq!(ev.get("X-NEXTCLOUD-FOO").unwrap().param("X-PARAM"), Some("a:b;c"));
         assert_eq!(ev.children[0].text("TRIGGER").unwrap(), "-PT15M");
 
         let start = parse_time(ev.get("DTSTART").unwrap()).unwrap();
-        assert_eq!(start, Time::Zoned(NaiveDate::from_ymd_opt(2026, 10, 17).unwrap().and_hms_opt(10, 0, 0).unwrap(), chrono_tz::Europe::Berlin));
+        assert_eq!(
+            start,
+            Time::Zoned(
+                NaiveDate::from_ymd_opt(2026, 10, 17).unwrap().and_hms_opt(10, 0, 0).unwrap(),
+                chrono_tz::Europe::Berlin
+            )
+        );
         assert_eq!(start.utc(chrono_tz::UTC).format("%H:%M").to_string(), "08:00", "CEST is UTC+2");
         assert_eq!(start.local(chrono_tz::America::New_York).format("%H:%M").to_string(), "04:00");
 
@@ -508,7 +525,13 @@ mod tests {
         assert_eq!(parse_duration("15M"), None);
         assert_eq!(format_duration(-900), "-PT15M");
         assert_eq!(format_duration(93_600), "P1DT2H");
-        let t = time_property("DTSTART", &Time::Zoned(NaiveDate::from_ymd_opt(2026, 1, 2).unwrap().and_hms_opt(3, 4, 5).unwrap(), chrono_tz::Europe::Berlin));
+        let t = time_property(
+            "DTSTART",
+            &Time::Zoned(
+                NaiveDate::from_ymd_opt(2026, 1, 2).unwrap().and_hms_opt(3, 4, 5).unwrap(),
+                chrono_tz::Europe::Berlin,
+            ),
+        );
         assert_eq!((t.value.as_str(), t.param("TZID")), ("20260102T030405", Some("Europe/Berlin")));
         assert!(parse("BEGIN:VEVENT\nEND:VTODO\n").is_err());
     }

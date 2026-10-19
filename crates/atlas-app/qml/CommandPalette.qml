@@ -15,6 +15,7 @@ import Atlas
 //   :42           line 42 in the current document
 //   ?text         full text search in the project (search panel)
 //   @text         PDF annotations and quotes (marked text, comments, bookmarks)
+//   !text         calendar entries (also shown for longer queries)
 //
 // Enter opens (folders as file list), Ctrl+Enter in a new split.
 Popup {
@@ -22,12 +23,16 @@ Popup {
     required property AppController app
     /// [{ name, hint, run }]
     property var actions: []
+    /// CalendarModel (entries are found as well).
+    property var calendar: null
     property var results: []
 
     /// `state` goes to the viewer (`{annot: id}` for PDF annotations).
     signal openRequested(string path, int line, string where, var state)
     signal searchRequested(string text)
     signal lineRequested(int line)
+    /// Show a calendar entry.
+    signal calendarEntryRequested(string uid, string start)
 
     function show(prefix) {
         app.refreshFileList()
@@ -59,11 +64,25 @@ Popup {
         }))
     }
 
+    function calendarResults(query, limit) {
+        if (!calendar) return []
+        const kinds = { event: qsTr("Termin"), block: qsTr("Arbeitsblock"), deadline: qsTr("Frist"), task: qsTr("Aufgabe") }
+        return JSON.parse(calendar.search(query, limit)).map(e => ({
+            kind: "calendar",
+            title: e.title,
+            relative: (kinds[e.kind] || "") + (e.start ? " · " + e.start.replace("T", " ") : qsTr(" · nicht eingeplant")),
+            uid: e.uid,
+            start: e.start || "",
+        }))
+    }
+
     function update() {
         const text = input.text
         let list = []
         if (text.startsWith("@")) {
             list = annotationResults(text.slice(1).trim(), 50)
+        } else if (text.startsWith("!")) {
+            list = text.slice(1).trim() ? calendarResults(text.slice(1).trim(), 50) : []
         } else if (text.startsWith(">")) {
             list = actionResults(text.slice(1).trim(), 50)
         } else if (text.startsWith("#")) {
@@ -91,6 +110,7 @@ Popup {
             if (text.trim()) list = list.concat(actionResults(text.trim(), 3).filter(a => a.score >= text.trim().length * 6))
             // Quotes and annotations matching longer queries.
             if (text.trim().length >= 3) list = list.concat(annotationResults(text.trim(), 3))
+            if (text.trim().length >= 3) list = list.concat(calendarResults(text.trim(), 3))
             if (!text.trim()) list = actionResults("", 0).concat(list)
             if (text.trim()) list.push({ kind: "search", title: qsTr("Im Projekt suchen nach „%1“").arg(text.trim()), relative: "ripgrep", query: text.trim() })
         }
@@ -106,11 +126,12 @@ Popup {
         if (r.kind === "action") r.action.run()
         else if (r.kind === "search") searchRequested(r.query)
         else if (r.kind === "line") lineRequested(r.line)
+        else if (r.kind === "calendar") calendarEntryRequested(r.uid, r.start)
         else openRequested(r.path, r.line || 0, newSplit ? "split" : "tab", r.annot ? { annot: r.annot } : {})
     }
 
     function glyph(kind) {
-        return ({ action: "›", dir: "📁", note: "📝", file: "📄", tag: "#", line: "↧", search: "🔍", annotation: "❝" })[kind] || "•"
+        return ({ action: "›", dir: "📁", note: "📝", file: "📄", tag: "#", line: "↧", search: "🔍", annotation: "❝", calendar: "📅" })[kind] || "•"
     }
 
     parent: Overlay.overlay
@@ -130,7 +151,7 @@ Popup {
         TextField {
             id: input
             Layout.fillWidth: true
-            placeholderText: qsTr("Datei, Ordner, Notiz oder Aktion … (>Aktion, #Tag, @Zitat, :Zeile, ?Volltext)")
+            placeholderText: qsTr("Datei, Ordner, Notiz oder Aktion … (>Aktion, #Tag, @Zitat, !Termin, :Zeile, ?Volltext)")
             onTextEdited: bar.update()
             Keys.onDownPressed: view.incrementCurrentIndex()
             Keys.onUpPressed: view.decrementCurrentIndex()

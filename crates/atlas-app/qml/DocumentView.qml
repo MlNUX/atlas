@@ -24,6 +24,7 @@ Item {
     readonly property bool processed: processor !== ""
         || (kind === "binary" && JSON.parse(app.processorsFor(path)).some(p => p.auto))
     readonly property string title: kind === "trash" ? qsTr("Papierkorb")
+        : kind === "calendar" ? qsTr("Kalender")
         : kind === "terminal" ? (viewer.item && viewer.item.title ? viewer.item.title : qsTr("Terminal"))
         : path ? app.fileName(path) : qsTr("Leer")
     property var pendingState: ({})
@@ -102,6 +103,7 @@ Item {
         sourceComponent: view.kind === "trash" ? trashComponent
             : view.kind === "dir" ? folderComponent
             : view.kind === "terminal" ? terminalComponent
+            : view.kind === "calendar" ? calendarComponent
             : view.processed && view.kind !== "missing" ? processedComponent
             : view.kind === "pdf" ? pdfComponent
             : view.kind === "markdown" ? markdownComponent
@@ -143,6 +145,16 @@ Item {
             onClosed: view.closeRequested()
             function viewState() { return command.length ? { cwd: cwd(), transient: true } : { cwd: cwd() } }
             Component.onCompleted: Qt.callLater(focusTerminal)
+        }
+    }
+    Component {
+        id: calendarComponent
+        // `calendar:`; mode, visible date and selection are the tab's state.
+        CalendarView {
+            app: view.app
+            actions: view.actions
+            onOpenRequested: (path, line, newPane, state) => view.openRequested(path, line, newPane ? "split" : "tab", state)
+            onSessionRequested: (name) => { if (view.actions) view.actions.sessionRequested(name) }
         }
     }
     Component {

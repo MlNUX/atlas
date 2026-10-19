@@ -72,7 +72,16 @@ fn weekday_code(day: Weekday) -> &'static str {
 
 impl Rule {
     pub fn new(freq: Freq) -> Self {
-        Self { freq, interval: 1, count: None, until: None, by_day: Vec::new(), by_month_day: Vec::new(), by_month: Vec::new(), supported: true }
+        Self {
+            freq,
+            interval: 1,
+            count: None,
+            until: None,
+            by_day: Vec::new(),
+            by_month_day: Vec::new(),
+            by_month: Vec::new(),
+            supported: true,
+        }
     }
 
     /// Parses an RRULE value; `None` if it is not a rule at all.
@@ -106,16 +115,18 @@ impl Rule {
                 "COUNT" => rule.count = val.parse().ok(),
                 "UNTIL" => {
                     let v = val.trim_end_matches('Z');
-                    rule.until = NaiveDateTime::parse_from_str(v, "%Y%m%dT%H%M%S")
-                        .ok()
-                        .or_else(|| NaiveDate::parse_from_str(v, "%Y%m%d").ok().and_then(|d| d.and_hms_opt(23, 59, 59)));
+                    rule.until = NaiveDateTime::parse_from_str(v, "%Y%m%dT%H%M%S").ok().or_else(|| {
+                        NaiveDate::parse_from_str(v, "%Y%m%d").ok().and_then(|d| d.and_hms_opt(23, 59, 59))
+                    });
                 }
                 "BYDAY" => {
                     for item in val.split(',') {
                         let item = item.trim().to_ascii_uppercase();
                         let (num, code) = item.split_at(item.len().saturating_sub(2));
-                        match (weekday(code), num.is_empty().then_some(None).unwrap_or_else(|| num.parse().ok())) {
-                            (Some(day), ordinal) if num.is_empty() || ordinal.is_some() => rule.by_day.push((ordinal, day)),
+                        match (weekday(code), if num.is_empty() { None } else { num.parse().ok() }) {
+                            (Some(day), ordinal) if num.is_empty() || ordinal.is_some() => {
+                                rule.by_day.push((ordinal, day))
+                            }
                             _ => rule.supported = false,
                         }
                     }
@@ -166,7 +177,8 @@ impl Rule {
             out += &format!(";BYDAY={}", days.join(","));
         }
         if !self.by_month_day.is_empty() {
-            out += &format!(";BYMONTHDAY={}", self.by_month_day.iter().map(i32::to_string).collect::<Vec<_>>().join(","));
+            out +=
+                &format!(";BYMONTHDAY={}", self.by_month_day.iter().map(i32::to_string).collect::<Vec<_>>().join(","));
         }
         if !self.by_month.is_empty() {
             out += &format!(";BYMONTH={}", self.by_month.iter().map(u32::to_string).collect::<Vec<_>>().join(","));
@@ -268,18 +280,27 @@ pub fn occurrences(rule: &Rule, start: NaiveDateTime, from: NaiveDateTime, to: N
                 } else {
                     let monday = start.date() - Duration::days(start.weekday().num_days_from_monday() as i64)
                         + Duration::weeks(n as i64);
-                    let mut days: Vec<NaiveDate> =
-                        rule.by_day.iter().map(|(_, d)| monday + Duration::days(d.num_days_from_monday() as i64)).collect();
+                    let mut days: Vec<NaiveDate> = rule
+                        .by_day
+                        .iter()
+                        .map(|(_, d)| monday + Duration::days(d.num_days_from_monday() as i64))
+                        .collect();
                     days.sort();
                     days.into_iter().map(|d| d.and_time(time)).collect()
                 }
             }
             Freq::Monthly => {
-                let Some(month_start) = start.date().with_day(1).and_then(|d| d.checked_add_months(Months::new(n))) else { break };
+                let Some(month_start) = start.date().with_day(1).and_then(|d| d.checked_add_months(Months::new(n)))
+                else {
+                    break;
+                };
                 if !rule.by_month.is_empty() && !rule.by_month.contains(&month_start.month()) {
                     continue;
                 }
-                month_days(rule, month_start.year(), month_start.month(), start.day()).into_iter().map(|d| d.and_time(time)).collect()
+                month_days(rule, month_start.year(), month_start.month(), start.day())
+                    .into_iter()
+                    .map(|d| d.and_time(time))
+                    .collect()
             }
             Freq::Yearly => {
                 let year = start.year() + n as i32;
@@ -339,15 +360,30 @@ mod tests {
     fn monthly_and_yearly() {
         let all = |rule: &str, start: &str, n: usize| {
             let r = Rule::parse(rule).unwrap();
-            days(&occurrences(&r, dt(start), dt("2000-01-01 00:00"), dt("2100-01-01 00:00")).into_iter().take(n).collect::<Vec<_>>())
+            days(
+                &occurrences(&r, dt(start), dt("2000-01-01 00:00"), dt("2100-01-01 00:00"))
+                    .into_iter()
+                    .take(n)
+                    .collect::<Vec<_>>(),
+            )
         };
-        assert_eq!(all("FREQ=MONTHLY", "2026-01-31 10:00", 3), ["2026-01-31", "2026-03-31", "2026-05-31"], "months without a 31st are skipped");
+        assert_eq!(
+            all("FREQ=MONTHLY", "2026-01-31 10:00", 3),
+            ["2026-01-31", "2026-03-31", "2026-05-31"],
+            "months without a 31st are skipped"
+        );
         assert_eq!(all("FREQ=MONTHLY;BYDAY=-1FR", "2026-10-30 10:00", 3), ["2026-10-30", "2026-11-27", "2026-12-25"]);
         assert_eq!(all("FREQ=MONTHLY;BYDAY=2MO", "2026-10-12 10:00", 2), ["2026-10-12", "2026-11-09"]);
-        assert_eq!(all("FREQ=MONTHLY;BYMONTHDAY=1,-1", "2026-10-01 08:00", 4), ["2026-10-01", "2026-10-31", "2026-11-01", "2026-11-30"]);
+        assert_eq!(
+            all("FREQ=MONTHLY;BYMONTHDAY=1,-1", "2026-10-01 08:00", 4),
+            ["2026-10-01", "2026-10-31", "2026-11-01", "2026-11-30"]
+        );
         assert_eq!(all("FREQ=YEARLY", "2024-02-29 08:00", 2), ["2024-02-29", "2028-02-29"]);
         assert_eq!(all("FREQ=YEARLY;BYMONTH=5;BYDAY=2SU", "2026-05-10 08:00", 2), ["2026-05-10", "2027-05-09"]);
-        assert_eq!(all("FREQ=DAILY;INTERVAL=3;COUNT=3", "2026-10-30 08:00", 9), ["2026-10-30", "2026-11-02", "2026-11-05"]);
+        assert_eq!(
+            all("FREQ=DAILY;INTERVAL=3;COUNT=3", "2026-10-30 08:00", 9),
+            ["2026-10-30", "2026-11-02", "2026-11-05"]
+        );
     }
 
     #[test]

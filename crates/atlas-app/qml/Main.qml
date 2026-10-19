@@ -61,7 +61,61 @@ ApplicationWindow {
         function onOpenTerminalRequested(dir, where) { window.openTerminal(dir, where) }
         function onSendToNoteRequested(text, cwd) { sendToNote.ask(text, cwd) }
         function onBlockToNoteRequested(heading, makeBlock, cwd, doneText, newNoteName) { sendToNote.askBlock(heading, makeBlock, cwd, doneText, newNoteName) }
+        function onCalendarRequested(state) { window.openCalendar(state) }
+        function onSessionRequested(name) { window.switchSessionByName(name) }
     }
+
+    // ---------------------------------------------------------- calendar
+
+    readonly property var calendar: fileActions.calendar
+    /// The calendar tab (`state`: {mode, date, selected}).
+    function openCalendar(state) { return editor.open("calendar:", 0, "tab", state || {}) }
+    function newCalendarEntry(kind) {
+        const tab = openCalendar({})
+        Qt.callLater(() => { if (tab && tab.viewerItem && tab.viewerItem.newEntry) tab.viewerItem.newEntry({ kind: kind, allDay: kind === "deadline" }) })
+    }
+    function dismissReminder(index) {
+        const list = reminders.slice()
+        list.splice(index, 1)
+        reminders = list
+    }
+
+    /// "In Session wechseln": saves the current session and opens the one
+    /// called `name` (created empty if there is none yet).
+    function switchSessionByName(name) {
+        const i = app.sessionNames.indexOf(name)
+        if (i >= 0) {
+            if (app.sessionIds[i] === app.activeSession) fileActions.showMessage(qsTr("Session „%1“ ist bereits aktiv").arg(name))
+            else switchSession(app.sessionIds[i])
+        } else {
+            createSession(name, false)
+            fileActions.showMessage(qsTr("Session „%1“ neu angelegt").arg(name))
+        }
+    }
+
+    // Reminders appear while Atlas runs.
+    property var reminders: []
+    Timer {
+        interval: 20000
+        running: !!app.projectRoot
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            let due = []
+            try { due = JSON.parse(window.calendar.dueReminders()) } catch (e) {}
+            if (due.length) window.reminders = window.reminders.concat(due)
+        }
+    }
+    // Background synchronisation; after a failure (offline) a quicker retry
+    // brings queued changes over once the connection is back.
+    Timer {
+        interval: window.calendar.syncFailed || window.calendar.pending > 0 ? 60000 : 5 * 60000
+        running: window.calendar.connected && window.calendar.unlocked
+        repeat: true
+        onTriggered: window.calendar.syncNow()
+    }
+    property bool calendarPasswordLater: false
+    Connections { target: app; function onProjectRootChanged() { window.calendarPasswordLater = false } }
     SendToNoteDialog {
         id: sendToNote
         app: app
@@ -74,6 +128,8 @@ ApplicationWindow {
     CommandPalette {
         id: commandPalette
         app: app
+        calendar: fileActions.calendar
+        onCalendarEntryRequested: (uid, start) => window.openCalendar({ selected: uid, date: start ? start.slice(0, 10) : "" })
         actions: window.paletteActions()
         onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
         onSearchRequested: (text) => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.setQuery(text) }
@@ -83,7 +139,8 @@ ApplicationWindow {
 
     /// Actions of the universal bar (Ctrl+P, ">" for actions only).
     function paletteActions() {
-        const current = editor.activeTab && editor.activeTab.path && !editor.activeTab.path.startsWith("terminal:") ? editor.activeTab.path : ""
+        const current = editor.activeTab && editor.activeTab.path && !editor.activeTab.path.startsWith("terminal:")
+            && !editor.activeTab.path.startsWith("calendar:") ? editor.activeTab.path : ""
         const dir = current ? fileActions.ops.parentDir(current) : app.projectRoot
         const list = [
             { name: qsTr("Session speichern"), hint: app.activeSessionName, run: () => { app.requestSaveAll(); saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) } },
@@ -104,11 +161,29 @@ ApplicationWindow {
             { name: qsTr("Versteckte Dateien ein-/ausblenden"), run: () => { treeModel.showHidden = !treeModel.showHidden } },
             { name: qsTr("Papierkorb öffnen"), run: () => { const t = app.placePaths.find(p => app.fileKind(p) === "trash"); if (t) editor.open(t, 0, "tab") } },
             { name: qsTr("Externen Editor festlegen …"), run: () => fileActions.configureEditor() },
+            { name: qsTr("Kalender öffnen"), hint: qsTr("Woche, Monat, Agenda"), run: () => window.openCalendar({}) },
+            { name: qsTr("Kalender: Woche"), run: () => window.openCalendar({ mode: "week" }) },
+            { name: qsTr("Kalender: Monat"), run: () => window.openCalendar({ mode: "month" }) },
+            { name: qsTr("Kalender: Agenda"), run: () => window.openCalendar({ mode: "agenda" }) },
+            { name: qsTr("Neuer Termin …"), run: () => window.newCalendarEntry("event") },
+            { name: qsTr("Neuer Arbeitsblock …"), run: () => window.newCalendarEntry("block") },
+            { name: qsTr("Neue Frist …"), run: () => window.newCalendarEntry("deadline") },
+            { name: qsTr("Neue Aufgabe …"), run: () => window.newCalendarEntry("task") },
+            { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
         ]
+        if (calendar.connected) {
+            list.push({ name: qsTr("Kalender synchronisieren"), hint: calendar.syncStatus,
+                        run: () => calendar.unlocked ? calendar.syncNow() : fileActions.calendarSync.askPassword() })
+            list.push({ name: qsTr("App-Passwort für Nextcloud eingeben …"), run: () => fileActions.calendarSync.askPassword() })
+        }
+        if (calendar.conflictCount > 0) list.push({ name: qsTr("Kalenderkonflikte lösen …"), hint: String(calendar.conflictCount), run: () => fileActions.calendarSync.showConflicts() })
         if (current) {
             list.push({ name: qsTr("Im Editor öffnen"), hint: app.fileName(current), run: () => fileActions.openInEditor(current, 0) })
             list.push({ name: qsTr("Pfad kopieren"), hint: app.fileName(current), run: () => fileActions.copyPaths([current]) })
             list.push({ name: qsTr("Im Explorer zeigen"), hint: app.fileName(current), run: () => window.revealInTree(current) })
+            list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
+            if (app.fileKind(current) === "markdown")
+                list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
         }
         for (let i = 0; i < app.sessionIds.length; ++i) {
             const id = app.sessionIds[i]
@@ -176,6 +251,8 @@ ApplicationWindow {
         target: fileActions.ops
         function onMoved(from, to) {
             editor.pathMoved(from, to)
+            // So do files linked with calendar entries.
+            fileActions.calendar.filesMoved(from, to)
             // Links in notes follow moves and renames made in Atlas.
             app.filesMoved(from, to)
             fileListTimer.restart()
@@ -225,7 +302,8 @@ ApplicationWindow {
     /// Files from `--open FILE[:LINE]`.
     function openCliFiles() {
         for (let i = 0; i < app.openFiles.length; ++i)
-            editor.open(app.absolutePath(app.openFiles[i]), parseInt(app.openLines[i]) || 0, editor.documents().length > 0 ? "split" : "tab")
+            if (app.openFiles[i] === "calendar:") openCalendar({})
+            else editor.open(app.absolutePath(app.openFiles[i]), parseInt(app.openLines[i]) || 0, editor.documents().length > 0 ? "split" : "tab")
     }
 
     function readLayout() {
@@ -431,8 +509,9 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+W"; onActivated: if (editor.activeGroup) editor.activeGroup.closeCurrent() }
     Shortcut { sequence: "Ctrl+Tab"; onActivated: if (editor.activeGroup) editor.activeGroup.nextTab(1) }
     Shortcut { sequence: "Ctrl+Shift+Tab"; onActivated: if (editor.activeGroup) editor.activeGroup.nextTab(-1) }
-    Shortcut { sequence: "Alt+Left"; onActivated: if (editor.activeTab) editor.activeTab.goBack() }
-    Shortcut { sequence: "Alt+Right"; onActivated: if (editor.activeTab) editor.activeTab.goForward() }
+    // In the calendar: previous / next week or month.
+    Shortcut { sequence: "Alt+Left"; onActivated: if (editor.activeTab) { if (editor.activeTab.kind === "calendar") editor.activeTab.viewerItem.step(-1); else editor.activeTab.goBack() } }
+    Shortcut { sequence: "Alt+Right"; onActivated: if (editor.activeTab) { if (editor.activeTab.kind === "calendar") editor.activeTab.viewerItem.step(1); else editor.activeTab.goForward() } }
     Shortcut { sequence: "Ctrl+B"; onActivated: { sidebar.visible = !sidebar.visible; saveTimer.restart() } }
 
     function toggleTerminal() {
@@ -487,6 +566,13 @@ ApplicationWindow {
                     elide: Text.ElideMiddle
                 }
                 IconButton {
+                    glyph: "📅"
+                    tip: qsTr("Kalender")
+                    checkable: true
+                    checked: !!editor.activeTab && editor.activeTab.kind === "calendar"
+                    onClicked: window.openCalendar({})
+                }
+                IconButton {
                     glyph: editor.orientation === Qt.Horizontal ? "⇆" : "⇅"
                     tip: qsTr("Split-Ausrichtung wechseln")
                     onClicked: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
@@ -517,6 +603,42 @@ ApplicationWindow {
                 { text: qsTr("Prüfen …"), run: () => extensionsDialog.open() },
                 { text: qsTr("Ausblenden"), run: () => window.extensionNoticeHidden = true },
             ]
+        }
+        // Nextcloud: the app password is asked once per Atlas start.
+        Banner {
+            height: visible ? 36 : 0
+            width: parent.width
+            tone: Theme.accent
+            visible: window.calendar.connected && !window.calendar.unlocked && !window.calendarPasswordLater
+            message: qsTr("Nextcloud-Kalender: App-Passwort für diese Atlas-Sitzung eingeben, um Termine abzugleichen.")
+                + (window.calendar.pending ? qsTr(" %n Änderung(en) warten auf Übertragung.", "", window.calendar.pending) : "")
+            actions: [
+                { text: qsTr("Eingeben …"), run: () => fileActions.calendarSync.askPassword() },
+                { text: qsTr("Später"), run: () => window.calendarPasswordLater = true },
+            ]
+        }
+        Banner {
+            height: visible ? 36 : 0
+            width: parent.width
+            visible: window.calendar.conflictCount > 0
+            message: qsTr("%n Kalendereintrag/-einträge wurde(n) in Nextcloud und Atlas geändert. Nichts wurde überschrieben.", "", window.calendar.conflictCount)
+            actions: [{ text: qsTr("Version wählen …"), run: () => fileActions.calendarSync.showConflicts() }]
+        }
+        Repeater {
+            model: window.reminders
+            Banner {
+                required property var modelData
+                required property int index
+                height: 36
+                width: parent.width
+                tone: Theme.ok
+                message: "⏰ " + modelData.title + " – " + modelData.start.slice(11, 16)
+                    + (modelData.minutes > 0 ? qsTr(" (in %n Minute(n))", "", modelData.minutes) : qsTr(" (jetzt)"))
+                actions: [
+                    { text: qsTr("Zeigen"), run: () => { window.openCalendar({ selected: modelData.uid, date: modelData.start.slice(0, 10) }); window.dismissReminder(index) } },
+                    { text: qsTr("OK"), run: () => window.dismissReminder(index) },
+                ]
+            }
         }
     }
 

@@ -4,14 +4,24 @@
 //! `CalendarModel`: the project calendar for QML (see
 //! `atlas_core::calendar`). Times cross the bridge as local ISO strings
 //! (`2026-10-19T14:30`) in the user's time zone; lists and entries as JSON.
+//!
+//! Entries come from the project (`events.ics`) and from the visible
+//! Nextcloud calendars (cache in `.atlas/calendar/cache/`). Changes to
+//! Nextcloud entries go into the offline queue and are sent right away when
+//! the app password is known; it is asked once per Atlas start and only kept
+//! in memory.
 
 use std::path::Path;
 use std::pin::Pin;
+use std::sync::Mutex;
 
-use atlas_core::calendar::{self, Entry, Kind, Status, Store, ical::Time, recur};
+use atlas_core::calendar::caldav::{Account, Client, Remote};
+use atlas_core::calendar::sync::{self, Choice, SyncStore};
+use atlas_core::calendar::{self, Entry, Kind, LOCAL, Status, Store, ical::Time, recur};
+use atlas_core::config::{CalendarChoice, CalendarConfig, Config};
 use chrono::{Duration, NaiveDateTime, Utc};
 use chrono_tz::Tz;
-use cxx_qt::CxxQtType;
+use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use serde_json::{Value, json};
 
@@ -34,16 +44,46 @@ pub mod qobject {
         #[qproperty(QString, error, READ, NOTIFY)]
         /// IANA name of the time zone used for display.
         #[qproperty(QString, zone, READ, CONSTANT)]
+        /// A Nextcloud account is set up.
+        #[qproperty(bool, connected, READ, NOTIFY = sync_changed)]
+        /// The app password for this Atlas start is known.
+        #[qproperty(bool, unlocked, READ, NOTIFY = sync_changed)]
+        #[qproperty(bool, syncing, READ, NOTIFY = sync_changed)]
+        /// Last synchronisation or its error, for the UI.
+        #[qproperty(QString, sync_status, cxx_name = "syncStatus", READ, NOTIFY = sync_changed)]
+        #[qproperty(bool, sync_failed, cxx_name = "syncFailed", READ, NOTIFY = sync_changed)]
+        /// Local changes not yet on the server.
+        #[qproperty(i32, pending, READ, NOTIFY = sync_changed)]
+        #[qproperty(i32, conflict_count, cxx_name = "conflictCount", READ, NOTIFY = sync_changed)]
         type CalendarModel = super::CalendarModelRust;
+
+        #[qsignal]
+        #[cxx_name = "syncChanged"]
+        fn sync_changed(self: Pin<&mut CalendarModel>);
+
+        /// Result of `testConnection`: calendars as JSON list of {url, name,
+        /// color, writable}.
+        #[qsignal]
+        #[cxx_name = "connectionTested"]
+        fn connection_tested(self: Pin<&mut CalendarModel>, ok: bool, message: QString, calendars: QString);
+
+        #[qsignal]
+        #[cxx_name = "calendarCreated"]
+        fn calendar_created(self: Pin<&mut CalendarModel>, ok: bool, message: QString, url: QString);
+
+        /// A synchronisation ended (`message` describes the result).
+        #[qsignal]
+        #[cxx_name = "syncFinished"]
+        fn sync_finished(self: Pin<&mut CalendarModel>, ok: bool, message: QString);
 
         /// Occurrences in `from..to`: JSON list of {uid, kind, title,
         /// status, start, end, allDay, recurring, instance, tags, files,
-        /// session, checklist: [done, total]}.
+        /// session, checklist: [done, total], calendar, color, readOnly}.
         #[qinvokable]
         fn occurrences(self: &CalendarModel, from: &QString, to: &QString) -> QString;
 
         /// Unscheduled tasks (JSON list of {uid, title, status, estimate,
-        /// tags, files}).
+        /// tags, files, calendar, color}).
         #[qinvokable]
         fn tasks(self: &CalendarModel) -> QString;
 
@@ -51,7 +91,8 @@ pub mod qobject {
         #[qinvokable]
         fn entry(self: &CalendarModel, uid: &QString) -> QString;
 
-        /// Creates (`uid` empty) or updates an entry from JSON; returns the UID.
+        /// Creates (`uid` empty) or updates an entry from JSON; returns the
+        /// UID ("" if it could not be saved). `calendar` picks the calendar.
         #[qinvokable]
         fn save(self: Pin<&mut CalendarModel>, json: &QString) -> QString;
 
@@ -76,6 +117,10 @@ pub mod qobject {
         #[qinvokable]
         fn schedule(self: Pin<&mut CalendarModel>, uid: &QString, start: &QString, end: &QString) -> bool;
 
+        /// Turns a work block back into an unscheduled task.
+        #[qinvokable]
+        fn unschedule(self: Pin<&mut CalendarModel>, uid: &QString) -> bool;
+
         #[qinvokable]
         #[cxx_name = "setStatus"]
         fn set_status(self: Pin<&mut CalendarModel>, uid: &QString, status: &QString) -> bool;
@@ -92,6 +137,11 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "unlinkFile"]
         fn unlink_file(self: Pin<&mut CalendarModel>, uid: &QString, file: &QString) -> bool;
+
+        /// Links of entries follow files moved or renamed in Atlas.
+        #[qinvokable]
+        #[cxx_name = "filesMoved"]
+        fn files_moved(self: Pin<&mut CalendarModel>, from: &QString, to: &QString);
 
         /// A work block for a file dropped on a free time; returns the UID.
         #[qinvokable]
@@ -133,12 +183,117 @@ pub mod qobject {
         #[cxx_name = "setViewState"]
         fn set_view_state(self: &CalendarModel, json: &QString);
 
-        /// Reads the calendar files again.
+        /// Reads the calendar files and the account settings again.
         #[qinvokable]
         fn reload(self: Pin<&mut CalendarModel>);
+
+        // ------------------------------------------------------ Nextcloud
+
+        /// All calendars: JSON list of {id, name, color, writable, visible,
+        /// remote, projectOnly, missing, isDefault, projectDefault}. The
+        /// project calendar has id "local".
+        #[qinvokable]
+        fn calendars(self: &CalendarModel) -> QString;
+
+        /// Calendar for new entries (id).
+        #[qinvokable]
+        #[cxx_name = "defaultCalendar"]
+        fn default_calendar(self: &CalendarModel) -> QString;
+
+        /// Account settings: JSON {server, user, davUrl, lastSync, home}.
+        #[qinvokable]
+        fn account(self: &CalendarModel) -> QString;
+
+        /// Checks the connection in the background (`connectionTested`).
+        #[qinvokable]
+        #[cxx_name = "testConnection"]
+        fn test_connection(
+            self: &CalendarModel,
+            server: &QString,
+            user: &QString,
+            password: &QString,
+            dav_url: &QString,
+        );
+
+        /// Saves the account and the chosen calendars (JSON list of {url,
+        /// name, visible}), keeps the password for this Atlas start and
+        /// synchronises.
+        #[qinvokable]
+        #[cxx_name = "saveAccount"]
+        fn save_account(
+            self: Pin<&mut CalendarModel>,
+            server: &QString,
+            user: &QString,
+            password: &QString,
+            dav_url: &QString,
+            calendars: &QString,
+        );
+
+        /// The app password for this Atlas start (only in memory).
+        #[qinvokable]
+        #[cxx_name = "setPassword"]
+        fn set_password(self: Pin<&mut CalendarModel>, password: &QString);
+
+        #[qinvokable]
+        #[cxx_name = "setCalendarVisible"]
+        fn set_calendar_visible(self: Pin<&mut CalendarModel>, id: &QString, visible: bool);
+
+        /// Limits a calendar to this project (or shows it everywhere again).
+        #[qinvokable]
+        #[cxx_name = "setCalendarProjectOnly"]
+        fn set_calendar_project_only(self: Pin<&mut CalendarModel>, id: &QString, only: bool);
+
+        /// Default calendar for new entries: for all projects or only this one.
+        #[qinvokable]
+        #[cxx_name = "setDefaultCalendar"]
+        fn set_default_calendar(self: Pin<&mut CalendarModel>, id: &QString, project: bool);
+
+        /// Synchronises now (in the background).
+        #[qinvokable]
+        #[cxx_name = "syncNow"]
+        fn sync_now(self: Pin<&mut CalendarModel>);
+
+        /// Creates a calendar in Nextcloud (after the user confirmed);
+        /// `calendarCreated` reports the result.
+        #[qinvokable]
+        #[cxx_name = "createCalendar"]
+        fn create_calendar(self: Pin<&mut CalendarModel>, name: &QString);
+
+        /// Removes the local cache (pending changes included).
+        #[qinvokable]
+        #[cxx_name = "clearCache"]
+        fn clear_cache(self: Pin<&mut CalendarModel>);
+
+        /// Forgets account, password and cache; nothing is deleted on the
+        /// server.
+        #[qinvokable]
+        #[cxx_name = "disconnectAccount"]
+        fn disconnect_account(self: Pin<&mut CalendarModel>);
+
+        /// Open conflicts: JSON list of {id, title, calendar, local, remote,
+        /// message}, versions described as text.
+        #[qinvokable]
+        fn conflicts(self: &CalendarModel) -> QString;
+
+        /// `choice`: "remote", "local" or "both".
+        #[qinvokable]
+        #[cxx_name = "resolveConflict"]
+        fn resolve_conflict(self: Pin<&mut CalendarModel>, id: i32, choice: &QString) -> bool;
     }
 
     impl cxx_qt::Initialize for CalendarModel {}
+    impl cxx_qt::Threading for CalendarModel {}
+}
+
+/// The app password, for this Atlas start only.
+static PASSWORD: Mutex<Option<String>> = Mutex::new(None);
+
+fn password() -> Option<String> {
+    PASSWORD.lock().ok().and_then(|p| p.clone())
+}
+
+fn password_now() -> Option<String> {
+    password()
 }
 
 pub struct CalendarModelRust {
@@ -147,10 +302,25 @@ pub struct CalendarModelRust {
     revision: i32,
     error: QString,
     zone: QString,
+    connected: bool,
+    unlocked: bool,
+    syncing: bool,
+    sync_status: QString,
+    sync_failed: bool,
+    pending: i32,
+    conflict_count: i32,
 
     tz: Tz,
     entries: Vec<Entry>,
+    config: CalendarConfig,
     last_reminder_check: chrono::DateTime<Utc>,
+    /// Another synchronisation was requested while one ran.
+    sync_again: bool,
+    /// Remote calendars as last read from the cache: URL → (name, colour,
+    /// writable and present).
+    meta: std::collections::BTreeMap<String, (String, String, bool)>,
+    /// (calendar, UID) of entries with changes waiting for the server.
+    waiting: std::collections::BTreeSet<(String, String)>,
 }
 
 impl Default for CalendarModelRust {
@@ -162,9 +332,20 @@ impl Default for CalendarModelRust {
             revision: 0,
             error: QString::default(),
             zone: QString::from(tz.name()),
+            connected: false,
+            unlocked: false,
+            syncing: false,
+            sync_status: QString::default(),
+            sync_failed: false,
+            pending: 0,
+            conflict_count: 0,
             tz,
             entries: Vec::new(),
+            config: CalendarConfig::default(),
             last_reminder_check: Utc::now(),
+            sync_again: false,
+            meta: Default::default(),
+            waiting: Default::default(),
         }
     }
 }
@@ -174,14 +355,32 @@ fn qs(s: impl AsRef<str>) -> QString {
 }
 
 const ISO: &str = "%Y-%m-%dT%H:%M";
+const SETTINGS: &str = "settings.json";
+/// Colour of the project calendar.
+const LOCAL_COLOR: &str = "#4fa3ff";
 
 fn iso(t: NaiveDateTime) -> String {
     t.format(ISO).to_string()
 }
 
+fn account_of(c: &CalendarConfig) -> Account {
+    Account { server: c.server.clone(), user: c.user.clone(), dav_url: c.dav_url.clone() }
+}
+
+fn client(c: &CalendarConfig, password: &str) -> Client {
+    Client::new(account_of(c), password, true)
+}
+
+fn describe_time(t: i64) -> String {
+    chrono::DateTime::from_timestamp(t, 0)
+        .map(|d| d.with_timezone(&calendar::local_zone()).format("%d.%m. %H:%M").to_string())
+        .unwrap_or_default()
+}
+
 impl cxx_qt::Initialize for qobject::CalendarModel {
     fn initialize(mut self: Pin<&mut Self>) {
         self.as_mut().on_atlas_dir_changed(|m| m.reload()).release();
+        self.as_mut().on_project_root_changed(|m| m.reload()).release();
     }
 }
 
@@ -193,6 +392,10 @@ impl qobject::CalendarModel {
         } else {
             Store::for_atlas_dir(Path::new(&atlas))
         }
+    }
+
+    fn sync_store(&self) -> SyncStore {
+        SyncStore::new(self.store().dir())
     }
 
     fn set_error(mut self: Pin<&mut Self>, message: String) {
@@ -208,25 +411,125 @@ impl qobject::CalendarModel {
         self.revision_changed();
     }
 
+    /// Remote calendars shown in this project.
+    fn visible_remote(&self) -> Vec<String> {
+        if !self.config.connected() {
+            return Vec::new();
+        }
+        let root = self.project_root.to_string();
+        self.config.calendars.iter().filter(|c| c.visible_in(&root)).map(|c| c.url.clone()).collect()
+    }
+
+    /// Calendars to synchronise: the visible ones.
+    fn synced(&self) -> Vec<String> {
+        self.visible_remote()
+    }
+
+    fn project_settings(&self) -> Value {
+        std::fs::read_to_string(self.store().dir().join(SETTINGS))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or(json!({}))
+    }
+
+    fn writable(&self, calendar: &str) -> bool {
+        if calendar == LOCAL {
+            return true;
+        }
+        self.meta.get(calendar).is_none_or(|m| m.2)
+    }
+
     pub fn reload(mut self: Pin<&mut Self>) {
-        match self.store().load() {
-            Ok(entries) => {
-                self.as_mut().rust_mut().entries = entries;
-                self.as_mut().set_error(String::new());
-            }
+        let config = Config::load().calendar;
+        self.as_mut().rust_mut().config = config;
+        let mut problem = String::new();
+        let store = self.store();
+        let mut entries = match store.load() {
+            Ok(e) => e,
             Err(err) => {
                 log::warn!("calendar: {err:#}");
-                self.as_mut().rust_mut().entries = Vec::new();
-                self.as_mut().set_error(format!("{err:#}"));
+                problem = format!("{err:#}");
+                Vec::new()
+            }
+        };
+        let remote = self.visible_remote();
+        if !remote.is_empty() {
+            let links = store.links();
+            for mut e in self.sync_store().load().entries(&remote) {
+                if let Some(l) = links.get(&e.uid) {
+                    if e.files.is_empty() {
+                        e.files = l.files.clone();
+                    }
+                    if e.session.is_empty() {
+                        e.session = l.session.clone();
+                    }
+                }
+                entries.push(e);
             }
         }
+        self.as_mut().rust_mut().entries = entries;
+        self.as_mut().set_error(problem);
+        self.as_mut().update_sync_state();
         self.bump();
     }
 
-    /// Writes all entries and their links.
-    fn persist(mut self: Pin<&mut Self>) -> bool {
+    /// Refreshes the sync properties from the cache.
+    fn update_sync_state(mut self: Pin<&mut Self>) {
+        let state = self.sync_store().load();
+        let connected = self.config.connected();
+        let unlocked = connected && password().is_some();
+        let synced = self.synced();
+        let pending = state.queue.iter().filter(|o| synced.contains(&o.calendar)).count() as i32;
+        let failed = !state.error.is_empty();
+        let status = if !connected {
+            String::new()
+        } else if self.syncing {
+            "Synchronisiere …".to_owned()
+        } else if failed {
+            state.error.clone()
+        } else if !unlocked {
+            "App-Passwort für diese Sitzung fehlt".to_owned()
+        } else if let Some(t) = state.last_sync {
+            format!("Zuletzt synchronisiert {}", describe_time(t))
+        } else {
+            "Noch nicht synchronisiert".to_owned()
+        };
+        let meta = state
+            .calendars
+            .iter()
+            .map(|(url, c)| {
+                let name = Some(c.info.name.clone())
+                    .filter(|n| !n.is_empty())
+                    .or_else(|| self.config.calendars.iter().find(|x| x.url == *url).map(|x| x.name.clone()))
+                    .unwrap_or_else(|| url.clone());
+                let color = Some(c.info.color.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| "#0082c9".into());
+                (url.clone(), (name, color, c.info.writable && !c.missing))
+            })
+            .collect();
+        let waiting = state.queue.iter().map(|o| (o.calendar.clone(), o.uid.clone())).collect();
+        let mut r = self.as_mut().rust_mut();
+        r.meta = meta;
+        r.waiting = waiting;
+        r.connected = connected;
+        r.unlocked = unlocked;
+        r.pending = pending;
+        r.conflict_count = state.conflicts.len() as i32;
+        r.sync_status = qs(status);
+        r.sync_failed = failed;
+        self.as_mut().sync_changed();
+    }
+
+    /// Rewrites `events.ics` if `calendar` is the project calendar (remote
+    /// entries go through the queue) and records the links of all entries.
+    fn commit(mut self: Pin<&mut Self>, calendar: &str) -> bool {
         let store = self.store();
-        let result = store.save(&self.entries).and_then(|()| store.save_links(self.entries.iter()));
+        let result = if calendar == LOCAL {
+            let local: Vec<Entry> = self.entries.iter().filter(|e| e.calendar == LOCAL).cloned().collect();
+            store.save(&local)
+        } else {
+            Ok(())
+        };
+        let result = result.and_then(|()| store.save_links(self.entries.iter()));
         let ok = match result {
             Ok(()) => {
                 self.as_mut().set_error(String::new());
@@ -238,6 +541,31 @@ impl qobject::CalendarModel {
             }
         };
         self.bump();
+        ok
+    }
+
+    /// Queues the object of `uid` in remote `calendar` and sends it.
+    fn push_remote(mut self: Pin<&mut Self>, calendar: &str, uid: &str) {
+        let parts: Vec<&Entry> = self.entries.iter().filter(|e| e.uid == uid && e.calendar == calendar).collect();
+        let result = if parts.is_empty() {
+            self.sync_store().update(|s| s.local_delete(calendar, uid))
+        } else {
+            let data = sync::object_data(&parts);
+            self.sync_store().update(|s| s.local_put(calendar, uid, data))
+        };
+        if let Err(err) = result {
+            self.as_mut().set_error(format!("Kalender-Cache kann nicht geschrieben werden: {err:#}"));
+        }
+        self.as_mut().update_sync_state();
+        self.sync_now();
+    }
+
+    /// Stores a changed entry `uid` of `calendar`.
+    fn store_entry(mut self: Pin<&mut Self>, calendar: &str, uid: &str) -> bool {
+        let ok = self.as_mut().commit(calendar);
+        if calendar != LOCAL {
+            self.push_remote(calendar, uid);
+        }
         ok
     }
 
@@ -258,6 +586,23 @@ impl qobject::CalendarModel {
         if all_day { Time::Date(local.date()) } else { Time::Zoned(local, self.tz) }
     }
 
+    /// Name, colour and writability of a calendar.
+    fn calendar_info(&self, id: &str) -> (String, String, bool) {
+        if id == LOCAL {
+            return ("Projekt (nur lokal)".into(), LOCAL_COLOR.into(), true);
+        }
+        self.meta.get(id).cloned().unwrap_or_else(|| {
+            let name = self
+                .config
+                .calendars
+                .iter()
+                .find(|c| c.url == id)
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| id.to_owned());
+            (name, "#0082c9".into(), true)
+        })
+    }
+
     fn entry_json(&self, e: &Entry) -> Value {
         let tz = self.tz;
         let start = e.start.map(|s| s.local(tz));
@@ -270,6 +615,7 @@ impl qobject::CalendarModel {
             _ => None,
         };
         let rule = e.rrule.as_deref().and_then(recur::Rule::parse);
+        let (name, color, writable) = self.calendar_info(&e.calendar);
         json!({
             "uid": e.uid,
             "kind": e.kind.as_str(),
@@ -294,19 +640,27 @@ impl qobject::CalendarModel {
                 "text": r.describe(),
                 "supported": r.supported,
             })),
-            "calendar": calendar::LOCAL,
+            "calendar": e.calendar,
+            "calendarName": name,
+            "color": color,
+            "readOnly": !writable,
+            "pending": self.waiting.contains(&(e.calendar.clone(), e.uid.clone())),
         })
     }
 
     pub fn occurrences(&self, from: &QString, to: &QString) -> QString {
-        let (Some(from), Some(to)) = (calendar::parse_local(&from.to_string()), calendar::parse_local(&to.to_string())) else {
+        let (Some(from), Some(to)) = (calendar::parse_local(&from.to_string()), calendar::parse_local(&to.to_string()))
+        else {
             return qs("[]");
         };
+        let mut infos = std::collections::BTreeMap::new();
         let list: Vec<Value> = calendar::occurrences(&self.entries, self.tz, from, to)
             .into_iter()
             .map(|o| {
                 let e = self.entries.iter().find(|e| e.uid == o.uid && e.recurrence_id.is_none());
                 let done = e.map(|e| e.checklist.iter().filter(|c| c.0).count()).unwrap_or(0);
+                let cal = e.map(|e| e.calendar.clone()).unwrap_or_else(|| LOCAL.into());
+                let (_, color, writable) = infos.entry(cal.clone()).or_insert_with(|| self.calendar_info(&cal)).clone();
                 json!({
                     "uid": o.uid,
                     "kind": o.kind.as_str(),
@@ -321,6 +675,9 @@ impl qobject::CalendarModel {
                     "files": e.map(|e| e.files.clone()).unwrap_or_default(),
                     "session": e.map(|e| e.session.clone()).unwrap_or_default(),
                     "checklist": [done, e.map(|e| e.checklist.len()).unwrap_or(0)],
+                    "calendar": cal,
+                    "color": color,
+                    "readOnly": !writable,
                 })
             })
             .collect();
@@ -333,9 +690,10 @@ impl qobject::CalendarModel {
             .iter()
             .filter(|e| e.kind == Kind::Task && e.start.is_none())
             .map(|e| {
+                let (_, color, writable) = self.calendar_info(&e.calendar);
                 json!({
                     "uid": e.uid, "title": e.title, "status": e.status.as_str(), "estimate": e.estimate_minutes,
-                    "tags": e.tags, "files": e.files,
+                    "tags": e.tags, "files": e.files, "calendar": e.calendar, "color": color, "readOnly": !writable,
                 })
             })
             .collect();
@@ -351,10 +709,23 @@ impl qobject::CalendarModel {
         let tz = self.tz;
         let uid = v["uid"].as_str().unwrap_or_default().to_owned();
         let kind = v["kind"].as_str().and_then(Kind::parse).unwrap_or(Kind::Event);
-        let mut entry = match self.index_of(&uid) {
+        let existing = self.index_of(&uid);
+        let mut entry = match existing {
             Some(i) => self.entries[i].clone(),
-            None => Entry::new(kind, ""),
+            None => {
+                let mut e = Entry::new(kind, "");
+                e.calendar = self.default_calendar().to_string();
+                e
+            }
         };
+        let old_calendar = entry.calendar.clone();
+        if let Some(cal) = v["calendar"].as_str().filter(|c| !c.is_empty()) {
+            entry.calendar = cal.to_owned();
+        }
+        if !self.writable(&old_calendar) || !self.writable(&entry.calendar) {
+            self.as_mut().set_error("Der Kalender ist schreibgeschützt.".into());
+            return QString::default();
+        }
         entry.kind = kind;
         entry.title = v["title"].as_str().unwrap_or_default().trim().to_owned();
         if entry.title.is_empty() {
@@ -365,22 +736,47 @@ impl qobject::CalendarModel {
             entry.status = s;
         }
         let strings = |key: &str| -> Vec<String> {
-            v[key].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()).unwrap_or_default()
+            v[key]
+                .as_array()
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default()
         };
-        entry.tags = strings("tags").into_iter().map(|t| t.trim().trim_start_matches('#').to_owned()).filter(|t| !t.is_empty()).collect();
-        entry.files = strings("files");
-        entry.session = v["session"].as_str().unwrap_or_default().to_owned();
-        entry.checklist = v["checklist"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|c| Some((c["done"].as_bool().unwrap_or(false), c["text"].as_str()?.trim().to_owned())))
-                    .filter(|c| !c.1.is_empty())
-                    .collect()
-            })
-            .unwrap_or_default();
-        entry.estimate_minutes = v["estimate"].as_u64().map(|m| m as u32).or_else(|| v["estimate"].as_str().and_then(calendar::parse_estimate));
-        entry.reminders = v["reminders"].as_array().map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
+        if v.get("tags").is_some() {
+            entry.tags = strings("tags")
+                .into_iter()
+                .map(|t| t.trim().trim_start_matches('#').to_owned())
+                .filter(|t| !t.is_empty())
+                .collect();
+        }
+        if v.get("files").is_some() {
+            entry.files = strings("files");
+        }
+        if v.get("session").is_some() {
+            entry.session = v["session"].as_str().unwrap_or_default().to_owned();
+        }
+        if v.get("checklist").is_some() {
+            entry.checklist = v["checklist"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|c| {
+                            Some((c["done"].as_bool().unwrap_or(false), c["text"].as_str()?.trim().to_owned()))
+                        })
+                        .filter(|c| !c.1.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
+        if v.get("estimate").is_some() {
+            entry.estimate_minutes = v["estimate"]
+                .as_u64()
+                .map(|m| m as u32)
+                .or_else(|| v["estimate"].as_str().and_then(calendar::parse_estimate));
+        }
+        if v.get("reminders").is_some() {
+            entry.reminders =
+                v["reminders"].as_array().map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
+        }
 
         // Times: tasks have none; all-day entries use dates.
         let all_day = v["allDay"].as_bool().unwrap_or(false);
@@ -390,9 +786,18 @@ impl qobject::CalendarModel {
             entry.end = None;
         } else if let Some(start) = start {
             let end = if all_day {
-                v["endDate"].as_str().and_then(calendar::parse_local).map(|d| d + Duration::days(1)).filter(|e| *e > start).unwrap_or(start + Duration::days(1))
+                v["endDate"]
+                    .as_str()
+                    .and_then(calendar::parse_local)
+                    .map(|d| d + Duration::days(1))
+                    .filter(|e| *e > start)
+                    .unwrap_or(start + Duration::days(1))
             } else {
-                v["end"].as_str().and_then(calendar::parse_local).filter(|e| *e >= start).unwrap_or(start + Duration::hours(1))
+                v["end"]
+                    .as_str()
+                    .and_then(calendar::parse_local)
+                    .filter(|e| *e >= start)
+                    .unwrap_or(start + Duration::hours(1))
             };
             // Keep the zone kind of existing entries (UTC from a server stays UTC).
             entry.start = Some(match (entry.start, all_day) {
@@ -422,36 +827,74 @@ impl qobject::CalendarModel {
                     let mut rule = recur::Rule::new(freq);
                     rule.interval = v["rrule"]["interval"].as_u64().unwrap_or(1).max(1) as u32;
                     rule.count = v["rrule"]["count"].as_u64().filter(|c| *c > 0).map(|c| c as u32);
-                    rule.until = v["rrule"]["until"].as_str().and_then(calendar::parse_local).map(|d| d + Duration::hours(23) + Duration::minutes(59));
+                    rule.until = v["rrule"]["until"]
+                        .as_str()
+                        .and_then(calendar::parse_local)
+                        .map(|d| d + Duration::hours(23) + Duration::minutes(59));
                     Some(rule.to_value())
                 }
                 _ => None,
             };
             entry.exdates.clear();
+            // Changed occurrences of the old rule no longer fit.
+            let uid = entry.uid.clone();
+            self.as_mut().rust_mut().entries.retain(|e| !(e.uid == uid && e.recurrence_id.is_some()));
         }
         entry.sequence += 1;
         let uid = entry.uid.clone();
+        let calendar = entry.calendar.clone();
+        // Overrides of a series move with it to another calendar.
+        for e in self.as_mut().rust_mut().entries.iter_mut().filter(|e| e.uid == uid && e.recurrence_id.is_some()) {
+            e.calendar = calendar.clone();
+        }
         match self.index_of(&uid) {
             Some(i) => self.as_mut().rust_mut().entries[i] = entry,
             None => self.as_mut().rust_mut().entries.push(entry),
         }
-        self.persist();
+        if old_calendar != calendar && existing.is_some() {
+            if old_calendar == LOCAL {
+                self.as_mut().commit(LOCAL);
+            } else {
+                // Removed from the old Nextcloud calendar.
+                let _ = self.sync_store().update(|s| s.local_delete(&old_calendar, &uid));
+            }
+        }
+        self.store_entry(&calendar, &uid);
         qs(uid)
     }
 
     pub fn remove(mut self: Pin<&mut Self>, uid: &QString) -> bool {
         let uid = uid.to_string();
-        let before = self.entries.len();
-        self.as_mut().rust_mut().entries.retain(|e| e.uid != uid);
-        if self.entries.len() == before {
+        let Some(i) = self.index_of(&uid) else { return false };
+        let calendar = self.entries[i].calendar.clone();
+        if !self.writable(&calendar) {
+            self.as_mut().set_error("Der Kalender ist schreibgeschützt.".into());
             return false;
         }
+        self.as_mut().rust_mut().entries.retain(|e| e.uid != uid);
         let _ = self.store().forget_links(&uid);
-        self.persist()
+        self.store_entry(&calendar, &uid)
+    }
+
+    /// Changes the entry `uid` with `f` (false: nothing changed) and stores it.
+    fn modify(mut self: Pin<&mut Self>, uid: &str, f: impl FnOnce(&mut Entry) -> bool) -> bool {
+        let Some(i) = self.index_of(uid) else { return false };
+        let calendar = self.entries[i].calendar.clone();
+        if !self.writable(&calendar) {
+            self.as_mut().set_error("Der Kalender ist schreibgeschützt.".into());
+            return false;
+        }
+        let mut e = self.entries[i].clone();
+        if !f(&mut e) {
+            return false;
+        }
+        e.sequence += 1;
+        self.as_mut().rust_mut().entries[i] = e;
+        self.store_entry(&calendar, uid)
     }
 
     pub fn move_to(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         uid: &QString,
         instance: &QString,
         start: &QString,
@@ -459,68 +902,83 @@ impl qobject::CalendarModel {
         all_day: bool,
     ) -> bool {
         let tz = self.tz;
-        let Some(i) = self.index_of(&uid.to_string()) else { return false };
-        let (Some(start), Some(end)) = (calendar::parse_local(&start.to_string()), calendar::parse_local(&end.to_string())) else {
+        let (Some(start), Some(end)) =
+            (calendar::parse_local(&start.to_string()), calendar::parse_local(&end.to_string()))
+        else {
             return false;
         };
-        let mut e = self.entries[i].clone();
-        let Some(old_start) = e.start else { return false };
-        // A series moves as a whole: by the distance the occurrence moved.
-        let reference = calendar::parse_local(&instance.to_string()).unwrap_or_else(|| old_start.local(tz));
-        let delta = start - reference;
-        let length = (end - start).max(Duration::minutes(if all_day { 24 * 60 } else { 15 }));
-        let new_start_local = old_start.local(tz) + delta;
-        if all_day {
-            e.start = Some(Time::Date(new_start_local.date()));
-            e.end = Some(Time::Date(new_start_local.date() + Duration::days(length.num_days().max(1))));
-        } else {
-            e.start = Some(if old_start.is_date() { self.new_time(new_start_local, false) } else { old_start.with_local(new_start_local, tz) });
-            e.end = match (e.kind, e.end) {
-                (Kind::Deadline, None) => None,
-                (_, Some(old)) if !old.is_date() => Some(old.with_local(new_start_local + length, tz)),
-                _ => Some(self.new_time(new_start_local + length, false)),
-            };
-        }
-        e.sequence += 1;
-        self.as_mut().rust_mut().entries[i] = e;
-        self.persist()
+        let instance = calendar::parse_local(&instance.to_string());
+        let zone = self.tz;
+        self.modify(&uid.to_string(), |e| {
+            let Some(old_start) = e.start else { return false };
+            // A series moves as a whole: by the distance the occurrence moved.
+            let reference = instance.unwrap_or_else(|| old_start.local(tz));
+            let delta = start - reference;
+            let length = (end - start).max(Duration::minutes(if all_day { 24 * 60 } else { 15 }));
+            let new_start_local = old_start.local(tz) + delta;
+            let new_time = |local: NaiveDateTime| Time::Zoned(local, zone);
+            if all_day {
+                e.start = Some(Time::Date(new_start_local.date()));
+                e.end = Some(Time::Date(new_start_local.date() + Duration::days(length.num_days().max(1))));
+            } else {
+                e.start = Some(if old_start.is_date() {
+                    new_time(new_start_local)
+                } else {
+                    old_start.with_local(new_start_local, tz)
+                });
+                e.end = match (e.kind, e.end) {
+                    (Kind::Deadline, None) if !old_start.is_date() => None,
+                    (_, Some(old)) if !old.is_date() => Some(old.with_local(new_start_local + length, tz)),
+                    _ => Some(new_time(new_start_local + length)),
+                };
+            }
+            true
+        })
     }
 
-    pub fn schedule(mut self: Pin<&mut Self>, uid: &QString, start: &QString, end: &QString) -> bool {
-        let Some(i) = self.index_of(&uid.to_string()) else { return false };
+    pub fn schedule(self: Pin<&mut Self>, uid: &QString, start: &QString, end: &QString) -> bool {
         let Some(start) = calendar::parse_local(&start.to_string()) else { return false };
-        let mut e = self.entries[i].clone();
-        let length = e.estimate_minutes.map(|m| Duration::minutes(m as i64)).unwrap_or(Duration::hours(1));
-        let end = calendar::parse_local(&end.to_string()).filter(|e| *e > start).unwrap_or(start + length);
-        e.kind = Kind::Block;
-        e.start = Some(self.new_time(start, false));
-        e.end = Some(self.new_time(end, false));
-        e.sequence += 1;
-        self.as_mut().rust_mut().entries[i] = e;
-        self.persist()
+        let end = calendar::parse_local(&end.to_string());
+        let zone = self.tz;
+        self.modify(&uid.to_string(), |e| {
+            let length = e.estimate_minutes.map(|m| Duration::minutes(m as i64)).unwrap_or(Duration::hours(1));
+            let end = end.filter(|e| *e > start).unwrap_or(start + length);
+            e.kind = Kind::Block;
+            e.start = Some(Time::Zoned(start, zone));
+            e.end = Some(Time::Zoned(end, zone));
+            true
+        })
     }
 
-    fn modify(mut self: Pin<&mut Self>, uid: &QString, f: impl FnOnce(&mut Entry) -> bool) -> bool {
-        let Some(i) = self.index_of(&uid.to_string()) else { return false };
-        let mut e = self.entries[i].clone();
-        if !f(&mut e) {
-            return false;
-        }
-        e.sequence += 1;
-        self.as_mut().rust_mut().entries[i] = e;
-        self.persist()
+    pub fn unschedule(self: Pin<&mut Self>, uid: &QString) -> bool {
+        self.modify(&uid.to_string(), |e| {
+            if e.start.is_none() || e.rrule.is_some() {
+                return false;
+            }
+            if e.estimate_minutes.is_none()
+                && let (Some(s), Some(end)) = (e.start, e.end)
+                && !s.is_date()
+            {
+                let tz = calendar::local_zone();
+                e.estimate_minutes = Some((end.local(tz) - s.local(tz)).num_minutes().max(0) as u32);
+            }
+            e.kind = Kind::Task;
+            e.start = None;
+            e.end = None;
+            true
+        })
     }
 
     pub fn set_status(self: Pin<&mut Self>, uid: &QString, status: &QString) -> bool {
         let Some(status) = Status::parse(&status.to_string()) else { return false };
-        self.modify(uid, |e| {
+        self.modify(&uid.to_string(), |e| {
             e.status = status;
             true
         })
     }
 
     pub fn toggle_check(self: Pin<&mut Self>, uid: &QString, index: i32) -> bool {
-        self.modify(uid, |e| match e.checklist.get_mut(index.max(0) as usize) {
+        self.modify(&uid.to_string(), |e| match e.checklist.get_mut(index.max(0) as usize) {
             Some(item) => {
                 item.0 = !item.0;
                 true
@@ -531,7 +989,7 @@ impl qobject::CalendarModel {
 
     pub fn link_file(self: Pin<&mut Self>, uid: &QString, path: &QString) -> bool {
         let file = self.relative(&path.to_string());
-        self.modify(uid, |e| {
+        self.modify(&uid.to_string(), |e| {
             if e.files.contains(&file) {
                 return false;
             }
@@ -542,11 +1000,47 @@ impl qobject::CalendarModel {
 
     pub fn unlink_file(self: Pin<&mut Self>, uid: &QString, file: &QString) -> bool {
         let file = file.to_string();
-        self.modify(uid, |e| {
+        self.modify(&uid.to_string(), |e| {
             let before = e.files.len();
             e.files.retain(|f| f != &file);
             e.files.len() != before
         })
+    }
+
+    pub fn files_moved(mut self: Pin<&mut Self>, from: &QString, to: &QString) {
+        let (from, to) = (self.relative(&from.to_string()), self.relative(&to.to_string()));
+        if !from.starts_with('/') || !to.starts_with('/') {
+            return;
+        }
+        let moved = |f: &str| -> Option<String> {
+            if f == from {
+                Some(to.clone())
+            } else {
+                f.strip_prefix(&format!("{from}/")).map(|rest| format!("{to}/{rest}"))
+            }
+        };
+        let touched: Vec<(String, String)> = self
+            .entries
+            .iter()
+            .filter(|e| e.files.iter().any(|f| moved(f).is_some()))
+            .map(|e| (e.uid.clone(), e.calendar.clone()))
+            .collect();
+        if touched.is_empty() {
+            return;
+        }
+        for e in self.as_mut().rust_mut().entries.iter_mut() {
+            for f in e.files.iter_mut() {
+                if let Some(n) = moved(f) {
+                    *f = n;
+                }
+            }
+        }
+        // Local entries are rewritten; links are recorded for all.
+        let local = touched.iter().any(|t| t.1 == LOCAL);
+        self.as_mut().commit(if local { LOCAL } else { "" });
+        for (uid, cal) in touched.iter().filter(|t| t.1 != LOCAL) {
+            self.as_mut().push_remote(cal, uid);
+        }
     }
 
     fn title_for(path: &str) -> String {
@@ -554,7 +1048,16 @@ impl qobject::CalendarModel {
         p.file_stem().or(p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.to_owned())
     }
 
-    pub fn block_for_file(mut self: Pin<&mut Self>, path: &QString, start: &QString, end: &QString) -> QString {
+    /// Adds a new entry in the default calendar.
+    fn add(mut self: Pin<&mut Self>, mut e: Entry) -> QString {
+        e.calendar = self.default_calendar().to_string();
+        let (uid, calendar) = (e.uid.clone(), e.calendar.clone());
+        self.as_mut().rust_mut().entries.push(e);
+        self.store_entry(&calendar, &uid);
+        qs(uid)
+    }
+
+    pub fn block_for_file(self: Pin<&mut Self>, path: &QString, start: &QString, end: &QString) -> QString {
         let path = path.to_string();
         let Some(start) = calendar::parse_local(&start.to_string()) else { return QString::default() };
         let end = calendar::parse_local(&end.to_string()).filter(|e| *e > start).unwrap_or(start + Duration::hours(1));
@@ -562,20 +1065,14 @@ impl qobject::CalendarModel {
         e.start = Some(self.new_time(start, false));
         e.end = Some(self.new_time(end, false));
         e.files = vec![self.relative(&path)];
-        let uid = e.uid.clone();
-        self.as_mut().rust_mut().entries.push(e);
-        self.persist();
-        qs(uid)
+        self.add(e)
     }
 
-    pub fn task_for_file(mut self: Pin<&mut Self>, path: &QString) -> QString {
+    pub fn task_for_file(self: Pin<&mut Self>, path: &QString) -> QString {
         let path = path.to_string();
         let mut e = Entry::new(Kind::Task, &Self::title_for(&path));
         e.files = vec![self.relative(&path)];
-        let uid = e.uid.clone();
-        self.as_mut().rust_mut().entries.push(e);
-        self.persist();
-        qs(uid)
+        self.add(e)
     }
 
     pub fn checklist_of(&self, path: &QString) -> QString {
@@ -603,11 +1100,8 @@ impl qobject::CalendarModel {
             if let Some(line) = item["line"].as_u64() {
                 e.description = format!("Aus {file}, Zeile {line}");
             }
-            self.as_mut().rust_mut().entries.push(e);
+            self.as_mut().add(e);
             count += 1;
-        }
-        if count > 0 {
-            self.persist();
         }
         count
     }
@@ -653,6 +1147,365 @@ impl qobject::CalendarModel {
             && let Err(err) = self.store().save_state(&v)
         {
             log::warn!("calendar state: {err:#}");
+        }
+    }
+
+    // ------------------------------------------------------------ Nextcloud
+
+    pub fn calendars(&self) -> QString {
+        let default = self.default_calendar().to_string();
+        let project_default = self.project_settings()["default_calendar"].as_str().unwrap_or_default().to_owned();
+        let mut list = vec![json!({
+            "id": LOCAL, "name": "Projekt (nur lokal)", "color": LOCAL_COLOR, "writable": true, "visible": true,
+            "remote": false, "projectOnly": true, "missing": false, "isDefault": default == LOCAL,
+            "projectDefault": project_default == LOCAL,
+        })];
+        if self.config.connected() {
+            let state = self.sync_store().load();
+            let root = self.project_root.to_string();
+            for c in &self.config.calendars {
+                let cached = state.calendars.get(&c.url);
+                let (name, color, writable) = self.calendar_info(&c.url);
+                list.push(json!({
+                    "id": c.url, "name": if name == c.url && !c.name.is_empty() { c.name.clone() } else { name }, "color": color,
+                    "writable": writable, "visible": c.visible_in(&root), "remote": true,
+                    "projectOnly": !c.projects.is_empty(), "missing": cached.is_some_and(|x| x.missing),
+                    "isDefault": default == c.url, "projectDefault": project_default == c.url, "globalDefault": self.config.default == c.url,
+                }));
+            }
+        }
+        qs(Value::from(list).to_string())
+    }
+
+    pub fn default_calendar(&self) -> QString {
+        let visible = self.visible_remote();
+        let usable = |id: &str| id == LOCAL || (visible.iter().any(|v| v == id) && self.writable(id));
+        let project = self.project_settings()["default_calendar"].as_str().unwrap_or_default().to_owned();
+        if !project.is_empty() && usable(&project) {
+            return qs(project);
+        }
+        if !self.config.default.is_empty() && usable(&self.config.default) {
+            return qs(&self.config.default);
+        }
+        qs(LOCAL)
+    }
+
+    pub fn account(&self) -> QString {
+        let state = self.sync_store().load();
+        qs(json!({
+            "server": self.config.server, "user": self.config.user, "davUrl": self.config.dav_url,
+            "lastSync": state.last_sync.map(describe_time), "error": state.error, "home": state.home,
+        })
+        .to_string())
+    }
+
+    pub fn test_connection(&self, server: &QString, user: &QString, password: &QString, dav_url: &QString) {
+        let config = CalendarConfig {
+            server: server.to_string(),
+            user: user.to_string(),
+            dav_url: dav_url.to_string(),
+            ..Default::default()
+        };
+        // Empty: the password already given in this Atlas start.
+        let password = Some(password.to_string()).filter(|p| !p.is_empty()).or_else(password_now).unwrap_or_default();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = client(&config, &password).discover();
+            let _ = thread.queue(move |this| match result {
+                Ok(d) => {
+                    let list: Vec<Value> = d
+                        .calendars
+                        .iter()
+                        .map(|c| json!({ "url": c.url, "name": c.name, "color": c.color, "writable": c.writable }))
+                        .collect();
+                    let message = format!("Verbunden – {} Kalender gefunden", list.len());
+                    this.connection_tested(true, qs(message), qs(Value::from(list).to_string()));
+                }
+                Err(err) => this.connection_tested(false, qs(err.to_string()), qs("[]")),
+            });
+        });
+    }
+
+    pub fn save_account(
+        mut self: Pin<&mut Self>,
+        server: &QString,
+        user: &QString,
+        password: &QString,
+        dav_url: &QString,
+        calendars: &QString,
+    ) {
+        let mut config = Config::load().calendar;
+        let changed_account = config.server != server.to_string()
+            || config.user != user.to_string()
+            || config.dav_url != dav_url.to_string();
+        config.server = server.to_string().trim().to_owned();
+        config.user = user.to_string().trim().to_owned();
+        config.dav_url = dav_url.to_string().trim().to_owned();
+        if let Ok(Value::Array(list)) = serde_json::from_str::<Value>(&calendars.to_string()) {
+            let old = std::mem::take(&mut config.calendars);
+            for c in list {
+                let Some(url) = c["url"].as_str() else { continue };
+                let mut choice = old
+                    .iter()
+                    .find(|o| o.url == url)
+                    .cloned()
+                    .unwrap_or(CalendarChoice { url: url.to_owned(), ..Default::default() });
+                choice.name = c["name"].as_str().unwrap_or_default().to_owned();
+                choice.hidden = !c["visible"].as_bool().unwrap_or(true);
+                config.calendars.push(choice);
+            }
+        }
+        if !config.calendars.iter().any(|c| c.url == config.default) {
+            config.default.clear();
+        }
+        if let Err(err) = Config::save_calendar(&config) {
+            self.as_mut().set_error(format!("Einstellungen können nicht gespeichert werden: {err:#}"));
+            return;
+        }
+        if changed_account {
+            let _ = self.sync_store().clear();
+        }
+        let password = password.to_string();
+        if !password.is_empty()
+            && let Ok(mut p) = PASSWORD.lock()
+        {
+            *p = Some(password);
+        }
+        self.as_mut().reload();
+        self.sync_now();
+    }
+
+    pub fn set_password(mut self: Pin<&mut Self>, password: &QString) {
+        let password = password.to_string();
+        if let Ok(mut p) = PASSWORD.lock() {
+            *p = (!password.is_empty()).then_some(password);
+        }
+        self.as_mut().update_sync_state();
+        self.sync_now();
+    }
+
+    fn change_choice(mut self: Pin<&mut Self>, id: &str, f: impl FnOnce(&mut CalendarChoice, &str)) {
+        let mut config = Config::load().calendar;
+        let root = self.project_root.to_string();
+        let Some(choice) = config.calendars.iter_mut().find(|c| c.url == id) else { return };
+        f(choice, &root);
+        if let Err(err) = Config::save_calendar(&config) {
+            self.as_mut().set_error(format!("Einstellungen können nicht gespeichert werden: {err:#}"));
+        }
+        self.as_mut().reload();
+        self.sync_now();
+    }
+
+    pub fn set_calendar_visible(self: Pin<&mut Self>, id: &QString, visible: bool) {
+        self.change_choice(&id.to_string(), |c, root| {
+            c.hidden = !visible;
+            // Shown in this project again: also if it was limited to others.
+            if visible && !c.projects.is_empty() && !c.projects.iter().any(|p| p == root) {
+                c.projects.push(root.to_owned());
+            }
+        });
+    }
+
+    pub fn set_calendar_project_only(self: Pin<&mut Self>, id: &QString, only: bool) {
+        self.change_choice(&id.to_string(), |c, root| {
+            c.projects = if only { vec![root.to_owned()] } else { Vec::new() };
+        });
+    }
+
+    pub fn set_default_calendar(mut self: Pin<&mut Self>, id: &QString, project: bool) {
+        let id = id.to_string();
+        let result = if project {
+            let mut settings = self.project_settings();
+            settings["default_calendar"] = json!(id);
+            serde_json::to_string_pretty(&settings)
+                .map_err(anyhow::Error::from)
+                .and_then(|t| atlas_core::paths::write_atomic(&self.store().dir().join(SETTINGS), t.as_bytes()))
+        } else {
+            let mut config = Config::load().calendar;
+            config.default = if id == LOCAL { String::new() } else { id };
+            Config::save_calendar(&config)
+        };
+        if let Err(err) = result {
+            self.as_mut().set_error(format!("Standardkalender kann nicht gespeichert werden: {err:#}"));
+        }
+        self.reload();
+    }
+
+    pub fn sync_now(mut self: Pin<&mut Self>) {
+        if !self.config.connected() {
+            return;
+        }
+        let Some(password) = password() else {
+            self.as_mut().update_sync_state();
+            return;
+        };
+        if self.syncing {
+            self.as_mut().rust_mut().sync_again = true;
+            return;
+        }
+        let calendars = self.synced();
+        if calendars.is_empty() {
+            return;
+        }
+        self.as_mut().rust_mut().syncing = true;
+        self.as_mut().rust_mut().sync_again = false;
+        self.as_mut().update_sync_state();
+        let store = self.sync_store();
+        let remote = client(&self.config, &password);
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = sync::run(&store, &remote, &calendars);
+            let _ = thread.queue(move |mut this| {
+                this.as_mut().rust_mut().syncing = false;
+                let (ok, message) = match &result {
+                    Ok(r) => {
+                        let mut parts = Vec::new();
+                        if r.uploaded + r.deleted > 0 {
+                            parts.push(format!("{} gesendet", r.uploaded + r.deleted));
+                        }
+                        if r.downloaded + r.removed > 0 {
+                            parts.push(format!("{} vom Server", r.downloaded + r.removed));
+                        }
+                        if r.conflicts > 0 {
+                            parts.push(format!("{} Konflikt(e)", r.conflicts));
+                        }
+                        (
+                            true,
+                            if parts.is_empty() {
+                                "Kalender aktuell".to_owned()
+                            } else {
+                                format!("Kalender: {}", parts.join(", "))
+                            },
+                        )
+                    }
+                    Err(err) => (false, err.to_string()),
+                };
+                this.as_mut().reload();
+                this.as_mut().sync_finished(ok, qs(message));
+                if this.sync_again {
+                    this.sync_now();
+                }
+            });
+        });
+    }
+
+    pub fn create_calendar(self: Pin<&mut Self>, name: &QString) {
+        let Some(password) = password() else {
+            self.calendar_created(false, qs("App-Passwort fehlt"), QString::default());
+            return;
+        };
+        let name = name.to_string();
+        let config = self.config.clone();
+        let home = self.sync_store().load().home;
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let remote = client(&config, &password);
+            let result = match home {
+                Some(h) => Ok(h),
+                None => remote.discover().and_then(|d| {
+                    d.home.ok_or_else(|| {
+                        atlas_core::calendar::caldav::DavError::Invalid("kein Kalenderverzeichnis".into())
+                    })
+                }),
+            }
+            .and_then(|home| remote.create_calendar(&home, &name, "#2ea043"));
+            let _ = thread.queue(move |mut this| match result {
+                Ok(cal) => {
+                    let mut config = Config::load().calendar;
+                    config.calendars.push(CalendarChoice {
+                        url: cal.url.clone(),
+                        name: cal.name.clone(),
+                        ..Default::default()
+                    });
+                    if let Err(err) = Config::save_calendar(&config) {
+                        this.as_mut().set_error(format!("{err:#}"));
+                    }
+                    this.as_mut().reload();
+                    this.as_mut().calendar_created(true, qs(format!("Kalender „{}“ angelegt", cal.name)), qs(&cal.url));
+                    this.sync_now();
+                }
+                Err(err) => this.calendar_created(false, qs(err.to_string()), QString::default()),
+            });
+        });
+    }
+
+    pub fn clear_cache(mut self: Pin<&mut Self>) {
+        if let Err(err) = self.sync_store().clear() {
+            self.as_mut().set_error(format!("Cache kann nicht gelöscht werden: {err:#}"));
+        }
+        self.as_mut().reload();
+        self.sync_now();
+    }
+
+    pub fn disconnect_account(mut self: Pin<&mut Self>) {
+        if let Ok(mut p) = PASSWORD.lock() {
+            *p = None;
+        }
+        if let Err(err) = Config::save_calendar(&CalendarConfig::default()) {
+            self.as_mut().set_error(format!("Einstellungen können nicht gespeichert werden: {err:#}"));
+        }
+        let _ = self.sync_store().clear();
+        self.reload();
+    }
+
+    pub fn conflicts(&self) -> QString {
+        let tz = self.tz;
+        let describe = |data: &Option<String>| -> Value {
+            let Some(data) = data else { return Value::Null };
+            let entries = sync::parse_object(data, "");
+            let Some(e) = entries.iter().find(|e| e.recurrence_id.is_none()).or(entries.first()) else {
+                return Value::Null;
+            };
+            let when = match e.start {
+                Some(s) if s.is_date() => s.local(tz).format("%d.%m.%Y").to_string(),
+                Some(s) => s.local(tz).format("%d.%m.%Y %H:%M").to_string(),
+                None => String::new(),
+            };
+            json!({ "title": e.title, "when": when, "description": e.description, "status": e.status.as_str() })
+        };
+        let state = self.sync_store().load();
+        let list: Vec<Value> = state
+            .conflicts
+            .iter()
+            .map(|c| {
+                json!({
+                    "id": c.id, "title": c.title, "calendar": self.calendar_info(&c.calendar).0,
+                    "local": describe(&c.local), "remote": describe(&c.remote), "message": c.message,
+                })
+            })
+            .collect();
+        qs(Value::from(list).to_string())
+    }
+
+    pub fn resolve_conflict(mut self: Pin<&mut Self>, id: i32, choice: &QString) -> bool {
+        let choice = match choice.to_string().as_str() {
+            "remote" => Choice::Remote,
+            "local" => Choice::Local,
+            _ => Choice::Both,
+        };
+        let state = self.sync_store().load();
+        let Some(conflict) = state.conflicts.iter().find(|c| c.id == id as u64).cloned() else { return false };
+        match self.sync_store().update(|s| s.resolve(conflict.id, choice)) {
+            Ok(copy) => {
+                // The copy keeps the links of the local version.
+                if let Some(uid) = copy {
+                    let links = self.store().links();
+                    if let Some(l) = links.get(&conflict.uid) {
+                        let mut e = Entry::new(Kind::Event, "");
+                        e.uid = uid;
+                        e.files = l.files.clone();
+                        e.session = l.session.clone();
+                        let _ = self.store().save_links([&e]);
+                    }
+                }
+                self.as_mut().reload();
+                self.sync_now();
+                true
+            }
+            Err(err) => {
+                self.as_mut().set_error(format!("{err:#}"));
+                false
+            }
         }
     }
 }

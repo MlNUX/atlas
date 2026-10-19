@@ -12,6 +12,9 @@ Item {
     id: actions
 
     readonly property alias ops: ops
+    /// The project calendar (shared by calendar tabs, the bar and menus).
+    readonly property alias calendar: calendarModel
+    readonly property alias calendarSync: calendarSync
     readonly property alias propertiesDialog: propertiesDialog
     readonly property alias busy: ops.busy
     /// Last result or progress text for the status bar.
@@ -38,6 +41,29 @@ Item {
     /// Put a Markdown block into a note: `makeBlock(notePath)` builds it
     /// (e.g. a PDF quote whose link depends on the note).
     signal blockToNoteRequested(string heading, var makeBlock, string cwd, string doneText, string newNoteName)
+    /// Show the calendar (`state`: {mode, date, selected}).
+    signal calendarRequested(var state)
+    /// Switch to the session called `name` (a calendar entry's session).
+    signal sessionRequested(string name)
+
+    CalendarModel {
+        id: calendarModel
+        atlasDir: actions.app.atlasDir
+        projectRoot: actions.app.projectRoot
+    }
+    CalendarSync {
+        id: calendarSync
+        app: actions.app
+        model: calendarModel
+        actions: actions
+    }
+
+    /// "Als Aufgabe einplanen": an unscheduled task linked with `path`.
+    function planAsTask(path) {
+        const uid = calendarModel.taskForFile(path)
+        if (uid) showMessage(qsTr("Aufgabe „%1“ angelegt – im Kalender unter „Noch nicht eingeplant“").arg(baseName(path)))
+        else showMessage(calendarModel.error || qsTr("Aufgabe konnte nicht angelegt werden"))
+    }
 
     FileOps {
         id: ops
@@ -353,6 +379,18 @@ Item {
                 onObjectAdded: (index, object) => exportMenu.insertItem(index, object)
                 onObjectRemoved: (index, object) => exportMenu.removeItem(object)
             }
+        }
+        MenuItem {
+            text: qsTr("Als Aufgabe einplanen")
+            visible: menu.single && !ops.isDir(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.planAsTask(menu.paths[0])
+        }
+        MenuItem {
+            text: qsTr("Checkliste als Aufgaben übernehmen …")
+            visible: menu.single && app.fileKind(menu.paths[0]) === "markdown"
+            height: visible ? implicitHeight : 0
+            onTriggered: calendarSync.importChecklist(menu.paths[0])
         }
         MenuSeparator {}
         MenuItem { text: qsTr("Neue Datei …"); onTriggered: actions.newFile(menu.dir) }

@@ -24,6 +24,11 @@ Projektdaten sind immer **relativ zur Projektwurzel** und verwenden `/`.
 | `actions.yaml` | eigene Aktionen des Projekts ([actions.md](actions.md)) | nein (Nutzerdaten) |
 | `extensions/<name>/extension.yaml` | Erweiterungen des Projekts ([extensions.md](extensions.md)) | nein (Nutzerdaten) |
 | `cache/processed/` | Ergebnisse der Dateiverarbeitung durch Erweiterungen | ja |
+| `calendar/events.ics` | Einträge des Projektkalenders (iCalendar) | nein (Nutzerdaten) |
+| `calendar/links.json` | Dateien und Session je Termin-UID | nein (Nutzerdaten) |
+| `calendar/state.json` | Ansicht des Kalenders (Woche/Monat/Agenda, Leisten) | ja |
+| `calendar/settings.json` | Standardkalender dieses Projekts | ja (dann gilt der globale) |
+| `calendar/cache/sync.json` | Nextcloud-Cache, Offline-Warteschlange, Konflikte | teilweise (siehe unten) |
 
 Alle JSON-/TOML-Dateien werden atomar geschrieben (temporäre Datei, fsync,
 rename, fsync des Ordners). `.atlas/` kann in `.gitignore` stehen; Sessions
@@ -126,6 +131,87 @@ sie wird mit der ersten Anmerkung angelegt und mit der letzten entfernt.
 - PDFs außerhalb eines Projekts: gleiche Dateien unter
   `$XDG_STATE_HOME/atlas/annotations/`, `path` ist dann absolut.
 
+### Kalender (`calendar/`)
+
+**`events.ics`** ist gültiges iCalendar (RFC 5545) und mit jedem
+Kalenderprogramm lesbar. Termine, Arbeitsblöcke und Fristen sind `VEVENT`,
+Aufgaben ohne Zeit `VTODO`. Atlas ändert nur die Eigenschaften, die es
+verwaltet; unbekannte Eigenschaften, fremde Erinnerungen und Komponenten
+bleiben erhalten. Zeiten neuer Einträge stehen mit `TZID` der eigenen
+Zeitzone, ganztägige mit `VALUE=DATE` (Ende exklusiv).
+
+```ics
+BEGIN:VEVENT
+UID:0b6c…@atlas
+DTSTART;TZID=Europe/Berlin:20261017T100000
+DTEND;TZID=Europe/Berlin:20261017T150000
+SUMMARY:Kapitel 3 fertigstellen
+CATEGORIES:schreiben
+RRULE:FREQ=WEEKLY;COUNT=4
+X-ATLAS-KIND:block                  # event | block | deadline | task
+X-ATLAS-STATUS:started              # planned | started | done | postponed
+X-ATLAS-FILE:/docs/kapitel-3.md     # beliebig oft, wurzelrelativ
+X-ATLAS-SESSION:Dokumentation
+X-ATLAS-CHECK:x;Gliederung          # Checkliste: "x;" erledigt, " ;" offen
+X-ATLAS-ESTIMATE:120                # Aufwand in Minuten
+BEGIN:VALARM                        # Erinnerung (15 min vorher)
+ACTION:DISPLAY
+TRIGGER:-PT15M
+END:VALARM
+END:VEVENT
+```
+
+**`links.json`** hält Dateien und Session zusätzlich je UID – für
+Nextcloud-Termine, falls ein Server die `X-ATLAS-*`-Felder nicht bewahrt:
+
+```json
+{ "0b6c…@atlas": { "files": ["/docs/kapitel-3.md"], "session": "Dokumentation" } }
+```
+
+Verschieben und Umbenennen in Atlas passt die Pfade in beiden Dateien an.
+Notizen mit `due:` im Frontmatter erscheinen im Kalender (nur lesend);
+Checklisten werden nur über „Checkliste als Aufgaben übernehmen …“ zu
+Aufgaben, die Markdown-Datei bleibt dabei unverändert.
+
+**`settings.json`**: `{"default_calendar": "<URL>" | "local"}` – der
+Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
+`[calendar] default` aus `config.toml`, sonst der Projektkalender.
+
+**`cache/sync.json`** (Nextcloud, siehe [Phase-2-Bericht](phase2.md)):
+
+```json
+{
+  "version": 1,
+  "home": "https://cloud.example.com/remote.php/dav/calendars/minux/",
+  "calendars": {
+    "<Kalender-URL>": {
+      "url": "…", "name": "Persönlich", "color": "#0082c9", "writable": true,
+      "components": ["VEVENT", "VTODO"], "missing": false,
+      "objects": { "<href>": { "uid": "…", "etag": "\"abc\"", "data": "BEGIN:VCALENDAR…" } }
+    }
+  },
+  "queue": [ { "id": 7, "kind": "put", "calendar": "…", "href": "…", "uid": "…",
+               "base": "\"abc\"", "data": "BEGIN:VCALENDAR…" } ],
+  "conflicts": [ { "id": 9, "calendar": "…", "href": "…", "uid": "…", "title": "…",
+                   "local": "…" , "remote": "…", "remote_etag": "\"def\"", "message": "" } ],
+  "last_sync": 1792355296, "error": "", "next_id": 9
+}
+```
+
+- `objects` ist der Stand des Servers mit bereits eingetragenen lokalen
+  Änderungen; `etag` ist die Serverfassung, auf der der Eintrag beruht
+  (`""` = noch nicht auf dem Server).
+- `queue` hält je Objekt höchstens eine Änderung (`put` oder `delete`);
+  `base` ist die ETag, die überschrieben werden darf (`null` = neu). Neue
+  Objekte heißen nach ihrer UID (`<uid>.ics`, nur sichere Zeichen) und
+  werden mit `If-None-Match: *` angelegt – eine wiederholte Übertragung
+  erzeugt so nie ein Duplikat.
+- `conflicts` sind Einträge, die auf beiden Seiten geändert wurden oder die
+  der Server abgelehnt hat (`message`); `null` steht für „gelöscht“.
+- Das App-Passwort steht nie in dieser oder einer anderen Datei.
+- „Lokalen Cache leeren“ löscht die Datei (mit der Warteschlange); der
+  nächste Abgleich lädt alles neu.
+
 ## Pro Benutzer
 
 | Ort | Inhalt |
@@ -152,7 +238,22 @@ shell = "/run/current-system/sw/bin/fish"        # Standard: Login-Shell
 
 [extensions]
 disabled = ["beispiel"]                          # ausgeschaltete Erweiterungen
+
+[calendar]                                       # Nextcloud/CalDAV – ohne Passwort
+server = "https://cloud.example.com"
+user = "minux"
+dav_url = ""                                     # optional: CalDAV-URL von Hand
+default = "https://cloud.example.com/remote.php/dav/calendars/minux/personal/"
+
+[[calendar.calendars]]                           # gewählte Kalender des Kontos
+url = "https://cloud.example.com/remote.php/dav/calendars/minux/personal/"
+name = "Persönlich"
+hidden = false                                   # ausgeblendet: weder angezeigt noch abgeglichen
+projects = []                                    # nicht leer: nur in diesen Projektordnern
 ```
+
+Das App-Passwort wird bei jedem Atlas-Start einmal abgefragt und nur im
+Arbeitsspeicher gehalten; Atlas nutzt keinen Schlüsselbund.
 
 Unbekannte Schlüssel bleiben beim Speichern aus Atlas erhalten.
 
