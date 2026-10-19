@@ -149,7 +149,13 @@ pub fn own_groups() -> Vec<(u32, String)> {
     };
     // SAFETY: getegid has no preconditions.
     let primary = unsafe { libc::getegid() };
-    groups.retain(|&g| g != primary);
+    // In user namespaces (containers, the Nix build sandbox) unmapped groups
+    // appear as the overflow GID; files cannot be given to it.
+    let overflow = std::fs::read_to_string("/proc/sys/kernel/overflowgid")
+        .ok()
+        .and_then(|s| s.trim().parse::<libc::gid_t>().ok())
+        .unwrap_or(65534);
+    groups.retain(|&g| g != primary && g != overflow);
     groups.sort_unstable();
     groups.dedup();
     std::iter::once(primary).chain(groups).map(|g| (g, group_name(g))).collect()
@@ -215,10 +221,10 @@ mod tests {
         assert!(can_change_mode(&info));
         assert_eq!(info.owner, user_name(info.uid));
 
-        // Any of the user's own groups is allowed.
+        // Any of the user's own groups is allowed (the primary one always is).
         let groups = own_groups();
         assert!(!groups.is_empty());
-        let (gid, name) = groups.last().unwrap().clone();
+        let (gid, name) = groups[0].clone();
         set_owner(&file, None, Some(gid)).unwrap();
         let info = stat(&file).unwrap();
         assert_eq!((info.gid, info.group), (gid, name));
