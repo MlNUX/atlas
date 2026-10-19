@@ -4,8 +4,8 @@ Das Projekt untersucht einen dateizentrierten Produktivitäts-Workspace, der Dat
 
 Lizenz: GPL-3.0-or-later (siehe [LICENSE](LICENSE)) · Copyright © 2026 Minux
 
-**Status:** Phase 0 – technischer Prototyp. Interne Entwickler-Builds, keine Stabilitätszusage.
-Ergebnisse, Entscheidungen und Messwerte: [docs/phase0.md](docs/phase0.md).
+**Status:** Phase 2 – vertiefte Arbeitsabläufe (PDF-Annotationen, Notizverknüpfungen, eigene Aktionen, Erweiterungen, Projektkalender mit Nextcloud). Interne Entwickler-Builds, keine Stabilitätszusage.
+Ergebnisse und Entscheidungen: [Phase 0](docs/phase0.md) · [Phase 1](docs/phase1.md) · [Phase 2](docs/phase2.md) · [Dateiformate](docs/data-format.md) · [Tastenkürzel](docs/shortcuts.md).
 
 ## Entwicklung
 

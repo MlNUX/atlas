@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 | Kürzel | Aktion |
 |---|---|
-| Strg+P | Arbeitsleiste: Dateien, Ordner, Notizen, Aktionen (`>` Aktionen, `#` Tags, `@` Zitate und PDF-Anmerkungen, `:` Zeile, `?` Volltext, `pfad:42`) |
+| Strg+P | Arbeitsleiste: Dateien, Ordner, Notizen, Aktionen (`>` Aktionen, `#` Tags, `@` Zitate und PDF-Anmerkungen, `!` Termine, `:` Zeile, `?` Volltext, `pfad:42`) |
 | Strg+Umschalt+P | Arbeitsleiste mit Aktionen |
 | Strg+O | Projektordner öffnen |
 | Strg+Umschalt+F | Projektweite Suche |
@@ -71,6 +71,21 @@ alle übrigen Tasten gehen dort an das Programm im Terminal.
 | Klick / Rechtsklick auf eine Anmerkung | Kommentar, Farbe, Zitat, Link kopieren, Löschen |
 | Strg+Enter (im Kommentar) | Kommentar übernehmen |
 | Esc | Auswahl aufheben, zurück zum Auswahlwerkzeug |
+
+## Kalender
+
+| Kürzel | Aktion |
+|---|---|
+| T | Heute |
+| Alt+← / Alt+→ | Vorige / nächste Woche bzw. Monat |
+| Enter | Ausgewählten Eintrag bearbeiten |
+| Entf | Ausgewählten Eintrag löschen |
+| Klick / Doppelklick | Auswählen (Details rechts) / bearbeiten |
+| Doppelklick auf freie Zeit, Ziehen über freie Zeit | Neuer Termin (eine Stunde / gezogener Zeitraum) |
+| Eintrag ziehen, unteren Rand ziehen | Verschieben (15-Minuten-Raster) / Dauer ändern |
+| Datei aus dem Explorer auf einen Eintrag / auf freie Zeit | Verknüpfen / Arbeitsblock anlegen |
+| Datei auf „Noch nicht eingeplant“ | Als Aufgabe einplanen |
+| Aufgabe in die Woche oder den Monat ziehen | Als Arbeitsblock einplanen |
 
 ## Terminal
 

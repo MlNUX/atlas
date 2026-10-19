@@ -29,9 +29,9 @@ nach jedem Schritt ein Commit.
 | 2 | Notizverknüpfungen: Wiki-Links, Backlink-Filter, Kontextgraph | ✅ |
 | 3 | Benutzerdefinierte Aktionen | ✅ |
 | 4 | Kleines Erweiterungssystem | ✅ |
-| 5 | Projektkalender (lokal) | |
-| 6 | Nextcloud/CalDAV-Synchronisierung | |
-| 7 | Tests, Dokumentation und Abnahme | |
+| 5 | Projektkalender (lokal) | ✅ |
+| 6 | Nextcloud/CalDAV-Synchronisierung | ✅ |
+| 7 | Tests, Dokumentation und Abnahme | ✅ (Hyprland/Nextcloud-Durchgang offen) |
 
 ### Schritt 1 – PDF-Annotationen und Zitate
 
@@ -203,3 +203,151 @@ Freigabe an das Manifest gebunden, Umwandlung mit Cache und parallel,
 Fehler mit stderr, Zeitlimit, atomarer Export) und Rauchtest (Status,
 Freigabe, Ein-/Ausschalten, Anzeige einer Binärdatei über eine Erweiterung,
 Export mit Öffnen des Ergebnisses).
+
+### Schritt 5 – Projektkalender (lokal)
+
+Kern: `atlas_core::calendar` (Einträge, iCalendar-Lesen/-Schreiben mit
+Erhalt fremder Daten, Wiederholungen, Vorkommen in einem Zeitraum,
+Erinnerungen, Markdown-Checklisten) mit Tests; Format in
+[data-format.md](data-format.md#kalender-calendar).
+
+- **Eigener Tab** „Kalender“ (📅 in der Titelleiste, Strg+P → „Kalender
+  öffnen“, `atlas PROJEKT --open calendar:`); Explorer und Projektbaum
+  bleiben daneben, Ansicht, Datum und Auswahl stehen in der Session.
+- **Woche** (Standard) mit Ganztagszeile, Stundenraster, aktueller Uhrzeit
+  und Überlappungen nebeneinander; **Monat** mit Fristen und ganztägigen
+  Einträgen zuerst und einem Auslastungsbalken je Tag; **Agenda** nach
+  Überfällig, Heute, Morgen, Diese Woche, Später.
+- **Einträge**: Termin, Arbeitsblock, Frist, Aufgabe ohne Zeit; Status,
+  Tags, Beschreibung, Checkliste, verknüpfte Dateien und Session, Aufwand,
+  Erinnerung, einfache Wiederholung (täglich bis jährlich, Intervall, bis
+  Datum oder Anzahl). Regeln, die Atlas nicht vollständig bearbeiten kann,
+  bleiben unverändert erhalten.
+- **Bedienung**: Klick wählt (Details rechts), Doppelklick bearbeitet,
+  Ziehen verschiebt (auch ganze Serien, über Tage und im Monat), der untere
+  Rand ändert die Dauer; Ziehen oder Doppelklick auf freie Zeit legt einen
+  Termin an.
+- **Dateien**: aus dem Explorer auf einen Eintrag ziehen verknüpft, auf
+  freie Zeit ziehen legt einen Arbeitsblock an, auf „Noch nicht eingeplant“
+  eine Aufgabe; Kontextmenü „Als Aufgabe einplanen“. Links sind
+  wurzelrelativ (`/docs/kapitel-3.md`), öffnen per Klick (Strg: Split) und
+  folgen Umbenennungen in Atlas.
+- **Noch nicht eingeplant**: Aufgaben mit Aufwand; in die Woche oder den
+  Monat gezogen werden sie zum Arbeitsblock (Dauer = Aufwand), „Zurück zu
+  ‚Noch nicht eingeplant‘“ macht das rückgängig.
+- **Sessions**: „In Session wechseln“ speichert die aktuelle Session und
+  öffnet die verknüpfte (fehlt sie, wird sie leer angelegt) – nie
+  automatisch zu einer Uhrzeit.
+- **Markdown**: Notizen mit `due:` im Frontmatter erscheinen als Frist
+  (nur lesend, Doppelklick öffnet die Notiz); „Checkliste als Aufgaben
+  übernehmen …“ übernimmt gewählte Punkte nur auf ausdrücklichen Wunsch,
+  die Datei bleibt unverändert.
+- **Erinnerungen** erscheinen, solange Atlas läuft, als Hinweis unter der
+  Titelleiste („Zeigen“ springt zum Eintrag).
+- **Arbeitsleiste**: Termine werden mit `!` (und bei längeren Suchbegriffen
+  auch ohne) gefunden; dazu Kalenderaktionen (neuer Termin, Arbeitsblock,
+  Frist, Aufgabe, Ansichten, Einstellungen).
+- Rechte Leiste ohne Auswahl: „Diese Woche“ mit verplanten Stunden,
+  Anzahl Termine/Blöcke/Fristen, offenen Aufgaben und den Fristen.
+
+Gefunden und behoben: Die Wochen- und Monatsansicht bekamen ihren Kalender
+über `cal: cal` – die Bindung zeigte auf die eigene Eigenschaft und blieb
+leer; außerdem fing die Drop-Fläche des Editor-Splits Dateien ab, bevor der
+Kalender sie verknüpfen konnte.
+
+### Schritt 6 – Nextcloud/CalDAV-Synchronisierung
+
+Kern: `atlas_core::calendar::caldav` (Client: Erkennung über
+`/remote.php/dav/` bzw. `/.well-known/caldav`, Principal und
+`calendar-home-set`, Kalender mit Farbe, Rechten und Komponenten, ETags,
+`calendar-multiget`, bedingtes PUT/DELETE, MKCALENDAR) und
+`atlas_core::calendar::sync` (Cache, Warteschlange, Konflikte, Abgleich)
+mit Tests gegen einen kleinen CalDAV-Testserver.
+
+- **Einrichtung** in den Kalender-Einstellungen (⚙ im Kalender, Strg+P):
+  Serveradresse, Benutzer, App-Passwort, im erweiterten Bereich eine
+  CalDAV-URL von Hand. „Verbindung testen“ zeigt die gefundenen Kalender
+  (schreibgeschützte markiert); keine Nextcloud-App nötig.
+- **App-Passwort** nur im Arbeitsspeicher, einmal pro Atlas-Start: ein
+  Hinweis unter der Titelleiste fragt danach (oder „Später“); kein
+  Schlüsselbund, nichts in `config.toml`, `.atlas/` oder Sessions.
+- **Kalenderauswahl**: je Kalender sichtbar/ausgeblendet (ausgeblendete
+  werden auch nicht abgeglichen), „nur hier“ (nur in diesem Projekt),
+  Farbe und Zugriff vom Server. **Standardkalender** für neue Einträge
+  global oder nur für dieses Projekt; im Eintragsdialog lässt sich der
+  Zielkalender für einen einzelnen Eintrag ändern (auch nachträglich –
+  der Eintrag zieht dann um).
+- **Sofort synchronisieren**: neue und geänderte Einträge in
+  Nextcloud-Kalendern gehen bei bekanntem Passwort direkt zum Server;
+  zusätzlich alle 5 Minuten im Hintergrund und über ⟳ von Hand.
+- **Offline**: Änderungen landen in der Warteschlange in
+  `.atlas/calendar/cache/sync.json` (je Eintrag eine, spätere ersetzen
+  frühere), die Einträge bleiben sichtbar; ist der Server nicht
+  erreichbar, versucht Atlas es jede Minute erneut und überträgt sie,
+  sobald die Verbindung wieder steht. Neue Objekte heißen nach ihrer UID und
+  werden mit `If-None-Match: *` angelegt – auch eine wiederholte
+  Übertragung nach verlorener Antwort erzeugt **keine Duplikate**.
+- **Konflikte** (geändert in Nextcloud und Atlas, gelöscht auf einer Seite
+  oder vom Server abgelehnt): nichts wird still überschrieben (`If-Match`
+  mit der ETag der Ausgangsfassung). Ein Hinweis führt zum Dialog mit
+  beiden Fassungen und **[Nextcloud-Version] [Lokale Version] [Beide
+  behalten]** („Beide behalten“ legt die lokale Fassung als neuen Eintrag
+  mit eigenen Verknüpfungen an).
+- **Schreibgeschützte und verschwundene Kalender** werden nie
+  überschrieben: Einträge darin sind nicht bearbeitbar; ein Kalender, den
+  es auf dem Server nicht mehr gibt, bleibt im Cache und wird markiert,
+  seine wartenden Änderungen bleiben liegen.
+- **Atlas-Verknüpfungen** reisen als `X-ATLAS-*` im Termin mit und stehen
+  zusätzlich über die UID in `links.json`; andere CalDAV-Clients sehen
+  einen normalen Termin. **Erinnerungen** (`VALARM`) aus Nextcloud werden
+  übernommen, fremde Alarmarten bleiben erhalten.
+- **Status** im Kalenderkopf (⟳ mit Zahl wartender Änderungen, 🔑 ohne
+  Passwort, ⚠ bei Fehler) und in den Einstellungen: letzter erfolgreicher
+  Abgleich bzw. Fehlermeldung.
+- **Verwaltung**: Verbindung testen, Kalenderauswahl ändern, jetzt
+  synchronisieren, App-Passwort neu eingeben, „Atlas – Projektarbeit“ nach
+  Bestätigung in Nextcloud anlegen, lokalen Cache leeren (mit Warnung bei
+  wartenden Änderungen), Konto trennen (löscht nichts auf dem Server).
+
+Netzwerk: HTTP über `ureq` mit rustls und den Zertifikaten des Systems
+(auch eigene Zertifizierungsstellen), `HTTPS_PROXY` wird beachtet; XML über
+`roxmltree`. Anfragen laufen im Hintergrund, die Oberfläche bleibt
+bedienbar; der Cache wird nur in kurzen Transaktionen geschrieben.
+
+### Schritt 7 – Tests, Dokumentation und Abnahme
+
+- Kern-Tests (109): u. a. CalDAV-Erkennung und Antworten von Nextcloud,
+  bedingte Schreibzugriffe, Anlegen eines Kalenders, nicht erreichbarer
+  Server; Abgleich „lokal angelegt → erscheint im gewählten Kalender →
+  Änderung auf dem Server kommt zurück → Löschen“; Offline-Änderungen
+  werden nach der Rückkehr genau einmal übertragen, auch nach verlorener
+  Antwort; Konflikte mit allen drei Auflösungen; verschwundene und
+  schreibgeschützte Kalender; Konto-Einstellungen ohne Passwort.
+- Rauchtest (`scripts/smoke-test.sh`) um den Kalender erweitert: Tab,
+  Anlegen und `events.ics`, Datei verknüpfen und `links.json`, Wochen-,
+  Monats- und Agenda-Ansicht, Notiz-Frist aus dem Frontmatter,
+  Verschieben, Checkliste → Aufgaben (Markdown unverändert), Einplanen,
+  „Als Aufgabe einplanen“, Suche, Dateilink folgt Umbenennung, Tab in der
+  Session, Löschen.
+- Dokumentiert: Dateiformate und `[calendar]` in
+  [data-format.md](data-format.md), Tastenkürzel in
+  [shortcuts.md](shortcuts.md).
+
+#### Abnahmekriterien
+
+| Kriterium | Nachweis |
+|---|---|
+| PDF-Markierung mit Quelle und Seite in eine Notiz | Schritt 1, Rauchtest „Zitat mit Quelle und Seite“, „Zitat in Notiz“ |
+| Zitat öffnet zuverlässig die PDF-Seite | Rauchtest „Zitat öffnet die Stelle“, „Zitat-Link folgt Umbenennung“ |
+| Original-PDF ohne Export unverändert | Rauchtest „Original-PDF unverändert“, Kern-Tests Export |
+| Lokaler Graph der Markdown- oder PDF-Datei | Rauchtest „Graph der PDF zeigt zitierende Notiz“, „Graph mit Tiefe 2“ |
+| Eigene Aktionen im richtigen Arbeitsordner | Rauchtest „Aktion im Projektordner ausgeführt“ |
+| Markdown und PDF ohne Atlas nutzbar | Zitate/Wiki-Links sind normales Markdown, Annotationen und Kalender liegen in `.atlas/`, PDF unverändert |
+| Lokal erstellter Termin erscheint im gewählten Nextcloud-Kalender | Kern-Test `local_entry_appears_on_server_and_comes_back` |
+| Offline erstellte Termine ohne Duplikate übertragen | Kern-Test `offline_changes_are_sent_once_after_reconnecting` |
+
+Offen: ein Durchgang gegen einen echten Nextcloud-Server und auf echtem
+Hyprland (die Tests laufen gegen einen nachgebauten CalDAV-Server bzw.
+offscreen), dazu weiterhin die offenen Punkte aus [phase1.md](phase1.md).
+Komplexe Serienausnahmen (einzelne Vorkommen getrennt bearbeiten) und
+native Desktop-Benachrichtigungen bleiben wie geplant für später.
