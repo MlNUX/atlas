@@ -237,9 +237,14 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             interactive: false
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+            // (All devices: Qt on Wayland reports wheels as a "touchpad";
+            // touchpads may send pixel deltas only.)
             WheelHandler {
+                acceptedDevices: PointerDevice.AllDevices
+                acceptedPointerTypes: PointerDevice.AllPointerTypes
                 onWheel: (event) => {
-                    grid.contentY = Math.max(0, Math.min(grid.contentHeight - grid.height, grid.contentY - event.angleDelta.y / 2))
+                    const dy = event.angleDelta.y ? event.angleDelta.y / 2 : event.pixelDelta.y
+                    grid.contentY = Math.max(0, Math.min(grid.contentHeight - grid.height, grid.contentY - dy))
                 }
             }
 

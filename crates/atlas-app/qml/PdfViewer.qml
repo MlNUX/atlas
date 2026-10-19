@@ -810,8 +810,12 @@ Rectangle {
                 // Ctrl+wheel zooms (on the list itself: it would take every
                 // wheel event for scrolling); the spot under the mouse stays.
                 // Touchpads and high-resolution wheels (Wayland) send small or
-                // pixel-only deltas; Ctrl+wheel never scrolls.
+                // pixel-only deltas; Ctrl+wheel never scrolls. Qt on Wayland
+                // reports even mouse wheels as a "touchpad" with finger pointer
+                // type: every device and pointer type counts.
                 WheelHandler {
+                    acceptedDevices: PointerDevice.AllDevices
+                    acceptedPointerTypes: PointerDevice.AllPointerTypes
                     acceptedModifiers: Qt.ControlModifier
                     onWheel: (event) => {
                         event.accepted = true

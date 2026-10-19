@@ -571,7 +571,10 @@ Rectangle {
             }
 
             // Ctrl+wheel zooms the icons, like in Dolphin.
+            // (All devices: Qt on Wayland reports wheels as a "touchpad".)
             WheelHandler {
+                acceptedDevices: PointerDevice.AllDevices
+                acceptedPointerTypes: PointerDevice.AllPointerTypes
                 acceptedModifiers: Qt.ControlModifier
                 property real pending: 0
                 onWheel: (event) => {

@@ -524,3 +524,15 @@ Geprüft: Kern-Tests (Dolphin ersetzt die festen Orte, alles entfernt =
 keine Orte, kaputte oder fehlende Datei, XBEL mit `<!DOCTYPE>`,
 Systemorte übersetzt, Papierkorb, Prozentkodierung, GTK-Lesezeichen,
 Duplikate) und Rauchtest (wie in Dolphin, aus- und wieder einschalten).
+
+### Nachtrag – Strg+Mausrad unter Wayland
+
+Unter Wayland (Hyprland, sway) zoomte Strg+Mausrad nicht: Qt meldet dort
+selbst Mausräder als Gerät „touchpad“ mit Zeigertyp „Finger“, und die
+WheelHandler (PDF-Zoom, Symbol-Zoom der Dateiansicht, Scrollen der
+Kalenderwoche) nahmen diesen Typ nicht an. Sie akzeptieren jetzt alle
+Geräte- und Zeigertypen; die Kalenderwoche wertet außerdem reine
+Pixel-Deltas aus. Gefunden mit echten Wayland-Ereignissen (sway headless,
+virtuelle Maus über das wlroots-Protokoll, Strg über eine virtuelle
+Tastatur); der Rauchtest schickt jetzt auch Rad-Ereignisse eines solchen
+„Touchpad“-Geräts und Rasten in Scroll-Phasen.

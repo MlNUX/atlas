@@ -467,6 +467,18 @@ Item {
                 // Ctrl+wheel over the pages zooms, the wheel alone scrolls.
                 const v = editor.activeTab.viewerItem
                 const p = v.mapToItem(null, v.width / 2, v.height * 0.6)
+                // Qt on Wayland reports mouse wheels as a "touchpad" device with
+                // finger pointer type: Ctrl+wheel zooms all the same.
+                const before = v.zoomScale
+                app.sendWheel(window, p.x, p.y, 120, 17)
+                app.sendWheel(window, p.x, p.y, 120, 17)
+                check("Wayland: Strg+Mausrad vom „Touchpad“-Gerät zoomt", v.zoomScale > before * 1.15, before + " → " + v.zoomScale)
+                // Wheel notches in scroll phases without a ScrollBegin (as from
+                // some Wayland compositors) zoom too.
+                const start = v.zoomScale
+                app.sendWheel(window, p.x, p.y, 120, 9)
+                app.sendWheel(window, p.x, p.y, 120, 9)
+                check("Strg+Mausrad ohne Gestenbeginn zoomt", v.zoomScale > start * 1.15, start + " → " + v.zoomScale)
                 test.zoomBefore = v.zoomScale
                 app.sendWheel(window, p.x, p.y, 120, true)
                 check("Strg+Mausrad vergrößert die PDF", v.zoomScale > test.zoomBefore * 1.05, test.zoomBefore + " → " + v.zoomScale)
@@ -482,6 +494,14 @@ Item {
                 app.sendWheel(window, p.x, p.y, 40, 3)
                 app.sendWheel(window, p.x, p.y, 40, 3)
                 check("Strg+Touchpad zoomt die PDF", v.zoomScale > plain * 1.1, plain + " → " + v.zoomScale)
+                // Wayland: wheel notches come in scroll phases; a gesture begun
+                // without Ctrl (scrolling) continues with Ctrl held.
+                const touch = v.zoomScale
+                app.sendWheel(window, p.x, p.y, 0, 4)
+                app.sendWheel(window, p.x, p.y, -120, 8)
+                app.sendWheel(window, p.x, p.y, 120, 9)
+                app.sendWheel(window, p.x, p.y, 120, 9)
+                check("Wayland: Strg+Mausrad mitten in einer Scroll-Geste zoomt", v.zoomScale > touch * 1.15, touch + " → " + v.zoomScale)
                 // Dialogs of the new design.
                 sendToNote.ask("ok", app.projectRoot)
                 check("„In Notiz übernehmen“ öffnet", sendToNote.visible && sendToNote.filtered.length > 0, sendToNote.filtered.length)
@@ -602,7 +622,7 @@ Item {
                 app.postMouse(window, 0, p.x, p.y, 20)
                 app.postMouse(window, 2, p.x, p.y, 60)
                 test.zoomBefore = f.iconSize
-                app.sendWheel(window, p.x, p.y, 120, true)
+                app.sendWheel(window, p.x, p.y, 120, 17)
             },
             () => {
                 const f = editor.activeTab.viewerItem
