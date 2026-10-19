@@ -329,6 +329,30 @@ pub mod qobject {
         #[cxx_name = "annotationSearch"]
         fn annotation_search(self: &AppController, query: &QString, limit: i32) -> QString;
 
+        /// User defined actions for `paths` (files, a folder, or none for
+        /// project actions): JSON list of {id, name, description, source}.
+        #[qinvokable]
+        #[cxx_name = "actionsFor"]
+        fn actions_for(self: &AppController, paths: &QStringList) -> QString;
+
+        /// Problems in the action files (JSON list of {file, message}).
+        #[qinvokable]
+        #[cxx_name = "actionErrors"]
+        fn action_errors(self: &AppController) -> QString;
+
+        /// The command of action `id` for `paths` at `line`: JSON {argv,
+        /// display, cwd, confirm, destructive, placement ("panel"/"tab"),
+        /// name} or {error}.
+        #[qinvokable]
+        #[cxx_name = "prepareAction"]
+        fn prepare_action(self: &AppController, id: &QString, paths: &QStringList, line: i32) -> QString;
+
+        /// Path of the project (`global` false) or user action file; created
+        /// from a commented template if missing. "" on error.
+        #[qinvokable]
+        #[cxx_name = "actionsFile"]
+        fn actions_file(self: &AppController, global: bool) -> QString;
+
         #[qinvokable]
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: &AppController, text: &QString);
@@ -1216,6 +1240,91 @@ impl qobject::AppController {
         found.sort_by_key(|f| std::cmp::Reverse(f.0));
         found.truncate(limit.max(1) as usize);
         qs(serde_json::Value::from(found.into_iter().map(|f| f.1).collect::<Vec<_>>()).to_string())
+    }
+
+    fn load_actions(&self) -> (Vec<atlas_core::actions::Action>, Vec<atlas_core::actions::LoadError>) {
+        let atlas_dir = self.project.as_ref().map(|p| p.atlas_dir());
+        atlas_core::actions::load(atlas_dir.as_deref(), &atlas_core::config::config_dir())
+    }
+
+    fn action_context(&self, paths: &QStringList, line: i32) -> atlas_core::actions::Context {
+        atlas_core::actions::Context {
+            project: self.root.clone(),
+            paths: paths.iter().map(path_of).filter(|p| !is_terminal_path(p)).collect(),
+            line: line.max(0) as u32,
+        }
+    }
+
+    pub fn actions_for(&self, paths: &QStringList) -> QString {
+        let (actions, _) = self.load_actions();
+        let ctx = self.action_context(paths, 0);
+        let list: Vec<_> = atlas_core::actions::applicable(&actions, &ctx)
+            .into_iter()
+            .map(|a| {
+                serde_json::json!({
+                    "id": a.id,
+                    "name": a.name,
+                    "description": a.description,
+                    "source": a.source.label(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn action_errors(&self) -> QString {
+        let (_, errors) = self.load_actions();
+        let list: Vec<_> = errors
+            .iter()
+            .map(|e| serde_json::json!({ "file": e.file.to_string_lossy(), "message": e.message }))
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn prepare_action(&self, id: &QString, paths: &QStringList, line: i32) -> QString {
+        let (actions, _) = self.load_actions();
+        let id = id.to_string();
+        let ctx = self.action_context(paths, line);
+        let result = match actions.iter().find(|a| a.id == id) {
+            None => serde_json::json!({ "error": format!("Die Aktion „{id}“ gibt es nicht mehr.") }),
+            Some(action) if !action.applies(&ctx) => {
+                serde_json::json!({ "error": format!("„{}“ passt nicht zur Auswahl.", action.name) })
+            }
+            Some(action) => match action.prepare(&ctx) {
+                Ok(p) => serde_json::json!({
+                    "name": action.name,
+                    "argv": p.argv,
+                    "display": p.display,
+                    "cwd": p.cwd.to_string_lossy(),
+                    "confirm": p.confirm,
+                    "destructive": p.destructive,
+                    "placement": match p.placement {
+                        atlas_core::actions::Placement::Panel => "panel",
+                        atlas_core::actions::Placement::Tab => "tab",
+                    },
+                }),
+                Err(err) => serde_json::json!({ "error": format!("„{}“: {err:#}", action.name) }),
+            },
+        };
+        qs(result.to_string())
+    }
+
+    pub fn actions_file(&self, global: bool) -> QString {
+        let file = if global {
+            atlas_core::actions::user_file(&atlas_core::config::config_dir())
+        } else {
+            match self.project.as_ref() {
+                Some(p) => atlas_core::actions::project_file(&p.atlas_dir()),
+                None => return QString::default(),
+            }
+        };
+        if !file.exists()
+            && let Err(err) = atlas_core::paths::write_atomic(&file, atlas_core::actions::TEMPLATE.as_bytes())
+        {
+            log::warn!("cannot create {}: {err:#}", file.display());
+            return QString::default();
+        }
+        qs(file.to_string_lossy())
     }
 
     pub fn copy_to_clipboard(&self, text: &QString) {

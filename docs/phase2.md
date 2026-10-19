@@ -27,7 +27,7 @@ nach jedem Schritt ein Commit.
 |---|---|---|
 | 1 | PDF-Annotationen und Zitate | ✅ |
 | 2 | Notizverknüpfungen: Wiki-Links, Backlink-Filter, Kontextgraph | ✅ |
-| 3 | Benutzerdefinierte Aktionen | |
+| 3 | Benutzerdefinierte Aktionen | ✅ |
 | 4 | Kleines Erweiterungssystem | |
 | 5 | Projektkalender (lokal) | |
 | 6 | Nextcloud/CalDAV-Synchronisierung | |
@@ -122,3 +122,44 @@ Graph um Notiz und PDF, Rückverweise mit Art/Kontext) und Rauchtest
 (Alias, Überschriftenziel, Rückverweis mit Tags, Graph der PDF mit
 Zitatkante, Tiefe 2, Wiki-Link folgt Umbenennung, Kontextpanel in der
 Session, Vervollständigung).
+
+### Schritt 3 – Benutzerdefinierte Aktionen
+
+Kern: `atlas_core::actions` (Format, Dateimuster, Platzhalter, Vorbereitung
+des Befehls, Heuristik für destruktive Befehle) mit Tests; Format in
+[actions.md](actions.md).
+
+- **Deklarativ in YAML** (`version: 1`): `.atlas/actions.yaml` für das
+  Projekt, `~/.config/atlas/actions.yaml` für alle Projekte; Projektaktionen
+  ersetzen globale mit gleicher `id`. Beim ersten Bearbeiten legt Atlas eine
+  kommentierte Vorlage an. Fehler in einzelnen Einträgen werden gemeldet,
+  der Rest bleibt nutzbar.
+- **Ohne Shell**: Befehle sind Programm + Argumentliste (als Liste oder als
+  Text, der nur in Wörter zerlegt wird). `shell: true` schaltet `sh -c`
+  ausdrücklich ein; Platzhalter werden dann shell-sicher gequotet.
+- **Platzhalter** `{file}` `{files}` `{name}` `{basename}` `{stem}` `{ext}`
+  `{dir}` `{relative}` `{project}` `{line}` – nach dem Zerlegen eingesetzt,
+  Dateinamen bleiben ein Argument; unbekannte Platzhalter sind ein Fehler.
+- **Kontext**: `applies_to` (Muster für Dateiname oder Projektpfad, auch
+  mehrere) und `when: file | dir | project`; bei Mehrfachauswahl müssen
+  alle Dateien passen.
+- **Anzeige** im Kontextmenü (Untermenü „Aktionen“, auch auf freier Fläche
+  für Projektaktionen, mit „… bearbeiten“) und in der Arbeitsleiste
+  („Aktion: …“ für das aktive Dokument und das Projekt).
+- **Sichtbare Ausführung** im Terminal-Panel oder als Terminal-Tab
+  (`terminal: tab`): ein fester Wrapper reicht die Argumente unverändert
+  durch, lässt die Ausgabe nach dem Ende stehen und zeigt ✓/✗ mit Exit-Code
+  in Zeile und Tab-Titel. Aktions-Tabs werden nicht in der Session
+  wiederhergestellt.
+- **Reproduzierbar**: Arbeitsordner ist standardmäßig der Projektordner,
+  abweichend über `cwd` (mit Platzhaltern).
+- **Bestätigung** mit dem genauen Befehl und Arbeitsordner bei
+  `confirm: true` und immer bei destruktiv wirkenden Befehlen (`rm`, `mv`,
+  `dd`, `git clean/reset/push --force`, Umleitungen `>` …).
+
+Geprüft: Kern-Tests (Parsen und Fehler, Muster für Dateien/Ordner/Projekt,
+Platzhalter mit `$(…)` und Leerzeichen im Dateinamen, Shell-Quoting,
+Heuristik, Wrapper mit Exit-Code, Vorrang der Projektaktionen, Vorlage) und
+Rauchtest (Aktionen je Kontext, Programm ohne Shell im Projektordner,
+Bestätigungspflicht bei Umleitung, Ausführung im Terminal mit Ergebnis und
+Statuszeile).

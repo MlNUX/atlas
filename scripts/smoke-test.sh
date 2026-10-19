@@ -80,6 +80,22 @@ endstream")
 }
 pdf "$project/docs/quelle.pdf"
 
+mkdir -p "$project/.atlas"
+cat > "$project/.atlas/actions.yaml" <<'YAML'
+version: 1
+actions:
+  - name: Zeilen zählen
+    applies_to: "*.md"
+    command: [wc, -l, "{file}"]
+  - name: Liste schreiben
+    when: project
+    shell: true
+    command: "ls notes > aktion-ergebnis.txt"
+  - name: Ordner zeigen
+    when: dir
+    command: [ls, "{dir}"]
+YAML
+
 echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"

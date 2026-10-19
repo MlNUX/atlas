@@ -21,6 +21,7 @@ Projektdaten sind immer **relativ zur Projektwurzel** und verwenden `/`.
 | `index.sqlite` | Dateiliste mit Gerät/Inode | ja, wird bei jedem Start neu aufgebaut |
 | `recovery/<hash>.json` | ungespeicherte Bearbeitungen | nein, bis gespeichert oder verworfen |
 | `annotations/<name>-<8 hex>.json` | PDF-Annotationen, eine Datei je PDF | nein (Nutzerdaten) |
+| `actions.yaml` | eigene Aktionen des Projekts ([actions.md](actions.md)) | nein (Nutzerdaten) |
 | `cache/` | reserviert für abgeleitete Daten | ja |
 
 Alle JSON-/TOML-Dateien werden atomar geschrieben (temporäre Datei, fsync,
@@ -132,6 +133,7 @@ sie wird mit der ersten Anmerkung angelegt und mit der letzten entfernt.
 | `$XDG_STATE_HOME/atlas/device-id` | `<hostname>-<8 hex>`, einmal erzeugt |
 | `$XDG_STATE_HOME/atlas/recovery/` | Recovery für Dateien außerhalb von Projekten |
 | `$XDG_CONFIG_HOME/atlas/config.toml` | Einstellungen (siehe unten) |
+| `$XDG_CONFIG_HOME/atlas/actions.yaml` | eigene Aktionen für alle Projekte ([actions.md](actions.md)) |
 
 `ATLAS_STATE_DIR` und `ATLAS_CONFIG_DIR` ersetzen die beiden Ordner (Tests).
 

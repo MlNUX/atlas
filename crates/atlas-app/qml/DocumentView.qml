@@ -127,11 +127,13 @@ Item {
         id: terminalComponent
         // `terminal:<start directory>#<id>`; the session stores the current
         // directory as state.
+        // A tab running a program (a user action) is not restored.
         TerminalPane {
             workingDirectory: (view.pendingState && view.pendingState.cwd) || view.terminalStartDir()
+            command: (view.pendingState && view.pendingState.command) || []
             actions: view.actions
             onClosed: view.closeRequested()
-            function viewState() { return { cwd: cwd() } }
+            function viewState() { return command.length ? { cwd: cwd(), transient: true } : { cwd: cwd() } }
             Component.onCompleted: Qt.callLater(focusTerminal)
         }
     }

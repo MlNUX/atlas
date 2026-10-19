@@ -53,6 +53,9 @@ ApplicationWindow {
             terminalPanel.visible = true
             terminalPanel.runCommand(command, cwd)
         }
+        function onRunInTerminalTab(command, cwd) {
+            editor.open("terminal:" + cwd + "#" + (++window.terminalTabs), 0, "tab", { command: command })
+        }
         function onOpenTerminalRequested(dir, where) { window.openTerminal(dir, where) }
         function onSendToNoteRequested(text, cwd) { sendToNote.ask(text, cwd) }
         function onBlockToNoteRequested(heading, makeBlock, cwd, doneText, newNoteName) { sendToNote.askBlock(heading, makeBlock, cwd, doneText, newNoteName) }
@@ -109,6 +112,22 @@ ApplicationWindow {
             const id = app.sessionIds[i]
             if (id !== app.activeSession) list.push({ name: qsTr("Session wechseln: %1").arg(app.sessionNames[i]), run: () => window.switchSession(id) })
         }
+        // User defined actions: for the active document, then for the project.
+        const seen = {}
+        const viewer = editor.activeTab ? editor.activeTab.viewerItem : null
+        const textEditor = viewer && viewer.editorItem ? viewer.editorItem : viewer && viewer.currentLine ? viewer : null
+        const line = textEditor && textEditor.currentLine ? textEditor.currentLine() : 0
+        for (const ctx of current ? [[current], []] : [[]]) {
+            for (const a of fileActions.actionsFor(ctx)) {
+                if (seen[a.id]) continue
+                seen[a.id] = true
+                const paths = ctx
+                list.push({ name: qsTr("Aktion: %1").arg(a.name), hint: ctx.length ? app.fileName(current) : a.source,
+                            run: () => fileActions.runAction(a.id, paths, line) })
+            }
+        }
+        list.push({ name: qsTr("Projektaktionen bearbeiten …"), run: () => fileActions.editActions(false) })
+        list.push({ name: qsTr("Globale Aktionen bearbeiten …"), run: () => fileActions.editActions(true) })
         return list
     }
 

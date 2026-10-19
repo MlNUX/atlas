@@ -178,6 +178,23 @@ Item {
                 check("Wiki-Link-Vorschläge", ed.completing)
                 ed.acceptCompletion()
                 check("Wiki-Link vervollständigt", ed.text.indexOf("Neu: [[/notes/plan-neu.md]]") > 0, ed.text.slice(-60))
+                // ---- Phase 2: user defined actions
+                check("Aktionsdatei fehlerfrei", app.actionErrors() === "[]", app.actionErrors())
+                const names = (paths) => fileActions.actionsFor(paths).map(a => a.name).join(",")
+                check("Aktion passt zu Markdown", names([note]) === "Zeilen zählen", names([note]))
+                check("Aktion passt zu Ordnern", names([path("notes")]) === "Ordner zeigen", names([path("notes")]))
+                check("Projektaktion", names([]) === "Liste schreiben", names([]))
+                const wc = JSON.parse(app.prepareAction("zeilen-zählen", [note], 0))
+                check("Programm ohne Shell, Arbeitsordner Projekt", wc.argv.slice(-3).join(" ") === "wc -l " + note
+                      && wc.cwd === app.projectRoot && !wc.confirm, JSON.stringify(wc))
+                const list = JSON.parse(app.prepareAction("liste-schreiben", [], 0))
+                check("Umleitung verlangt Bestätigung", list.confirm && list.destructive, JSON.stringify(list))
+                fileActions.runInTerminal(list.argv, list.cwd)
+            },
+            () => {
+                check("Aktion im Projektordner ausgeführt", app.readTextFile(path("aktion-ergebnis.txt")).indexOf("idee.md") >= 0)
+                const out = terminalPanel.currentGroup.activeTerminal.outputText()
+                check("Aktion sichtbar mit Status", out.indexOf("Liste schreiben beendet") >= 0, out)
             },
         ]
         timer.start()

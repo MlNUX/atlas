@@ -141,7 +141,7 @@ SplitView {
             const g = addGroup(groups.length, gs.temporary)
             for (const t of gs.tabs || []) {
                 const path = !t.path ? "" : t.path.startsWith("terminal:") ? t.path : area.app.resolveDocument(t.path)
-                if (!path) continue
+                if (!path || t.transient) continue
                 g.openTab(path, t.line || 0, t.preview ? "preview" : "tab", t)
             }
             if (g.tabs.length === 0 && groupStates.length > 1) { closeGroup(g); continue }

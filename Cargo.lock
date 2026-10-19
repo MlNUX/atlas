@@ -141,6 +141,7 @@ dependencies = [
  "crossbeam-channel",
  "dirs",
  "glib",
+ "globset",
  "ignore",
  "libc",
  "log",

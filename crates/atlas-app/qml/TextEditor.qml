@@ -165,6 +165,8 @@ Rectangle {
 
     function viewState() { return { line: root.topLine, cursor: area.cursorPosition, symbols: root.showSymbols } }
     function focusText() { area.forceActiveFocus() }
+    /// Line of the cursor (1-based).
+    function currentLine() { return area.getText(0, area.cursorPosition).split("\n").length }
     /// Wiki link suggestions are shown (see `updateCompletion`).
     readonly property bool completing: completion.visible
     function acceptCompletion() { completion.accept() }

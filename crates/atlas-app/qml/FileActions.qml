@@ -26,6 +26,8 @@ Item {
     signal quickLookRequested(string path, var navigate)
     /// Run `command` (program + arguments) in an Atlas terminal in `cwd`.
     signal runInTerminal(var command, string cwd)
+    /// Same, as a terminal tab in the editor area.
+    signal runInTerminalTab(var command, string cwd)
     /// Open a terminal in `dir`; `where`: "panel", "tab" or "split".
     signal openTerminalRequested(string dir, string where)
     /// Put `text` (terminal output) into a note; `cwd` suggests a folder.
@@ -65,6 +67,44 @@ Item {
     }
 
     function configureEditor() { editorDialog.open() }
+
+    // ---------------------------------------------------- user defined actions
+
+    /// Actions for `paths` (files, one folder, or [] for the project).
+    function actionsFor(paths) { return JSON.parse(app.actionsFor(paths)) }
+
+    /// Runs action `id` on `paths` visibly in a terminal; asks first if the
+    /// action wants it or the command looks destructive.
+    function runAction(id, paths, line) {
+        const p = JSON.parse(app.prepareAction(id, paths, line || 0))
+        if (p.error) {
+            errorDialog.text = p.error
+            errorDialog.open()
+            return
+        }
+        const run = () => {
+            if (p.placement === "tab") actions.runInTerminalTab(p.argv, p.cwd)
+            else actions.runInTerminal(p.argv, p.cwd)
+            showMessage(qsTr("Aktion „%1“ gestartet").arg(p.name))
+        }
+        if (!p.confirm) { run(); return }
+        confirmDialog.ask(
+            qsTr("Aktion ausführen?"),
+            qsTr("„%1“ führt in %2 aus:\n\n%3").arg(p.name).arg(p.cwd).arg(p.display)
+                + (p.destructive ? qsTr("\n\nDer Befehl kann Dateien löschen oder überschreiben.") : ""),
+            qsTr("Ausführen"),
+            run)
+    }
+
+    /// Opens the project's (or the global) action file, created from a
+    /// template if needed.
+    function editActions(global) {
+        const file = app.actionsFile(global)
+        if (file) actions.openRequested(file, false)
+        else showMessage(qsTr("Aktionsdatei kann nicht angelegt werden"))
+        const errors = JSON.parse(app.actionErrors())
+        if (errors.length) showMessage(qsTr("Aktionen: %1").arg(errors[0].message))
+    }
 
     function showProperties(path) { propertiesDialog.show(path) }
     function openWithSystem(path) { Qt.openUrlExternally("file://" + encodeURI(path)) }
@@ -177,6 +217,7 @@ Item {
     function showMenu(paths, dir) {
         menu.paths = paths
         menu.dir = dir
+        menu.actionList = actionsFor(paths)
         menu.popup()
     }
 
@@ -184,6 +225,8 @@ Item {
         id: menu
         property var paths: []
         property string dir
+        /// User defined actions for the selection.
+        property var actionList: []
         readonly property bool single: paths.length === 1
         readonly property bool any: paths.length > 0
         /// The clicked folder, or the folder the menu was opened in.
@@ -215,6 +258,31 @@ Item {
         MenuItem {
             text: qsTr("Terminal als Tab öffnen")
             onTriggered: actions.openTerminalRequested(menu.terminalDir(), "tab")
+        }
+        Menu {
+            id: actionsMenu
+            title: menu.actionList.length ? qsTr("Aktionen (%1)").arg(menu.actionList.length) : qsTr("Aktionen")
+            Instantiator {
+                model: menu.actionList
+                delegate: MenuItem {
+                    required property var modelData
+                    text: modelData.name
+                    ToolTip.visible: hovered && modelData.description.length > 0
+                    ToolTip.text: modelData.description
+                    onTriggered: actions.runAction(modelData.id, menu.paths, 0)
+                }
+                onObjectAdded: (index, object) => actionsMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => actionsMenu.removeItem(object)
+            }
+            MenuItem {
+                text: qsTr("Keine passende Aktion")
+                enabled: false
+                visible: menu.actionList.length === 0
+                height: visible ? implicitHeight : 0
+            }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Projektaktionen bearbeiten …"); enabled: !!app.projectRoot; onTriggered: actions.editActions(false) }
+            MenuItem { text: qsTr("Globale Aktionen bearbeiten …"); onTriggered: actions.editActions(true) }
         }
         MenuSeparator {}
         MenuItem { text: qsTr("Neue Datei …"); onTriggered: actions.newFile(menu.dir) }
