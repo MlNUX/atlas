@@ -50,6 +50,7 @@ Rectangle {
             if (mode !== "preview") tabs[index].preview = false
             if (line) tabs[index].reveal(line)
             if (state && state.annot) tabs[index].applyState({ annot: state.annot })
+            if (state && state.processor) tabs[index].applyState({ processor: state.processor })
             current = index
             changed()
             return tabs[index]

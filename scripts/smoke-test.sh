@@ -96,6 +96,32 @@ actions:
     command: [ls, "{dir}"]
 YAML
 
+# Extensions: one installed by the user, one coming with the project.
+mkdir -p "$work/config/extensions/demo" "$project/.atlas/extensions/proj"
+cat > "$work/config/extensions/demo/extension.yaml" <<'YAML'
+atlas_extension: 1
+name: demo
+title: Demo
+version: "1.0"
+actions:
+  - {name: Hallo, when: project, command: [echo, hallo]}
+processors:
+  - name: Großbuchstaben
+    applies_to: "*.dat"
+    output: markdown
+    shell: true
+    command: "echo '# Daten'; tr a-z A-Z < {file}"
+exporters:
+  - {name: Kopie als Text, applies_to: "*.md", target: txt, command: [cp, "{file}", "{output}"]}
+YAML
+cat > "$project/.atlas/extensions/proj/extension.yaml" <<'YAML'
+atlas_extension: 1
+name: proj
+actions:
+  - {name: Projekt-Hallo, when: project, command: [echo, projekt]}
+YAML
+printf 'hallo\000welt\n' > "$project/daten.dat"
+
 echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"

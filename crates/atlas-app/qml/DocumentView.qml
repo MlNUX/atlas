@@ -18,6 +18,11 @@ Item {
     // `revision` re-evaluates the kind after the file was moved or deleted.
     property int revision: 0
     readonly property string kind: path && revision >= 0 ? app.fileKind(path) : ""
+    /// Show through an extension's processor (ID; set by "Anzeigen mit …").
+    property string processor: ""
+    /// Files without own viewer use an automatic processor if one fits.
+    readonly property bool processed: processor !== ""
+        || (kind === "binary" && JSON.parse(app.processorsFor(path)).some(p => p.auto))
     readonly property string title: kind === "trash" ? qsTr("Papierkorb")
         : kind === "terminal" ? (viewer.item && viewer.item.title ? viewer.item.title : qsTr("Terminal"))
         : path ? app.fileName(path) : qsTr("Leer")
@@ -67,6 +72,7 @@ Item {
     }
     function show(newPath, newLine, state) {
         pendingState = state || {}
+        processor = pendingState.processor || ""
         line = newLine || 0
         path = newPath
         if (viewer.item && viewer.item.applyState) viewer.item.applyState(pendingState)
@@ -84,6 +90,7 @@ Item {
     }
     function applyState(state) {
         pendingState = state || {}
+        if (pendingState.processor) processor = pendingState.processor
         if (viewer.item && viewer.item.applyState) viewer.item.applyState(pendingState)
     }
 
@@ -95,6 +102,7 @@ Item {
         sourceComponent: view.kind === "trash" ? trashComponent
             : view.kind === "dir" ? folderComponent
             : view.kind === "terminal" ? terminalComponent
+            : view.processed && view.kind !== "missing" ? processedComponent
             : view.kind === "pdf" ? pdfComponent
             : view.kind === "markdown" ? markdownComponent
             : view.kind === "text" ? textComponent
@@ -143,6 +151,20 @@ Item {
             source: view.path
             app: view.app
             actions: view.actions
+            onLinkActivated: (path, line, newPane, state) => {
+                if (newPane) view.openRequested(path, line, "split", state)
+                else view.navigate(path, line, state)
+            }
+        }
+    }
+    Component {
+        id: processedComponent
+        ProcessedView {
+            source: view.path
+            app: view.app
+            actions: view.actions
+            processor: view.processor
+            onProcessorChanged: view.processor = processor
             onLinkActivated: (path, line, newPane, state) => {
                 if (newPane) view.openRequested(path, line, "split", state)
                 else view.navigate(path, line, state)

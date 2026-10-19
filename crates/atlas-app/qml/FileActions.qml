@@ -28,6 +28,9 @@ Item {
     signal runInTerminal(var command, string cwd)
     /// Same, as a terminal tab in the editor area.
     signal runInTerminalTab(var command, string cwd)
+    /// Open `path` in a tab with viewer state (e.g. `{processor: id}`).
+    signal openWithState(string path, var state)
+    signal extensionsRequested()
     /// Open a terminal in `dir`; `where`: "panel", "tab" or "split".
     signal openTerminalRequested(string dir, string where)
     /// Put `text` (terminal output) into a note; `cwd` suggests a folder.
@@ -94,6 +97,37 @@ Item {
                 + (p.destructive ? qsTr("\n\nDer Befehl kann Dateien löschen oder überschreiben.") : ""),
             qsTr("Ausführen"),
             run)
+    }
+
+    // ------------------------------------------------------------ extensions
+
+    function processorsFor(path) { return JSON.parse(app.processorsFor(path)) }
+    function exportersFor(paths) { return JSON.parse(app.exportersFor(paths)) }
+
+    /// Exports `path` with exporter `exp` ({id, name, output}); asks before
+    /// replacing an existing file. The result opens when the exporter says so.
+    function exportWith(exp, path) {
+        const run = () => {
+            showMessage(qsTr("Exportiere mit „%1“ …").arg(exp.name))
+            app.exportFile(exp.id, path, exp.output)
+        }
+        if (!app.exists(exp.output)) { run(); return }
+        confirmDialog.ask(qsTr("Datei ersetzen?"),
+                          qsTr("„%1“ existiert bereits und wird durch das Ergebnis von „%2“ ersetzt.").arg(baseName(exp.output)).arg(exp.name),
+                          qsTr("Ersetzen"), run)
+    }
+    Connections {
+        target: actions.app
+        function onFileExported(output, ok, message, open) {
+            if (!ok) {
+                errorDialog.text = message
+                errorDialog.open()
+                return
+            }
+            actions.showMessage(message)
+            const kind = actions.app.fileKind(output)
+            if (open && kind !== "binary" && kind !== "missing") actions.openRequested(output, true)
+        }
     }
 
     /// Opens the project's (or the global) action file, created from a
@@ -218,6 +252,8 @@ Item {
         menu.paths = paths
         menu.dir = dir
         menu.actionList = actionsFor(paths)
+        menu.processorList = paths.length === 1 ? processorsFor(paths[0]) : []
+        menu.exporterList = exportersFor(paths)
         menu.popup()
     }
 
@@ -227,6 +263,9 @@ Item {
         property string dir
         /// User defined actions for the selection.
         property var actionList: []
+        /// Viewers and exporters of extensions for the selection.
+        property var processorList: []
+        property var exporterList: []
         readonly property bool single: paths.length === 1
         readonly property bool any: paths.length > 0
         /// The clicked folder, or the folder the menu was opened in.
@@ -283,6 +322,37 @@ Item {
             MenuSeparator {}
             MenuItem { text: qsTr("Projektaktionen bearbeiten …"); enabled: !!app.projectRoot; onTriggered: actions.editActions(false) }
             MenuItem { text: qsTr("Globale Aktionen bearbeiten …"); onTriggered: actions.editActions(true) }
+            MenuItem { text: qsTr("Erweiterungen …"); onTriggered: actions.extensionsRequested() }
+        }
+        Menu {
+            id: viewMenu
+            title: qsTr("Anzeigen mit")
+            enabled: menu.processorList.length > 0
+            Instantiator {
+                model: menu.processorList
+                delegate: MenuItem {
+                    required property var modelData
+                    text: qsTr("%1 (%2)").arg(modelData.name).arg(modelData.extension)
+                    onTriggered: actions.openWithState(menu.paths[0], { processor: modelData.id })
+                }
+                onObjectAdded: (index, object) => viewMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => viewMenu.removeItem(object)
+            }
+        }
+        Menu {
+            id: exportMenu
+            title: qsTr("Exportieren als")
+            enabled: menu.exporterList.length > 0
+            Instantiator {
+                model: menu.exporterList
+                delegate: MenuItem {
+                    required property var modelData
+                    text: qsTr("%1 (.%2)").arg(modelData.name).arg(modelData.target)
+                    onTriggered: actions.exportWith(modelData, menu.paths[0])
+                }
+                onObjectAdded: (index, object) => exportMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => exportMenu.removeItem(object)
+            }
         }
         MenuSeparator {}
         MenuItem { text: qsTr("Neue Datei …"); onTriggered: actions.newFile(menu.dir) }

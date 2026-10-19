@@ -39,11 +39,20 @@ pub struct TerminalConfig {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtensionsConfig {
+    /// Names of extensions that are switched off.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub editor: EditorConfig,
     #[serde(default)]
     pub terminal: TerminalConfig,
+    #[serde(default)]
+    pub extensions: ExtensionsConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -81,13 +90,23 @@ impl Config {
     }
 
     pub fn save_editor_to(path: &Path, editor: &EditorConfig) -> Result<()> {
-        let mut doc: toml::Table = match std::fs::read_to_string(path) {
-            Ok(text) => text.parse().with_context(|| format!("{} is not valid TOML", path.display()))?,
-            Err(_) => toml::Table::new(),
-        };
-        doc.insert("editor".into(), toml::Value::try_from(editor)?);
-        crate::paths::write_atomic(path, toml::to_string_pretty(&doc)?.as_bytes())
+        save_table(path, "editor", editor)
     }
+
+    /// Updates only the `[extensions]` table.
+    pub fn save_extensions(extensions: &ExtensionsConfig) -> Result<()> {
+        save_table(&config_file(), "extensions", extensions)
+    }
+}
+
+/// Replaces one table of the TOML file, keeping everything else.
+fn save_table<T: Serialize>(path: &Path, key: &str, value: &T) -> Result<()> {
+    let mut doc: toml::Table = match std::fs::read_to_string(path) {
+        Ok(text) => text.parse().with_context(|| format!("{} is not valid TOML", path.display()))?,
+        Err(_) => toml::Table::new(),
+    };
+    doc.insert(key.into(), toml::Value::try_from(value)?);
+    crate::paths::write_atomic(path, toml::to_string_pretty(&doc)?.as_bytes())
 }
 
 /// Splits a command line like a POSIX shell (quotes and backslashes; no

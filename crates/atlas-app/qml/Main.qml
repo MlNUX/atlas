@@ -53,6 +53,8 @@ ApplicationWindow {
             terminalPanel.visible = true
             terminalPanel.runCommand(command, cwd)
         }
+        function onOpenWithState(path, state) { editor.open(path, 0, "tab", state) }
+        function onExtensionsRequested() { extensionsDialog.open() }
         function onRunInTerminalTab(command, cwd) {
             editor.open("terminal:" + cwd + "#" + (++window.terminalTabs), 0, "tab", { command: command })
         }
@@ -128,7 +130,22 @@ ApplicationWindow {
         }
         list.push({ name: qsTr("Projektaktionen bearbeiten …"), run: () => fileActions.editActions(false) })
         list.push({ name: qsTr("Globale Aktionen bearbeiten …"), run: () => fileActions.editActions(true) })
+        // Extensions: exporters and viewers for the active document.
+        if (current) {
+            for (const x of fileActions.exportersFor([current]))
+                list.push({ name: qsTr("Exportieren: %1").arg(x.name), hint: "." + x.target, run: () => fileActions.exportWith(x, current) })
+            for (const p of fileActions.processorsFor(current))
+                list.push({ name: qsTr("Anzeigen mit: %1").arg(p.name), hint: p.extension, run: () => editor.open(current, 0, "tab", { processor: p.id }) })
+        }
+        list.push({ name: qsTr("Erweiterungen verwalten …"), run: () => extensionsDialog.open() })
+        list.push({ name: qsTr("Neue Erweiterung …"), run: () => { const m = app.newExtension(); if (m) editor.open(m, 0, "tab") } })
         return list
+    }
+
+    ExtensionsDialog {
+        id: extensionsDialog
+        app: app
+        actions: fileActions
     }
 
     /// Shows `path` in the project tree (expanding its folders).
@@ -431,59 +448,76 @@ ApplicationWindow {
 
     // ----------------------------------------------------------------- layout
 
-    header: Rectangle {
-        height: 36
-        color: Theme.window
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 8
-            Label {
-                text: "Atlas"
-                color: Theme.textStrong
-                font.bold: true
-                font.pixelSize: 14
+    property bool extensionNoticeHidden: false
+    Connections { target: app; function onProjectRootChanged() { window.extensionNoticeHidden = false } }
+    header: Column {
+        Rectangle {
+            width: parent.width
+            height: 36
+            color: Theme.window
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 8
+                Label {
+                    text: "Atlas"
+                    color: Theme.textStrong
+                    font.bold: true
+                    font.pixelSize: 14
+                }
+                Button {
+                    text: qsTr("Projekt öffnen…")
+                    flat: true
+                    onClicked: folderDialog.open()
+                }
+                SessionMenu {
+                    id: sessionMenu
+                    app: app
+                    onSwitchRequested: (id) => window.switchSession(id)
+                    onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
+                    onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }
+                    onDeleteRequested: (id) => window.deleteSession(id)
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: app.projectRoot
+                    color: Theme.textFaint
+                    font.pixelSize: Theme.smallFontSize
+                    elide: Text.ElideMiddle
+                }
+                IconButton {
+                    glyph: editor.orientation === Qt.Horizontal ? "⇆" : "⇅"
+                    tip: qsTr("Split-Ausrichtung wechseln")
+                    onClicked: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
+                }
+                IconButton {
+                    glyph: "◫"
+                    tip: qsTr("Editor teilen (Strg+\\)")
+                    onClicked: if (editor.activeGroup) editor.splitGroup(editor.activeGroup)
+                }
+                IconButton {
+                    glyph: "›_"
+                    tip: qsTr("Terminal ein-/ausblenden (Strg+`)")
+                    checkable: true
+                    checked: terminalPanel.visible
+                    onClicked: window.toggleTerminal()
+                }
             }
-            Button {
-                text: qsTr("Projekt öffnen…")
-                flat: true
-                onClicked: folderDialog.open()
-            }
-            SessionMenu {
-                id: sessionMenu
-                app: app
-                onSwitchRequested: (id) => window.switchSession(id)
-                onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
-                onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }
-                onDeleteRequested: (id) => window.deleteSession(id)
-            }
-            Label {
-                Layout.fillWidth: true
-                text: app.projectRoot
-                color: Theme.textFaint
-                font.pixelSize: Theme.smallFontSize
-                elide: Text.ElideMiddle
-            }
-            IconButton {
-                glyph: editor.orientation === Qt.Horizontal ? "⇆" : "⇅"
-                tip: qsTr("Split-Ausrichtung wechseln")
-                onClicked: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
-            }
-            IconButton {
-                glyph: "◫"
-                tip: qsTr("Editor teilen (Strg+\\)")
-                onClicked: if (editor.activeGroup) editor.splitGroup(editor.activeGroup)
-            }
-            IconButton {
-                glyph: "›_"
-                tip: qsTr("Terminal ein-/ausblenden (Strg+`)")
-                checkable: true
-                checked: terminalPanel.visible
-                onClicked: window.toggleTerminal()
-            }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
         }
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
+        // Project extensions run only after the user checked them.
+        Banner {
+            height: visible ? 36 : 0
+            width: parent.width
+            visible: app.untrustedExtensions.length > 0 && !window.extensionNoticeHidden
+            message: qsTr("Dieses Projekt bringt Erweiterungen mit (%1). Sie bleiben inaktiv, bis du sie prüfst und freigibst.")
+                .arg(app.untrustedExtensions.join(", "))
+            actions: [
+                { text: qsTr("Prüfen …"), run: () => extensionsDialog.open() },
+                { text: qsTr("Ausblenden"), run: () => window.extensionNoticeHidden = true },
+            ]
+        }
     }
 
     SplitView {

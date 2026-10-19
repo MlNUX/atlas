@@ -1,0 +1,242 @@
+// SPDX-FileCopyrightText: 2026 Minux
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import Atlas
+
+// Installed extensions: status, contributions and the commands they run.
+// Extensions of a project need the user's trust first; switching them off
+// or on is stored in config.toml.
+Dialog {
+    id: dialog
+    required property AppController app
+    property var actions
+    property var list: []
+    /// Extension waiting for the trust confirmation.
+    property var pending: null
+
+    anchors.centerIn: Overlay.overlay
+    width: Math.min(760, Overlay.overlay ? Overlay.overlay.width - 60 : 760)
+    height: Math.min(620, Overlay.overlay ? Overlay.overlay.height - 60 : 620)
+    modal: true
+    title: qsTr("Erweiterungen")
+    standardButtons: Dialog.Close
+
+    function reload() {
+        list = JSON.parse(app.extensions())
+        app.refreshExtensions()
+    }
+    onAboutToShow: reload()
+
+    function statusText(s) {
+        return ({ active: qsTr("Aktiv"), disabled: qsTr("Ausgeschaltet"), untrusted: qsTr("Nicht freigegeben"), broken: qsTr("Fehlerhaft") })[s] || s
+    }
+    function statusColor(s) {
+        return ({ active: Theme.ok, disabled: Theme.textFaint, untrusted: Theme.warn, broken: Theme.error })[s] || Theme.text
+    }
+    function commandsOf(e) {
+        return e.actions.map(a => "▶ " + a.name + ":  " + a.command)
+            .concat(e.processors.map(p => "👁 " + p.name + " (" + p.applies_to.join(", ") + " → " + p.output + "):  " + p.command))
+            .concat(e.exporters.map(x => "⇪ " + x.name + " (→ ." + x.target + "):  " + x.command))
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 8
+        Label {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: Theme.textMuted
+            text: qsTr("Erweiterungen sind Ordner mit einer extension.yaml – global in ~/.config/atlas/extensions/, für ein Projekt in .atlas/extensions/. Sie fügen Aktionen, Anzeigen für weitere Dateitypen und Exporter hinzu (docs/extensions.md).")
+        }
+        ListView {
+            id: extList
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: 6
+            model: dialog.list
+            ScrollBar.vertical: ScrollBar {}
+            delegate: Rectangle {
+                id: card
+                required property var modelData
+                property bool expanded: false
+                width: ListView.view.width - 12
+                height: cardColumn.implicitHeight + 16
+                radius: 6
+                color: Theme.sidebar
+                border.color: Theme.border
+                ColumnLayout {
+                    id: cardColumn
+                    x: 10
+                    y: 8
+                    width: parent.width - 20
+                    spacing: 4
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label { text: card.modelData.title; color: Theme.textStrong; font.bold: true }
+                        Label { text: card.modelData.version; color: Theme.textFaint; font.pixelSize: Theme.smallFontSize }
+                        Label {
+                            text: card.modelData.location === "project" ? qsTr("Projekt") : qsTr("Global")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.smallFontSize
+                        }
+                        Item { Layout.fillWidth: true }
+                        Label {
+                            text: dialog.statusText(card.modelData.status)
+                            color: dialog.statusColor(card.modelData.status)
+                            font.pixelSize: Theme.smallFontSize
+                            font.bold: true
+                        }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        visible: text.length > 0
+                        text: card.modelData.description
+                        color: Theme.text
+                        wrapMode: Text.Wrap
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("%1 Aktion(en) · %2 Anzeige(n) · %3 Exporter · %4")
+                            .arg(card.modelData.actions.length).arg(card.modelData.processors.length)
+                            .arg(card.modelData.exporters.length).arg(card.modelData.name)
+                        color: Theme.textFaint
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                    Repeater {
+                        model: card.modelData.errors
+                        Label {
+                            required property string modelData
+                            Layout.fillWidth: true
+                            text: "⚠ " + modelData
+                            color: Theme.error
+                            wrapMode: Text.Wrap
+                            font.pixelSize: Theme.smallFontSize
+                        }
+                    }
+                    Repeater {
+                        model: card.expanded ? dialog.commandsOf(card.modelData) : []
+                        Label {
+                            required property string modelData
+                            Layout.fillWidth: true
+                            text: modelData
+                            color: Theme.text
+                            font.family: Theme.monoFont
+                            font.pixelSize: Theme.smallFontSize
+                            wrapMode: Text.WrapAnywhere
+                        }
+                    }
+                    RowLayout {
+                        spacing: 4
+                        Button {
+                            visible: card.modelData.status === "untrusted"
+                            text: qsTr("Prüfen und freigeben …")
+                            onClicked: { dialog.pending = card.modelData; trustDialog.open() }
+                        }
+                        Button {
+                            visible: card.modelData.status === "active" || card.modelData.status === "disabled"
+                            text: card.modelData.status === "active" ? qsTr("Ausschalten") : qsTr("Einschalten")
+                            onClicked: {
+                                const error = dialog.app.setExtensionEnabled(card.modelData.name, card.modelData.status !== "active")
+                                if (error && dialog.actions) dialog.actions.showMessage(error)
+                                dialog.reload()
+                            }
+                        }
+                        Button {
+                            text: card.expanded ? qsTr("Befehle ausblenden") : qsTr("Befehle zeigen")
+                            flat: true
+                            onClicked: card.expanded = !card.expanded
+                        }
+                        Button {
+                            text: qsTr("Manifest öffnen")
+                            flat: true
+                            onClicked: { if (dialog.actions) dialog.actions.openRequested(card.modelData.manifest, false); dialog.close() }
+                        }
+                        Button {
+                            text: qsTr("Ordner zeigen")
+                            flat: true
+                            onClicked: if (dialog.actions) dialog.actions.showInFileManager(card.modelData.dir)
+                        }
+                    }
+                }
+            }
+            Label {
+                anchors.centerIn: parent
+                visible: extList.count === 0
+                width: parent.width - 40
+                wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
+                color: Theme.textFaint
+                text: qsTr("Keine Erweiterungen installiert.")
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Button {
+                text: qsTr("Neue Erweiterung …")
+                onClicked: {
+                    const manifest = dialog.app.newExtension()
+                    if (manifest && dialog.actions) dialog.actions.openRequested(manifest, false)
+                    dialog.close()
+                }
+            }
+            Button { text: qsTr("Neu laden"); flat: true; onClicked: dialog.reload() }
+        }
+    }
+
+    // Trusting a project extension: show exactly what it may run.
+    Dialog {
+        id: trustDialog
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(640, dialog.width)
+        modal: true
+        title: qsTr("Erweiterung freigeben?")
+        standardButtons: Dialog.Cancel
+        ColumnLayout {
+            width: parent.width
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: dialog.pending
+                    ? qsTr("„%1“ gehört zu diesem Projekt (%2). Nach der Freigabe kann Atlas folgende Befehle ausführen – Anzeigen auch automatisch beim Öffnen passender Dateien. Gib sie nur frei, wenn du dem Projekt vertraust.")
+                        .arg(dialog.pending.title).arg(dialog.pending.dir)
+                    : ""
+            }
+            Repeater {
+                model: dialog.pending ? dialog.commandsOf(dialog.pending) : []
+                Label {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    text: modelData
+                    font.family: Theme.monoFont
+                    font.pixelSize: Theme.smallFontSize
+                    wrapMode: Text.WrapAnywhere
+                    color: Theme.textStrong
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("Ändert sich die extension.yaml, wird erneut gefragt.")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Button {
+                    text: qsTr("Freigeben")
+                    onClicked: {
+                        if (dialog.pending) dialog.app.trustExtension(dialog.pending.name)
+                        trustDialog.close()
+                        dialog.reload()
+                    }
+                }
+            }
+        }
+    }
+}

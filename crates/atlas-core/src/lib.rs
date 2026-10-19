@@ -10,6 +10,7 @@
 pub mod actions;
 pub mod annotations;
 pub mod config;
+pub mod extensions;
 pub mod fileops;
 pub mod finder;
 pub mod fs_tree;

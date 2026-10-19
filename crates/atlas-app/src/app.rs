@@ -67,6 +67,8 @@ pub mod qobject {
         // Folder of the PDF annotation files (`.atlas/annotations`, or Atlas'
         // state folder without a project).
         #[qproperty(QString, annotations_dir, cxx_name = "annotationsDir", READ, NOTIFY = project_root_changed)]
+        // Project extensions waiting for trust (names).
+        #[qproperty(QStringList, untrusted_extensions, cxx_name = "untrustedExtensions", READ, NOTIFY)]
         type AppController = super::AppControllerRust;
 
         #[qsignal]
@@ -353,6 +355,72 @@ pub mod qobject {
         #[cxx_name = "actionsFile"]
         fn actions_file(self: &AppController, global: bool) -> QString;
 
+        /// All extensions: JSON list of {name, title, version, description,
+        /// dir, manifest, location, status, errors, actions, processors,
+        /// exporters}.
+        #[qinvokable]
+        fn extensions(self: &AppController) -> QString;
+
+        /// Trusts a project extension in its current form.
+        #[qinvokable]
+        #[cxx_name = "trustExtension"]
+        fn trust_extension(self: Pin<&mut AppController>, name: &QString) -> bool;
+
+        /// Switches an extension on or off (`config.toml`); error text or "".
+        #[qinvokable]
+        #[cxx_name = "setExtensionEnabled"]
+        fn set_extension_enabled(self: Pin<&mut AppController>, name: &QString, enabled: bool) -> QString;
+
+        /// Creates a new user extension from the template; manifest path.
+        #[qinvokable]
+        #[cxx_name = "newExtension"]
+        fn new_extension(self: &AppController) -> QString;
+
+        /// Re-reads the extensions (updates `untrustedExtensions`).
+        #[qinvokable]
+        #[cxx_name = "refreshExtensions"]
+        fn refresh_extensions(self: Pin<&mut AppController>);
+
+        /// Processors of active extensions for `path`: JSON list of {id,
+        /// name, extension, output, auto}.
+        #[qinvokable]
+        #[cxx_name = "processorsFor"]
+        fn processors_for(self: &AppController, path: &QString) -> QString;
+
+        /// Converts `path` with processor `id` in the background; the result
+        /// arrives via `fileProcessed`.
+        #[qinvokable]
+        #[cxx_name = "processFile"]
+        fn process_file(self: &AppController, id: &QString, path: &QString);
+
+        /// `kind`: "markdown", "text" or "pdf" (`content` is the PDF path),
+        /// or "" with `error`.
+        #[qsignal]
+        #[cxx_name = "fileProcessed"]
+        fn file_processed(
+            self: Pin<&mut AppController>,
+            path: QString,
+            id: QString,
+            kind: QString,
+            content: QString,
+            error: QString,
+        );
+
+        /// Exporters of active extensions for one file: JSON list of {id,
+        /// name, extension, target, output (proposed result)}.
+        #[qinvokable]
+        #[cxx_name = "exportersFor"]
+        fn exporters_for(self: &AppController, paths: &QStringList) -> QString;
+
+        /// Exports `path` to `output` in the background (`fileExported`).
+        #[qinvokable]
+        #[cxx_name = "exportFile"]
+        fn export_file(self: &AppController, id: &QString, path: &QString, output: &QString);
+
+        #[qsignal]
+        #[cxx_name = "fileExported"]
+        fn file_exported(self: Pin<&mut AppController>, output: QString, ok: bool, message: QString, open: bool);
+
         #[qinvokable]
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: &AppController, text: &QString);
@@ -394,6 +462,7 @@ pub struct AppControllerRust {
     recovery_dir: QString,
     notes_revision: i32,
     annotations_dir: QString,
+    untrusted_extensions: QStringList,
 
     /// Root of the open project (also set when nothing is persisted).
     root: Option<PathBuf>,
@@ -459,6 +528,7 @@ impl Default for AppControllerRust {
             recovery_dir: QString::default(),
             notes_revision: 0,
             annotations_dir: qs(atlas_core::paths::state_root().join(atlas_core::annotations::DIR).to_string_lossy()),
+            untrusted_extensions: QStringList::default(),
             root: None,
             project: None,
             metadata: None,
@@ -607,6 +677,7 @@ impl qobject::AppController {
             }
         }
         self.as_mut().refresh_sessions();
+        self.as_mut().refresh_extensions();
         self.project_root_changed();
         true
     }
@@ -1244,7 +1315,217 @@ impl qobject::AppController {
 
     fn load_actions(&self) -> (Vec<atlas_core::actions::Action>, Vec<atlas_core::actions::LoadError>) {
         let atlas_dir = self.project.as_ref().map(|p| p.atlas_dir());
-        atlas_core::actions::load(atlas_dir.as_deref(), &atlas_core::config::config_dir())
+        let (mut actions, errors) = atlas_core::actions::load(atlas_dir.as_deref(), &atlas_core::config::config_dir());
+        // Actions of active extensions follow the user's own.
+        for ext in self.active_extensions() {
+            actions.extend(ext.actions);
+        }
+        (actions, errors)
+    }
+
+    /// All extensions with their status.
+    fn extension_list(&self) -> Vec<(atlas_core::extensions::Extension, atlas_core::extensions::Status)> {
+        use atlas_core::extensions;
+        let project_root = self.project.as_ref().map(|p| extensions::project_root(&p.atlas_dir()));
+        let found =
+            extensions::discover(&extensions::user_root(&atlas_core::config::config_dir()), project_root.as_deref());
+        let trust = extensions::Trust::load(&atlas_core::paths::state_root());
+        let disabled = Config::load().extensions.disabled;
+        found
+            .into_iter()
+            .map(|e| {
+                let status = extensions::status(&e, &trust, &disabled);
+                (e, status)
+            })
+            .collect()
+    }
+
+    fn active_extensions(&self) -> Vec<atlas_core::extensions::Extension> {
+        self.extension_list()
+            .into_iter()
+            .filter(|(_, s)| *s == atlas_core::extensions::Status::Active)
+            .map(|(e, _)| e)
+            .collect()
+    }
+
+    pub fn extensions(&self) -> QString {
+        use atlas_core::extensions::Location;
+        let list: Vec<_> = self
+            .extension_list()
+            .iter()
+            .map(|(e, status)| {
+                let commands = |c: &atlas_core::actions::Command| match c {
+                    atlas_core::actions::Command::Argv(argv) => argv.join(" "),
+                    atlas_core::actions::Command::Shell(s) => format!("sh -c {s}"),
+                };
+                serde_json::json!({
+                    "name": e.name,
+                    "title": e.title,
+                    "version": e.version,
+                    "description": e.description,
+                    "dir": e.dir.to_string_lossy(),
+                    "manifest": e.dir.join(atlas_core::extensions::MANIFEST).to_string_lossy(),
+                    "location": if e.location == Location::User { "user" } else { "project" },
+                    "status": status.as_str(),
+                    "errors": e.errors,
+                    "actions": e.actions.iter().map(|a| serde_json::json!({ "name": a.name, "command": commands(&a.command) })).collect::<Vec<_>>(),
+                    "processors": e.processors.iter().map(|p| serde_json::json!({
+                        "name": p.name, "applies_to": p.applies_to, "output": p.output.as_str(), "command": commands(&p.command),
+                    })).collect::<Vec<_>>(),
+                    "exporters": e.exporters.iter().map(|x| serde_json::json!({
+                        "name": x.name, "applies_to": x.applies_to, "target": x.target, "command": commands(&x.command),
+                    })).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn refresh_extensions(mut self: Pin<&mut Self>) {
+        let mut names = QStringList::default();
+        for (e, status) in self.extension_list() {
+            if status == atlas_core::extensions::Status::Untrusted {
+                names.append(qs(&e.name));
+            }
+        }
+        self.as_mut().rust_mut().untrusted_extensions = names;
+        self.untrusted_extensions_changed();
+    }
+
+    pub fn trust_extension(mut self: Pin<&mut Self>, name: &QString) -> bool {
+        let name = name.to_string();
+        let mut trust = atlas_core::extensions::Trust::load(&atlas_core::paths::state_root());
+        let Some((ext, _)) = self.extension_list().into_iter().find(|(e, _)| e.name == name) else { return false };
+        let ok = match trust.trust(&ext) {
+            Ok(()) => true,
+            Err(err) => {
+                log::warn!("cannot store trust: {err:#}");
+                false
+            }
+        };
+        self.as_mut().refresh_extensions();
+        ok
+    }
+
+    pub fn set_extension_enabled(mut self: Pin<&mut Self>, name: &QString, enabled: bool) -> QString {
+        let name = name.to_string();
+        let mut config = Config::load().extensions;
+        config.disabled.retain(|n| n != &name);
+        if !enabled {
+            config.disabled.push(name);
+        }
+        let result = match Config::save_extensions(&config) {
+            Ok(()) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        };
+        self.as_mut().refresh_extensions();
+        result
+    }
+
+    pub fn new_extension(&self) -> QString {
+        let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
+        let mut dir = root.join("beispiel");
+        let mut n = 2;
+        while dir.exists() {
+            dir = root.join(format!("beispiel-{n}"));
+            n += 1;
+        }
+        let name = dir.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let manifest = dir.join(atlas_core::extensions::MANIFEST);
+        let text = atlas_core::extensions::TEMPLATE.replace("name: beispiel", &format!("name: {name}"));
+        match atlas_core::paths::write_atomic(&manifest, text.as_bytes()) {
+            Ok(()) => qs(manifest.to_string_lossy()),
+            Err(err) => {
+                log::warn!("cannot create {}: {err:#}", manifest.display());
+                QString::default()
+            }
+        }
+    }
+
+    fn processed_cache(&self) -> PathBuf {
+        self.project
+            .as_ref()
+            .map(|p| p.cache_dir())
+            .unwrap_or_else(|| atlas_core::paths::state_root().join("cache"))
+            .join("processed")
+    }
+
+    pub fn processors_for(&self, path: &QString) -> QString {
+        let file = path_of(path);
+        let list: Vec<_> = self
+            .active_extensions()
+            .iter()
+            .flat_map(|e| e.processors.iter())
+            .filter(|p| p.applies(&file, self.root.as_deref()))
+            .map(|p| {
+                serde_json::json!({ "id": p.id, "name": p.name, "extension": p.extension, "output": p.output.as_str(), "auto": p.auto })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn process_file(&self, id: &QString, path: &QString) {
+        use atlas_core::extensions::Processed;
+        let id_str = id.to_string();
+        let file = path_of(path);
+        let processor = self.active_extensions().into_iter().flat_map(|e| e.processors).find(|p| p.id == id_str);
+        let (root, cache) = (self.root.clone(), self.processed_cache());
+        let (id, path) = (id.clone(), path.clone());
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = match processor {
+                None => Err(anyhow::anyhow!("Die Verarbeitung „{id_str}“ ist nicht (mehr) aktiv.")),
+                Some(p) => p.process(&file, root.as_deref(), &cache),
+            };
+            let (kind, content, error) = match result {
+                Ok(Processed::Markdown(text)) => ("markdown", text, String::new()),
+                Ok(Processed::Text(text)) => ("text", text, String::new()),
+                Ok(Processed::Pdf(pdf)) => ("pdf", pdf.to_string_lossy().into_owned(), String::new()),
+                Err(err) => ("", String::new(), format!("{err:#}")),
+            };
+            let _ = thread.queue(move |app| app.file_processed(path, id, qs(kind), qs(content), qs(error)));
+        });
+    }
+
+    pub fn exporters_for(&self, paths: &QStringList) -> QString {
+        let files: Vec<PathBuf> = paths.iter().map(path_of).collect();
+        let [file] = files.as_slice() else { return qs("[]") };
+        let list: Vec<_> = self
+            .active_extensions()
+            .iter()
+            .flat_map(|e| e.exporters.iter())
+            .filter(|x| x.applies(file, self.root.as_deref()))
+            .map(|x| {
+                serde_json::json!({
+                    "id": x.id, "name": x.name, "extension": x.extension, "target": x.target,
+                    "output": x.default_output(file).to_string_lossy(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn export_file(&self, id: &QString, path: &QString, output: &QString) {
+        let id = id.to_string();
+        let (file, out) = (path_of(path), path_of(output));
+        let exporter = self.active_extensions().into_iter().flat_map(|e| e.exporters).find(|x| x.id == id);
+        let root = self.root.clone();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let (ok, message, open) = match exporter {
+                None => (false, format!("Der Exporter „{id}“ ist nicht (mehr) aktiv."), false),
+                Some(x) => match x.export(&file, &out, root.as_deref()) {
+                    Ok(()) => (
+                        true,
+                        format!("„{}“ exportiert: {}", x.name, out.file_name().unwrap_or_default().to_string_lossy()),
+                        x.open,
+                    ),
+                    Err(err) => (false, format!("{err:#}"), false),
+                },
+            };
+            let output = qs(out.to_string_lossy());
+            let _ = thread.queue(move |app| app.file_exported(output, ok, qs(message), open));
+        });
     }
 
     fn action_context(&self, paths: &QStringList, line: i32) -> atlas_core::actions::Context {

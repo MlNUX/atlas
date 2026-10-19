@@ -112,6 +112,8 @@ pub struct Action {
     pub confirm: bool,
     pub placement: Placement,
     globs: Option<globset::GlobSet>,
+    /// Folder of the extension that defines the action (`{extension}`).
+    pub base_dir: Option<PathBuf>,
 }
 
 /// A problem in an action file (shown to the user, the rest still loads).
@@ -283,6 +285,7 @@ pub fn parse_action(entry: &Yaml, source: &Source) -> Result<Action> {
         confirm,
         placement,
         globs,
+        base_dir: None,
     })
 }
 
@@ -401,7 +404,7 @@ struct Values {
     files: Vec<String>,
 }
 
-fn values(ctx: &Context) -> Values {
+fn values(ctx: &Context, extra: &[(&'static str, String)]) -> Values {
     let project = ctx.project.clone().unwrap_or_default();
     let first = ctx.paths.first().cloned();
     let s = |p: &Path| p.to_string_lossy().into_owned();
@@ -425,8 +428,25 @@ fn values(ctx: &Context) -> Values {
     } else {
         single.push(("{dir}", s(&project)));
     }
+    single.extend(extra.iter().cloned());
     Values { single, files: ctx.paths.iter().map(|p| s(p)).collect() }
 }
+
+/// Placeholders that exist (some only for extensions).
+const KNOWN: &[&str] = &[
+    "{file}",
+    "{files}",
+    "{name}",
+    "{basename}",
+    "{stem}",
+    "{ext}",
+    "{dir}",
+    "{relative}",
+    "{project}",
+    "{line}",
+    "{output}",
+    "{extension}",
+];
 
 fn substitute(text: &str, values: &Values, quote: bool) -> Result<String> {
     // Unknown placeholders are mistakes (checked before values with braces
@@ -435,8 +455,13 @@ fn substitute(text: &str, values: &Values, quote: bool) -> Result<String> {
     while let Some(start) = rest.find('{') {
         let Some(len) = rest[start..].find('}') else { break };
         let name = &rest[start..start + len + 1];
-        if name.len() > 2 && name[1..name.len() - 1].chars().all(|c| c.is_ascii_lowercase()) && !values_known(name) {
-            bail!("unbekannter Platzhalter {name}");
+        if name.len() > 2 && name[1..name.len() - 1].chars().all(|c| c.is_ascii_lowercase()) {
+            if !KNOWN.contains(&name) {
+                bail!("unbekannter Platzhalter {name}");
+            }
+            if name != "{files}" && !values.single.iter().any(|(k, _)| *k == name) {
+                bail!("Platzhalter {name} ist hier nicht verfügbar");
+            }
         }
         rest = &rest[start + 1..];
     }
@@ -466,22 +491,6 @@ fn substitute(text: &str, values: &Values, quote: bool) -> Result<String> {
         rest = &rest[c.len_utf8()..];
     }
     Ok(result)
-}
-
-fn values_known(name: &str) -> bool {
-    matches!(
-        name,
-        "{file}"
-            | "{files}"
-            | "{name}"
-            | "{basename}"
-            | "{stem}"
-            | "{ext}"
-            | "{dir}"
-            | "{relative}"
-            | "{project}"
-            | "{line}"
-    )
 }
 
 /// Programs (and subcommands) that may delete or overwrite data.
@@ -536,49 +545,67 @@ pub fn looks_destructive(command: &Command) -> bool {
 /// passed through unchanged (`"$@"`).
 const HOLD: &str = r#"name=$1; shift; "$@"; code=$?; if [ "$code" -eq 0 ]; then printf '\033]0;✓ %s\007\n\033[32m✓ %s beendet\033[0m' "$name" "$name"; else printf '\033]0;✗ %s\007\n\033[31m✗ %s beendet mit Code %s\033[0m' "$name" "$name" "$code"; fi; printf ' – Enter schließt\n'; read -r _"#;
 
+/// A command with its placeholders filled in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Built {
+    /// Program and arguments (`sh -c …` for shell commands).
+    pub argv: Vec<String>,
+    /// For display and confirmations.
+    pub display: String,
+    pub cwd: PathBuf,
+}
+
+/// Fills in `command` for `ctx`; `extra` adds placeholders such as
+/// `{output}` or `{extension}`. `cwd` defaults to the project.
+pub fn build(command: &Command, cwd: Option<&str>, ctx: &Context, extra: &[(&'static str, String)]) -> Result<Built> {
+    let values = values(ctx, extra);
+    let (argv, display): (Vec<String>, String) = match command {
+        Command::Argv(argv) => {
+            let mut args = Vec::new();
+            for word in argv {
+                if word == "{files}" {
+                    args.extend(values.files.iter().cloned());
+                } else {
+                    args.push(substitute(word, &values, false)?);
+                }
+            }
+            if args.is_empty() || args[0].is_empty() {
+                bail!("kein Programm angegeben");
+            }
+            let display = args.iter().map(|a| shell_quote(a)).collect::<Vec<_>>().join(" ");
+            (args, display)
+        }
+        Command::Shell(line) => {
+            let line = substitute(line, &values, true)?;
+            (vec!["sh".into(), "-c".into(), line.clone()], line)
+        }
+    };
+    let cwd = match cwd {
+        Some(dir) => PathBuf::from(substitute(dir, &values, false)?),
+        None => ctx
+            .project
+            .clone()
+            .or_else(|| ctx.paths.first().and_then(|p| p.parent().map(Path::to_path_buf)))
+            .unwrap_or_else(|| PathBuf::from("/")),
+    };
+    if !cwd.is_dir() {
+        bail!("Arbeitsordner {} existiert nicht", cwd.display());
+    }
+    Ok(Built { argv, display, cwd })
+}
+
 impl Action {
     /// Builds the command for `ctx`.
     pub fn prepare(&self, ctx: &Context) -> Result<Prepared> {
-        let values = values(ctx);
-        let (inner, display): (Vec<String>, String) = match &self.command {
-            Command::Argv(argv) => {
-                let mut args = Vec::new();
-                for word in argv {
-                    if word == "{files}" {
-                        args.extend(values.files.iter().cloned());
-                    } else {
-                        args.push(substitute(word, &values, false)?);
-                    }
-                }
-                if args.is_empty() || args[0].is_empty() {
-                    bail!("kein Programm angegeben");
-                }
-                let display = args.iter().map(|a| shell_quote(a)).collect::<Vec<_>>().join(" ");
-                (args, display)
-            }
-            Command::Shell(line) => {
-                let line = substitute(line, &values, true)?;
-                (vec!["sh".into(), "-c".into(), line.clone()], line)
-            }
-        };
-        let cwd = match &self.cwd {
-            Some(dir) => PathBuf::from(substitute(dir, &values, false)?),
-            None => ctx
-                .project
-                .clone()
-                .or_else(|| ctx.paths.first().and_then(|p| p.parent().map(Path::to_path_buf)))
-                .unwrap_or_else(|| PathBuf::from("/")),
-        };
-        if !cwd.is_dir() {
-            bail!("Arbeitsordner {} existiert nicht", cwd.display());
-        }
+        let extra: Vec<_> = self.base_dir.iter().map(|d| ("{extension}", d.to_string_lossy().into_owned())).collect();
+        let built = build(&self.command, self.cwd.as_deref(), ctx, &extra)?;
         let destructive = looks_destructive(&self.command);
         let mut argv = vec!["sh".into(), "-c".into(), HOLD.into(), "atlas-action".into(), self.name.clone()];
-        argv.extend(inner);
+        argv.extend(built.argv);
         Ok(Prepared {
             argv,
-            display,
-            cwd,
+            display: built.display,
+            cwd: built.cwd,
             confirm: self.confirm || destructive,
             destructive,
             placement: self.placement,

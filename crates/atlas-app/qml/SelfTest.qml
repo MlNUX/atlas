@@ -183,7 +183,7 @@ Item {
                 const names = (paths) => fileActions.actionsFor(paths).map(a => a.name).join(",")
                 check("Aktion passt zu Markdown", names([note]) === "Zeilen zählen", names([note]))
                 check("Aktion passt zu Ordnern", names([path("notes")]) === "Ordner zeigen", names([path("notes")]))
-                check("Projektaktion", names([]) === "Liste schreiben", names([]))
+                check("Projektaktion", names([]).split(",").indexOf("Liste schreiben") >= 0, names([]))
                 const wc = JSON.parse(app.prepareAction("zeilen-zählen", [note], 0))
                 check("Programm ohne Shell, Arbeitsordner Projekt", wc.argv.slice(-3).join(" ") === "wc -l " + note
                       && wc.cwd === app.projectRoot && !wc.confirm, JSON.stringify(wc))
@@ -195,6 +195,30 @@ Item {
                 check("Aktion im Projektordner ausgeführt", app.readTextFile(path("aktion-ergebnis.txt")).indexOf("idee.md") >= 0)
                 const out = terminalPanel.currentGroup.activeTerminal.outputText()
                 check("Aktion sichtbar mit Status", out.indexOf("Liste schreiben beendet") >= 0, out)
+                // ---- Phase 2: extensions
+                const exts = JSON.parse(app.extensions())
+                const status = (n) => (exts.find(e => e.name === n) || {}).status
+                check("Erweiterungen gefunden", status("demo") === "active" && status("proj") === "untrusted", JSON.stringify(exts.map(e => e.name + ":" + e.status)))
+                check("Projekt-Erweiterung wartet auf Freigabe", app.untrustedExtensions.length === 1 && app.untrustedExtensions[0] === "proj")
+                const projectActions = () => fileActions.actionsFor([]).map(a => a.name)
+                check("Nicht freigegeben: keine Aktionen", projectActions().indexOf("Hallo") >= 0 && projectActions().indexOf("Projekt-Hallo") < 0, projectActions())
+                check("Freigabe", app.trustExtension("proj") && app.untrustedExtensions.length === 0)
+                check("Freigegeben: Aktionen da", projectActions().indexOf("Projekt-Hallo") >= 0, projectActions())
+                app.setExtensionEnabled("demo", false)
+                check("Ausgeschaltet: keine Aktionen", projectActions().indexOf("Hallo") < 0, projectActions())
+                app.setExtensionEnabled("demo", true)
+                editor.open(path("daten.dat"), 0, "tab")
+                const exporter = fileActions.exportersFor([note])[0]
+                check("Exporter für Markdown", !!exporter && exporter.output === path("notes/idee.txt"), JSON.stringify(exporter))
+                if (exporter) app.exportFile(exporter.id, note, exporter.output)
+            },
+            () => {
+                const tab = editor.groups.reduce((all, g) => all.concat(g.tabs), []).find(t => t.path === path("daten.dat"))
+                check("Unbekannter Typ über Erweiterung angezeigt", tab.processed && tab.viewerItem.kind === "markdown"
+                      && tab.viewerItem.content.indexOf("# Daten") === 0 && tab.viewerItem.content.indexOf("HALLO") > 0,
+                      tab ? tab.kind + " " + tab.processed + " " + tab.viewerItem : "kein Tab")
+                check("Export geöffnet", !!editor.viewerFor(path("notes/idee.txt")))
+                check("Export geschrieben", app.readTextFile(path("notes/idee.txt")).indexOf("Autosave-Test") >= 0)
             },
         ]
         timer.start()

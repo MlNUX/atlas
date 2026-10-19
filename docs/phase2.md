@@ -28,7 +28,7 @@ nach jedem Schritt ein Commit.
 | 1 | PDF-Annotationen und Zitate | ✅ |
 | 2 | Notizverknüpfungen: Wiki-Links, Backlink-Filter, Kontextgraph | ✅ |
 | 3 | Benutzerdefinierte Aktionen | ✅ |
-| 4 | Kleines Erweiterungssystem | |
+| 4 | Kleines Erweiterungssystem | ✅ |
 | 5 | Projektkalender (lokal) | |
 | 6 | Nextcloud/CalDAV-Synchronisierung | |
 | 7 | Tests, Dokumentation und Abnahme | |
@@ -163,3 +163,43 @@ Heuristik, Wrapper mit Exit-Code, Vorrang der Projektaktionen, Vorlage) und
 Rauchtest (Aktionen je Kontext, Programm ohne Shell im Projektordner,
 Bestätigungspflicht bei Umleitung, Ausführung im Terminal mit Ergebnis und
 Statuszeile).
+
+### Schritt 4 – Kleines Erweiterungssystem
+
+Kern: `atlas_core::extensions` (Manifest, Freigabe, Dateiverarbeitung mit
+Cache, Exporter, Ausführung mit Zeitlimit) mit Tests; Format in
+[extensions.md](extensions.md).
+
+- **Klar versioniertes Format**: Ordner mit `extension.yaml`,
+  `atlas_extension: 1`; neuere Formate werden abgelehnt statt falsch
+  gelesen. Global in `~/.config/atlas/extensions/`, pro Projekt in
+  `.atlas/extensions/`. Vorlage über „Neue Erweiterung …“.
+- **Eigene Aktionen** im Format von Schritt 3 (`{extension}` verweist auf
+  Skripte im Erweiterungsordner); sie erscheinen wie andere Aktionen.
+- **Eigene Dateiverarbeitung**: Dateien ohne eigene Ansicht werden über
+  einen Befehl als Markdown, Text oder PDF angezeigt (nur lesend,
+  automatisch oder über „Anzeigen mit“); Ergebnisse im Cache je
+  Dateiinhalt, Zeitlimit, verständliche Fehlermeldung mit stderr.
+- **Exporter** („Exportieren als“): Ergebnis neben die Datei, Rückfrage vor
+  dem Ersetzen, atomar über eine temporäre Datei, Quelle nie überschrieben,
+  Ergebnis danach geöffnet.
+- **Keine UI-Erweiterung**: Erweiterungen tragen nur Befehle und
+  Beschreibungen bei.
+- **Sicherheit**: Projekt-Erweiterungen sind erst nach Prüfung aktiv (Hinweis
+  unter der Titelleiste, Freigabedialog mit allen Befehlen); die Freigabe
+  hängt am Inhalt des Manifests und erlischt bei Änderungen. Ein- und
+  Ausschalten in `config.toml` (`[extensions] disabled`).
+- Verwaltung „Erweiterungen verwalten …“ mit Status (aktiv, ausgeschaltet,
+  nicht freigegeben, fehlerhaft), Beiträgen, Befehlen und Fehlern je
+  Erweiterung.
+
+Gefunden und behoben: Beim Öffnen startete die Anzeige die Umwandlung bis zu
+dreimal gleichzeitig mit derselben temporären Datei – der zweite Lauf fand
+sie nicht mehr. Temporäre Namen sind jetzt eindeutig, ein schon vorhandenes
+Ergebnis gilt als Erfolg, und die Ansicht bündelt Startanlässe.
+
+Geprüft: Kern-Tests (Manifeste mit Fehlern, Vorrang Projekt vor global,
+Freigabe an das Manifest gebunden, Umwandlung mit Cache und parallel,
+Fehler mit stderr, Zeitlimit, atomarer Export) und Rauchtest (Status,
+Freigabe, Ein-/Ausschalten, Anzeige einer Binärdatei über eine Erweiterung,
+Export mit Öffnen des Ergebnisses).
