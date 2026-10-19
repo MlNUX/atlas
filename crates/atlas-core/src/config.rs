@@ -18,6 +18,9 @@
 //! user = "minux"
 //! dav_url = ""                   # optional, if discovery fails
 //! default = "https://…/calendars/minux/personal/"   # "" = only in the project
+//! # Optional: prints the app password (first line of its output), e.g. from
+//! # pass, rbw, keepassxc-cli, age or systemd-creds; no shell.
+//! password_command = "pass show nextcloud/atlas"
 //!
 //! [[calendar.calendars]]
 //! url = "https://…/calendars/minux/personal/"
@@ -77,7 +80,8 @@ impl CalendarChoice {
     }
 }
 
-/// Nextcloud/CalDAV account. The app password is never stored.
+/// Nextcloud/CalDAV account. The app password is never stored; it is asked
+/// once per start or comes from `password_command`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalendarConfig {
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -86,6 +90,10 @@ pub struct CalendarConfig {
     pub user: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub dav_url: String,
+    /// Program that prints the app password (split like a shell, run
+    /// without one); the password itself is never stored.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub password_command: String,
     /// Default calendar for new entries in all projects ("" = local).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub default: String,

@@ -460,3 +460,20 @@ Geprüft im Rauchtest: echte Mausereignisse für Strg+Klick im Baum, Klick und
 Strg+Mausrad in der Dateiansicht, Wechsel Symbol-/Detailansicht mit
 erhaltener Auswahl, Ordnerauswahl und Anlegen einer Session, leeres Fenster
 und Splits, Checkbox-Klick in der Vorschau, PDF-Zoom.
+
+### Nachtrag – App-Passwort aus einem Passwort-Befehl
+
+Statt eines Schlüsselbunds (kein Secret-Service-Dienst nötig) kann in den
+Kalender-Einstellungen ein **Passwort-Befehl** stehen
+(`[calendar] password_command`), etwa `pass show nextcloud/atlas`,
+`rbw get nextcloud` oder `systemd-creds --user decrypt …`. Atlas führt ihn
+einmal pro Start im Hintergrund aus (ohne Shell, ohne Eingabe, 90 s
+Zeitlimit für pinentry), nimmt die erste Zeile als App-Passwort und hält es
+wie bisher nur im Arbeitsspeicher. Während er läuft, fragt Atlas nicht
+nach; scheitert er, nennt der Hinweis Code und Fehlerzeile und bietet
+„Erneut versuchen“, „Eingeben …“ und „Später“. „Verbindung testen“ nutzt
+den Befehl, wenn kein Passwort eingetippt ist. Ein geänderter Befehl wird
+sofort neu ausgeführt; „Konto trennen“ vergisst Passwort und Ergebnis.
+Geprüft: Kern-Tests (erste Zeile, Fehler mit Code und stderr ohne
+Passwort, leere Ausgabe, fehlendes Programm, Zeitlimit) und Rauchtest
+(Fehlerhinweis, erfolgreicher Befehl entsperrt, Passwort nicht im Konto).

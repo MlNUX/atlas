@@ -615,6 +615,25 @@ Item {
                 const state = f.viewState()
                 check("Ordner: Ansicht im Sitzungszustand", state.viewMode === "details" && state.iconSize === f.iconSize)
             },
+            () => {
+                // Nextcloud app password from a command (never stored).
+                const cal = window.calendar
+                cal.saveAccount("http://127.0.0.1:9", "selbsttest", "", "", "[]", "sh -c 'echo kaputt >&2; exit 2'")
+            },
+            () => {
+                const cal = window.calendar
+                check("Passwort-Befehl: Fehler sichtbar", cal.connected && !cal.unlocked && cal.passwordError.indexOf("kaputt") >= 0
+                      && cal.passwordError.indexOf("Code 2") >= 0, cal.passwordError)
+                cal.saveAccount("http://127.0.0.1:9", "selbsttest", "", "", "[]", "sh -c 'echo pw-$((6*7))'")
+            },
+            () => {
+                const cal = window.calendar
+                check("Passwort-Befehl liefert das App-Passwort", cal.unlocked && cal.passwordError === "" && !cal.fetchingPassword, cal.syncStatus)
+                check("Passwort-Befehl steht im Konto, das Passwort nicht", JSON.parse(cal.account()).passwordCommand.indexOf("6*7") >= 0
+                      && cal.account().indexOf("pw-42") < 0, cal.account())
+                cal.disconnectAccount()
+                check("Konto getrennt: Passwort vergessen", !cal.connected && !cal.unlocked)
+            },
         ]
         timer.start()
     }

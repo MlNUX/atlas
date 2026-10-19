@@ -243,6 +243,7 @@ disabled = ["beispiel"]                          # ausgeschaltete Erweiterungen
 server = "https://cloud.example.com"
 user = "minux"
 dav_url = ""                                     # optional: CalDAV-URL von Hand
+password_command = "pass show nextcloud/atlas"   # optional: gibt das App-Passwort aus
 default = "https://cloud.example.com/remote.php/dav/calendars/minux/personal/"
 
 [[calendar.calendars]]                           # gewählte Kalender des Kontos
@@ -253,7 +254,23 @@ projects = []                                    # nicht leer: nur in diesen Pro
 ```
 
 Das App-Passwort wird bei jedem Atlas-Start einmal abgefragt und nur im
-Arbeitsspeicher gehalten; Atlas nutzt keinen Schlüsselbund.
+Arbeitsspeicher gehalten; Atlas nutzt keinen Schlüsselbund. Ist
+`password_command` gesetzt, führt Atlas diesen Befehl stattdessen einmal pro
+Start aus (wie ein Shell-Befehl zerlegt, aber ohne Shell, ohne Eingabe,
+höchstens 90 s – genug für eine Passphrase im pinentry) und nimmt die erste
+Zeile der Ausgabe. Beispiele:
+
+| Werkzeug | Befehl |
+|---|---|
+| pass / gopass (GPG) | `pass show nextcloud/atlas` |
+| rbw (Bitwarden/Vaultwarden) | `rbw get nextcloud-atlas` |
+| KeePassXC-Datenbank | `keepassxc-cli show -sa password /pfad/db.kdbx Nextcloud` – fragt das Master-Passwort per Terminal ab, daher nur mit Schlüsseldatei (`-k … --no-password`) |
+| age | `age -d -i /pfad/schluessel.txt /pfad/nextcloud.age` |
+| systemd-creds | `systemd-creds --user decrypt /pfad/nextcloud.cred` |
+
+Scheitert der Befehl, zeigt der Hinweis unter der Titelleiste Code und
+letzte Fehlerzeile (nie die Ausgabe) mit „Erneut versuchen“ und „Eingeben
+…“.
 
 Unbekannte Schlüssel bleiben beim Speichern aus Atlas erhalten.
 
