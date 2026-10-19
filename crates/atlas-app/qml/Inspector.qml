@@ -99,12 +99,13 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 42
             Row {
+                id: tabRow
                 anchors.left: parent.left
                 anchors.leftMargin: 10
                 anchors.bottom: parent.bottom
                 spacing: 2
                 // Tabs shrink (and elide) only when the bar is too narrow.
-                TextMetrics { id: tabMetrics; font.pixelSize: Theme.fontSize; text: tabNames.join("") }
+                TextMetrics { id: tabMetrics; font.pixelSize: Theme.fontSize; text: tabRow.tabNames.join("") }
                 readonly property var tabNames: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Lokaler Graph"), qsTr("Aktionen")]
                 readonly property real shrink: Math.min(1, (inspector.width - 28) / (tabMetrics.advanceWidth + 16 * tabNames.length + 2 * 3))
                 Repeater {
