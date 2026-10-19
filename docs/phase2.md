@@ -477,3 +477,18 @@ sofort neu ausgeführt; „Konto trennen“ vergisst Passwort und Ergebnis.
 Geprüft: Kern-Tests (erste Zeile, Fehler mit Code und stderr ohne
 Passwort, leere Ausgabe, fehlendes Programm, Zeitlimit) und Rauchtest
 (Fehlerhinweis, erfolgreicher Befehl entsperrt, Passwort nicht im Konto).
+
+### Nachtrag – App-Passwort einmal eingeben
+
+„Auf diesem Rechner merken“ (Einstellungen und Passwort-Abfrage, vorbelegt)
+legt das App-Passwort einmal ab, ohne Schlüsselbund-Dienst
+(`atlas_core::secret`): verschlüsselt mit `systemd-creds --user`, an den
+Rechner gebunden, sonst als Datei mit Rechten 600 (wird angezeigt). Beim
+Start lädt Atlas es im Hintergrund, vor einem Passwort-Befehl; danach wird
+nicht mehr gefragt. Abwählen, Konto trennen oder Kontowechsel löschen es.
+Gefunden und behoben: ein „Erneut versuchen“ während eines laufenden
+Abrufs ließ dessen Ergebnis verfallen und die Anzeige auf „Hole
+App-Passwort …“ stehen. Geprüft: Kern-Tests (verschlüsselt mit Ersatz für
+systemd-creds, Rückfall auf Datei, Rechte 700/600, für andere lesbare
+Datei abgelehnt, kaputtes systemd-creds) und Rauchtest (merken, Neustart
+ohne Eingabe, abwählen, wieder merken, Konto trennen).

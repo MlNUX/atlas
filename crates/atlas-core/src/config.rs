@@ -21,6 +21,7 @@
 //! # Optional: prints the app password (first line of its output), e.g. from
 //! # pass, rbw, keepassxc-cli, age or systemd-creds; no shell.
 //! password_command = "pass show nextcloud/atlas"
+//! remember_password = true       # kept by Atlas (systemd-creds or mode 600)
 //!
 //! [[calendar.calendars]]
 //! url = "https://…/calendars/minux/personal/"
@@ -94,6 +95,10 @@ pub struct CalendarConfig {
     /// without one); the password itself is never stored.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub password_command: String,
+    /// Remember the app password on this machine (see `secret`); only the
+    /// choice is stored here.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remember_password: bool,
     /// Default calendar for new entries in all projects ("" = local).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub default: String,

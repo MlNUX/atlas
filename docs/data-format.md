@@ -208,7 +208,8 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
   erzeugt so nie ein Duplikat.
 - `conflicts` sind Einträge, die auf beiden Seiten geändert wurden oder die
   der Server abgelehnt hat (`message`); `null` steht für „gelöscht“.
-- Das App-Passwort steht nie in dieser oder einer anderen Datei.
+- Das App-Passwort steht nie in dieser Datei, in `config.toml` oder im
+  Projekt (zum Merken siehe „Pro Benutzer“).
 - „Lokalen Cache leeren“ löscht die Datei (mit der Warteschlange); der
   nächste Abgleich lädt alles neu.
 
@@ -244,6 +245,7 @@ server = "https://cloud.example.com"
 user = "minux"
 dav_url = ""                                     # optional: CalDAV-URL von Hand
 password_command = "pass show nextcloud/atlas"   # optional: gibt das App-Passwort aus
+remember_password = true                         # Passwort auf diesem Rechner merken (nur die Wahl steht hier)
 default = "https://cloud.example.com/remote.php/dav/calendars/minux/personal/"
 
 [[calendar.calendars]]                           # gewählte Kalender des Kontos
@@ -253,8 +255,21 @@ hidden = false                                   # ausgeblendet: weder angezeigt
 projects = []                                    # nicht leer: nur in diesen Projektordnern
 ```
 
-Das App-Passwort wird bei jedem Atlas-Start einmal abgefragt und nur im
-Arbeitsspeicher gehalten; Atlas nutzt keinen Schlüsselbund. Ist
+Mit `remember_password` (Häkchen „Auf diesem Rechner merken“) wird das
+App-Passwort einmal eingegeben und unter `$XDG_STATE_HOME/atlas/secrets/`
+abgelegt (Ordner 700) – ohne Schlüsselbund-Dienst:
+
+- `nextcloud.cred`: verschlüsselt mit `systemd-creds --user` (systemd ≥ 256)
+  und an diesen Rechner gebunden (Host-Schlüssel bzw. TPM); eine kopierte
+  Datei ist anderswo wertlos. Atlas prüft beim Speichern, dass sie sich
+  wieder entschlüsseln lässt.
+- `nextcloud.secret`: nur wenn das nicht geht – Klartext mit Rechten 600;
+  die Einstellungen zeigen das an. Ist die Datei für andere lesbar, nutzt
+  Atlas sie nicht.
+
+Häkchen entfernen oder „Konto trennen“ löscht die Datei; ein anderes Konto
+ersetzt sie. Ohne Häkchen wird das Passwort einmal pro Atlas-Start
+abgefragt und nur im Arbeitsspeicher gehalten. Ist
 `password_command` gesetzt, führt Atlas diesen Befehl stattdessen einmal pro
 Start aus (wie ein Shell-Befehl zerlegt, aber ohne Shell, ohne Eingabe,
 höchstens 90 s – genug für eine Passphrase im pinentry) und nimmt die erste

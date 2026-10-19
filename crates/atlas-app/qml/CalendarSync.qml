@@ -42,14 +42,17 @@ Item {
         title: qsTr("Nextcloud-Kalender")
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAboutToShow: { passwordField.text = ""; Qt.callLater(passwordField.forceActiveFocus) }
-        onAccepted: if (passwordField.text) sync.model.setPassword(passwordField.text)
+        onAccepted: if (passwordField.text) {
+            sync.model.rememberPassword(rememberOnce.checked)
+            sync.model.setPassword(passwordField.text)
+        }
         ColumnLayout {
             anchors.fill: parent
             spacing: 8
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                text: qsTr("App-Passwort für %1 bei %2. Es wird nur für diese Atlas-Sitzung im Arbeitsspeicher gehalten und nirgends gespeichert.")
+                text: qsTr("App-Passwort für %1 bei %2. Gemerkt wird es verschlüsselt mit systemd-creds (an diesen Rechner gebunden), sonst nur für diese Atlas-Sitzung im Arbeitsspeicher gehalten.")
                     .arg(sync.accountInfo().user || "?").arg(sync.accountInfo().server || sync.accountInfo().davUrl || "?")
             }
             Label {
@@ -66,6 +69,11 @@ Item {
                 echoMode: TextInput.Password
                 placeholderText: qsTr("App-Passwort")
                 onAccepted: passwordDialog.accept()
+            }
+            CheckBox {
+                id: rememberOnce
+                text: qsTr("Auf diesem Rechner merken")
+                checked: true
             }
         }
     }
@@ -101,6 +109,7 @@ Item {
             userField.text = a.user || ""
             davField.text = a.davUrl || ""
             commandField.text = a.passwordCommand || ""
+            rememberBox.checked = a.rememberPassword !== undefined && sync.model.connected ? a.rememberPassword : true
             advanced = !!a.davUrl
             appPassword.text = ""
             found = []
@@ -133,7 +142,7 @@ Item {
                     wrapMode: Text.Wrap
                     color: Theme.textMuted
                     font.pixelSize: Theme.smallFontSize
-                    text: qsTr("Atlas nutzt CalDAV, keine Nextcloud-App nötig. Lege in Nextcloud unter Einstellungen → Sicherheit ein App-Passwort an. Atlas speichert es nie: Es wird einmal pro Atlas-Start abgefragt oder von einem Passwort-Befehl geholt (z. B. aus pass, rbw oder keepassxc-cli).")
+                    text: qsTr("Atlas nutzt CalDAV, keine Nextcloud-App nötig. Lege in Nextcloud unter Einstellungen → Sicherheit ein App-Passwort an. Atlas merkt es sich auf Wunsch verschlüsselt auf diesem Rechner; alternativ holt ein Passwort-Befehl es z. B. aus pass oder rbw.")
                 }
                 GridLayout {
                     Layout.fillWidth: true
@@ -148,6 +157,24 @@ Item {
                         Layout.fillWidth: true
                         echoMode: TextInput.Password
                         placeholderText: sync.model.unlocked ? qsTr("bekannt für diese Sitzung") : ""
+                    }
+                    Item { width: 1; height: 1 }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        CheckBox {
+                            id: rememberBox
+                            text: qsTr("Auf diesem Rechner merken")
+                            onToggled: if (sync.model.connected) sync.model.rememberPassword(checked)
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            font.pixelSize: Theme.smallFontSize
+                            color: sync.model.remembered === "file" ? Theme.warn : Theme.textMuted
+                            text: sync.model.remembered === "encrypted" ? qsTr("✓ verschlüsselt gespeichert (systemd-creds, nur auf diesem Rechner)")
+                                : sync.model.remembered === "file" ? qsTr("gespeichert ohne Verschlüsselung (systemd-creds fehlt), nur für deinen Benutzer lesbar")
+                                : ""
+                        }
                     }
                     Label { text: qsTr("Passwort-Befehl"); color: Theme.textMuted }
                     TextField {
@@ -188,6 +215,7 @@ Item {
                             const list = settings.found.length
                                 ? settings.found.map(c => ({ url: c.url, name: c.name, visible: (known.find(k => k.id === c.url) || { visible: true }).visible }))
                                 : known.map(c => ({ url: c.id, name: c.name, visible: c.visible }))
+                            sync.model.rememberPassword(rememberBox.checked)
                             sync.model.saveAccount(serverField.text, userField.text, appPassword.text, davField.text, JSON.stringify(list), commandField.text)
                             appPassword.text = ""
                             settings.found = []

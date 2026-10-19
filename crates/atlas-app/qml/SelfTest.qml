@@ -631,8 +631,31 @@ Item {
                 check("Passwort-Befehl liefert das App-Passwort", cal.unlocked && cal.passwordError === "" && !cal.fetchingPassword, cal.syncStatus)
                 check("Passwort-Befehl steht im Konto, das Passwort nicht", JSON.parse(cal.account()).passwordCommand.indexOf("6*7") >= 0
                       && cal.account().indexOf("pw-42") < 0, cal.account())
+                // Entered once and remembered on this machine.
+                cal.rememberPassword(true)
+                cal.saveAccount("http://127.0.0.1:9", "selbsttest", "einmal-42", "", "[]", "")
+            },
+            () => {
+                const cal = window.calendar
+                check("Passwort gemerkt", cal.remembered === "encrypted" || cal.remembered === "file", cal.remembered)
+                check("Gemerktes Passwort nicht in den Einstellungen", cal.account().indexOf("einmal-42") < 0 && JSON.parse(cal.account()).rememberPassword)
+                // As after a restart: nothing in memory, the remembered one loads.
+                cal.setPassword("")
+                check("Ohne Passwort im Speicher gesperrt", !cal.unlocked)
+                cal.retryPasswordCommand()
+            },
+            () => {
+                const cal = window.calendar
+                check("Nach Neustart ohne Eingabe entsperrt", cal.unlocked && cal.passwordError === "", cal.syncStatus + " " + cal.passwordError)
+                cal.rememberPassword(false)
+                check("Nicht mehr merken: gelöscht", cal.remembered === "", cal.remembered)
+                cal.rememberPassword(true)
+            },
+            () => {
+                const cal = window.calendar
+                check("Wieder merken mit bekanntem Passwort", cal.remembered !== "", cal.remembered)
                 cal.disconnectAccount()
-                check("Konto getrennt: Passwort vergessen", !cal.connected && !cal.unlocked)
+                check("Konto getrennt: Passwort vergessen", !cal.connected && !cal.unlocked && cal.remembered === "")
             },
         ]
         timer.start()

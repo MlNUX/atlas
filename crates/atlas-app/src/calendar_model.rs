@@ -19,6 +19,7 @@ use atlas_core::calendar::caldav::{Account, Client, Remote};
 use atlas_core::calendar::sync::{self, Choice, SyncStore};
 use atlas_core::calendar::{self, Entry, Kind, LOCAL, Status, Store, ical::Time, recur};
 use atlas_core::config::{CalendarChoice, CalendarConfig, Config};
+use atlas_core::secret::SecretStore;
 use chrono::{Duration, NaiveDateTime, Utc};
 use chrono_tz::Tz;
 use cxx_qt::{CxxQtType, Threading};
@@ -50,6 +51,9 @@ pub mod qobject {
         #[qproperty(bool, unlocked, READ, NOTIFY = sync_changed)]
         /// The password command is running.
         #[qproperty(bool, fetching_password, cxx_name = "fetchingPassword", READ, NOTIFY = sync_changed)]
+        /// How the password is remembered on this machine: "encrypted"
+        /// (systemd-creds), "file" (mode 600) or "" (not).
+        #[qproperty(QString, remembered, READ, NOTIFY = sync_changed)]
         /// Why the password command failed ("" if it did not).
         #[qproperty(QString, password_error, cxx_name = "passwordError", READ, NOTIFY = sync_changed)]
         #[qproperty(bool, syncing, READ, NOTIFY = sync_changed)]
@@ -242,6 +246,12 @@ pub mod qobject {
         #[cxx_name = "setPassword"]
         fn set_password(self: Pin<&mut CalendarModel>, password: &QString);
 
+        /// Remembers the password on this machine (now and after it is
+        /// entered) or forgets it.
+        #[qinvokable]
+        #[cxx_name = "rememberPassword"]
+        fn remember_password(self: Pin<&mut CalendarModel>, remember: bool);
+
         /// Runs the password command again (after it failed).
         #[qinvokable]
         #[cxx_name = "retryPasswordCommand"]
@@ -324,6 +334,10 @@ static COMMAND: Mutex<CommandState> =
 /// Time for the command, including typing a passphrase into pinentry.
 const COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
 
+fn secret_store() -> SecretStore {
+    SecretStore::default_for("nextcloud")
+}
+
 fn reset_command() {
     if let Ok(mut c) = COMMAND.lock() {
         c.tried.clear();
@@ -341,6 +355,7 @@ pub struct CalendarModelRust {
     unlocked: bool,
     fetching_password: bool,
     password_error: QString,
+    remembered: QString,
     syncing: bool,
     sync_status: QString,
     sync_failed: bool,
@@ -373,6 +388,7 @@ impl Default for CalendarModelRust {
             unlocked: false,
             fetching_password: false,
             password_error: QString::default(),
+            remembered: QString::default(),
             syncing: false,
             sync_status: QString::default(),
             sync_failed: false,
@@ -560,6 +576,7 @@ impl qobject::CalendarModel {
         r.unlocked = unlocked;
         r.fetching_password = fetching && !unlocked;
         r.password_error = qs(if unlocked { "" } else { &command_error });
+        r.remembered = qs(secret_store().kind().map(|k| k.as_str()).unwrap_or(""));
         r.pending = pending;
         r.conflict_count = state.conflicts.len() as i32;
         r.sync_status = qs(status);
@@ -1242,7 +1259,7 @@ impl qobject::CalendarModel {
         let state = self.sync_store().load();
         qs(json!({
             "server": self.config.server, "user": self.config.user, "davUrl": self.config.dav_url,
-            "passwordCommand": self.config.password_command,
+            "passwordCommand": self.config.password_command, "rememberPassword": self.config.remember_password,
             "lastSync": state.last_sync.map(describe_time), "error": state.error, "home": state.home,
         })
         .to_string())
@@ -1334,15 +1351,53 @@ impl qobject::CalendarModel {
         }
         if changed_account {
             let _ = self.sync_store().clear();
+            let _ = secret_store().forget();
         }
         let password = password.to_string();
         if !password.is_empty()
             && let Ok(mut p) = PASSWORD.lock()
         {
-            *p = Some(password);
+            *p = Some(password.clone());
+        }
+        if !password.is_empty() && config.remember_password {
+            self.as_mut().keep_password(password);
         }
         self.as_mut().reload();
         self.sync_now();
+    }
+
+    pub fn remember_password(mut self: Pin<&mut Self>, remember: bool) {
+        let mut config = Config::load().calendar;
+        if config.remember_password != remember {
+            config.remember_password = remember;
+            if let Err(err) = Config::save_calendar(&config) {
+                self.as_mut().set_error(format!("Einstellungen können nicht gespeichert werden: {err:#}"));
+                return;
+            }
+            self.as_mut().rust_mut().config.remember_password = remember;
+        }
+        if !remember {
+            if let Err(err) = secret_store().forget() {
+                self.as_mut().set_error(format!("Gemerktes Passwort kann nicht gelöscht werden: {err:#}"));
+            }
+            self.as_mut().update_sync_state();
+        } else if let Some(password) = password() {
+            self.as_mut().keep_password(password);
+        }
+    }
+
+    /// Stores the password on this machine in the background.
+    fn keep_password(self: Pin<&mut Self>, password: String) {
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = secret_store().store(&password);
+            let _ = thread.queue(move |mut this| {
+                if let Err(err) = result {
+                    this.as_mut().set_error(format!("Passwort kann nicht gemerkt werden: {err:#}"));
+                }
+                this.as_mut().update_sync_state();
+            });
+        });
     }
 
     pub fn retry_password_command(mut self: Pin<&mut Self>) {
@@ -1354,9 +1409,12 @@ impl qobject::CalendarModel {
     /// while no password is known; synchronises when it succeeded.
     fn fetch_password(mut self: Pin<&mut Self>) {
         let command = self.config.password_command.clone();
-        if !self.config.connected() || command.is_empty() || password().is_some() {
+        let remembered = secret_store().kind().is_some();
+        if !self.config.connected() || (command.is_empty() && !remembered) || password().is_some() {
             return;
         }
+        // Marks this attempt (a changed command line tries again).
+        let command = if command.is_empty() { "\u{0}remembered".to_owned() } else { command };
         {
             let Ok(mut c) = COMMAND.lock() else { return };
             if c.running || c.tried == command {
@@ -1369,30 +1427,44 @@ impl qobject::CalendarModel {
         self.as_mut().update_sync_state();
         let thread = self.qt_thread();
         std::thread::spawn(move || {
-            let result = calendar::password_from_command(&command, COMMAND_TIMEOUT);
+            // The remembered password first, then the command.
+            let result = match secret_store().load() {
+                Ok(Some((password, _))) => Ok(password),
+                Ok(None) | Err(_) if !command.starts_with('\u{0}') => {
+                    calendar::password_from_command(&command, COMMAND_TIMEOUT)
+                }
+                Ok(None) => Err(anyhow::anyhow!("kein gemerktes Passwort")),
+                Err(err) => Err(err.context("Gemerktes Passwort")),
+            };
             let _ = thread.queue(move |mut this| {
-                let ok = result.is_ok();
+                // Only a changed setting (other command, remembered ⇄ command)
+                // makes the result stale; a retry meanwhile does not.
+                let current = this.config.password_command.clone();
+                let stale = current != command && !(current.is_empty() && command.starts_with('\u{0}'));
+                let mut ok = false;
                 if let Ok(mut c) = COMMAND.lock() {
                     c.running = false;
-                    // A newer command line or a reset makes this result stale.
-                    if c.tried != command {
-                        return;
-                    }
-                    match result {
-                        Ok(password) => {
-                            if let Ok(mut p) = PASSWORD.lock() {
-                                p.get_or_insert(password);
+                    if !stale {
+                        c.tried = command;
+                        match result {
+                            Ok(password) => {
+                                ok = true;
+                                if let Ok(mut p) = PASSWORD.lock() {
+                                    p.get_or_insert(password);
+                                }
                             }
-                        }
-                        Err(err) => {
-                            log::warn!("password command failed: {err:#}");
-                            c.error = format!("{err:#}");
+                            Err(err) => {
+                                log::warn!("password command failed: {err:#}");
+                                c.error = format!("{err:#}");
+                            }
                         }
                     }
                 }
                 this.as_mut().update_sync_state();
                 if ok {
                     this.sync_now();
+                } else if stale {
+                    this.fetch_password();
                 }
             });
         });
@@ -1401,7 +1473,10 @@ impl qobject::CalendarModel {
     pub fn set_password(mut self: Pin<&mut Self>, password: &QString) {
         let password = password.to_string();
         if let Ok(mut p) = PASSWORD.lock() {
-            *p = (!password.is_empty()).then_some(password);
+            *p = (!password.is_empty()).then(|| password.clone());
+        }
+        if !password.is_empty() && self.config.remember_password {
+            self.as_mut().keep_password(password);
         }
         self.as_mut().update_sync_state();
         self.sync_now();
@@ -1566,6 +1641,7 @@ impl qobject::CalendarModel {
             *p = None;
         }
         reset_command();
+        let _ = secret_store().forget();
         if let Err(err) = Config::save_calendar(&CalendarConfig::default()) {
             self.as_mut().set_error(format!("Einstellungen können nicht gespeichert werden: {err:#}"));
         }

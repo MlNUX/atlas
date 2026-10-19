@@ -24,6 +24,7 @@ pub mod pdf;
 pub mod perms;
 pub mod project;
 pub mod search;
+pub mod secret;
 pub mod session;
 pub mod symbols;
 pub mod terminal;
