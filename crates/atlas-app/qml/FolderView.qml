@@ -192,6 +192,8 @@ Rectangle {
                         list.positionViewAtIndex(next, ListView.Contain)
                         return folder.pathAt(next)
                     })
+                } else if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && root.selectedPaths().length === 1) {
+                    root.actions.showProperties(root.selectedPaths()[0])
                 } else if (event.key === Qt.Key_F2 && root.selectedPaths().length === 1) {
                     root.actions.rename(root.selectedPaths()[0])
                 } else if (event.key === Qt.Key_Delete) {

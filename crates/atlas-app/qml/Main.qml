@@ -357,6 +357,9 @@ ApplicationWindow {
 
 
 
+
+
+
     // -------------------------------------------------------------- shortcuts
 
     Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.open() }

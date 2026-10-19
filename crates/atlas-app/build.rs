@@ -19,6 +19,7 @@ const QML_FILES: &[&str] = &[
     "qml/PdfViewer.qml",
     "qml/PlacesList.qml",
     "qml/ProjectTree.qml",
+    "qml/PropertiesDialog.qml",
     "qml/QuickLook.qml",
     "qml/SearchPanel.qml",
     "qml/SendToNoteDialog.qml",

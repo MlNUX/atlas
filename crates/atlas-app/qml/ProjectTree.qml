@@ -101,6 +101,8 @@ Rectangle {
                     const next = Math.max(0, Math.min(list.count - 1, row + (event.key === Qt.Key_Down ? 1 : -1)))
                     root.selectedPath = root.model.pathAt(next)
                     list.positionViewAtIndex(next, ListView.Contain)
+                } else if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && root.selectedPath) {
+                    root.actions.showProperties(root.selectedPath)
                 } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                     const item = list.itemAtIndex(row)
                     if (item && item.isDir) root.model.toggle(row)

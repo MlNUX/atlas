@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use atlas_core::fileops::{self, Conflict, Transfer};
+use atlas_core::perms;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
 
@@ -94,6 +95,46 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "isDir"]
         fn is_dir(self: &FileOps, path: &QString) -> bool;
+
+        /// Properties for the properties dialog (JSON: mode, modeText,
+        /// owner, group, uid, gid, size, modified, …; {error} on failure).
+        #[qinvokable]
+        fn properties(self: &FileOps, path: &QString) -> QString;
+
+        /// Groups the user may assign (JSON list of {gid, name}).
+        #[qinvokable]
+        #[cxx_name = "ownGroups"]
+        fn own_groups(self: &FileOps) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "canChangeOwner"]
+        fn can_change_owner(self: &FileOps) -> bool;
+
+        /// `mode` is the permission number (e.g. 0o644).
+        #[qinvokable]
+        #[cxx_name = "setMode"]
+        fn set_mode(self: Pin<&mut FileOps>, path: &QString, mode: i32) -> bool;
+
+        /// Changes owner (user name, "" = keep; root only) and group (gid,
+        /// -1 = keep).
+        #[qinvokable]
+        #[cxx_name = "setOwnership"]
+        fn set_ownership(self: Pin<&mut FileOps>, path: &QString, owner: &QString, gid: i32) -> bool;
+
+        /// Shows `path` selected in the desktop's file manager
+        /// (org.freedesktop.FileManager1); false if that is not available.
+        #[qinvokable]
+        #[cxx_name = "showInFileManager"]
+        fn show_in_file_manager(self: &FileOps, path: &QString) -> bool;
+
+        /// Computes the size of a folder in the background (`sizeComputed`).
+        #[qinvokable]
+        #[cxx_name = "computeSize"]
+        fn compute_size(self: Pin<&mut FileOps>, path: &QString);
+
+        #[qsignal]
+        #[cxx_name = "sizeComputed"]
+        fn size_computed(self: Pin<&mut FileOps>, path: QString, bytes: f64, files: i32, dirs: i32);
 
         /// A file or folder was moved/renamed by Atlas.
         #[qsignal]
@@ -326,4 +367,150 @@ impl qobject::FileOps {
     pub fn is_dir(&self, path: &QString) -> bool {
         Path::new(&path.to_string()).is_dir()
     }
+
+    pub fn properties(&self, path: &QString) -> QString {
+        let path = PathBuf::from(path.to_string());
+        let value = match perms::stat(&path) {
+            Ok(info) => serde_json::json!({
+                "path": path.to_string_lossy(),
+                "name": name_of(&path),
+                "mode": info.mode,
+                "modeText": perms::format_mode(info.mode),
+                "uid": info.uid,
+                "gid": info.gid,
+                "owner": info.owner,
+                "group": info.group,
+                "isDir": info.is_dir,
+                "isSymlink": info.is_symlink,
+                "linkTarget": info.link_target.as_ref().map(|t| t.to_string_lossy().into_owned()),
+                "size": info.size,
+                "sizeText": atlas_core::listing::format_size(info.size),
+                "modified": info.modified * 1000,
+                "accessed": info.accessed * 1000,
+                "changed": info.changed * 1000,
+                "inode": info.inode,
+                "links": info.links,
+                "canChangeMode": perms::can_change_mode(&info) && !perms::read_only_fs(&path),
+                "readOnlyFs": perms::read_only_fs(&path),
+            }),
+            Err(err) => serde_json::json!({ "error": format!("{err:#}") }),
+        };
+        qs(value.to_string())
+    }
+
+    pub fn own_groups(&self) -> QString {
+        let groups: Vec<_> = perms::own_groups()
+            .into_iter()
+            .map(|(gid, name)| serde_json::json!({ "gid": gid, "name": name }))
+            .collect();
+        qs(serde_json::Value::from(groups).to_string())
+    }
+
+    pub fn can_change_owner(&self) -> bool {
+        perms::can_change_owner()
+    }
+
+    pub fn set_mode(self: Pin<&mut Self>, path: &QString, mode: i32) -> bool {
+        match perms::set_mode(Path::new(&path.to_string()), mode as u32) {
+            Ok(()) => true,
+            Err(err) => {
+                self.fail(err);
+                false
+            }
+        }
+    }
+
+    pub fn set_ownership(self: Pin<&mut Self>, path: &QString, owner: &QString, gid: i32) -> bool {
+        let owner = owner.to_string();
+        let uid = if owner.is_empty() {
+            None
+        } else {
+            match perms::uid_of(&owner) {
+                Some(uid) => Some(uid),
+                None => {
+                    self.fail(anyhow::anyhow!("Benutzer „{owner}“ gibt es nicht."));
+                    return false;
+                }
+            }
+        };
+        let gid = (gid >= 0).then_some(gid as u32);
+        match perms::set_owner(Path::new(&path.to_string()), uid, gid) {
+            Ok(()) => true,
+            Err(err) => {
+                self.fail(err);
+                false
+            }
+        }
+    }
+
+    pub fn show_in_file_manager(&self, path: &QString) -> bool {
+        let url = format!("file://{}", percent_encode(&path.to_string()));
+        let status = std::process::Command::new("dbus-send")
+            .args([
+                "--session",
+                "--print-reply",
+                "--reply-timeout=2000",
+                "--dest=org.freedesktop.FileManager1",
+                "--type=method_call",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+                &format!("array:string:{url}"),
+                "string:",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        status.is_ok_and(|s| s.success())
+    }
+
+    pub fn compute_size(self: Pin<&mut Self>, path: &QString) {
+        let thread = self.qt_thread();
+        let root = PathBuf::from(path.to_string());
+        let path = path.clone();
+        std::thread::spawn(move || {
+            let (mut bytes, mut files, mut dirs) = (0u64, 0i32, 0i32);
+            for entry in walkdir_all(&root) {
+                if entry.1 {
+                    dirs += 1;
+                } else {
+                    files += 1;
+                    bytes += entry.0;
+                }
+            }
+            let _ = thread.queue(move |ops| ops.size_computed(path, bytes as f64, files, dirs));
+        });
+    }
+}
+
+/// (size, is_dir) of everything below `root` without following symlinks.
+fn walkdir_all(root: &Path) -> Vec<(u64, bool)> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_dir() {
+                out.push((0, true));
+                stack.push(entry.path());
+            } else {
+                out.push((meta.len(), false));
+            }
+        }
+    }
+    out
+}
+
+/// Percent-encodes a path for a `file://` URL (keeps `/` and unreserved
+/// characters).
+fn percent_encode(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for b in path.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'/' | b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }

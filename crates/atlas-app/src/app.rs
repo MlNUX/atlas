@@ -906,7 +906,7 @@ impl qobject::AppController {
                 ));
             }
         }
-        results.sort_by(|a, b| b.0.cmp(&a.0));
+        results.sort_by_key(|r| std::cmp::Reverse(r.0));
         results.truncate(limit.max(1) as usize);
         qs(serde_json::Value::from(results.into_iter().map(|(_, v)| v).collect::<Vec<_>>()).to_string())
     }

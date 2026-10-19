@@ -12,6 +12,7 @@ Item {
     id: actions
 
     readonly property alias ops: ops
+    readonly property alias propertiesDialog: propertiesDialog
     readonly property alias busy: ops.busy
     /// Last result or progress text for the status bar.
     property string message: ops.busy ? ops.status : lastMessage
@@ -61,6 +62,12 @@ Item {
     }
 
     function configureEditor() { editorDialog.open() }
+
+    function showProperties(path) { propertiesDialog.show(path) }
+    function openWithSystem(path) { Qt.openUrlExternally("file://" + encodeURI(path)) }
+    function showInFileManager(path) {
+        if (!ops.showInFileManager(path)) Qt.openUrlExternally("file://" + encodeURI(ops.parentDir(path)))
+    }
 
     function sendToNote(text, cwd) {
         if (text.trim()) sendToNoteRequested(text, cwd)
@@ -212,6 +219,24 @@ Item {
         MenuSeparator {}
         MenuItem { text: qsTr("Umbenennen …\tF2"); enabled: menu.single; onTriggered: actions.rename(menu.paths[0]) }
         MenuItem { text: qsTr("Pfad kopieren"); enabled: menu.any; onTriggered: actions.copyPaths(menu.paths) }
+        MenuItem {
+            text: qsTr("Mit Standardprogramm öffnen")
+            visible: menu.single
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.openWithSystem(menu.paths[0])
+        }
+        MenuItem {
+            text: qsTr("Im Dateimanager zeigen")
+            visible: menu.single
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.showInFileManager(menu.paths[0])
+        }
+        MenuItem {
+            text: qsTr("Eigenschaften …\tAlt+Enter")
+            visible: menu.single
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.showProperties(menu.paths[0])
+        }
         MenuSeparator {}
         MenuItem { text: qsTr("In den Papierkorb\tEntf"); enabled: menu.any; onTriggered: actions.trash(menu.paths) }
         MenuSeparator {}
@@ -341,6 +366,8 @@ Item {
             }
         }
     }
+
+    PropertiesDialog { id: propertiesDialog; ops: ops }
 
     // „Im Editor öffnen“: command template in ~/.config/atlas/config.toml.
     Dialog {

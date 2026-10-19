@@ -17,6 +17,7 @@ pub mod markdown;
 pub mod notes;
 pub mod paths;
 pub mod pdf;
+pub mod perms;
 pub mod project;
 pub mod search;
 pub mod session;

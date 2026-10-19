@@ -28,7 +28,7 @@ Schritt ein Commit und ein Zwischenstand.
 | 6 | Codevorschau und externer Editor | ✅ |
 | 7 | Terminal-Integration | ✅ |
 | 8 | Suche und universelle Arbeitsleiste | ✅ |
-| 9 | Berechtigungen, Besitzer, Gruppe und Linux-Politur | offen |
+| 9 | Berechtigungen, Besitzer, Gruppe und Linux-Politur | ✅ |
 | 10 | Paketierung, Tests und Stabilisierung | offen |
 
 ### Schritt 1 – Wayland-Fenster, Projektordner und Verzeichnisbaum
@@ -322,3 +322,30 @@ Tests.
 Geprüft (offscreen): Strg+P findet `src/main.rs`, Notiz über den Titel,
 Aktionen über `>`, Notizen über `#archi`, `src/main.rs:7` öffnet Zeile 7;
 Volltextsuche ignoriert `target/` und `node_modules/`; TODO-Suche.
+
+### Schritt 9 – Berechtigungen, Besitzer, Gruppe und Linux-Politur
+
+Kern: `atlas_core::perms` (stat, chmod, lchown, Namen über
+`getpwuid_r`/`getgrgid_r`, eigene Gruppen) mit Tests.
+
+- **Eigenschaften** (Kontextmenü „Eigenschaften …“, Alt+Enter im Explorer und
+  in Dateilisten): Name, Ort, Ziel symbolischer Links, Größe (bei Ordnern im
+  Hintergrund berechnet, mit Anzahl Dateien/Ordner), Änderungs- und
+  Zugriffszeit, Inode und Links.
+- **Unix-Rechte lesen und ändern**: Lesen/Schreiben/Ausführen (bei Ordnern
+  „Betreten“) für Besitzer, Gruppe und Andere, setuid/setgid/Sticky, dazu
+  oktal (`0755`) und als Text (`rwxr-xr-x`), jeweils synchron.
+- **Besitzer und Gruppe** werden angezeigt und nur mit vorhandenen Rechten
+  geändert: die Gruppe auf eine der eigenen Gruppen (fremde aktuelle Gruppe
+  wird gekennzeichnet), den Besitzer nur als root. Keine Rechteausweitung
+  (kein pkexec/sudo). Ohne Berechtigung (fremde Datei, schreibgeschütztes
+  Dateisystem) sind die Felder gesperrt und ein Hinweis erklärt warum;
+  Fehler des Systems werden verständlich gemeldet.
+- **Linux-Politur**: Kontextmenü „Mit Standardprogramm öffnen“ (xdg) und „Im
+  Dateimanager zeigen“ (D-Bus `org.freedesktop.FileManager1.ShowItems`,
+  sonst der Ordner); eigenes App-Icon (`data/atlas.svg`, im Nix-Paket unter
+  `share/icons/hicolor/scalable/apps`), Desktop-Datei mit deutschem Kommentar
+  und Stichwörtern; die Wayland-`app_id` bleibt `atlas`.
+
+Geprüft (offscreen): Rechte einer Datei per Dialog auf `0750` gesetzt,
+Ordnergröße berechnet, Besitzer/Gruppe korrekt angezeigt.

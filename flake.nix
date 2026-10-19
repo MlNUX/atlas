@@ -102,6 +102,7 @@
 
           postInstall = ''
             install -Dm644 data/atlas.desktop $out/share/applications/atlas.desktop
+            install -Dm644 data/atlas.svg $out/share/icons/hicolor/scalable/apps/atlas.svg
           '';
 
           # GUI tests need a display; core tests run in `nix flake check`.
