@@ -50,6 +50,7 @@ pub mod qobject {
         #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, CONSTANT)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
+        #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
         #[qproperty(i32, screenshot_delay_ms, cxx_name = "screenshotDelayMs", READ, CONSTANT)]
         #[qproperty(QString, initial_search, cxx_name = "initialSearch", READ, CONSTANT)]
         #[qproperty(bool, restore_session, cxx_name = "restoreSession", READ, CONSTANT)]
@@ -336,6 +337,7 @@ pub struct AppControllerRust {
     place_icons: QStringList,
     screenshot_path: QString,
     quit_after_ms: i32,
+    self_test: bool,
     screenshot_delay_ms: i32,
     initial_search: QString,
     restore_session: bool,
@@ -397,6 +399,7 @@ impl Default for AppControllerRust {
             place_icons,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
+            self_test: cli.self_test,
             screenshot_delay_ms: cli.screenshot_delay_ms.unwrap_or(2500) as i32,
             initial_search: qs(cli.search.as_deref().unwrap_or_default()),
             // `--open` starts with just the given files, but the result is

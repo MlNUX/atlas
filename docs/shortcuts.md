@@ -1,0 +1,71 @@
+<!--
+SPDX-FileCopyrightText: 2026 Minux
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
+# Tastenkürzel
+
+## Allgemein
+
+| Kürzel | Aktion |
+|---|---|
+| Strg+P | Arbeitsleiste: Dateien, Ordner, Notizen, Aktionen (`>` Aktionen, `#` Tags, `:` Zeile, `?` Volltext, `pfad:42`) |
+| Strg+Umschalt+P | Arbeitsleiste mit Aktionen |
+| Strg+O | Projektordner öffnen |
+| Strg+Umschalt+F | Projektweite Suche |
+| Strg+Umschalt+E | Explorer |
+| Strg+B | Seitenleiste ein-/ausblenden |
+| Strg+` | Terminal-Panel ein-/ausblenden |
+| Strg+Umschalt+` | Neues Terminal |
+
+Strg+P und Strg+` funktionieren auch, wenn ein Terminal den Fokus hat;
+alle übrigen Tasten gehen dort an das Programm im Terminal.
+
+## Tabs und Splits
+
+| Kürzel | Aktion |
+|---|---|
+| Strg+\\ | Editor teilen |
+| Strg+W | Tab schließen |
+| Strg+Tab / Strg+Umschalt+Tab | Nächster / vorheriger Tab |
+| Alt+← / Alt+→ | Zurück / vor (Ordner, gefolgte Links) |
+| Strg+Klick, Mittelklick | In neuem Split öffnen |
+| Doppelklick | Vorschau-Tab fest anheften |
+
+## Explorer und Dateilisten
+
+| Kürzel | Aktion |
+|---|---|
+| Leertaste | Schnellansicht (←/→ blättern, Enter öffnen, Leertaste/Esc schließen) |
+| Enter | Öffnen (Ordner im Baum auf-/zuklappen) |
+| Alt+Enter | Eigenschaften (Rechte, Besitzer, Gruppe) |
+| F2 | Umbenennen |
+| Entf | In den Papierkorb |
+| Strg+C / Strg+X / Strg+V | Kopieren / Ausschneiden / Einfügen (kompatibel mit anderen Dateimanagern) |
+| Alt+↑, Rücktaste | Übergeordneter Ordner (Dateiliste) |
+
+## Texte, Code und Markdown
+
+| Kürzel | Aktion |
+|---|---|
+| Strg+S | Sofort speichern (sonst automatisch nach 1 s) |
+| Strg+F | Suchen im Dokument (Enter weiter, Umschalt+Enter zurück) |
+| Strg+G | Gehe zu Zeile |
+| Esc | Suche schließen |
+
+## PDF
+
+| Kürzel | Aktion |
+|---|---|
+| Strg+F | Volltextsuche im Dokument; F3 / Umschalt+F3 nächster / vorheriger Treffer |
+| Bild↑ / Bild↓, Strg+Pos1 / Strg+Ende | Seiten blättern, Anfang / Ende |
+| Strg++ / Strg+− / Strg+Mausrad | Zoom |
+| Strg+0 | Seitenbreite |
+
+## Terminal
+
+| Kürzel | Aktion |
+|---|---|
+| Strg+Umschalt+C / Strg+Umschalt+V | Kopieren / Einfügen |
+| Umschalt+Einfg | Einfügen |
+| Rechtsklick | Menü: Kopieren, Einfügen, Ausgabe in Notiz übernehmen |

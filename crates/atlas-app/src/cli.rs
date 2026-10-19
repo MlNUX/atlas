@@ -19,6 +19,8 @@ Options:
   --screenshot FILE    Save a PNG of the window after startup (for tests)
   --screenshot-delay MS  Delay before the screenshot (default 2500)
   --quit-after MS      Quit MS milliseconds after startup (for tests)
+  --self-test          Run the built-in smoke test against PROJECT and exit
+                       with its result (0 = passed; for tests)
   -h, --help           Show this help
   -V, --version        Show the version
 ";
@@ -34,6 +36,7 @@ pub struct Cli {
     pub screenshot_delay_ms: Option<u32>,
     pub search: Option<String>,
     pub quit_after_ms: Option<u32>,
+    pub self_test: bool,
 }
 
 static CLI: OnceLock<Cli> = OnceLock::new();
@@ -74,6 +77,7 @@ impl Cli {
                     cli.open_lines.push(line);
                 }
                 "--no-session" => cli.no_session = true,
+                "--self-test" => cli.self_test = true,
                 "--screenshot" => cli.screenshot = Some(value("--screenshot")?.into()),
                 "--screenshot-delay" => {
                     let v = value("--screenshot-delay")?;

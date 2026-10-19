@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Minux
 # SPDX-License-Identifier: GPL-3.0-or-later
 {
-  description = "Atlas Workspace – Linux-first, file-centric desktop workspace (Phase 0 prototype)";
+  description = "Atlas Workspace – Linux-first, file-centric desktop workspace (Phase 1 alpha)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -86,7 +86,7 @@
       packages = forAllSystems (pkgs: {
         default = pkgs.rustPlatform.buildRustPackage {
           pname = "atlas";
-          version = "0.0.1";
+          version = "0.1.0";
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
 
@@ -158,6 +158,16 @@
             export QT_QPA_PLATFORM="''${QT_QPA_PLATFORM:-wayland}"
           '';
         };
+      });
+
+      # `nix flake check`: package build (incl. core tests) and formatting.
+      checks = forAllSystems (pkgs: {
+        package = self.packages.${pkgs.system}.default;
+        rustfmt = pkgs.runCommand "atlas-rustfmt" { nativeBuildInputs = [ pkgs.rustfmt ]; } ''
+          cd ${./.}
+          find crates -name "*.rs" -print0 | xargs -0 rustfmt --edition 2024 --config-path rustfmt.toml --check
+          touch $out
+        '';
       });
 
       formatter = forAllSystems (pkgs: pkgs.nixfmt-rfc-style);

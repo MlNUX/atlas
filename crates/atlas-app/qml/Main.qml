@@ -360,6 +360,19 @@ ApplicationWindow {
 
 
 
+    // Built-in smoke test (`--self-test`).
+    Loader {
+        active: app.selfTest
+        sourceComponent: Component { SelfTest {} }
+        onLoaded: {
+            Object.assign(item, {
+                app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
+                searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
+            })
+            item.start()
+        }
+    }
+
     // -------------------------------------------------------------- shortcuts
 
     Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.open() }

@@ -89,11 +89,62 @@ fn is_build_dir(name: &std::ffi::OsStr) -> bool {
 /// lower→upper case change), consecutive matches and matches in the last
 /// path segment (the file name). Shorter candidates win ties.
 pub fn score(query: &str, candidate: &str) -> Option<i32> {
+    score_terms(&terms(query), candidate)
+}
+
+/// Lowercased query terms.
+fn terms(query: &str) -> Vec<String> {
+    query.split_whitespace().map(str::to_lowercase).collect()
+}
+
+fn score_terms(terms: &[String], candidate: &str) -> Option<i32> {
     let mut total = 0;
-    for term in query.split_whitespace() {
-        total += score_term(term, candidate)?;
+    for term in terms {
+        total += if candidate.is_ascii() && term.is_ascii() {
+            score_ascii(term.as_bytes(), candidate.as_bytes())?
+        } else {
+            score_term(term, candidate)?
+        };
     }
     Some(total - candidate.chars().count() as i32 / 4)
+}
+
+/// Allocation-free variant of [`score_term`] for ASCII (the common case for
+/// paths); `needle` is lowercase. Same scoring.
+fn score_ascii(needle: &[u8], cand: &[u8]) -> Option<i32> {
+    // Quick reject: the needle must be a subsequence at all.
+    let mut it = cand.iter().map(u8::to_ascii_lowercase);
+    if !needle.iter().all(|&c| it.any(|b| b == c)) {
+        return None;
+    }
+    let name_start = cand.iter().rposition(|&b| b == b'/').map_or(0, |i| i + 1);
+    let attempt = |start: usize| -> Option<i32> {
+        let mut score = 0;
+        let mut pos = start;
+        let mut last: Option<usize> = None;
+        for &c in needle {
+            let found = (pos..cand.len()).find(|&i| cand[i].to_ascii_lowercase() == c)?;
+            let boundary = found == 0
+                || matches!(cand[found - 1], b'/' | b'_' | b'-' | b'.' | b' ')
+                || (cand[found - 1].is_ascii_lowercase() && cand[found].is_ascii_uppercase());
+            score += 1;
+            if boundary {
+                score += 8;
+            }
+            if last.is_some_and(|l| l + 1 == found) {
+                score += 5;
+            }
+            if found >= name_start {
+                score += 3;
+            }
+            last = Some(found);
+            pos = found + 1;
+        }
+        Some(score)
+    };
+    let in_name = attempt(name_start).map(|s| s + 10);
+    let anywhere = attempt(0);
+    in_name.into_iter().chain(anywhere).max()
 }
 
 fn score_term(term: &str, candidate: &str) -> Option<i32> {
@@ -153,9 +204,10 @@ pub fn split_location(query: &str) -> (&str, u32) {
 
 /// Best matches for `query`, highest score first (at most `limit`).
 pub fn best<'a>(entries: &'a [Entry], query: &str, limit: usize) -> Vec<(&'a Entry, i32)> {
+    let terms = terms(query);
     let mut scored: Vec<(&Entry, i32)> = entries
         .iter()
-        .filter_map(|e| score(query, &e.relative).map(|s| (e, s - if e.is_dir { 2 } else { 0 })))
+        .filter_map(|e| score_terms(&terms, &e.relative).map(|s| (e, s - if e.is_dir { 2 } else { 0 })))
         .collect();
     scored.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.relative.cmp(&b.0.relative)));
     scored.truncate(limit);

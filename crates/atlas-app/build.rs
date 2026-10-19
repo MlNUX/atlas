@@ -23,6 +23,7 @@ const QML_FILES: &[&str] = &[
     "qml/QuickLook.qml",
     "qml/SearchPanel.qml",
     "qml/SendToNoteDialog.qml",
+    "qml/SelfTest.qml",
     "qml/SessionMenu.qml",
     "qml/TerminalGroup.qml",
     "qml/TerminalPane.qml",

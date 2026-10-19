@@ -29,7 +29,7 @@ Schritt ein Commit und ein Zwischenstand.
 | 7 | Terminal-Integration | ✅ |
 | 8 | Suche und universelle Arbeitsleiste | ✅ |
 | 9 | Berechtigungen, Besitzer, Gruppe und Linux-Politur | ✅ |
-| 10 | Paketierung, Tests und Stabilisierung | offen |
+| 10 | Paketierung, Tests und Stabilisierung | ✅ |
 
 ### Schritt 1 – Wayland-Fenster, Projektordner und Verzeichnisbaum
 
@@ -349,3 +349,56 @@ Kern: `atlas_core::perms` (stat, chmod, lchown, Namen über
 
 Geprüft (offscreen): Rechte einer Datei per Dialog auf `0750` gesetzt,
 Ordnergröße berechnet, Besitzer/Gruppe korrekt angezeigt.
+
+### Schritt 10 – Paketierung, Tests und Stabilisierung
+
+- **Version 0.1.0** (Phase 1 Alpha) in Cargo-Workspace, Flake und PKGBUILD.
+- **Nix**: `nix build` baut das Paket inklusive QtWebEngine, KSyntaxHighlighting
+  (QML-Modul über `wrapQtAppsHook`), Desktop-Datei und Icon; die Kern-Tests
+  laufen im Sandbox-Build. `nix flake check` prüft zusätzlich die
+  Formatierung (`rustfmt`).
+- **Arch**: Entwurf `packaging/arch/PKGBUILD` (Abhängigkeiten aus den
+  offiziellen Paketen, `qmake6`, gebündelte Web-Lizenzen). Noch nicht auf Arch
+  gebaut – das ist laut PHASES.md erst gegen Ende der Beta vorgesehen.
+- **Tests**: 73 Kern-Tests (darunter Papierkorb-Integration, Bash/Zsh/Fish,
+  atomares Speichern, Konflikte, Linkumschreibung) und
+  `scripts/smoke-test.sh`: startet Atlas offscreen mit `--self-test` gegen ein
+  frisch erzeugtes Projekt und prüft 17 Abläufe von Markdown-Autosave über
+  Rückverweise, Arbeitsleiste, Symbole, Suche, Terminal-Tab und
+  Notizübernahme bis Rechte und Session (Exit-Code 0 = bestanden).
+- **Leistung**: Die Schnellsuche bewertete pro Tastendruck alle Einträge mit
+  Allokationen (300–500 ms bei 200 000 Dateien). Jetzt ohne Allokation für
+  ASCII-Pfade mit schneller Vorprüfung: 11–40 ms bei 200 000, wenige ms bei
+  üblichen Projekten (`cargo run --release -p atlas-core --example
+  finder_bench`).
+- **Dokumentation**: [shortcuts.md](shortcuts.md) (Tastenkürzel),
+  [data-format.md](data-format.md) (alle von Atlas erzeugten Dateien und
+  Formate).
+
+## Abnahme Phase 1
+
+| Kriterium (PHASES.md) | Stand | Nachweis |
+|---|---|---|
+| Projektordner ohne Einrichtung öffnen und wiederverwenden | ✅ | `atlas ORDNER`, letzter Ordner aus `app.json`; `.atlas/` wird bei Bedarf angelegt |
+| Lokales PDF in höchstens zwei Interaktionen | ✅ | Klick im Explorer = Vorschau-Tab (1), Doppelklick heftet an |
+| Schnellansicht, feste Tabs, temporäre Splits konsistent | ✅ | Schritte 3/4, Suchtreffer im temporären Split |
+| Nach Neustart Projekt, Tabs, Splits, Positionen wiederhergestellt | ✅ | Session-JSON + `document_state`; Rauchtest „Session enthält Tabs“ |
+| Session-Wechsel ohne Verlust | ✅ | Speichern aller Editoren und der aktiven Session vor dem Wechsel |
+| Autosave verliert keine bestätigte Fassung (Beenden, Absturz, externe Änderung) | ✅ | atomar + fsync; Recovery-Kopien; Konfliktbanner statt Überschreiben; Tests in `textfile` |
+| Terminal, PDF, Markdown und Code gleichzeitig | ✅ | beliebige Splits/Tabs, Terminal auch als Tab |
+| Projektweite Suche mit `.gitignore`, ohne UI-Blockade | ✅ | ripgrep im Hintergrund, Treffer gebündelt; Build-Ordner ausgeschlossen |
+| Dateioperationen unter NixOS inkl. Papierkorb | ✅ | `fileops`-Tests, Papierkorb-Integrationstest mit eigenem `XDG_DATA_HOME` |
+| Nativ unter Hyprland über Wayland | ✅ | aus Phase 0 (`QT_QPA_PLATFORM=wayland`, `app_id` = `atlas`) – nach Phase 1 erneut auf dem echten Desktop prüfen |
+
+### Offene Punkte und bekannte Grenzen
+
+- Die Phase-1-Abläufe wurden offscreen geprüft (Rauchtest, Screenshots); ein
+  Durchgang auf dem echten Hyprland-Desktop steht aus.
+- Arch-Paket nur als Entwurf (siehe oben).
+- Symbolübersicht bewusst heuristisch; kein Language Server.
+- Rechte werden nur für das gewählte Element geändert (nicht rekursiv).
+- Im Terminal gehören Strg+P und Strg+` zu Atlas (wie in VS Code); die
+  Shell-Belegung von Strg+P (vorheriger Befehl) ist dort nicht erreichbar –
+  Pfeil hoch funktioniert weiterhin.
+- Die Offscreen-Screenshots erfassen die Markdown-Vorschau nur mit
+  `QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu` (nur ein Testartefakt).
