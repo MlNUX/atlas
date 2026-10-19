@@ -8,6 +8,7 @@ use cxx_qt_build::{CxxQtBuilder, QResource, QResources, QmlFile, QmlModule};
 const QML_FILES: &[&str] = &[
     "qml/Main.qml",
     "qml/Banner.qml",
+    "qml/CommandPalette.qml",
     "qml/DocumentView.qml",
     "qml/EditorArea.qml",
     "qml/EditorGroup.qml",

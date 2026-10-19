@@ -38,7 +38,8 @@ pub mod qobject {
         type SearchModel = super::SearchModelRust;
 
         /// Starts a search below `root`; a running search is cancelled.
-        /// `globs` is a comma separated list such as `*.rs, !target/**`.
+        /// `globs` is a comma separated list such as `*.rs, !docs/**`; build
+        /// and dependency folders are skipped unless `include_build_dirs`.
         #[qinvokable]
         fn search(
             self: Pin<&mut SearchModel>,
@@ -47,6 +48,7 @@ pub mod qobject {
             regex: bool,
             case_sensitive: bool,
             globs: &QString,
+            include_build_dirs: bool,
         );
 
         #[qinvokable]
@@ -112,6 +114,7 @@ impl qobject::SearchModel {
         regex: bool,
         case_sensitive: bool,
         globs: &QString,
+        include_build_dirs: bool,
     ) {
         self.as_mut().clear();
         let pattern = pattern.to_string();
@@ -122,7 +125,12 @@ impl qobject::SearchModel {
             pattern,
             regex,
             case_sensitive: case_sensitive.then_some(true),
-            globs: globs.to_string().split(',').map(str::trim).filter(|g| !g.is_empty()).map(str::to_owned).collect(),
+            globs: (!include_build_dirs)
+                .then(atlas_core::finder::build_dir_globs)
+                .unwrap_or_default()
+                .into_iter()
+                .chain(globs.to_string().split(',').map(str::trim).filter(|g| !g.is_empty()).map(str::to_owned))
+                .collect(),
         };
         let generation = self.generation;
         let batch_thread = self.qt_thread();

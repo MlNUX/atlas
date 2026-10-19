@@ -9,6 +9,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use atlas_core::config::{Config, EditorConfig, EditorLaunch, editor_launch};
+use atlas_core::finder;
 use atlas_core::markdown;
 use atlas_core::notes::NoteIndex;
 use atlas_core::project::Project;
@@ -228,6 +229,23 @@ pub mod qobject {
         #[cxx_name = "openInEditor"]
         fn open_in_editor(self: &AppController, path: &QString, line: i32) -> QString;
 
+        /// Quick open: best files, folders and notes for `query` (fuzzy;
+        /// `path:line` jumps to a line). JSON list of {path, relative, kind,
+        /// title, line}.
+        #[qinvokable]
+        #[cxx_name = "quickOpen"]
+        fn quick_open(self: &AppController, query: &QString, limit: i32) -> QString;
+
+        /// Re-reads the project's file list for quick open in the background.
+        #[qinvokable]
+        #[cxx_name = "refreshFileList"]
+        fn refresh_file_list(self: Pin<&mut AppController>);
+
+        /// Fuzzy score of `query` in `text` (-1 = no match), as quick open.
+        #[qinvokable]
+        #[cxx_name = "fuzzyScore"]
+        fn fuzzy_score(self: &AppController, query: &QString, text: &QString) -> i32;
+
         /// All Markdown files of the project (absolute paths, sorted).
         #[qinvokable]
         #[cxx_name = "noteList"]
@@ -340,6 +358,8 @@ pub struct AppControllerRust {
     index: Option<FileIndex>,
     /// Links and tags of the project's Markdown files.
     notes: Option<Arc<Mutex<NoteIndex>>>,
+    /// Files and folders for quick open (rebuilt in the background).
+    files: Option<Arc<Vec<finder::Entry>>>,
     /// Incremented per opened project; drops index results of older ones.
     generation: u64,
 }
@@ -396,6 +416,7 @@ impl Default for AppControllerRust {
             writer: None,
             index: None,
             notes: None,
+            files: None,
             generation: 0,
         }
     }
@@ -478,6 +499,7 @@ impl qobject::AppController {
             this.writer = project.clone().map(SessionWriter::spawn);
             this.index = None;
             this.notes = None;
+            this.files = None;
             this.recovery_dir = qs(project
                 .as_ref()
                 .map(|p| p.atlas_dir().join("recovery"))
@@ -498,12 +520,14 @@ impl qobject::AppController {
         std::thread::spawn(move || {
             let result = project.as_ref().map(|p| FileIndex::ensure(p.root(), &p.index_file()));
             let notes = NoteIndex::build(&root_for_index);
+            let files = Arc::new(finder::list(&root_for_index));
             let _ = thread.queue(move |mut app| {
                 if app.generation != generation {
                     return;
                 }
                 log::info!("note index: {} Markdown files", notes.len());
                 app.as_mut().rust_mut().notes = Some(Arc::new(Mutex::new(notes)));
+                app.as_mut().rust_mut().files = Some(files);
                 app.as_mut().bump_notes();
                 let Some(result) = result else { return };
                 let status = match result {
@@ -832,6 +856,77 @@ impl qobject::AppController {
             Err(err) => serde_json::json!({ "mode": "error", "error": format!("{err:#}") }),
         };
         qs(result.to_string())
+    }
+
+    pub fn quick_open(&self, query: &QString, limit: i32) -> QString {
+        let (Some(root), Some(files)) = (self.root.as_ref(), self.files.as_ref()) else { return qs("[]") };
+        let query = query.to_string();
+        let (query, line) = finder::split_location(query.trim());
+        let notes = self.notes.as_ref().and_then(|n| n.lock().ok());
+        let mut results: Vec<(i32, serde_json::Value)> = finder::best(files, query, limit.max(1) as usize * 2)
+            .into_iter()
+            .map(|(entry, score)| {
+                let path = finder::absolute(root, entry);
+                let title = notes.as_ref().and_then(|n| n.note(&path)).and_then(|n| n.title.clone());
+                let kind = if entry.is_dir {
+                    "dir"
+                } else if atlas_core::notes::is_markdown(&path) {
+                    "note"
+                } else {
+                    "file"
+                };
+                let value = serde_json::json!({
+                    "path": path.to_string_lossy(),
+                    "relative": entry.relative,
+                    "kind": kind,
+                    "title": title,
+                    "line": line,
+                });
+                (score, value)
+            })
+            .collect();
+        // Notes are also found by their title.
+        if let Some(notes) = notes.as_ref() {
+            for path in notes.paths() {
+                let Some(title) = notes.note(path).and_then(|n| n.title.clone()) else { continue };
+                let Some(score) = finder::score(query, &title) else { continue };
+                let path_str = path.to_string_lossy().into_owned();
+                if results.iter().any(|(_, v)| v["path"] == path_str.as_str()) {
+                    continue;
+                }
+                results.push((
+                    score,
+                    serde_json::json!({
+                        "path": path_str,
+                        "relative": path.strip_prefix(root).unwrap_or(path).to_string_lossy(),
+                        "kind": "note",
+                        "title": title,
+                        "line": line,
+                    }),
+                ));
+            }
+        }
+        results.sort_by(|a, b| b.0.cmp(&a.0));
+        results.truncate(limit.max(1) as usize);
+        qs(serde_json::Value::from(results.into_iter().map(|(_, v)| v).collect::<Vec<_>>()).to_string())
+    }
+
+    pub fn refresh_file_list(self: Pin<&mut Self>) {
+        let Some(root) = self.root.clone() else { return };
+        let generation = self.generation;
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let files = Arc::new(finder::list(&root));
+            let _ = thread.queue(move |mut app| {
+                if app.generation == generation {
+                    app.as_mut().rust_mut().files = Some(files);
+                }
+            });
+        });
+    }
+
+    pub fn fuzzy_score(&self, query: &QString, text: &QString) -> i32 {
+        finder::score(&query.to_string(), &text.to_string()).unwrap_or(-1)
     }
 
     pub fn note_list(&self) -> QStringList {

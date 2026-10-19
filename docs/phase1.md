@@ -27,7 +27,7 @@ Schritt ein Commit und ein Zwischenstand.
 | 5 | Markdown sowie Metadaten und Linkverhalten | ✅ |
 | 6 | Codevorschau und externer Editor | ✅ |
 | 7 | Terminal-Integration | ✅ |
-| 8 | Suche und universelle Arbeitsleiste | offen |
+| 8 | Suche und universelle Arbeitsleiste | ✅ |
 | 9 | Berechtigungen, Besitzer, Gruppe und Linux-Politur | offen |
 | 10 | Paketierung, Tests und Stabilisierung | offen |
 
@@ -288,3 +288,37 @@ für Rust, externer Editor (losgelöst und im Terminal) erhält Datei und Zeile.
 Geprüft (offscreen): Terminal-Tab startet im gewählten Ordner, Session merkt
 den aktuellen Ordner, vertikaler Split im Panel, Ausgabe landet als
 `console`-Codeblock in der Notiz.
+
+### Schritt 8 – Suche und universelle Arbeitsleiste
+
+Kern: `atlas_core::finder` (Dateiliste, Fuzzy-Bewertung, `pfad:zeile`) mit
+Tests.
+
+- **Arbeitsleiste** (Strg+P, auch im Terminal; Strg+Umschalt+P öffnet sie mit
+  `>`): findet Dateien, Ordner, Notizen (auch über ihren Titel aus dem
+  Frontmatter) und Aktionen in einer Liste. Unscharfe Suche mit Vorrang für
+  Dateinamen, Wortanfänge und zusammenhängende Treffer; mehrere Wörter müssen
+  alle passen. Enter öffnet (Ordner als Dateiliste), Strg+Enter in neuem Split.
+  - `src/main.rs:42` öffnet an Zeile 42, `:42` springt im aktuellen Dokument
+  - `>…` nur Aktionen: Session speichern/wechseln/neu, alle Dateien speichern,
+    Projekt öffnen, neue Datei/Ordner, Suche, TODO/FIXME, Terminal (Panel,
+    Tab), Split, Tab schließen, Seitenleiste, Explorer, versteckte Dateien,
+    Papierkorb, externer Editor, „Im Editor öffnen“, Pfad kopieren, „Im
+    Explorer zeigen“ für das aktive Dokument
+  - `#tag` Tags und ihre Notizen (hierarchisch, ohne Groß-/Kleinschreibung)
+  - `?text` bzw. der letzte Eintrag jeder Suche startet die projektweite
+    Volltextsuche
+  Die Dateiliste wird beim Öffnen des Projekts und bei jedem Öffnen der
+  Leiste im Hintergrund neu eingelesen (`.gitignore` beachtet, höchstens
+  200 000 Einträge).
+- **Projektweite Suche** (Strg+Umschalt+F, ripgrep, wie bisher mit Regex,
+  Groß-/Kleinschreibung und Dateimustern, Treffer im temporären Split):
+  - typische **Build- und Abhängigkeitsordner** (`target`, `node_modules`,
+    `build`, `dist`, `result`, `.direnv`, `__pycache__`, `.venv`, …) sind auch
+    ohne `.gitignore` ausgeschlossen; ⚙ bezieht sie ein. Der Schalter wird in
+    der Session gespeichert.
+  - **TODO/FIXME** (Knopf im Suchkopf und Aktion) sucht `\b(TODO|FIXME)\b`.
+
+Geprüft (offscreen): Strg+P findet `src/main.rs`, Notiz über den Titel,
+Aktionen über `>`, Notizen über `#archi`, `src/main.rs:7` öffnet Zeile 7;
+Volltextsuche ignoriert `target/` und `node_modules/`; TODO-Suche.

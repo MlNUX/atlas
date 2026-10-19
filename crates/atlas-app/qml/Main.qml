@@ -63,6 +63,68 @@ ApplicationWindow {
         actions: fileActions
     }
 
+    // ------------------------------------------------------- universal bar
+
+    CommandPalette {
+        id: commandPalette
+        app: app
+        actions: window.paletteActions()
+        onOpenRequested: (path, line, where) => editor.open(path, line, where)
+        onSearchRequested: (text) => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.setQuery(text) }
+        onLineRequested: (line) => { if (editor.activeTab) editor.activeTab.reveal(line) }
+        onAboutToShow: actions = window.paletteActions()
+    }
+
+    /// Actions of the universal bar (Ctrl+P, ">" for actions only).
+    function paletteActions() {
+        const current = editor.activeTab && editor.activeTab.path && !editor.activeTab.path.startsWith("terminal:") ? editor.activeTab.path : ""
+        const dir = current ? fileActions.ops.parentDir(current) : app.projectRoot
+        const list = [
+            { name: qsTr("Session speichern"), hint: app.activeSessionName, run: () => { app.requestSaveAll(); saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) } },
+            { name: qsTr("Neue Session …"), run: () => sessionMenu.askNew() },
+            { name: qsTr("Alle Dateien speichern"), hint: "Strg+S", run: () => app.requestSaveAll() },
+            { name: qsTr("Projektordner öffnen …"), hint: "Strg+O", run: () => folderDialog.open() },
+            { name: qsTr("Neue Datei …"), hint: app.relativePath(dir), run: () => fileActions.newFile(dir) },
+            { name: qsTr("Neuer Ordner …"), hint: app.relativePath(dir), run: () => fileActions.newFolder(dir) },
+            { name: qsTr("Projektweit suchen"), hint: "Strg+Umschalt+F", run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } },
+            { name: qsTr("TODO und FIXME finden"), run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.searchTodos() } },
+            { name: qsTr("Terminal ein-/ausblenden"), hint: "Strg+`", run: () => window.toggleTerminal() },
+            { name: qsTr("Neues Terminal"), hint: "Strg+Umschalt+`", run: () => window.openTerminal(dir, "panel") },
+            { name: qsTr("Terminal als Tab öffnen"), run: () => window.openTerminal(dir, "tab") },
+            { name: qsTr("Editor teilen"), hint: "Strg+\\", run: () => { if (editor.activeGroup) editor.splitGroup(editor.activeGroup) } },
+            { name: qsTr("Tab schließen"), hint: "Strg+W", run: () => { if (editor.activeGroup) editor.activeGroup.closeCurrent() } },
+            { name: qsTr("Seitenleiste ein-/ausblenden"), hint: "Strg+B", run: () => { sidebar.visible = !sidebar.visible; saveTimer.restart() } },
+            { name: qsTr("Explorer zeigen"), hint: "Strg+Umschalt+E", run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 0 } },
+            { name: qsTr("Versteckte Dateien ein-/ausblenden"), run: () => { treeModel.showHidden = !treeModel.showHidden } },
+            { name: qsTr("Papierkorb öffnen"), run: () => { const t = app.placePaths.find(p => app.fileKind(p) === "trash"); if (t) editor.open(t, 0, "tab") } },
+            { name: qsTr("Externen Editor festlegen …"), run: () => fileActions.configureEditor() },
+        ]
+        if (current) {
+            list.push({ name: qsTr("Im Editor öffnen"), hint: app.fileName(current), run: () => fileActions.openInEditor(current, 0) })
+            list.push({ name: qsTr("Pfad kopieren"), hint: app.fileName(current), run: () => fileActions.copyPaths([current]) })
+            list.push({ name: qsTr("Im Explorer zeigen"), hint: app.fileName(current), run: () => window.revealInTree(current) })
+        }
+        for (let i = 0; i < app.sessionIds.length; ++i) {
+            const id = app.sessionIds[i]
+            if (id !== app.activeSession) list.push({ name: qsTr("Session wechseln: %1").arg(app.sessionNames[i]), run: () => window.switchSession(id) })
+        }
+        return list
+    }
+
+    /// Shows `path` in the project tree (expanding its folders).
+    function revealInTree(path) {
+        sidebar.visible = true
+        sidebarTabs.currentIndex = 0
+        const dirs = []
+        let dir = fileActions.ops.parentDir(path)
+        while (dir && dir.length >= app.projectRoot.length && dir.startsWith(app.projectRoot)) {
+            dirs.push(dir)
+            dir = fileActions.ops.parentDir(dir)
+        }
+        treeModel.restoreExpanded(dirs)
+        projectTree.selectedPath = path
+    }
+
     /// Opens a terminal in `dir`: "panel" (bottom panel), "tab" or "split".
     property int terminalTabs: 0
     function openTerminal(dir, where) {
@@ -293,9 +355,13 @@ ApplicationWindow {
 
 
 
+
+
     // -------------------------------------------------------------- shortcuts
 
     Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.open() }
+    Shortcut { sequence: "Ctrl+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show("") }
+    Shortcut { sequence: "Ctrl+Shift+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show(">") }
     Shortcut { sequence: "Ctrl+`"; context: Qt.ApplicationShortcut; onActivated: window.toggleTerminal() }
     Shortcut { sequence: "Ctrl+Shift+`"; context: Qt.ApplicationShortcut; onActivated: { terminalPanel.visible = true; terminalPanel.newTerminal() } }
     Shortcut { sequence: "Ctrl+Shift+F"; context: Qt.ApplicationShortcut; onActivated: { sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
@@ -341,6 +407,7 @@ ApplicationWindow {
                 onClicked: folderDialog.open()
             }
             SessionMenu {
+                id: sessionMenu
                 app: app
                 onSwitchRequested: (id) => window.switchSession(id)
                 onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
@@ -417,6 +484,7 @@ ApplicationWindow {
                         }
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
                         ProjectTree {
+                            id: projectTree
                             actions: fileActions
                             Layout.fillWidth: true
                             Layout.fillHeight: true

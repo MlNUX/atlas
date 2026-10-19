@@ -17,6 +17,9 @@ AbstractButton {
     signal saveRequested()
     signal deleteRequested(string id)
 
+    /// Asks for the name of a new, empty session.
+    function askNew() { nameDialog.ask(qsTr("Neue Session"), "", false) }
+
     enabled: !!app.projectRoot && app.persistSession
     hoverEnabled: true
     implicitHeight: 26

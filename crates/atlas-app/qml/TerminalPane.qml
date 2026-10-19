@@ -64,7 +64,8 @@ Rectangle {
         // itself; this mirrors VS Code's terminal behaviour.
         Keys.onShortcutOverride: (event) => {
             const ctrlShift = (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)
-            const own = event.key === Qt.Key_QuoteLeft && (event.modifiers & Qt.ControlModifier)
+            // Ctrl+` (terminal panel) and Ctrl+P (universal bar) stay with Atlas.
+            const own = (event.key === Qt.Key_QuoteLeft || event.key === Qt.Key_P) && (event.modifiers & Qt.ControlModifier)
             event.accepted = !own && !(ctrlShift && (event.key === Qt.Key_C || event.key === Qt.Key_V || event.key === Qt.Key_F))
         }
         Keys.onPressed: (event) => {

@@ -22,13 +22,14 @@ Rectangle {
     }
 
     function viewState() {
-        return { query: query.text, regex: regex.checked, caseSensitive: caseSensitive.checked, globs: globs.text }
+        return { query: query.text, regex: regex.checked, caseSensitive: caseSensitive.checked, globs: globs.text, buildDirs: buildDirs.checked }
     }
     function applyState(state) {
         query.text = state.query || ""
         regex.checked = !!state.regex
         caseSensitive.checked = !!state.caseSensitive
         globs.text = state.globs || ""
+        buildDirs.checked = !!state.buildDirs
         if (query.text) root.run()
         else root.model.clear()
     }
@@ -38,8 +39,16 @@ Rectangle {
         root.run()
     }
 
+    /// Finds TODO and FIXME markers in the project.
+    function searchTodos() {
+        query.text = "\\b(TODO|FIXME)\\b"
+        regex.checked = true
+        caseSensitive.checked = true
+        root.run()
+    }
+
     function run() {
-        root.model.search(root.projectRoot, query.text, regex.checked, caseSensitive.checked, globs.text)
+        root.model.search(root.projectRoot, query.text, regex.checked, caseSensitive.checked, globs.text, buildDirs.checked)
     }
 
     Timer {
@@ -53,12 +62,17 @@ Rectangle {
         anchors.margins: 8
         spacing: 6
 
-        Label {
-            text: qsTr("SUCHE")
-            color: Theme.text
-            font.pixelSize: Theme.smallFontSize
-            font.bold: true
-            Layout.leftMargin: 4
+        RowLayout {
+            Layout.fillWidth: true
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("SUCHE")
+                color: Theme.text
+                font.pixelSize: Theme.smallFontSize
+                font.bold: true
+                Layout.leftMargin: 4
+            }
+            IconButton { glyph: "TODO"; tip: qsTr("TODO und FIXME im Projekt finden"); onClicked: root.searchTodos() }
         }
 
         RowLayout {
@@ -75,12 +89,13 @@ Rectangle {
             }
             IconButton { id: caseSensitive; glyph: "Aa"; tip: qsTr("Groß-/Kleinschreibung beachten"); checkable: true; onToggled: debounce.restart() }
             IconButton { id: regex; glyph: ".*"; tip: qsTr("Regulärer Ausdruck"); checkable: true; onToggled: debounce.restart() }
+            IconButton { id: buildDirs; glyph: "⚙"; tip: qsTr("Build- und Abhängigkeitsordner einbeziehen (target, node_modules, …)"); checkable: true; onToggled: debounce.restart() }
         }
 
         TextField {
             id: globs
             Layout.fillWidth: true
-            placeholderText: qsTr("Dateimuster, z. B. *.md, !target/**")
+            placeholderText: qsTr("Dateimuster, z. B. *.md, !docs/**")
             selectByMouse: true
             font.pixelSize: Theme.smallFontSize
             onTextEdited: debounce.restart()
