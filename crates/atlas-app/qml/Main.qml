@@ -21,16 +21,17 @@ ApplicationWindow {
         base: Theme.editor
         alternateBase: Theme.sidebar
         text: Theme.text
-        button: "#2d2d2d"
+        button: Theme.raised
         buttonText: Theme.text
         highlight: Theme.accent
         highlightedText: "white"
         placeholderText: Theme.textFaint
-        toolTipBase: "#252526"
+        toolTipBase: Theme.raised
         toolTipText: Theme.text
         mid: Theme.border
-        dark: "#111111"
-        light: "#3a3a3a"
+        dark: "#070b14"
+        light: Theme.borderStrong
+        midlight: Theme.border
     }
 
     AppController { id: app }
@@ -318,6 +319,9 @@ ApplicationWindow {
         restoreEditor(layout.editor || {})
         if (layout.sidebarWidth) sidebar.SplitView.preferredWidth = layout.sidebarWidth
         sidebar.visible = layout.sidebarVisible !== undefined ? layout.sidebarVisible : true
+        inspectorVisible = layout.inspector !== undefined ? layout.inspector.visible : true
+        if (layout.inspector && layout.inspector.tab !== undefined) inspector.tab = layout.inspector.tab
+        if (layout.inspector && layout.inspector.width) inspector.SplitView.preferredWidth = layout.inspector.width
         sidebarTabs.currentIndex = layout.sidebarTab || 0
         searchPanel.applyState(layout.search || {})
     }
@@ -327,6 +331,7 @@ ApplicationWindow {
             version: 2,
             editor: editor.serialize(),
             sidebarVisible: sidebar.visible,
+            inspector: { visible: inspectorVisible, tab: inspector.tab, width: inspector.width },
             sidebarWidth: sidebar.width,
             sidebarTab: sidebarTabs.currentIndex,
             search: searchPanel.viewState(),
@@ -529,26 +534,93 @@ ApplicationWindow {
 
     property bool extensionNoticeHidden: false
     Connections { target: app; function onProjectRootChanged() { window.extensionNoticeHidden = false } }
+    /// Right context bar (annotations, links, graph, actions).
+    property bool inspectorVisible: true
     header: Column {
         Rectangle {
             width: parent.width
-            height: 36
+            height: 56
             color: Theme.window
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 8
+            // Brand, aligned with the sidebar.
+            Row {
+                id: brand
+                anchors.left: parent.left
+                anchors.leftMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 12
+                Icon { name: "logo"; size: 28; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
                 Label {
                     text: "Atlas"
                     color: Theme.textStrong
-                    font.bold: true
-                    font.pixelSize: 14
+                    font.pixelSize: 19
+                    font.weight: Font.Medium
+                    anchors.verticalCenter: parent.verticalCenter
                 }
-                Button {
-                    text: qsTr("Projekt öffnen…")
-                    flat: true
-                    onClicked: folderDialog.open()
+            }
+            // Universal bar: a click (or Ctrl+P) opens the palette.
+            Rectangle {
+                id: searchField
+                anchors.verticalCenter: parent.verticalCenter
+                x: Math.max(brand.width + 40, Math.min((parent.width - width) / 2, rightTools.x - width - 16))
+                width: Math.max(220, Math.min(480, parent.width - brand.width - rightTools.width - 90))
+                height: 36
+                radius: 8
+                color: searchHover.hovered ? Theme.hover : Theme.header
+                border.color: Theme.border
+                HoverHandler { id: searchHover; cursorShape: Qt.IBeamCursor }
+                Row {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 14
+                    spacing: 10
+                    Icon { name: "search"; size: 18; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
+                    Label {
+                        text: qsTr("Dateien, Befehle und Aktionen suchen …")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSize
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+                Label {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: searchField.width > 360
+                    text: qsTr("Strg+P")
+                    color: Theme.textFaint
+                    font.pixelSize: Theme.smallFontSize
+                }
+                MouseArea { anchors.fill: parent; onClicked: commandPalette.show("") }
+            }
+            Row {
+                id: rightTools
+                anchors.right: parent.right
+                anchors.rightMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 10
+                AbstractButton {
+                    id: calendarButton
+                    readonly property bool active: !!editor.activeTab && editor.activeTab.kind === "calendar"
+                    implicitHeight: 34
+                    implicitWidth: calendarRow.implicitWidth + 28
+                    hoverEnabled: true
+                    onClicked: window.openCalendar({})
+                    background: Rectangle {
+                        radius: 8
+                        color: calendarButton.active ? Theme.accentSoft : calendarButton.hovered ? Theme.hover : Theme.header
+                        border.color: calendarButton.active ? Qt.rgba(0.24, 0.55, 0.99, 0.5) : Theme.border
+                    }
+                    contentItem: Item {
+                        Row {
+                            id: calendarRow
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Icon { name: "calendar"; size: 17; color: calendarButton.active ? Theme.accent : Theme.text; anchors.verticalCenter: parent.verticalCenter }
+                            Label { text: qsTr("Kalender"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; anchors.verticalCenter: parent.verticalCenter }
+                        }
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 600
+                    ToolTip.text: qsTr("Projektkalender: Woche, Monat, Agenda")
                 }
                 SessionMenu {
                     id: sessionMenu
@@ -558,39 +630,52 @@ ApplicationWindow {
                     onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }
                     onDeleteRequested: (id) => window.deleteSession(id)
                 }
-                Label {
-                    Layout.fillWidth: true
-                    text: app.projectRoot
-                    color: Theme.textFaint
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideMiddle
-                }
                 IconButton {
-                    glyph: "📅"
-                    tip: qsTr("Kalender")
-                    checkable: true
-                    checked: !!editor.activeTab && editor.activeTab.kind === "calendar"
-                    onClicked: window.openCalendar({})
-                }
-                IconButton {
-                    glyph: editor.orientation === Qt.Horizontal ? "⇆" : "⇅"
-                    tip: qsTr("Split-Ausrichtung wechseln")
-                    onClicked: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
-                }
-                IconButton {
-                    glyph: "◫"
-                    tip: qsTr("Editor teilen (Strg+\\)")
-                    onClicked: if (editor.activeGroup) editor.splitGroup(editor.activeGroup)
-                }
-                IconButton {
-                    glyph: "›_"
+                    iconName: "terminal"
+                    iconSize: 18
+                    implicitWidth: 34
+                    implicitHeight: 34
                     tip: qsTr("Terminal ein-/ausblenden (Strg+`)")
                     checkable: true
                     checked: terminalPanel.visible
                     onClicked: window.toggleTerminal()
                 }
+                IconButton {
+                    iconName: "sidebar-right"
+                    iconSize: 18
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    tip: qsTr("Kontextleiste: Anmerkungen, Verknüpfungen, Graph, Aktionen")
+                    checkable: true
+                    checked: window.inspectorVisible
+                    onClicked: { window.inspectorVisible = !window.inspectorVisible; saveTimer.restart() }
+                }
+                IconButton {
+                    iconName: "menu"
+                    iconSize: 20
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    tip: qsTr("Menü")
+                    onClicked: mainMenu.popup(0, height + 4)
+                    Menu {
+                        id: mainMenu
+                        MenuItem { text: qsTr("Projektordner öffnen …\tStrg+O"); onTriggered: folderDialog.open() }
+                        MenuItem { text: qsTr("Alle Befehle …\tStrg+Umschalt+P"); onTriggered: commandPalette.show(">") }
+                        MenuSeparator {}
+                        MenuItem { text: qsTr("Editor teilen\tStrg+\\"); onTriggered: if (editor.activeGroup) editor.splitGroup(editor.activeGroup) }
+                        MenuItem {
+                            text: editor.orientation === Qt.Horizontal ? qsTr("Splits untereinander") : qsTr("Splits nebeneinander")
+                            onTriggered: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
+                        }
+                        MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: { sidebar.visible = !sidebar.visible; saveTimer.restart() } }
+                        MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
+                        MenuSeparator {}
+                        MenuItem { text: qsTr("Kalender-Einstellungen …"); onTriggered: fileActions.calendarSync.openSettings() }
+                        MenuItem { text: qsTr("Erweiterungen verwalten …"); onTriggered: extensionsDialog.open() }
+                        MenuItem { text: qsTr("Externen Editor festlegen …"); onTriggered: fileActions.configureEditor() }
+                    }
+                }
             }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
         }
         // Project extensions run only after the user checked them.
         Banner {
@@ -642,38 +727,47 @@ ApplicationWindow {
         }
     }
 
+    /// Splitter between cards: a gap that shows the accent while dragged.
+    component Gap: Item {
+        implicitWidth: Theme.gap
+        implicitHeight: Theme.gap
+        Rectangle {
+            anchors.centerIn: parent
+            width: parent.width > parent.height ? 36 : 2
+            height: parent.width > parent.height ? 2 : 36
+            radius: 1
+            color: Theme.accent
+            opacity: parent.SplitHandle.pressed ? 1 : parent.SplitHandle.hovered ? 0.6 : 0
+        }
+    }
+
     SplitView {
         anchors.fill: parent
+        anchors.rightMargin: Theme.gap
+        anchors.bottomMargin: 2
         orientation: Qt.Horizontal
-        handle: Rectangle {
-            implicitWidth: 1
-            color: SplitHandle.pressed || SplitHandle.hovered ? Theme.accent : Theme.border
-        }
+        handle: Gap {}
 
         Rectangle {
             id: sidebar
-            SplitView.preferredWidth: 300
-            SplitView.minimumWidth: 180
-            color: Theme.sidebar
+            SplitView.preferredWidth: 280
+            SplitView.minimumWidth: 200
+            color: Theme.window
             onWidthChanged: saveTimer.restart()
+
+            // Explorer (0) or project search (1); the search shows a header
+            // with a way back.
+            TabBar { id: sidebarTabs; visible: false; onCurrentIndexChanged: saveTimer.restart(); TabButton {} TabButton {} }
 
             ColumnLayout {
                 anchors.fill: parent
                 spacing: 0
-                TabBar {
-                    id: sidebarTabs
-                    Layout.fillWidth: true
-                    background: Rectangle { color: Theme.sidebar }
-                    onCurrentIndexChanged: saveTimer.restart()
-                    TabButton { text: qsTr("Explorer"); font.pixelSize: Theme.smallFontSize }
-                    TabButton { text: qsTr("Suche"); font.pixelSize: Theme.smallFontSize }
-                }
                 StackLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     currentIndex: sidebarTabs.currentIndex
                     ColumnLayout {
-                        spacing: 0
+                        spacing: 6
                         PlacesList {
                             Layout.fillWidth: true
                             names: app.placeNames
@@ -682,12 +776,13 @@ ApplicationWindow {
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
                             onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
                         }
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
                         ProjectTree {
                             id: projectTree
                             actions: fileActions
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            Layout.topMargin: 10
+                            color: Theme.window
                             model: treeModel
                             projectName: app.projectName
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
@@ -696,35 +791,102 @@ ApplicationWindow {
                             onPinRequested: (path) => editor.open(path, 0, "tab")
                         }
                     }
-                    SearchPanel {
-                        id: searchPanel
-                        model: searchModel
-                        projectRoot: app.projectRoot
-                        onOpenRequested: (path, line, newPane) => editor.open(path, line, newPane ? "split" : "temporary")
+                    ColumnLayout {
+                        spacing: 0
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 34
+                            Layout.leftMargin: 16
+                            Layout.rightMargin: 8
+                            Label { Layout.fillWidth: true; text: qsTr("Suche"); color: Theme.textStrong; font.bold: true; font.pixelSize: Theme.fontSize }
+                            IconButton { iconName: "close"; iconSize: 14; tip: qsTr("Zurück zum Explorer (Strg+Umschalt+E)"); onClicked: sidebarTabs.currentIndex = 0 }
+                        }
+                        SearchPanel {
+                            id: searchPanel
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            model: searchModel
+                            projectRoot: app.projectRoot
+                            onOpenRequested: (path, line, newPane) => editor.open(path, line, newPane ? "split" : "temporary")
+                        }
                     }
+                }
+
+                // Free space of the project's file system.
+                ColumnLayout {
+                    id: disk
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 18
+                    Layout.rightMargin: 18
+                    Layout.topMargin: 8
+                    spacing: 6
+                    property var usage: ({})
+                    function refresh() { try { usage = JSON.parse(app.diskUsage(app.projectRoot || app.placePaths[0] || "/") || "{}") } catch (e) { usage = {} } }
+                    Component.onCompleted: refresh()
+                    Connections { target: app; function onProjectRootChanged() { disk.refresh() } }
+                    Timer { interval: 60000; running: true; repeat: true; onTriggered: disk.refresh() }
+                    visible: !!usage.total
+                    function gb(bytes) { return (bytes / 1e9).toLocaleString(Qt.locale(), "f", bytes < 1e10 ? 1 : 0) }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 6
+                        radius: 3
+                        color: Theme.raised
+                        Rectangle {
+                            width: disk.usage.total ? parent.width * (1 - disk.usage.free / disk.usage.total) : 0
+                            height: parent.height
+                            radius: 3
+                            color: disk.usage.total && disk.usage.free / disk.usage.total < 0.1 ? Theme.warn : "#4cc3ff"
+                        }
+                    }
+                    Label {
+                        text: qsTr("%1 GB frei von %2 GB").arg(disk.gb(disk.usage.free || 0)).arg(disk.gb(disk.usage.total || 0))
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.topMargin: 12; Layout.preferredHeight: 1; color: Theme.border }
+                AbstractButton {
+                    id: openProject
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 46
+                    hoverEnabled: true
+                    onClicked: folderDialog.open()
+                    background: Rectangle { color: openProject.hovered ? Theme.hover : "transparent" }
+                    contentItem: Item {
+                        Row {
+                            x: 18
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 12
+                            Icon { name: "folder-open"; size: 18; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
+                            Label { text: qsTr("Projektordner öffnen"); color: Theme.text; font.pixelSize: Theme.fontSize; anchors.verticalCenter: parent.verticalCenter }
+                        }
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 600
+                    ToolTip.text: app.projectRoot || qsTr("Strg+O")
                 }
             }
         }
 
         SplitView {
             SplitView.fillWidth: true
+            SplitView.minimumWidth: 300
             orientation: Qt.Vertical
-            handle: Rectangle {
-                implicitHeight: 1
-                color: SplitHandle.pressed || SplitHandle.hovered ? Theme.accent : Theme.border
-            }
+            handle: Gap {}
 
             EditorArea {
                 actions: fileActions
                 id: editor
                 app: app
+                onQuickOpenRequested: commandPalette.show("")
                 SplitView.fillHeight: true
                 SplitView.minimumHeight: 120
             }
 
             TerminalPanel {
                 id: terminalPanel
-                SplitView.preferredHeight: 280
+                SplitView.preferredHeight: 240
                 SplitView.minimumHeight: 90
                 workingDirectory: app.projectRoot
                 actions: fileActions
@@ -733,16 +895,26 @@ ApplicationWindow {
                 onTerminalCountChanged: saveTimer.restart()
             }
         }
+
+        Inspector {
+            id: inspector
+            visible: window.inspectorVisible
+            SplitView.preferredWidth: 400
+            SplitView.minimumWidth: 260
+            app: app
+            editor: editor
+            actions: fileActions
+            onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
+        }
     }
 
     footer: Rectangle {
         height: 24
         color: Theme.window
-        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: Theme.border }
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
+            anchors.leftMargin: 14
+            anchors.rightMargin: 14
             spacing: 16
             Label {
                 // Shows the QPA platform plugin: must be "wayland" on Hyprland.
@@ -753,13 +925,13 @@ ApplicationWindow {
             Label {
                 text: treeModel.loading ? qsTr("Lade Verzeichnisse …")
                     : qsTr("%1 Zeilen im Baum · %2 ms").arg(treeModel.count).arg(treeModel.lastLoadMs)
-                color: Theme.textMuted
+                color: Theme.textFaint
                 font.pixelSize: Theme.smallFontSize
             }
             Label {
                 visible: terminalPanel.terminalCount > 0
                 text: qsTr("%n Terminal(s)", "", terminalPanel.terminalCount)
-                color: Theme.textMuted
+                color: Theme.textFaint
                 font.pixelSize: Theme.smallFontSize
             }
             Item { Layout.fillWidth: true }

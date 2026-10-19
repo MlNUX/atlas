@@ -15,6 +15,10 @@ Rectangle {
     required property string path
     /// 0 = backlinks, 1 = graph.
     property int tab: 0
+    /// Own tab bar (off when a surrounding panel switches the tab).
+    property bool showTabs: true
+    /// Graph only, without depth switch and legend (overview cards).
+    property bool compact: false
     property int depth: 1
     property var backlinkList: []
     property var graph: ({ nodes: [], edges: [], truncated: 0 })
@@ -104,10 +108,7 @@ Rectangle {
 
     // ------------------------------------------------------------- graph
 
-    readonly property var kindColors: ({
-        markdown: "#4fa3ff", pdf: "#ff6b6b", text: "#9da5b4", image: "#c792ea",
-        dir: "#d7ba7d", binary: "#9da5b4", missing: "#5c6370", terminal: "#9da5b4"
-    })
+    readonly property var kindColors: Theme.kindColors
 
     /// Radial layout: the file in the middle, direct neighbours on a ring,
     /// second-degree neighbours outside, near the neighbour they hang on.
@@ -155,6 +156,7 @@ Rectangle {
         spacing: 0
         TabBar {
             id: tabs
+            visible: panel.showTabs
             Layout.fillWidth: true
             currentIndex: panel.tab
             onCurrentIndexChanged: panel.tab = currentIndex
@@ -321,6 +323,7 @@ Rectangle {
             ColumnLayout {
                 spacing: 0
                 RowLayout {
+                    visible: !panel.compact
                     Layout.fillWidth: true
                     Layout.margins: 6
                     spacing: 4
@@ -353,7 +356,7 @@ Rectangle {
                                 const a = pos[e.from], b = pos[e.to]
                                 if (!a || !b) continue
                                 ctx.beginPath()
-                                ctx.strokeStyle = e.quotes > 0 ? "rgba(255, 212, 0, 0.8)" : "rgba(130, 138, 150, 0.6)"
+                                ctx.strokeStyle = e.quotes > 0 ? "rgba(255, 212, 0, 0.75)" : "rgba(120, 140, 175, 0.45)"
                                 ctx.lineWidth = Math.min(4, 1 + (e.count - 1) * 0.6) + (e.quotes > 0 ? 0.5 : 0)
                                 ctx.moveTo(a.x, a.y)
                                 ctx.lineTo(b.x, b.y)
@@ -379,7 +382,7 @@ Rectangle {
                             required property var modelData
                             required property int index
                             readonly property var p: panel.positions[index] || { x: 0, y: 0 }
-                            readonly property real radius: index === 0 ? 9 : modelData.depth === 1 ? 6 : 4.5
+                            readonly property real radius: index === 0 ? 17 : modelData.depth === 1 ? 10 : 6
                             x: p.x - width / 2
                             y: p.y - radius
                             width: 110
@@ -390,9 +393,16 @@ Rectangle {
                                 height: width
                                 radius: width / 2
                                 color: node.modelData.missing ? "transparent" : (panel.kindColors[node.modelData.kind] || "#9da5b4")
-                                border.width: node.index === 0 ? 2 : node.modelData.missing ? 1 : 0
-                                border.color: node.modelData.missing ? "#5c6370" : "white"
+                                border.width: node.index === 0 ? 3 : node.modelData.missing ? 1 : 0
+                                border.color: node.modelData.missing ? Theme.textFaint : Qt.rgba(0.24, 0.55, 0.99, 0.35)
                                 opacity: node.modelData.depth === 2 ? 0.75 : 1
+                                Icon {
+                                    anchors.centerIn: parent
+                                    visible: node.radius >= 10 && !node.modelData.missing
+                                    name: Theme.fileIcon(node.modelData.label + (node.modelData.kind === "pdf" ? ".pdf" : node.modelData.kind === "markdown" ? ".md" : ""), node.modelData.kind === "dir")[0]
+                                    color: "white"
+                                    size: node.index === 0 ? 18 : 12
+                                }
                             }
                             Label {
                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -435,6 +445,7 @@ Rectangle {
                 }
                 // Legend.
                 Flow {
+                    visible: !panel.compact
                     Layout.fillWidth: true
                     Layout.margins: 6
                     spacing: 10

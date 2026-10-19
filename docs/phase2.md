@@ -351,3 +351,31 @@ Hyprland (die Tests laufen gegen einen nachgebauten CalDAV-Server bzw.
 offscreen), dazu weiterhin die offenen Punkte aus [phase1.md](phase1.md).
 Komplexe Serienausnahmen (einzelne Vorkommen getrennt bearbeiten) und
 native Desktop-Benachrichtigungen bleiben wie geplant für später.
+
+### Nachtrag – Design nach dem Gesamt-Mockup
+
+Oberfläche an das dunkle „Navy“-Mockup angeglichen (Screenshot:
+[previews/14-atlas-design-navy.png](../previews/14-atlas-design-navy.png)):
+
+- **Farben und Maße** zentral in `qml/Theme.qml`; Splits, Terminal und
+  Kontextleiste als abgerundete Karten mit kleinem Abstand.
+- **Linien-Icons** (`qml/Icon.qml`, SVG, beliebig einfärbbar) statt Emoji –
+  in Orten, Projektbaum (Dateiart farbig: PDF rot, Markdown blau, Tabellen
+  grün), Tabs und Werkzeugleisten.
+- **Kopfzeile**: Logo, Suchfeld in der Mitte (öffnet die Arbeitsleiste),
+  „Kalender“, „Sitzung: …“, Terminal, Kontextleiste und Menü (Projekt
+  öffnen, Splits, Seitenleiste, Einstellungen).
+- **Seitenleiste**: „Orte“ (jetzt auch Bilder, Musik, Videos), Projektordner
+  mit hervorgehobener Projektzeile, freier Speicherplatz des Projekt-
+  Dateisystems, „Projektordner öffnen“. Die Projektsuche öffnet sich an
+  gleicher Stelle (Strg+Umschalt+F) mit Rückweg zum Explorer.
+- **Kontextleiste** rechts (neu, `qml/Inspector.qml`) für das aktive
+  Dokument: *Anmerkungen* (Karten der zuletzt aktiven PDF mit Farbe,
+  Kommentar, Seite und Zeit, Klick springt hin; darunter lokaler Graph und
+  eigene Aktionen), *Verknüpfungen* (Rückverweise mit Filtern), *Lokaler
+  Graph*, *Aktionen* (eingebaute wie „Zitat übernehmen“, „PDF-Kopie
+  exportieren“, „Als Aufgabe einplanen“ und die eigenen Aktionen).
+  Sichtbarkeit, Reiter und Breite stehen in der Session.
+- **Markdown-Vorschau**: Überschriften mit `#`/`##`, farbige Tag-Chips,
+  Zitate als Karte mit goldenem Rand und Quellen-Chip, eigene Checkboxen.
+- Terminal in den Farben des Designs.

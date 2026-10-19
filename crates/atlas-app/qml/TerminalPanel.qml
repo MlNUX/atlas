@@ -19,7 +19,10 @@ Rectangle {
 
     signal hideRequested()
 
-    color: Theme.panel
+    color: Theme.terminal
+    radius: Theme.radius
+    border.color: Theme.border
+    clip: true
 
     Component {
         id: groupComponent
@@ -91,24 +94,15 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: 1
         spacing: 0
-
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 30
-            Layout.leftMargin: 12
-            Layout.rightMargin: 6
-            spacing: 2
-
-            Label {
-                text: qsTr("TERMINAL")
-                color: Theme.textStrong
-                font.pixelSize: Theme.smallFontSize
-                font.bold: true
-                Layout.rightMargin: 12
-            }
+            Layout.preferredHeight: 38
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            spacing: 4
 
             Repeater {
                 model: panel.groups
@@ -116,34 +110,54 @@ Rectangle {
                     id: tab
                     required property var modelData
                     required property int index
-                    implicitHeight: 24
-                    implicitWidth: Math.min(260, tabLabel.implicitWidth + 24)
+                    readonly property bool current: index === panel.currentIndex
+                    implicitHeight: 30
+                    implicitWidth: Math.min(280, tabRow.implicitWidth + 24)
                     hoverEnabled: true
                     onClicked: { panel.currentIndex = index; panel.focusTerminal() }
                     background: Rectangle {
-                        radius: 4
-                        color: tab.index === panel.currentIndex ? Theme.selection : tab.hovered ? Theme.hover : "transparent"
+                        radius: 7
+                        color: tab.current ? Theme.raised : tab.hovered ? Theme.hover : "transparent"
+                        border.color: tab.current ? Theme.border : "transparent"
                     }
-                    contentItem: Text {
-                        id: tabLabel
-                        text: "›_ " + tab.modelData.title + (tab.modelData.terminals.length > 1 ? "  ⫴" + tab.modelData.terminals.length : "")
-                        color: tab.index === panel.currentIndex ? Theme.textStrong : Theme.textMuted
-                        font.pixelSize: Theme.smallFontSize
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
+                    contentItem: Item {
+                        Row {
+                            id: tabRow
+                            anchors.verticalCenter: parent.verticalCenter
+                            x: 10
+                            spacing: 8
+                            Icon { name: "terminal"; size: 15; color: tab.current ? Theme.text : Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
+                            Text {
+                                text: tab.modelData.title + (tab.modelData.terminals.length > 1 ? "  ⫴" + tab.modelData.terminals.length : "")
+                                color: tab.current ? Theme.textStrong : Theme.textMuted
+                                font.pixelSize: Theme.fontSize
+                                width: Math.min(implicitWidth, 200)
+                                elide: Text.ElideRight
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
                     }
                 }
             }
+            IconButton { iconName: "plus"; tip: qsTr("Neues Terminal (Strg+Umschalt+`)"); onClicked: panel.newTerminal() }
 
             Item { Layout.fillWidth: true }
 
-            IconButton { glyph: "+"; tip: qsTr("Neues Terminal (Strg+Umschalt+`)"); onClicked: panel.newTerminal() }
-            IconButton { glyph: "◫"; tip: qsTr("Terminal rechts teilen"); onClicked: panel.splitTerminal(false) }
-            IconButton { glyph: "⬒"; tip: qsTr("Terminal unten teilen"); onClicked: panel.splitTerminal(true) }
-            IconButton { glyph: "🗑"; tip: qsTr("Terminal beenden"); enabled: panel.terminalCount > 0; onClicked: panel.killTerminal() }
-            IconButton { glyph: "⌄"; tip: qsTr("Panel ausblenden (Strg+`)"); onClicked: panel.hideRequested() }
+            Label {
+                visible: !!panel.currentGroup
+                text: panel.currentGroup ? panel.currentGroup.title : ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                Layout.maximumWidth: 220
+                elide: Text.ElideMiddle
+                Layout.rightMargin: 8
+            }
+            IconButton { iconName: "split"; tip: qsTr("Terminal rechts teilen"); onClicked: panel.splitTerminal(false) }
+            IconButton { iconName: "split-vertical"; tip: qsTr("Terminal unten teilen"); onClicked: panel.splitTerminal(true) }
+            IconButton { iconName: "trash"; tip: qsTr("Terminal beenden"); enabled: panel.terminalCount > 0; onClicked: panel.killTerminal() }
+            IconButton { iconName: "chevron-down"; tip: qsTr("Panel ausblenden (Strg+`)"); onClicked: panel.hideRequested() }
         }
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
         StackLayout {
             id: stack

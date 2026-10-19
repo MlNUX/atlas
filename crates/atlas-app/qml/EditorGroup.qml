@@ -27,9 +27,14 @@ Rectangle {
     signal openInSplit(string path, int line, string side, var state)
     signal changed()
 
+    /// "+" in the tab strip: find a file to open.
+    signal quickOpenRequested()
+
     color: Theme.editor
-    border.color: active ? Theme.accent : temporary ? Theme.warn : "transparent"
-    border.width: active || temporary ? 1 : 0
+    radius: Theme.radius
+    clip: true
+    border.color: temporary ? Theme.warn : active ? Qt.rgba(0.24, 0.55, 0.99, 0.55) : Theme.border
+    border.width: 1
 
     Component {
         id: tabComponent
@@ -150,39 +155,60 @@ Rectangle {
         anchors.margins: group.border.width
         spacing: 0
 
-        // Tab strip.
+        // Tab strip: tabs as small cards, "+" to open another file.
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 32
-            color: Theme.window
+            Layout.preferredHeight: 44
+            color: Theme.header
+            radius: Theme.radius
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.radius; color: Theme.header }
             RowLayout {
                 anchors.fill: parent
-                spacing: 0
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                spacing: 2
                 ListView {
                     id: tabStrip
-                    Layout.fillWidth: true
+                    Layout.preferredWidth: Math.min(contentWidth, parent.width - toolsRow.width - 50)
                     Layout.fillHeight: true
                     orientation: ListView.Horizontal
                     clip: true
+                    spacing: 4
                     model: group.tabs.length
                     boundsBehavior: Flickable.StopAtBounds
-                    delegate: Rectangle {
+                    delegate: Item {
                         id: tabItem
                         required property int index
                         readonly property var tab: group.tabs[index] || null
                         readonly property bool isCurrent: index === group.current
-                        width: Math.min(220, tabLabel.implicitWidth + 44)
+                        readonly property var fileIcon: !tab ? ["document", Theme.textMuted]
+                            : tab.kind === "calendar" ? ["calendar", Theme.accent]
+                            : tab.kind === "terminal" ? ["terminal", Theme.textMuted]
+                            : Theme.fileIcon(tab.title, tab.kind === "dir" || tab.kind === "trash")
+                        width: Math.min(240, tabLabel.implicitWidth + 72)
                         height: tabStrip.height
-                        color: isCurrent ? Theme.editor : tabHover.hovered ? Theme.hover : Theme.window
-                        Rectangle { visible: tabItem.isCurrent && group.active; width: parent.width; height: 2; color: Theme.accent }
-                        Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.border }
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.topMargin: 6
+                            anchors.bottomMargin: 6
+                            radius: 8
+                            color: tabItem.isCurrent ? Theme.raised : tabHover.hovered ? Theme.hover : "transparent"
+                            border.color: tabItem.isCurrent ? (group.active ? Qt.rgba(0.24, 0.55, 0.99, 0.4) : Theme.border) : "transparent"
+                        }
                         HoverHandler { id: tabHover }
+                        Icon {
+                            x: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: tabItem.fileIcon[0]
+                            color: tabItem.fileIcon[1]
+                            size: 16
+                        }
                         Text {
                             id: tabLabel
                             anchors.verticalCenter: parent.verticalCenter
-                            x: 12
-                            width: parent.width - 40
-                            text: tabItem.tab ? (tabItem.tab.kind === "dir" ? "📁 " : "") + tabItem.tab.title : ""
+                            x: 36
+                            width: parent.width - 64
+                            text: tabItem.tab ? tabItem.tab.title : ""
                             font.italic: tabItem.tab ? tabItem.tab.preview : false
                             font.pixelSize: Theme.fontSize
                             color: tabItem.isCurrent ? Theme.textStrong : Theme.textMuted
@@ -201,10 +227,11 @@ Rectangle {
                             anchors.right: parent.right
                             anchors.rightMargin: 6
                             anchors.verticalCenter: parent.verticalCenter
-                            implicitWidth: 18
-                            implicitHeight: 18
+                            implicitWidth: 20
+                            implicitHeight: 20
                             visible: tabItem.isCurrent || tabHover.hovered
-                            glyph: "✕"
+                            iconName: "close"
+                            iconSize: 13
                             tip: qsTr("Tab schließen (Strg+W)")
                             onClicked: group.closeTab(tabItem.index)
                         }
@@ -213,8 +240,14 @@ Rectangle {
                         ToolTip.text: tabItem.tab ? tabItem.tab.path + (tabItem.tab.preview ? qsTr("\n(Vorschau – Doppelklick zum Anheften)") : "") : ""
                     }
                 }
+                IconButton { iconName: "plus"; tip: qsTr("Datei öffnen (Strg+P)"); onClicked: group.quickOpenRequested() }
+                Item { Layout.fillWidth: true }
+                Row {
+                id: toolsRow
+                spacing: 2
                 Label {
                     visible: group.temporary
+                    anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("Temporär")
                     color: Theme.warn
                     font.pixelSize: Theme.smallFontSize
@@ -222,12 +255,13 @@ Rectangle {
                 }
                 IconButton {
                     visible: group.temporary
-                    glyph: "📌"
+                    iconName: "bookmark"
                     tip: qsTr("Split anheften")
                     onClicked: { group.temporary = false; group.changed() }
                 }
-                IconButton { glyph: "◫"; tip: qsTr("Split rechts (Strg+\\)"); onClicked: group.splitRequested() }
-                IconButton { glyph: "✕"; tip: qsTr("Split schließen"); onClicked: group.closeRequested() }
+                IconButton { iconName: "split"; tip: qsTr("Split rechts (Strg+\\)"); onClicked: group.splitRequested() }
+                IconButton { iconName: "close"; tip: qsTr("Split schließen"); onClicked: group.closeRequested() }
+                }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
         }
@@ -235,22 +269,24 @@ Rectangle {
         // Navigation: back/forward and breadcrumbs of the current tab.
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 26
-            color: Theme.editor
-            visible: !!group.currentTab
+            Layout.preferredHeight: 28
+            color: Theme.header
+            visible: !!group.currentTab && group.currentTab.kind !== "calendar"
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 4
                 anchors.rightMargin: 8
                 spacing: 2
                 IconButton {
-                    glyph: "←"
+                    iconName: "arrow-left"
+                    iconSize: 14
                     tip: qsTr("Zurück (Alt+←)")
                     enabled: group.currentTab ? group.currentTab.canGoBack : false
                     onClicked: group.currentTab.goBack()
                 }
                 IconButton {
-                    glyph: "→"
+                    iconName: "arrow-right"
+                    iconSize: 14
                     tip: qsTr("Vor (Alt+→)")
                     enabled: group.currentTab ? group.currentTab.canGoForward : false
                     onClicked: group.currentTab.goForward()

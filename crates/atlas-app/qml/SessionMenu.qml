@@ -22,23 +22,34 @@ AbstractButton {
 
     enabled: !!app.projectRoot && app.persistSession
     hoverEnabled: true
-    implicitHeight: 26
-    implicitWidth: Math.min(260, label.implicitWidth + 28)
-    onClicked: menu.popup(0, height)
+    implicitHeight: 34
+    implicitWidth: Math.min(280, row.implicitWidth + 24)
+    onClicked: menu.popup(0, height + 4)
 
     background: Rectangle {
-        radius: 4
-        color: root.down || menu.visible ? "#3c3f41" : root.hovered ? Theme.hover : "transparent"
+        radius: 8
+        color: root.down || menu.visible ? Theme.selection : root.hovered ? Theme.hover : Theme.header
         border.color: Theme.border
     }
-    contentItem: Text {
-        id: label
-        leftPadding: 8
-        text: "◷  " + (root.app.activeSessionName || qsTr("Session")) + "  ▾"
-        color: root.enabled ? Theme.text : Theme.textFaint
-        font.pixelSize: Theme.smallFontSize
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+    contentItem: Item {
+        implicitWidth: row.implicitWidth
+        Row {
+            id: row
+            anchors.verticalCenter: parent.verticalCenter
+            x: 2
+            spacing: 8
+            Icon { name: "session"; size: 16; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
+            Text {
+                id: label
+                text: qsTr("Sitzung: %1").arg(root.app.activeSessionName || "–")
+                color: root.enabled ? Theme.text : Theme.textFaint
+                font.pixelSize: Theme.fontSize
+                elide: Text.ElideRight
+                width: Math.min(implicitWidth, 200)
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Icon { name: "chevron-down"; size: 14; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
+        }
     }
     ToolTip.visible: hovered && !menu.visible
     ToolTip.delay: 600

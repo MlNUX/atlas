@@ -1,37 +1,77 @@
 /* SPDX-FileCopyrightText: 2026 Minux
    SPDX-License-Identifier: GPL-3.0-or-later */
-:root { color-scheme: dark; }
-html, body { margin: 0; background: #1f1f1f; color: #cccccc; }
-body { font: 15px/1.6 system-ui, "Noto Sans", sans-serif; }
+/* Colours follow qml/Theme.qml (navy design). */
+:root {
+  color-scheme: dark;
+  --bg: #0f1726; --raised: #152036; --border: #1e2a40; --text: #c5d0e0; --strong: #eef3fb;
+  --muted: #8a97ad; --accent: #3d8bfd; --link: #5aa2ff; --quote: #e0b33a; --error: #f2575f;
+}
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 15px/1.65 system-ui, "Inter", "Noto Sans", sans-serif; }
 main { max-width: 860px; margin: 0 auto; padding: 24px 32px 50vh; }
-h1, h2, h3, h4, h5, h6 { color: #e7e7e7; line-height: 1.25; margin: 1.4em 0 0.6em; }
-h1 { font-size: 1.9em; border-bottom: 1px solid #2b2b2b; padding-bottom: 0.3em; }
-h2 { font-size: 1.45em; border-bottom: 1px solid #2b2b2b; padding-bottom: 0.25em; }
-a { color: #4daafc; text-decoration: none; }
+h1, h2, h3, h4, h5, h6 { color: var(--strong); line-height: 1.25; margin: 1.5em 0 0.6em; font-weight: 600; }
+h1 { font-size: 1.75em; }
+h2 { font-size: 1.35em; }
+h1::before, h2::before { color: var(--accent); font-weight: 500; margin-right: 0.45em; }
+h1::before { content: "#"; }
+h2::before { content: "##"; }
+main > h1:first-child, .atlas-tags + h1 { margin-top: 0.4em; }
+a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
-a.wikilink { border-bottom: 1px dashed rgba(77, 170, 252, 0.5); }
+a.wikilink { border-bottom: 1px dashed rgba(90, 162, 255, 0.5); }
 a.wikilink:hover { text-decoration: none; border-bottom-style: solid; }
-a[data-atlas-annot] { color: #e6c84f; }
-a.broken { color: #f85149; text-decoration: line-through dotted; }
+a.broken { color: var(--error); text-decoration: line-through dotted; }
 a.broken::after { content: " ⚠"; font-size: 0.8em; }
-code { font: 0.9em/1.4 monospace; background: #2b2b2b; padding: 0.1em 0.35em; border-radius: 4px; }
-pre { background: #181818; border: 1px solid #2b2b2b; border-radius: 6px; padding: 12px 14px; overflow: auto; }
+code { font: 0.9em/1.4 monospace; background: var(--raised); padding: 0.1em 0.35em; border-radius: 5px; }
+pre { background: #0b111d; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; overflow: auto; }
 pre code { background: none; padding: 0; }
 pre code.hljs { background: none; padding: 0; }
 pre.mermaid { background: #f6f6f6; color: #1f1f1f; text-align: center; }
-blockquote { margin: 0; padding: 0 1em; color: #9d9d9d; border-left: 3px solid #37373d; }
+
+/* Quotes as cards; PDF quotes get the gold bar and their source as a chip. */
+blockquote {
+  margin: 1em 0; padding: 0.8em 1.1em; color: var(--text);
+  background: rgba(224, 179, 58, 0.08); border: 1px solid var(--border);
+  border-left: 3px solid var(--quote); border-radius: 8px;
+}
+blockquote > p:first-child::before { content: "“ "; color: var(--quote); font-weight: 700; font-size: 1.2em; }
+blockquote p { margin: 0.35em 0; }
+a[data-atlas-annot] {
+  display: inline-block; color: var(--strong); background: var(--raised); border: 1px solid var(--border);
+  border-radius: 7px; padding: 1px 10px; font-size: 0.9em;
+}
+a[data-atlas-annot]::before { content: "↗ "; color: var(--link); }
+a[data-atlas-annot]:hover { text-decoration: none; border-color: var(--accent); }
+
 table { border-collapse: collapse; margin: 1em 0; display: block; overflow: auto; }
-th, td { border: 1px solid #37373d; padding: 6px 12px; }
-th { background: #252526; color: #e7e7e7; }
-tr:nth-child(even) td { background: #232323; }
-img { max-width: 100%; }
-hr { border: 0; border-top: 1px solid #2b2b2b; }
+th, td { border: 1px solid var(--border); padding: 6px 12px; }
+th { background: var(--raised); color: var(--strong); }
+tr:nth-child(even) td { background: #121c2e; }
+img { max-width: 100%; border-radius: 6px; }
+hr { border: 0; border-top: 1px solid var(--border); }
 li.task-list-item, ul > li > input[type=checkbox] { list-style: none; }
-input[type=checkbox] { margin-right: 0.4em; }
+ul:has(> li > input[type=checkbox]) { padding-left: 0.4em; }
+input[type=checkbox] {
+  appearance: none; width: 16px; height: 16px; margin: 0 0.6em 0 0; vertical-align: -3px;
+  border: 1.5px solid var(--muted); border-radius: 4px; background: transparent;
+}
+input[type=checkbox]:checked { background: var(--accent); border-color: var(--accent); }
+input[type=checkbox]:checked::after { content: "✓"; display: block; color: white; font-size: 12px; line-height: 13px; text-align: center; }
+
 .atlas-tags { margin-bottom: 1em; }
-.tag { display: inline-block; font-size: 0.8em; color: #9dd1ff; background: #04395e; border-radius: 10px; padding: 1px 9px; margin: 0 6px 4px 0; }
+.tag {
+  display: inline-block; font-size: 0.82em; border-radius: 7px; padding: 2px 10px; margin: 0 6px 6px 0;
+  color: #9cc7ff; background: rgba(61, 139, 253, 0.16); border: 1px solid rgba(61, 139, 253, 0.3);
+}
+.tag:nth-of-type(5n+2) { color: #c9a8ff; background: rgba(185, 140, 245, 0.15); border-color: rgba(185, 140, 245, 0.3); }
+.tag:nth-of-type(5n+3) { color: #7fdcaa; background: rgba(52, 194, 122, 0.14); border-color: rgba(52, 194, 122, 0.3); }
+.tag:nth-of-type(5n+4) { color: #ff9ca1; background: rgba(242, 87, 95, 0.14); border-color: rgba(242, 87, 95, 0.3); }
+.tag:nth-of-type(5n+5) { color: #f3cf74; background: rgba(224, 179, 58, 0.14); border-color: rgba(224, 179, 58, 0.3); }
 .math.display { display: block; text-align: center; margin: 1em 0; overflow-x: auto; }
-.math-error { color: #f85149; font-family: monospace; }
+.math-error { color: var(--error); font-family: monospace; }
 a.line-marker { display: block; height: 0; }
-.footnote-definition { font-size: 0.9em; color: #9d9d9d; }
-::selection { background: #04395e; }
+.footnote-definition { font-size: 0.9em; color: var(--muted); }
+::selection { background: #1d3a63; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #22304a; border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-track { background: transparent; }
