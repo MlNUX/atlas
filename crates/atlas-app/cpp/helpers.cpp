@@ -9,6 +9,16 @@
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QImage>
+#include <QtGui/QMouseEvent>
+#include <QtGui/QWindow>
+#include <QtCore/QCoreApplication>
+#include <QtCore/QPointer>
+#include <QtCore/QTimer>
+
+// Exported by QtGui for QTest (qtestmouse.h); feeds a mouse event through
+// QWindowSystemInterface.
+Q_GUI_EXPORT void qt_handleMouseEvent(QWindow* window, const QPointF& local, const QPointF& global, Qt::MouseButtons state,
+                                      Qt::MouseButton button, QEvent::Type type, Qt::KeyboardModifiers mods, int timestamp);
 #include <QtQuick/QQuickWindow>
 #include <QtCore/QFile>
 #include <QtCore/QMimeDatabase>
@@ -53,6 +63,27 @@ bool saveWindowImage(QObject* window, const QString& path)
     return quickWindow->grabWindow().save(path, "PNG");
 }
 
+
+void postMouse(QObject* window, int kind, double x, double y, int delayMs)
+{
+    QPointer<QWindow> w = qobject_cast<QWindow*>(window);
+    if (!w)
+        return;
+    // Through the window system like a real mouse (as QTest does), so the
+    // application tracks the button state and drags see the events. Each
+    // event has its own timer: they keep firing inside a drag's event loop.
+    QTimer::singleShot(delayMs, [w, kind, x, y] {
+        if (!w)
+            return;
+        const QPointF local(x, y);
+        const QEvent::Type type = kind == 0 ? QEvent::MouseButtonPress : kind == 1 ? QEvent::MouseMove : QEvent::MouseButtonRelease;
+        const Qt::MouseButton button = kind == 1 ? Qt::NoButton : Qt::LeftButton;
+        const Qt::MouseButtons buttons = kind == 2 ? Qt::NoButton : Qt::LeftButton;
+        static int timestamp = 0;
+        timestamp += 50;
+        qt_handleMouseEvent(w, local, w->mapToGlobal(local), buttons, button, type, Qt::NoModifier, timestamp);
+    });
+}
 
 void clipboardSetFiles(const QStringList& paths, bool cut)
 {

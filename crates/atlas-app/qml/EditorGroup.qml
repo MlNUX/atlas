@@ -38,14 +38,13 @@ Rectangle {
     border.color: temporary ? Theme.warn : active ? Qt.rgba(0.24, 0.55, 0.99, 0.55) : Theme.border
     border.width: 1
 
+    // Used only without an EditorArea; normally the area owns documents.
     Component {
         id: tabComponent
-        DocumentView {
-            app: group.app
-            actions: group.actions
-            anchors.fill: parent
-        }
+        DocumentView { anchors.fill: parent }
     }
+    // Documents are owned by the area: close the ones still shown here.
+    Component.onDestruction: { for (const t of tabs) if (t) t.destroy() }
 
     function indexOfPath(path) { return tabs.findIndex(t => t.path === path) }
 
@@ -73,7 +72,9 @@ Rectangle {
             changed()
             return tab
         }
-        const tab = tabComponent.createObject(content, { path: path, line: line || 0, preview: mode === "preview" })
+        const props = { app: group.app, actions: group.actions, path: path, line: line || 0, preview: mode === "preview" }
+        const tab = group.editorArea ? group.editorArea.createDocument(props) : tabComponent.createObject(content, props)
+        tab.parent = content
         if (state) tab.applyState(state)
         // Connections go through `ownerGroup`, so a tab moved to another
         // split talks to its new group.
@@ -136,6 +137,17 @@ Rectangle {
     }
 
     function closeCurrent() { closeTab(current) }
+
+    /// The tab dragged by `source` (a tab of any strip): {group, tab}, or
+    /// null for other drags (files from the explorer, …).
+    function tabDrag(source) {
+        return source && source.atlasTab === true && source.tab ? { group: source.sourceGroup, tab: source.tab } : null
+    }
+    /// Delegate of tab `index` in the strip, scrolled into view (for tests).
+    function tabItemAt(index) {
+        tabStrip.positionViewAtIndex(index, ListView.Contain)
+        return tabStrip.itemAtIndex(index)
+    }
     function nextTab(step) { if (tabs.length) current = (current + step + tabs.length) % tabs.length }
 
     function serialize() {
@@ -200,18 +212,22 @@ Rectangle {
                 id: stripDrop
                 anchors.fill: parent
                 keys: ["text/x-atlas-tab"]
-                // Position among the tabs (the strip's coordinates).
-                readonly property int at: {
-                    if (!containsDrag) return -1
-                    const x = mapToItem(tabStrip.contentItem, drag.x, 0).x
+                /// Position among the tabs for `x` (this item's coordinates).
+                function indexAt(x) {
+                    const cx = mapToItem(tabStrip.contentItem, x, 0).x
                     for (let i = 0; i < tabStrip.count; ++i) {
                         const it = tabStrip.itemAtIndex(i)
-                        if (it && x < it.x + it.width / 2) return i
+                        if (it && cx < it.x + it.width / 2) return i
                     }
                     return tabStrip.count
                 }
+                readonly property int at: containsDrag ? indexAt(drag.x) : -1
+                // Computed from the drop itself: `drag` is reset by then.
                 onDropped: (drop) => {
-                    if (group.editorArea && group.editorArea.draggedTab) group.editorArea.moveTab(group, at, "")
+                    const d = group.tabDrag(drop.source)
+                    if (!d || !group.editorArea) return
+                    group.editorArea.draggedTab = d
+                    group.editorArea.moveTab(group, indexAt(drop.x), "")
                     drop.accept(Qt.MoveAction)
                 }
             }
@@ -244,6 +260,9 @@ Rectangle {
                         required property int index
                         readonly property var tab: group.tabs[index] || null
                         readonly property bool isCurrent: index === group.current
+                        // Read by drop areas: what is being dragged.
+                        readonly property bool atlasTab: true
+                        readonly property var sourceGroup: group
                         readonly property var fileIcon: !tab ? ["document", Theme.textMuted]
                             : tab.kind === "calendar" ? ["calendar", Theme.accent]
                             : tab.kind === "terminal" ? ["terminal", Theme.textMuted]
@@ -259,18 +278,36 @@ Rectangle {
                             border.color: tabItem.isCurrent ? (group.active ? Qt.rgba(0.24, 0.55, 0.99, 0.4) : Theme.border) : "transparent"
                         }
                         HoverHandler { id: tabHover }
-                        // Drag source: to another position, another split, or
-                        // (as a file) onto the terminal or the calendar.
-                        Item { id: tabDragProxy }
-                        Drag.active: tabMouse.drag.active
-                        Drag.dragType: Drag.Automatic
-                        Drag.supportedActions: Qt.MoveAction | Qt.CopyAction | Qt.LinkAction
-                        Drag.proposedAction: Qt.MoveAction
-                        Drag.mimeData: {
-                            const data = { "text/x-atlas-tab": tabItem.tab ? tabItem.tab.path : "" }
-                            if (tabItem.tab && group.actions && ["terminal", "calendar", "trash", ""].indexOf(tabItem.tab.kind) < 0)
-                                data["text/uri-list"] = group.actions.uriList([tabItem.tab.path])
-                            return data
+                        // Drag source: a ghost of the tab follows the mouse (an
+                        // internal drag of the window); dropped on a tab strip
+                        // or a split it moves the tab there.
+                        Rectangle {
+                            id: ghost
+                            parent: Overlay.overlay
+                            visible: tabMouse.drag.active
+                            width: Math.min(tabItem.width, 240)
+                            height: 30
+                            radius: 8
+                            color: Theme.raised
+                            border.color: Theme.accent
+                            opacity: 0.92
+                            Row {
+                                x: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 8
+                                Icon { name: tabItem.fileIcon[0]; color: tabItem.fileIcon[1]; size: 16; anchors.verticalCenter: parent.verticalCenter }
+                                Text {
+                                    text: tabItem.tab ? tabItem.tab.title : ""
+                                    color: Theme.textStrong
+                                    font.pixelSize: Theme.fontSize
+                                    width: Math.min(implicitWidth, ghost.width - 44)
+                                    elide: Text.ElideRight
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            Drag.active: tabMouse.drag.active
+                            Drag.keys: ["text/x-atlas-tab"]
+                            Drag.source: tabItem
                         }
                         Connections {
                             target: tabMouse.drag
@@ -302,8 +339,20 @@ Rectangle {
                             id: tabMouse
                             anchors.fill: parent
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                            drag.target: tabDragProxy
+                            drag.target: ghost
                             drag.threshold: 10
+                            // The ghost stays exactly under the mouse (smoothing
+                            // would lag by the threshold and miss split edges).
+                            drag.smoothed: false
+                            onPressed: (mouse) => {
+                                // The ghost starts over the tab, the hot spot under the mouse.
+                                const p = tabItem.mapToItem(ghost.parent, 0, (tabItem.height - ghost.height) / 2)
+                                ghost.x = p.x
+                                ghost.y = p.y
+                                ghost.Drag.hotSpot.x = Math.min(mouse.x, ghost.width - 4)
+                                ghost.Drag.hotSpot.y = ghost.height / 2
+                            }
+                            onReleased: if (drag.active) ghost.Drag.drop()
                             onClicked: (mouse) => {
                                 if (mouse.button === Qt.MiddleButton) group.closeTab(tabItem.index)
                                 else { group.current = tabItem.index; group.activated() }
@@ -451,17 +500,28 @@ Rectangle {
         anchors.fill: parent
         anchors.topMargin: 44
         keys: ["text/uri-list", "text/x-atlas-tab"]
-        readonly property bool isTab: containsDrag && drag.hasFormat("text/x-atlas-tab") && !!group.editorArea && !!group.editorArea.draggedTab
-        readonly property string side: !containsDrag ? "" : drag.x < width * 0.2 ? "left" : drag.x > width * 0.8 ? "right" : "center"
+        readonly property bool isTab: containsDrag && !!group.tabDrag(drag.source)
+        function sideAt(x) { return x < width * 0.2 ? "left" : x > width * 0.8 ? "right" : "center" }
+        readonly property string side: containsDrag ? sideAt(drag.x) : ""
         // Folder tabs take file drops themselves (move/copy into the
         // folder), terminal tabs insert the paths, the calendar links them.
         onEntered: (event) => {
-            const tabMove = event.hasFormat("text/x-atlas-tab") && !!group.editorArea && !!group.editorArea.draggedTab
+            const tabMove = !!group.tabDrag(event.source)
             if (!tabMove && group.currentTab && ["dir", "trash", "terminal", "calendar"].indexOf(group.currentTab.kind) >= 0) event.accepted = false
         }
         onDropped: (event) => {
-            if (isTab) {
-                group.editorArea.moveTab(group, side === "center" ? group.tabs.length : -1, side === "center" ? "" : side)
+            // From the drop itself: `drag` and `containsDrag` are reset by then.
+            const side = sideAt(event.x)
+            const d = group.tabDrag(event.source)
+            if (d && group.editorArea) {
+                group.editorArea.draggedTab = d
+                // Dropped back on its own split: nothing moves.
+                if (side === "center" && d.group === group) {
+                    group.editorArea.draggedTab = null
+                    group.current = Math.max(0, group.tabs.indexOf(d.tab))
+                } else {
+                    group.editorArea.moveTab(group, -1, side === "center" ? "" : side)
+                }
                 event.accept(Qt.MoveAction)
                 return
             }

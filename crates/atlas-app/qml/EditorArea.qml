@@ -38,6 +38,14 @@ SplitView {
         }
     }
 
+    // Documents belong to the area, not to a split: a tab can move to another
+    // split (and outlive the one it came from) without being recreated.
+    Component {
+        id: documentComponent
+        DocumentView { anchors.fill: parent }
+    }
+    function createDocument(props) { return documentComponent.createObject(area, props) }
+
     Component {
         id: groupComponent
         EditorGroup {
@@ -106,10 +114,14 @@ SplitView {
             // Alone in its split: moving it beside itself changes nothing.
             if (source === target && source.tabs.length === 1) return
             const index = groups.indexOf(target)
+            // At most four splits: then the tab goes into `target` itself.
             const created = addGroup(side === "left" ? index : index + 1)
-            if (!created) return
-            target = created
-            at = 0
+            if (created) {
+                target = created
+                at = 0
+            } else {
+                at = -1
+            }
         }
         if (source === target) {
             if (at < 0) at = target.tabs.length
