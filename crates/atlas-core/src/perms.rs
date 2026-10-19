@@ -132,6 +132,7 @@ fn describe(err: std::io::Error, path: &Path, what: &str) -> anyhow::Error {
             anyhow::anyhow!("„{name}“: {what} ist mit Ihren Rechten nicht erlaubt.")
         }
         Some(libc::EROFS) => anyhow::anyhow!("„{name}“ liegt auf einem schreibgeschützten Dateisystem."),
+        Some(libc::EINVAL) => anyhow::anyhow!("„{name}“: {what} ist hier nicht möglich (Benutzer oder Gruppe unbekannt)."),
         _ => anyhow::anyhow!("„{name}“: {what} fehlgeschlagen: {err}"),
     }
 }
@@ -232,7 +233,8 @@ mod tests {
         // Giving the file away needs root.
         if !can_change_owner() {
             let err = set_owner(&file, Some(0), None).unwrap_err();
-            assert!(err.to_string().contains("nicht erlaubt"), "{err}");
+            // EPERM normally; EINVAL where root is not mapped (Nix sandbox).
+            assert!(err.to_string().contains("nicht erlaubt") || err.to_string().contains("nicht möglich"), "{err}");
         }
     }
 
