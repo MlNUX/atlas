@@ -5,6 +5,7 @@
 
 mod annotations_model;
 mod app;
+mod calendar_model;
 mod cli;
 mod file_ops;
 mod folder_model;

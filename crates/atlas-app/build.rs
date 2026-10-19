@@ -38,6 +38,7 @@ const QML_FILES: &[&str] = &[
 const RUST_BRIDGES: &[&str] = &[
     "src/annotations_model.rs",
     "src/app.rs",
+    "src/calendar_model.rs",
     "src/file_ops.rs",
     "src/folder_model.rs",
     "src/pdf_items.rs",

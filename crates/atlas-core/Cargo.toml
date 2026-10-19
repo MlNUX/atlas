@@ -34,6 +34,9 @@ pulldown-cmark = { version = "0.13.4", default-features = false, features = ["ht
 yaml-rust2 = "0.13.0"
 pulldown-cmark-escape = "0.11.0"
 regex = "1.13.1"
+chrono = "0.4"
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
 
 [dev-dependencies]
 cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"] }

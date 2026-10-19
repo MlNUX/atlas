@@ -62,12 +62,22 @@ fn context_of(text: &str, line: usize) -> String {
     out
 }
 
+/// `due`, `status` and `estimate` from the front matter, as written.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Planning {
+    pub due: Option<String>,
+    pub status: Option<String>,
+    pub estimate: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Note {
     pub title: Option<String>,
     /// As written in the front matter.
     pub tags: Vec<String>,
     pub links: Vec<NoteLink>,
+    /// Planning data from the front matter (shown in the calendar).
+    pub planning: Planning,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -228,7 +238,9 @@ impl NoteIndex {
                 _ => None,
             })
             .collect();
-        self.notes.insert(path.to_path_buf(), Note { title: analysis.title, tags: analysis.tags, links });
+        let fm = analysis.front_matter;
+        let planning = Planning { due: fm.due, status: fm.status, estimate: fm.estimate };
+        self.notes.insert(path.to_path_buf(), Note { title: analysis.title, tags: analysis.tags, links, planning });
     }
 
     pub fn remove(&mut self, path: &Path) {
@@ -313,6 +325,11 @@ impl NoteIndex {
     }
 
     /// All tags, sorted by key.
+    /// Notes with a `due:` date in the front matter.
+    pub fn planned(&self) -> Vec<(&PathBuf, &Note)> {
+        self.notes.iter().filter(|(_, n)| n.planning.due.is_some()).collect()
+    }
+
     pub fn tags(&self) -> Vec<Tag> {
         let mut map: BTreeMap<String, Tag> = BTreeMap::new();
         for note in self.notes.values() {

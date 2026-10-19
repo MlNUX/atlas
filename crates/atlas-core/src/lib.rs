@@ -9,6 +9,7 @@
 
 pub mod actions;
 pub mod annotations;
+pub mod calendar;
 pub mod config;
 pub mod extensions;
 pub mod fileops;

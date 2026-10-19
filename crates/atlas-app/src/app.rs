@@ -275,6 +275,13 @@ pub mod qobject {
         #[qinvokable]
         fn backlinks(self: &AppController, path: &QString) -> QString;
 
+        /// Notes with `due:` in the front matter (shown read-only in the
+        /// calendar): JSON list of {path, relative, title, due, status,
+        /// estimate}; `due` as `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`.
+        #[qinvokable]
+        #[cxx_name = "noteDeadlines"]
+        fn note_deadlines(self: &AppController) -> QString;
+
         /// Local context graph around `path` (`depth` 1 or 2): JSON
         /// {nodes: [{path, relative, label, kind, depth, missing}],
         /// edges: [{from, to, count, quotes}], truncated}.
@@ -1128,6 +1135,37 @@ impl qobject::AppController {
         qs(serde_json::Value::from(list).to_string())
     }
 
+    pub fn note_deadlines(&self) -> QString {
+        let list = self
+            .with_notes(|n| {
+                n.planned()
+                    .into_iter()
+                    .filter_map(|(path, note)| {
+                        let due = note.planning.due.as_deref()?;
+                        // Dates and date-times in common spellings.
+                        let due = atlas_core::calendar::parse_local(due)
+                            .or_else(|| atlas_core::calendar::parse_local(&due.replace(' ', "T")))?;
+                        let iso = if due.time() == chrono::NaiveTime::MIN {
+                            due.format("%Y-%m-%d").to_string()
+                        } else {
+                            due.format("%Y-%m-%dT%H:%M").to_string()
+                        };
+                        let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                        Some(serde_json::json!({
+                            "path": path.to_string_lossy(),
+                            "relative": self.relative(path).to_string_lossy(),
+                            "title": note.title.clone().unwrap_or(name),
+                            "due": iso,
+                            "status": note.planning.status,
+                            "estimate": note.planning.estimate,
+                        }))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
     pub fn context_graph(&self, path: &QString, depth: i32) -> QString {
         const LIMIT: usize = 60;
         let center = path_of(path);
@@ -1644,12 +1682,17 @@ fn spawn_detached(command: &[String], dir: Option<&Path>) -> anyhow::Result<()> 
     Ok(())
 }
 
+/// Tabs that are no files: `terminal:<dir>#<n>` and `calendar:`.
 fn is_terminal_path(path: &Path) -> bool {
-    path.as_os_str().as_encoded_bytes().starts_with(b"terminal:")
+    let bytes = path.as_os_str().as_encoded_bytes();
+    bytes.starts_with(b"terminal:") || bytes.starts_with(b"calendar:")
 }
 
 /// Coarse file type used to pick a viewer.
 pub fn file_kind(path: &Path) -> &'static str {
+    if path.as_os_str().as_encoded_bytes().starts_with(b"calendar:") {
+        return "calendar";
+    }
     // Terminal tabs: `terminal:<start directory>#<id>`.
     if is_terminal_path(path) {
         return "terminal";

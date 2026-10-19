@@ -106,6 +106,7 @@ pub struct Rendered {
     pub title: Option<String>,
     pub headings: Vec<Heading>,
     pub links: Vec<Link>,
+    pub front_matter: FrontMatter,
 }
 
 /// URL prefix under which the preview serves local files (images).
@@ -357,9 +358,21 @@ fn destination_range(src: &str, range: &Range<usize>) -> Option<Range<usize>> {
     Some(begin..begin + len)
 }
 
-fn front_matter(yaml: &str) -> (Vec<String>, Option<String>) {
-    let Ok(docs) = yaml_rust2::YamlLoader::load_from_str(yaml) else { return (Vec::new(), None) };
-    let Some(doc) = docs.first() else { return (Vec::new(), None) };
+/// What Atlas reads from the YAML front matter.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FrontMatter {
+    pub tags: Vec<String>,
+    pub title: Option<String>,
+    /// Planning data shown in the calendar (`due: 2026-10-18`,
+    /// `status: planned`, `estimate: 2h`).
+    pub due: Option<String>,
+    pub status: Option<String>,
+    pub estimate: Option<String>,
+}
+
+fn front_matter(yaml: &str) -> FrontMatter {
+    let Ok(docs) = yaml_rust2::YamlLoader::load_from_str(yaml) else { return FrontMatter::default() };
+    let Some(doc) = docs.first() else { return FrontMatter::default() };
     let tags = match &doc["tags"] {
         yaml_rust2::Yaml::Array(items) => items.iter().filter_map(|t| t.as_str().map(str::to_owned)).collect(),
         yaml_rust2::Yaml::String(s) => s.split([',', ' ']).filter(|t| !t.is_empty()).map(str::to_owned).collect(),
@@ -367,8 +380,18 @@ fn front_matter(yaml: &str) -> (Vec<String>, Option<String>) {
     };
     let tags =
         tags.into_iter().map(|t| t.trim().trim_start_matches('#').to_owned()).filter(|t| !t.is_empty()).collect();
-    let title = doc["title"].as_str().map(str::to_owned);
-    (tags, title)
+    let scalar = |key: &str| match &doc[key] {
+        yaml_rust2::Yaml::String(s) | yaml_rust2::Yaml::Real(s) => Some(s.trim().to_owned()),
+        yaml_rust2::Yaml::Integer(i) => Some(i.to_string()),
+        _ => None,
+    };
+    FrontMatter {
+        tags,
+        title: doc["title"].as_str().map(str::to_owned),
+        due: scalar("due"),
+        status: scalar("status"),
+        estimate: scalar("estimate"),
+    }
 }
 
 fn escape(s: &str) -> String {
@@ -428,9 +451,10 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
             Event::Start(Tag::MetadataBlock(MetadataBlockKind::YamlStyle)) => in_metadata = true,
             Event::End(TagEnd::MetadataBlock(_)) => {
                 in_metadata = false;
-                let (tags, title) = front_matter(&metadata);
-                result.tags = tags;
-                result.title = title;
+                let fm = front_matter(&metadata);
+                result.tags = fm.tags.clone();
+                result.title = fm.title.clone();
+                result.front_matter = fm;
             }
             Event::Text(text) if in_metadata => metadata.push_str(&text),
             // The text of a wiki link without alias is replaced by its label.
