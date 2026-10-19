@@ -144,7 +144,7 @@ pub fn normalize_tag(tag: &str) -> String {
     tag.trim().trim_start_matches('#').trim_matches('/').to_lowercase()
 }
 
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

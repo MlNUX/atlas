@@ -13,7 +13,7 @@ Opens PROJECT (a folder) or the last used project.
 
 Options:
   --open FILE[:LINE]   Open FILE (at LINE) in a new pane (repeatable; relative
-                       to PROJECT)
+                       to PROJECT); `--open calendar:` shows the calendar
   --no-session         Neither restore nor remember the last project/session
   --search PATTERN     Start a project search for PATTERN
   --screenshot FILE    Save a PNG of the window after startup (for tests)
@@ -107,7 +107,7 @@ impl Cli {
             cli.open = cli
                 .open
                 .iter()
-                .map(|f| if f.is_relative() { project.join(f) } else { f.clone() })
+                .map(|f| if f.is_relative() && f.as_os_str() != "calendar:" { project.join(f) } else { f.clone() })
                 .map(|f| f.canonicalize().unwrap_or(f))
                 .collect();
         }

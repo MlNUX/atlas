@@ -51,6 +51,7 @@ Rectangle {
             if (line) tabs[index].reveal(line)
             if (state && state.annot) tabs[index].applyState({ annot: state.annot })
             if (state && state.processor) tabs[index].applyState({ processor: state.processor })
+            if (state && path.startsWith("calendar:") && Object.keys(state).length) tabs[index].applyState(state)
             current = index
             changed()
             return tabs[index]
@@ -108,7 +109,7 @@ Rectangle {
         }
     }
 
-    function documents() { return tabs.map(t => t.path).filter(p => p.length > 0 && !p.startsWith("terminal:")) }
+    function documents() { return tabs.map(t => t.path).filter(p => p.length > 0 && !p.startsWith("terminal:") && !p.startsWith("calendar:")) }
 
     function pathMoved(from, to) {
         for (const t of tabs) {
@@ -123,7 +124,7 @@ Rectangle {
     /// Path segments for the breadcrumbs: inside the project relative to its
     /// root, otherwise from "/".
     function crumbs(path) {
-        if (!path || path.startsWith("terminal:")) return []
+        if (!path || path.startsWith("terminal:") || path.startsWith("calendar:")) return []
         const root = group.app.projectRoot
         const inside = root && (path === root || path.startsWith(root + "/"))
         const base = inside ? root : ""
@@ -327,7 +328,8 @@ Rectangle {
         anchors.fill: parent
         // Folder tabs take drops themselves (move/copy into the folder),
         // terminal tabs insert the paths.
-        enabled: !group.currentTab || ["dir", "trash", "terminal"].indexOf(group.currentTab.kind) < 0
+        // The calendar links dropped files with entries.
+        enabled: !group.currentTab || ["dir", "trash", "terminal", "calendar"].indexOf(group.currentTab.kind) < 0
         keys: ["text/uri-list"]
         readonly property string side: !containsDrag ? "" : drag.x < width * 0.2 ? "left" : drag.x > width * 0.8 ? "right" : "center"
         onDropped: (event) => {

@@ -11,8 +11,10 @@
 //!
 //! Unknown properties and components of an entry are kept unchanged.
 
+pub mod caldav;
 pub mod ical;
 pub mod recur;
+pub mod sync;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -129,6 +131,9 @@ pub struct Entry {
     /// Set for a changed occurrence of a series.
     pub recurrence_id: Option<Time>,
     pub sequence: u32,
+    /// Calendar the entry belongs to: [`LOCAL`] or the URL of a CalDAV
+    /// calendar (not stored in the component).
+    pub calendar: String,
     /// The component as read (unknown properties and children are kept).
     pub raw: Component,
 }
@@ -159,6 +164,7 @@ impl Entry {
             exdates: Vec::new(),
             recurrence_id: None,
             sequence: 0,
+            calendar: LOCAL.to_owned(),
             raw,
         }
     }
@@ -194,7 +200,8 @@ impl Entry {
             Kind::Event
         });
         // A deadline stored as VTODO has its time in DUE.
-        let (start, end) = if is_todo && kind == Kind::Deadline && start.is_none() { (end, None) } else { (start, end) };
+        let (start, end) =
+            if is_todo && kind == Kind::Deadline && start.is_none() { (end, None) } else { (start, end) };
         let status = c.text("X-ATLAS-STATUS").and_then(|s| Status::parse(&s)).unwrap_or_else(|| {
             match c.text("STATUS").unwrap_or_default().to_ascii_uppercase().as_str() {
                 "COMPLETED" => Status::Done,
@@ -206,7 +213,9 @@ impl Entry {
             .children
             .iter()
             .filter(|a| a.name == "VALARM")
-            .filter(|a| a.get("TRIGGER").is_some_and(|t| t.param("RELATED").is_none_or(|r| r.eq_ignore_ascii_case("START"))))
+            .filter(|a| {
+                a.get("TRIGGER").is_some_and(|t| t.param("RELATED").is_none_or(|r| r.eq_ignore_ascii_case("START")))
+            })
             .filter_map(|a| a.get("TRIGGER").and_then(|t| ical::parse_duration(&t.value)))
             .map(|secs| -secs / 60)
             .collect();
@@ -246,6 +255,7 @@ impl Entry {
                 .collect(),
             recurrence_id: time("RECURRENCE-ID"),
             sequence: c.text("SEQUENCE").and_then(|s| s.parse().ok()).unwrap_or(0),
+            calendar: LOCAL.to_owned(),
             raw: c.clone(),
         })
     }
@@ -257,9 +267,28 @@ impl Entry {
         let mut c = self.raw.clone();
         c.name = if todo { "VTODO".into() } else { "VEVENT".into() };
         for name in [
-            "UID", "DTSTAMP", "DTSTART", "DTEND", "DUE", "DURATION", "SUMMARY", "DESCRIPTION", "CATEGORIES", "STATUS",
-            "RRULE", "EXDATE", "RECURRENCE-ID", "SEQUENCE", "LAST-MODIFIED", "COMPLETED", "X-ATLAS-KIND",
-            "X-ATLAS-STATUS", "X-ATLAS-FILE", "X-ATLAS-SESSION", "X-ATLAS-CHECK", "X-ATLAS-ESTIMATE",
+            "UID",
+            "DTSTAMP",
+            "DTSTART",
+            "DTEND",
+            "DUE",
+            "DURATION",
+            "SUMMARY",
+            "DESCRIPTION",
+            "CATEGORIES",
+            "STATUS",
+            "RRULE",
+            "EXDATE",
+            "RECURRENCE-ID",
+            "SEQUENCE",
+            "LAST-MODIFIED",
+            "COMPLETED",
+            "X-ATLAS-KIND",
+            "X-ATLAS-STATUS",
+            "X-ATLAS-FILE",
+            "X-ATLAS-SESSION",
+            "X-ATLAS-CHECK",
+            "X-ATLAS-ESTIMATE",
         ] {
             c.remove(name);
         }
@@ -285,7 +314,10 @@ impl Entry {
             c.push(Property::text("DESCRIPTION", &self.description));
         }
         if !self.tags.is_empty() {
-            c.push(Property::new("CATEGORIES", self.tags.iter().map(|t| ical::escape(t)).collect::<Vec<_>>().join(",")));
+            c.push(Property::new(
+                "CATEGORIES",
+                self.tags.iter().map(|t| ical::escape(t)).collect::<Vec<_>>().join(","),
+            ));
         }
         let status = match (todo, self.status) {
             (true, Status::Done) => "COMPLETED",
@@ -407,7 +439,10 @@ impl Store {
     }
 
     pub fn links(&self) -> BTreeMap<String, Links> {
-        std::fs::read_to_string(self.dir.join(LINKS)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        std::fs::read_to_string(self.dir.join(LINKS))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
     }
 
     /// Records the links of `entries` (others stay, e.g. remote calendars').
@@ -432,7 +467,10 @@ impl Store {
     }
 
     pub fn state(&self) -> serde_json::Value {
-        std::fs::read_to_string(self.dir.join(STATE)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        std::fs::read_to_string(self.dir.join(STATE))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
     }
 
     pub fn save_state(&self, state: &serde_json::Value) -> Result<()> {
@@ -488,31 +526,30 @@ fn span(e: &Entry, start: &Time, tz: Tz) -> Duration {
 /// All occurrences overlapping `from..to` (user's local time `tz`), sorted.
 pub fn occurrences(entries: &[Entry], tz: Tz, from: NaiveDateTime, to: NaiveDateTime) -> Vec<Occurrence> {
     let mut out = Vec::new();
-    let overrides: BTreeMap<(&str, NaiveDateTime), &Entry> = entries
-        .iter()
-        .filter_map(|e| e.recurrence_id.as_ref().map(|r| ((e.uid.as_str(), own_local(r)), e)))
-        .collect();
-    let push = |e: &Entry, start: &Time, recurring: bool, instance: Option<NaiveDateTime>, out: &mut Vec<Occurrence>| {
-        let s = start.local(tz);
-        let mut end = s + span(e, &e.start.unwrap_or(*start), tz);
-        // Point-like entries (deadlines) still need to show up.
-        if end <= s {
-            end = s + Duration::minutes(1);
-        }
-        if end > from && s < to {
-            out.push(Occurrence {
-                uid: e.uid.clone(),
-                kind: e.kind,
-                title: e.title.clone(),
-                status: e.status,
-                start: s,
-                end,
-                all_day: start.is_date(),
-                recurring,
-                instance,
-            });
-        }
-    };
+    let overrides: BTreeMap<(&str, NaiveDateTime), &Entry> =
+        entries.iter().filter_map(|e| e.recurrence_id.as_ref().map(|r| ((e.uid.as_str(), own_local(r)), e))).collect();
+    let push =
+        |e: &Entry, start: &Time, recurring: bool, instance: Option<NaiveDateTime>, out: &mut Vec<Occurrence>| {
+            let s = start.local(tz);
+            let mut end = s + span(e, &e.start.unwrap_or(*start), tz);
+            // Point-like entries (deadlines) still need to show up.
+            if end <= s {
+                end = s + Duration::minutes(1);
+            }
+            if end > from && s < to {
+                out.push(Occurrence {
+                    uid: e.uid.clone(),
+                    kind: e.kind,
+                    title: e.title.clone(),
+                    status: e.status,
+                    start: s,
+                    end,
+                    all_day: start.is_date(),
+                    recurring,
+                    instance,
+                });
+            }
+        };
     for e in entries {
         let Some(start) = e.start else { continue };
         if e.recurrence_id.is_some() {
@@ -539,7 +576,12 @@ pub fn occurrences(entries: &[Entry], tz: Tz, from: NaiveDateTime, to: NaiveDate
 }
 
 /// Reminders that fall into `from..to` (UTC): (uid, title, start, minutes).
-pub fn due_reminders(entries: &[Entry], tz: Tz, from: DateTime<Utc>, to: DateTime<Utc>) -> Vec<(String, String, NaiveDateTime, i64)> {
+pub fn due_reminders(
+    entries: &[Entry],
+    tz: Tz,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Vec<(String, String, NaiveDateTime, i64)> {
     let mut out = Vec::new();
     let window_from = from.with_timezone(&tz).naive_local() - Duration::days(1);
     let window_to = to.with_timezone(&tz).naive_local() + Duration::days(8);
@@ -549,7 +591,10 @@ pub fn due_reminders(entries: &[Entry], tz: Tz, from: DateTime<Utc>, to: DateTim
             continue;
         }
         for minutes in &entry.reminders {
-            let at = tz.from_local_datetime(&(occ.start - Duration::minutes(*minutes))).earliest().map(|d| d.with_timezone(&Utc));
+            let at = tz
+                .from_local_datetime(&(occ.start - Duration::minutes(*minutes)))
+                .earliest()
+                .map(|d| d.with_timezone(&Utc));
             if at.is_some_and(|at| at >= from && at < to) {
                 out.push((occ.uid.clone(), occ.title.clone(), occ.start, *minutes));
             }
@@ -579,7 +624,9 @@ pub fn checklist_items(text: &str) -> Vec<(usize, bool, String)> {
         if fence.is_some() {
             continue;
         }
-        let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")).or_else(|| trimmed.strip_prefix("+ ")) else {
+        let Some(rest) =
+            trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")).or_else(|| trimmed.strip_prefix("+ "))
+        else {
             continue;
         };
         let (done, item) = if let Some(r) = rest.strip_prefix("[ ] ") {
@@ -696,7 +743,11 @@ mod tests {
         store.save_links([&e]).unwrap();
         // A server that drops X-ATLAS-* properties: links come from links.json.
         let text = std::fs::read_to_string(dir.path().join("calendar/events.ics")).unwrap();
-        let stripped: String = text.lines().filter(|l| !l.starts_with("X-ATLAS-FILE") && !l.starts_with("X-ATLAS-SESSION")).map(|l| format!("{l}\n")).collect();
+        let stripped: String = text
+            .lines()
+            .filter(|l| !l.starts_with("X-ATLAS-FILE") && !l.starts_with("X-ATLAS-SESSION"))
+            .map(|l| format!("{l}\n"))
+            .collect();
         std::fs::write(dir.path().join("calendar/events.ics"), stripped).unwrap();
         let loaded = store.load().unwrap();
         assert_eq!(loaded[0].files, ["/docs/a.md"]);
@@ -757,7 +808,10 @@ mod tests {
         e.start = Some(Time::Zoned(dt("2026-10-20T10:00"), tz));
         e.reminders = vec![15];
         let at = |s: &str| tz.from_local_datetime(&dt(s)).unwrap().with_timezone(&Utc);
-        assert_eq!(due_reminders(std::slice::from_ref(&e), tz, at("2026-10-20T09:44"), at("2026-10-20T09:46")).len(), 1);
+        assert_eq!(
+            due_reminders(std::slice::from_ref(&e), tz, at("2026-10-20T09:44"), at("2026-10-20T09:46")).len(),
+            1
+        );
         assert!(due_reminders(std::slice::from_ref(&e), tz, at("2026-10-20T09:46"), at("2026-10-20T09:50")).is_empty());
     }
 
@@ -766,7 +820,11 @@ mod tests {
         let md = "# Plan\n\n- [ ] Literatur sichten\n- [x] Gliederung\n  * [ ] Unterpunkt\n```\n- [ ] kein Eintrag\n```\n- normal\n";
         assert_eq!(
             checklist_items(md),
-            vec![(3, false, "Literatur sichten".into()), (4, true, "Gliederung".into()), (5, false, "Unterpunkt".into())]
+            vec![
+                (3, false, "Literatur sichten".into()),
+                (4, true, "Gliederung".into()),
+                (5, false, "Unterpunkt".into())
+            ]
         );
         assert_eq!(parse_estimate("2h"), Some(120));
         assert_eq!(parse_estimate("1,5h"), Some(90));

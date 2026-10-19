@@ -25,6 +25,7 @@ Item {
     property var steps: []
     property string annotId
     property string pdfBefore
+    property string calUid
 
     function check(name, ok, detail) {
         if (!ok) failures++
@@ -219,6 +220,61 @@ Item {
                       tab ? tab.kind + " " + tab.processed + " " + tab.viewerItem : "kein Tab")
                 check("Export geöffnet", !!editor.viewerFor(path("notes/idee.txt")))
                 check("Export geschrieben", app.readTextFile(path("notes/idee.txt")).indexOf("Autosave-Test") >= 0)
+                // ---- Phase 2: project calendar
+                window.openCalendar({ mode: "week", date: "2026-10-19" })
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                const cal = fileActions.calendar
+                check("Kalender als Tab", editor.activeTab.kind === "calendar" && editor.activeTab.title === "Kalender" && !!v && v.mode === "week", editor.activeTab.kind)
+                check("Ohne Nextcloud: Projektkalender", !cal.connected && cal.defaultCalendar() === "local")
+                test.calUid = cal.save(JSON.stringify({ kind: "event", title: "Kapitel 3 besprechen", start: "2026-10-20T10:00", end: "2026-10-20T11:30",
+                                                          tags: ["schreiben"], session: "Standard", reminders: [15] }))
+                const occ = JSON.parse(cal.occurrences("2026-10-19T00:00", "2026-10-26T00:00"))
+                check("Termin angelegt", test.calUid !== "" && occ.some(o => o.uid === test.calUid && o.start === "2026-10-20T10:00" && o.end === "2026-10-20T11:30"), JSON.stringify(occ))
+                const ics = app.readTextFile(app.atlasDir + "/calendar/events.ics")
+                check("events.ics im iCalendar-Format", ics.indexOf("BEGIN:VEVENT") >= 0 && ics.indexOf("SUMMARY:Kapitel 3 besprechen") >= 0 && ics.indexOf("X-ATLAS-SESSION:Standard") >= 0, ics.slice(0, 200))
+                check("Datei verknüpft", cal.linkFile(test.calUid, path("notes/aufgaben.md")) && JSON.parse(cal.entry(test.calUid)).files[0] === "/notes/aufgaben.md")
+                check("links.json über die UID", app.readTextFile(app.atlasDir + "/calendar/links.json").indexOf(test.calUid) >= 0)
+                check("Woche zeigt den Termin", v.bodyItem && v.bodyItem.segments.some(sg => sg.o.uid === test.calUid), v.bodyItem ? v.bodyItem.segments.length : "keine Ansicht")
+                check("Notiz-Frist aus dem Frontmatter", v.occs.some(o => o.kind === "note" && o.title.length > 0 && o.start.indexOf("2026-10-23") === 0), JSON.stringify(v.occs.map(o => o.kind + ":" + o.start)))
+                // Move by drag: one day later, same time.
+                check("Termin verschoben", cal.moveTo(test.calUid, "", "2026-10-21T10:00", "2026-10-21T11:30", false)
+                      && JSON.parse(cal.entry(test.calUid)).start === "2026-10-21T10:00")
+                // Markdown checklist → tasks, only by an explicit action.
+                const items = JSON.parse(cal.checklistOf(path("notes/aufgaben.md")))
+                check("Checkliste erkannt", items.length === 3 && items[1].done, JSON.stringify(items))
+                check("Aufgaben übernommen", cal.addTasks(path("notes/aufgaben.md"), JSON.stringify([items[0], items[2]])) === 2)
+                check("Markdown unverändert", app.readTextFile(path("notes/aufgaben.md")).indexOf("- [ ] Literatur sichten") >= 0)
+                const tasks = JSON.parse(cal.tasks())
+                check("Noch nicht eingeplant", tasks.length === 2 && tasks.every(t => t.files[0] === "/notes/aufgaben.md"), JSON.stringify(tasks))
+                const t = tasks.find(x => x.title === "Literatur sichten")
+                check("Aufgabe eingeplant", cal.schedule(t.uid, "2026-10-22T14:00", "") && JSON.parse(cal.entry(t.uid)).kind === "block")
+                fileActions.planAsTask(path("src/main.rs"))
+                check("Als Aufgabe einplanen", JSON.parse(cal.tasks()).some(x => x.title === "main" && x.files[0] === "/src/main.rs"))
+                const found = JSON.parse(cal.search("kapitel bespr", 5))
+                check("Arbeitsleiste findet Termine", found.length >= 1 && found[0].uid === test.calUid, JSON.stringify(found))
+                fileActions.ops.rename(path("notes/aufgaben.md"), "todo.md")
+            },
+            () => {
+                const cal = fileActions.calendar
+                check("Dateilink folgt Umbenennung", JSON.parse(cal.entry(test.calUid)).files[0] === "/notes/todo.md", cal.entry(test.calUid))
+                window.saveSession()
+                app.flushSession()
+                const layout = JSON.stringify(JSON.parse(app.loadLayout() || "{}").editor)
+                check("Kalender-Tab in der Session", layout.indexOf("calendar:") >= 0 && layout.indexOf("\"mode\":\"week\"") >= 0, layout.slice(0, 300))
+                check("Löschen", cal.remove(test.calUid) && cal.entry(test.calUid) === "")
+                const v = editor.activeTab.viewerItem
+                v.mode = "month"
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Monatsansicht", v.mode === "month" && !!v.bodyItem && v.bodyItem.perDay.length === 42)
+                v.mode = "agenda"
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Agenda", v.mode === "agenda" && !!v.bodyItem)
             },
         ]
         timer.start()

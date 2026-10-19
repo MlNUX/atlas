@@ -27,6 +27,8 @@ Rectangle {
     property var occs: []
     property var tasks: []
     property var noteDeadlines: []
+    /// The week, month or agenda view.
+    readonly property alias bodyItem: body.item
     readonly property var selectedEntry: selected && model && model.revision >= 0 && !selected.startsWith("note:")
         ? (function () { try { return JSON.parse(model.entry(selected) || "null") } catch (e) { return null } })() : null
 
@@ -70,7 +72,13 @@ Rectangle {
         const m = Math.round((parse(o.end) - parse(o.start)) / 60000)
         return m >= 60 ? (Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : "")) : m + " min"
     }
-    function colorOf(o) { return kindColors[o.kind] || Theme.accent }
+    /// Nextcloud entries in their calendar's colour, project entries by kind;
+    /// deadlines always stand out.
+    function colorOf(o) {
+        if (o.kind === "deadline" || o.kind === "note") return kindColors[o.kind]
+        if (o.calendar && o.calendar !== "local" && o.color) return o.color
+        return kindColors[o.kind] || Theme.accent
+    }
 
     readonly property date today: new Date()
     readonly property var range: {
@@ -152,17 +160,22 @@ Rectangle {
     function activate(o) {
         if (!o) return
         if (o.kind === "note") { openRequested(o.path, 0, false, {}); return }
-        editDialog.edit(JSON.parse(model.entry(o.uid) || "null"))
+        const e = JSON.parse(model.entry(o.uid) || "null")
+        if (e && e.readOnly) { selected = o.uid; showDetails = true; message(qsTr("„%1“ liegt in einem schreibgeschützten Kalender").arg(e.title)); return }
+        editDialog.edit(e)
     }
+    function settings() { if (actions) actions.calendarSync.openSettings() }
     /// New entry with prefilled fields (kind, start, end, allDay, files).
     function newEntry(fields) { editDialog.create(fields || {}) }
     function move(o, start, end, allDay) {
-        if (!o || o.readOnly) return
+        if (!o) return
+        if (o.readOnly) { message(qsTr("„%1“ kann nicht verschoben werden").arg(o.title)); return }
         if (model.moveTo(o.uid, o.instance || "", isoTime(start), isoTime(end), !!allDay))
             message(o.recurring ? qsTr("Serie „%1“ verschoben").arg(o.title) : qsTr("„%1“ verschoben").arg(o.title))
     }
     function linkFiles(o, paths) {
-        if (!o || o.readOnly) return
+        if (!o) return
+        if (o.readOnly) { message(qsTr("„%1“ kann nicht geändert werden").arg(o.title)); return }
         let n = 0
         for (const p of paths) if (model.linkFile(o.uid, p)) n++
         if (n) message(qsTr("%n Datei(en) mit „%1“ verknüpft", "", n).arg(o.title))
@@ -180,7 +193,7 @@ Rectangle {
     function absolute(file) { return file.startsWith("/") && app.projectRoot ? app.projectRoot + file : file }
 
     Keys.onPressed: (event) => {
-        if (event.key === Qt.Key_Delete && selected && !selected.startsWith("note:")) { deleteDialog.open(); event.accepted = true }
+        if (event.key === Qt.Key_Delete && selectedEntry && !selectedEntry.readOnly) { deleteDialog.open(); event.accepted = true }
         else if (event.key === Qt.Key_Left && event.modifiers & Qt.AltModifier) { step(-1); event.accepted = true }
         else if (event.key === Qt.Key_Right && event.modifiers & Qt.AltModifier) { step(1); event.accepted = true }
         else if (event.key === Qt.Key_T && !event.modifiers) { goToday(); event.accepted = true }
@@ -224,6 +237,21 @@ Rectangle {
                     Layout.leftMargin: 8
                 }
                 Item { Layout.fillWidth: true }
+                // Nextcloud: state of the synchronisation.
+                IconButton {
+                    visible: !!cal.model && cal.model.connected
+                    glyph: !cal.model ? "" : cal.model.syncing ? "⟳ …" : !cal.model.unlocked ? "🔑" : cal.model.syncFailed ? "⚠ ⟳" : "⟳"
+                        + (cal.model && cal.model.pending ? " " + cal.model.pending : "")
+                    tip: cal.model ? cal.model.syncStatus + (cal.model.pending ? qsTr(" · %n Änderung(en) warten", "", cal.model.pending) : "")
+                        + (cal.model.unlocked ? qsTr(" · Klick: jetzt synchronisieren") : qsTr(" · Klick: App-Passwort eingeben")) : ""
+                    onClicked: cal.model.unlocked ? cal.model.syncNow() : cal.actions.calendarSync.askPassword()
+                }
+                IconButton {
+                    visible: !!cal.model && cal.model.conflictCount > 0
+                    glyph: qsTr("⚠ %n Konflikt(e)", "", cal.model ? cal.model.conflictCount : 0)
+                    tip: qsTr("In Nextcloud und Atlas geändert – Version wählen")
+                    onClicked: cal.actions.calendarSync.showConflicts()
+                }
                 Label {
                     visible: cal.model && cal.model.error !== ""
                     text: cal.model ? "⚠ " + cal.model.error : ""
@@ -246,6 +274,7 @@ Rectangle {
                 }
                 IconButton { glyph: "☑"; tip: qsTr("Noch nicht eingeplante Aufgaben"); checkable: true; checked: cal.showTasks; onClicked: cal.showTasks = !cal.showTasks }
                 IconButton { glyph: "ⓘ"; tip: qsTr("Details und Wochenübersicht"); checkable: true; checked: cal.showDetails; onClicked: cal.showDetails = !cal.showDetails }
+                IconButton { glyph: "⚙"; tip: qsTr("Kalender-Einstellungen und Nextcloud"); onClicked: cal.settings() }
             }
         }
 
@@ -260,6 +289,19 @@ Rectangle {
                 Layout.preferredWidth: 220
                 Layout.fillHeight: true
                 color: Theme.sidebar
+                // A file dropped here becomes a task ("Als Aufgabe einplanen").
+                DropArea {
+                    id: taskDrop
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onDropped: (drop) => {
+                        const paths = drop.urls.map(u => cal.app.urlToPath(u.toString())).filter(p => p)
+                        for (const p of paths) cal.model.taskForFile(p)
+                        if (paths.length) cal.message(qsTr("Aufgabe für %1 angelegt").arg(cal.app.fileName(paths[0])))
+                        drop.accept(Qt.LinkAction)
+                    }
+                }
+                Rectangle { anchors.fill: parent; visible: taskDrop.containsDrag; color: Qt.rgba(0.18, 0.63, 0.26, 0.15); border.color: Theme.ok; z: 5 }
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 4
@@ -305,14 +347,12 @@ Rectangle {
                             color: cal.selected === modelData.uid ? Theme.selection : taskHover.hovered ? Theme.hover : Theme.editor
                             border.color: Theme.border
                             HoverHandler { id: taskHover }
-                            Drag.active: taskDrag.active
-                            Drag.keys: ["atlas/task"]
-                            Drag.hotSpot.x: 12
-                            Drag.hotSpot.y: 12
-                            DragHandler {
-                                id: taskDrag
-                                onActiveChanged: if (!active) { taskItem.x = 6; taskItem.y = taskItem.y; taskItem.Drag.drop() }
-                            }
+                            // Dragged into the week or month to plan it.
+                            Item { id: taskProxy }
+                            Drag.active: taskMouse.drag.active
+                            Drag.dragType: Drag.Automatic
+                            Drag.supportedActions: Qt.LinkAction
+                            Drag.mimeData: ({ "text/x-atlas-task": taskItem.taskUid })
                             ColumnLayout {
                                 id: taskColumn
                                 x: 8
@@ -337,7 +377,15 @@ Rectangle {
                                     elide: Text.ElideRight
                                 }
                             }
-                            TapHandler { onTapped: cal.selected = taskItem.modelData.uid; onDoubleTapped: cal.activate({ uid: taskItem.modelData.uid, kind: "task" }) }
+                            Rectangle { width: 3; height: parent.height - 8; y: 4; x: 2; radius: 2; color: cal.colorOf(taskItem.modelData) }
+                            MouseArea {
+                                id: taskMouse
+                                anchors.fill: parent
+                                drag.target: taskProxy
+                                drag.threshold: 6
+                                onClicked: { cal.selected = taskItem.modelData.uid; cal.showDetails = true }
+                                onDoubleClicked: cal.activate({ uid: taskItem.modelData.uid, kind: "task" })
+                            }
                         }
                         Label {
                             anchors.centerIn: parent
@@ -381,8 +429,16 @@ Rectangle {
                             spacing: 6
                             readonly property var e: cal.selectedEntry || ({})
                             RowLayout {
-                                Rectangle { width: 10; height: 10; radius: 5; color: cal.kindColors[parent.parent.e.kind] || Theme.accent }
+                                Rectangle { width: 10; height: 10; radius: 5; color: cal.colorOf(parent.parent.e) }
                                 Label { text: cal.kindNames[parent.parent.e.kind] || ""; color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: (parent.parent.e.calendarName || "") + (parent.parent.e.readOnly ? " 🔒" : "") + (parent.parent.e.pending ? qsTr(" · ⇡ wartet") : "")
+                                    color: Theme.textFaint
+                                    font.pixelSize: Theme.smallFontSize
+                                    elide: Text.ElideRight
+                                    horizontalAlignment: Text.AlignRight
+                                }
                             }
                             Label {
                                 Layout.fillWidth: true
@@ -421,6 +477,7 @@ Rectangle {
                                     font.pixelSize: Theme.smallFontSize
                                     model: ["planned", "started", "done", "postponed"].map(s => cal.statusNames[s])
                                     currentIndex: ["planned", "started", "done", "postponed"].indexOf(parent.parent.e.status || "planned")
+                                    enabled: !parent.parent.e.readOnly
                                     onActivated: (index) => cal.model.setStatus(cal.selected, ["planned", "started", "done", "postponed"][index])
                                 }
                             }
@@ -489,8 +546,16 @@ Rectangle {
                                 onClicked: cal.sessionRequested(parent.e.session)
                             }
                             RowLayout {
+                                visible: !parent.e.readOnly
                                 Button { text: qsTr("Bearbeiten"); onClicked: cal.editDialog.edit(cal.selectedEntry) }
                                 Button { text: qsTr("Löschen"); flat: true; onClicked: deleteDialog.open() }
+                            }
+                            Button {
+                                Layout.fillWidth: true
+                                visible: !parent.e.readOnly && parent.e.kind === "block" && !parent.e.rrule
+                                flat: true
+                                text: qsTr("Zurück zu „Noch nicht eingeplant“")
+                                onClicked: cal.model.unschedule(cal.selected)
                             }
                             Label {
                                 Layout.fillWidth: true
@@ -567,11 +632,11 @@ Rectangle {
 
     Component {
         id: weekComponent
-        CalendarWeek { cal: cal }
+        CalendarWeek { calendar: cal }
     }
     Component {
         id: monthComponent
-        CalendarMonth { cal: cal }
+        CalendarMonth { calendar: cal }
     }
     Component {
         id: agendaComponent
