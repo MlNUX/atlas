@@ -221,13 +221,13 @@ mod tests {
         assert!(can_change_mode(&info));
         assert_eq!(info.owner, user_name(info.uid));
 
-        // Any of the user's own groups is allowed (the primary one always is).
-        let groups = own_groups();
-        assert!(!groups.is_empty());
-        let (gid, name) = groups[0].clone();
-        set_owner(&file, None, Some(gid)).unwrap();
-        let info = stat(&file).unwrap();
-        assert_eq!((info.gid, info.group), (gid, name));
+        // The user's own groups are listed, primary first. Setting the
+        // file's current group always works; other groups may be unmapped
+        // in user namespaces (e.g. the Nix build sandbox).
+        assert!(!own_groups().is_empty());
+        set_owner(&file, None, Some(info.gid)).unwrap();
+        let after = stat(&file).unwrap();
+        assert_eq!((after.gid, after.group), (info.gid, info.group.clone()));
 
         // Giving the file away needs root.
         if !can_change_owner() {
