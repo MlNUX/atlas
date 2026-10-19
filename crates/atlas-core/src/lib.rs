@@ -22,6 +22,7 @@ pub mod notes;
 pub mod paths;
 pub mod pdf;
 pub mod perms;
+pub mod places;
 pub mod project;
 pub mod search;
 pub mod secret;

@@ -22,6 +22,7 @@ Item {
     property var sendToNote
     property var sessionMenu
     property var folderDialog
+    property var settingsDialog
     property var projectTree
     property var quickLook
     property var treeModel
@@ -535,7 +536,8 @@ Item {
             () => {
                 check("Ordnerauswahl: nur Ordner", folderDialog.folders.count === 0 && !folderDialog.folders.error, folderDialog.folders.count)
                 const crumbs = folderDialog.segments(path("notes"))
-                check("Pfadleiste endet im Ordner", crumbs[crumbs.length - 1].name === "notes" && crumbs[crumbs.length - 1].path === path("notes"))
+                // (notes is also a file manager place, "Notizen", in the smoke test.)
+                check("Pfadleiste endet im Ordner", crumbs[crumbs.length - 1].path === path("notes"), JSON.stringify(crumbs))
                 // A click next to the segments switches to typing the path.
                 const bar = folderDialog.pathBar
                 const p = bar.mapToItem(null, bar.width - 12, bar.height / 2)
@@ -635,9 +637,10 @@ Item {
                 cal.rememberPassword(true)
                 cal.saveAccount("http://127.0.0.1:9", "selbsttest", "einmal-42", "", "[]", "")
             },
+            () => {},  // (storing runs in the background, systemd-creds may be slow)
             () => {
                 const cal = window.calendar
-                check("Passwort gemerkt", cal.remembered === "encrypted" || cal.remembered === "file", cal.remembered)
+                check("Passwort gemerkt", cal.remembered === "encrypted" || cal.remembered === "file", cal.remembered + " " + cal.error)
                 check("Gemerktes Passwort nicht in den Einstellungen", cal.account().indexOf("einmal-42") < 0 && JSON.parse(cal.account()).rememberPassword)
                 // As after a restart: nothing in memory, the remembered one loads.
                 cal.setPassword("")
@@ -681,6 +684,19 @@ Item {
             () => {
                 check("Terminal-Knopf: ein Klick blendet ein", terminalPanel.visible && window.terminalButton.checked,
                       terminalPanel.visible + " / " + window.terminalButton.checked)
+            },
+            () => {
+                // Places of Dolphin/KDE and GTK below the fixed ones (switchable).
+                const extra = app.placeNames.slice(app.fixedPlaceCount)
+                check("Dateimanager-Orte übernommen", app.fileManagerPlaces && extra.join(",") === "Belege,Notizen"
+                      && app.placePaths[app.fixedPlaceCount] === path("docs"), extra.join(","))
+                settingsDialog.open()
+                check("Einstellungen öffnen", settingsDialog.visible)
+                app.fileManagerPlaces = false
+                check("Dateimanager-Orte aus", app.placeNames.length === app.fixedPlaceCount, app.placeNames.join(","))
+                app.fileManagerPlaces = true
+                check("Dateimanager-Orte wieder an", app.placeNames.length === app.fixedPlaceCount + 2)
+                settingsDialog.close()
             },
         ]
         timer.start()

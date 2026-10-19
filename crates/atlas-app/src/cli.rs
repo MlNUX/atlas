@@ -22,7 +22,7 @@ Options:
                        calendar-settings, extensions, properties, entry,
                        editor, palette, menu, context-menu, conflicts,
                        send-to-note, rename, confirm, open-folder, new-session,
-                       quick-look)
+                       quick-look, settings)
   --quit-after MS      Quit MS milliseconds after startup (for tests)
   --self-test          Run the built-in smoke test against PROJECT and exit
                        with its result (0 = passed; for tests)

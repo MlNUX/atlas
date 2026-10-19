@@ -13,6 +13,9 @@
 //! [terminal]
 //! shell = "/run/current-system/sw/bin/fish"   # default: login shell
 //!
+//! [places]
+//! file_manager = true            # also Dolphin's/GTK's places (default)
+//!
 //! [calendar]                     # Nextcloud/CalDAV (never a password)
 //! server = "https://cloud.example.com"
 //! user = "minux"
@@ -112,6 +115,24 @@ impl CalendarConfig {
     }
 }
 
+/// The places above the project tree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlacesConfig {
+    /// Also show the places of Dolphin/KDE and GTK file managers.
+    #[serde(default = "enabled")]
+    pub file_manager: bool,
+}
+
+fn enabled() -> bool {
+    true
+}
+
+impl Default for PlacesConfig {
+    fn default() -> Self {
+        Self { file_manager: true }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -122,6 +143,8 @@ pub struct Config {
     pub extensions: ExtensionsConfig,
     #[serde(default)]
     pub calendar: CalendarConfig,
+    #[serde(default)]
+    pub places: PlacesConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -160,6 +183,11 @@ impl Config {
 
     pub fn save_editor_to(path: &Path, editor: &EditorConfig) -> Result<()> {
         save_table(path, "editor", editor)
+    }
+
+    /// Updates only the `[places]` table.
+    pub fn save_places(places: &PlacesConfig) -> Result<()> {
+        save_table(&config_file(), "places", places)
     }
 
     /// Updates only the `[extensions]` table.

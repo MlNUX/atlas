@@ -128,6 +128,21 @@ echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"
 
 export ATLAS_STATE_DIR="$work/state" ATLAS_CONFIG_DIR="$work/config"
+# Own XDG data/config: file manager places (and the trash) never touch the
+# user's.
+export XDG_DATA_HOME="$work/xdg-data" XDG_CONFIG_HOME="$work/xdg-config"
+mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME/gtk-3.0"
+cat > "$XDG_DATA_HOME/user-places.xbel" <<XBEL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xbel>
+<xbel xmlns:bookmark="http://www.freedesktop.org/standards/desktop-bookmarks">
+ <bookmark href="file://$project/docs"><title>Belege</title></bookmark>
+ <bookmark href="file://$project/src"><title>Versteckt</title>
+  <info><metadata owner="http://www.kde.org"><IsHidden>true</IsHidden></metadata></info></bookmark>
+ <bookmark href="sftp://server/x"><title>Server</title></bookmark>
+</xbel>
+XBEL
+echo "file://$project/notes Notizen" > "$XDG_CONFIG_HOME/gtk-3.0/bookmarks"
 export QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1
 # Software rendering for the Markdown preview without a GPU.
 export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu"

@@ -170,6 +170,7 @@ ApplicationWindow {
             { name: qsTr("Neuer Arbeitsblock …"), run: () => window.newCalendarEntry("block") },
             { name: qsTr("Neue Frist …"), run: () => window.newCalendarEntry("deadline") },
             { name: qsTr("Neue Aufgabe …"), run: () => window.newCalendarEntry("task") },
+            { name: qsTr("Einstellungen …"), hint: qsTr("Orte, Editor, Kalender"), run: () => settingsDialog.open() },
             { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
         ]
         if (calendar.connected) {
@@ -274,6 +275,13 @@ ApplicationWindow {
     }
 
     SearchModel { id: searchModel }
+
+    SettingsDialog {
+        id: settingsDialog
+        app: app
+        actions: fileActions
+        onExtensionsRequested: extensionsDialog.open()
+    }
 
     FolderChooser {
         id: folderDialog
@@ -493,6 +501,7 @@ ApplicationWindow {
             const show = {
                 "sessions": () => sessionMenu.clicked(),
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
+                "settings": () => settingsDialog.open(),
                 "new-session": () => sessionMenu.askNew(),
                 "quick-look": () => fileActions.quickLook(file),
                 "calendar-settings": () => fileActions.calendarSync.openSettings(),
@@ -543,7 +552,7 @@ ApplicationWindow {
             Object.assign(item, {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
-                sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog,
+                sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, settingsDialog: settingsDialog,
                 projectTree: projectTree, quickLook: quickLook, treeModel: treeModel,
             })
             item.start()
@@ -731,6 +740,7 @@ ApplicationWindow {
                         MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: window.toggleSidebar() }
                         MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
                         MenuSeparator {}
+                        MenuItem { text: qsTr("Einstellungen …"); onTriggered: settingsDialog.open() }
                         MenuItem { text: qsTr("Kalender-Einstellungen …"); onTriggered: fileActions.calendarSync.openSettings() }
                         MenuItem { text: qsTr("Erweiterungen verwalten …"); onTriggered: extensionsDialog.open() }
                         MenuItem { text: qsTr("Externen Editor festlegen …"); onTriggered: fileActions.configureEditor() }
@@ -839,6 +849,7 @@ ApplicationWindow {
                             names: app.placeNames
                             paths: app.placePaths
                             icons: app.placeIcons
+                            fixedCount: app.fixedPlaceCount
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
                             onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
                         }

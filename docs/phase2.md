@@ -500,3 +500,24 @@ zweiten Klick ein: Er nutzte die Logik von Strg+`, die ein sichtbares
 Terminal ohne Fokus zuerst fokussiert. Knopf und Befehlspalette blenden
 jetzt direkt ein/aus; nur Strg+` fokussiert zuerst. Rauchtest mit echten
 Klicks bei Fokus im Editor.
+
+### Nachtrag – Orte aus Dolphin
+
+Unter den festen Orten zeigt die Seitenleiste (abgesetzt als
+„Dateimanager“) die lokalen Orte aus Dolphin/KDE
+(`~/.local/share/user-places.xbel`) und GTK-Dateimanagern
+(`~/.config/gtk-3.0/bookmarks`), in deren Reihenfolge
+(`atlas_core::places`). Ausgeblendete Einträge, Einträge nur für eine
+andere App, Netzwerk-Orte (`sftp://`, `smb://`), KIO-Orte (`trash:/`) und
+nicht vorhandene Ordner fallen weg, ebenso Duplikate der festen Orte.
+Laufwerke stehen nicht in diesen Dateien (Dolphin fragt UDisks2) und
+fehlen daher. Änderungen in Dolphin erscheinen sofort (Dateiüberwachung);
+die Orte gelten auch in Ordnerauswahl und Pfadleiste. Neu: der Dialog
+**Einstellungen** (Menü, Befehlspalette) mit dem Schalter
+„Orte aus Dolphin und anderen Dateimanagern anzeigen“ (`[places]
+file_manager`, standardmäßig an) und Wegen zu Editor-, Kalender- und
+Erweiterungs-Einstellungen. Der Rauchtest nutzt eigene `XDG_DATA_HOME`/
+`XDG_CONFIG_HOME` und fasst die echten Orte nie an. Geprüft: Kern-Tests
+(XBEL mit `<!DOCTYPE>`, ausgeblendete/fremde/Netzwerk-Einträge,
+Prozentkodierung, GTK-Lesezeichen, Duplikate) und Rauchtest (übernommen,
+aus- und wieder einschalten).

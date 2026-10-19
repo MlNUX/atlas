@@ -45,9 +45,15 @@ pub mod qobject {
         #[qproperty(QStringList, open_files, cxx_name = "openFiles", READ, CONSTANT)]
         // Line per entry of `openFiles` ("0" = none).
         #[qproperty(QStringList, open_lines, cxx_name = "openLines", READ, CONSTANT)]
-        #[qproperty(QStringList, place_names, cxx_name = "placeNames", READ, CONSTANT)]
-        #[qproperty(QStringList, place_paths, cxx_name = "placePaths", READ, CONSTANT)]
-        #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, CONSTANT)]
+        /// Places: the fixed ones first, then the file managers' (Dolphin/KDE,
+        /// GTK) if `fileManagerPlaces` is on.
+        #[qproperty(QStringList, place_names, cxx_name = "placeNames", READ, NOTIFY = places_changed)]
+        #[qproperty(QStringList, place_paths, cxx_name = "placePaths", READ, NOTIFY = places_changed)]
+        #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, NOTIFY = places_changed)]
+        /// How many of the places are Atlas' fixed ones.
+        #[qproperty(i32, fixed_place_count, cxx_name = "fixedPlaceCount", READ, NOTIFY = places_changed)]
+        /// Setting `[places] file_manager` (saved when changed).
+        #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
@@ -75,6 +81,19 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "projectRootChanged"]
         fn project_root_changed(self: Pin<&mut AppController>);
+
+        #[qsignal]
+        #[cxx_name = "placesChanged"]
+        fn places_changed(self: Pin<&mut AppController>);
+
+        #[cxx_name = "setFileManagerPlaces"]
+        fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
+
+        /// Reads the places again (also done when the file managers' files
+        /// change).
+        #[qinvokable]
+        #[cxx_name = "refreshPlaces"]
+        fn refresh_places(self: Pin<&mut AppController>);
 
         /// Opens `path` as the project folder and remembers it.
         #[qinvokable]
@@ -484,6 +503,10 @@ pub struct AppControllerRust {
     place_names: QStringList,
     place_paths: QStringList,
     place_icons: QStringList,
+    fixed_place_count: i32,
+    file_manager_places: bool,
+    /// Watches the file managers' places files.
+    places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
     quit_after_ms: i32,
     self_test: bool,
@@ -529,14 +552,6 @@ impl Default for AppControllerRust {
         for f in &cli.open {
             open_files.append(qs(f.to_string_lossy()));
         }
-        let mut place_names = QStringList::default();
-        let mut place_paths = QStringList::default();
-        let mut place_icons = QStringList::default();
-        for place in atlas_core::listing::places() {
-            place_names.append(qs(place.name));
-            place_paths.append(qs(place.path.to_string_lossy()));
-            place_icons.append(qs(place.icon));
-        }
         Self {
             project_root: QString::default(),
             project_name: QString::default(),
@@ -546,9 +561,12 @@ impl Default for AppControllerRust {
             index_status: QString::default(),
             open_files,
             open_lines,
-            place_names,
-            place_paths,
-            place_icons,
+            place_names: QStringList::default(),
+            place_paths: QStringList::default(),
+            place_icons: QStringList::default(),
+            fixed_place_count: 0,
+            file_manager_places: Config::load().places.file_manager,
+            places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
             self_test: cli.self_test,
@@ -581,7 +599,9 @@ impl Default for AppControllerRust {
 }
 
 impl cxx_qt::Initialize for qobject::AppController {
-    fn initialize(self: Pin<&mut Self>) {
+    fn initialize(mut self: Pin<&mut Self>) {
+        self.as_mut().refresh_places();
+        self.as_mut().watch_places();
         let cli = Cli::get();
         let initial = cli
             .project
@@ -596,6 +616,67 @@ impl cxx_qt::Initialize for qobject::AppController {
 
 fn qs(s: impl AsRef<str>) -> QString {
     QString::from(s.as_ref())
+}
+
+impl qobject::AppController {
+    pub fn refresh_places(mut self: Pin<&mut Self>) {
+        let fixed = atlas_core::listing::places();
+        let extra = if self.file_manager_places { atlas_core::places::file_manager_places(&fixed) } else { Vec::new() };
+        let (mut names, mut paths, mut icons) =
+            (QStringList::default(), QStringList::default(), QStringList::default());
+        for place in fixed.iter().chain(&extra) {
+            names.append(qs(&place.name));
+            paths.append(qs(place.path.to_string_lossy()));
+            icons.append(qs(&place.icon));
+        }
+        if paths == self.place_paths && names == self.place_names && icons == self.place_icons {
+            return;
+        }
+        let mut r = self.as_mut().rust_mut();
+        r.place_names = names;
+        r.place_paths = paths;
+        r.place_icons = icons;
+        r.fixed_place_count = fixed.len() as i32;
+        self.places_changed();
+    }
+
+    pub fn set_file_manager_places(mut self: Pin<&mut Self>, on: bool) {
+        if self.file_manager_places == on {
+            return;
+        }
+        let mut config = Config::load().places;
+        config.file_manager = on;
+        if let Err(err) = Config::save_places(&config) {
+            log::warn!("cannot save [places]: {err:#}");
+        }
+        self.as_mut().rust_mut().file_manager_places = on;
+        self.as_mut().places_changed();
+        self.refresh_places();
+    }
+
+    /// Dolphin or a GTK file manager changed its places: read them again.
+    fn watch_places(mut self: Pin<&mut Self>) {
+        let sources = atlas_core::places::sources();
+        let dirs: Vec<PathBuf> =
+            sources.iter().filter_map(|f| f.parent().map(Path::to_path_buf)).filter(|d| d.is_dir()).collect();
+        let thread = self.qt_thread();
+        let watched = sources.clone();
+        match atlas_core::watcher::DirWatcher::new(move |changed| {
+            if changed.iter().any(|p| watched.contains(p)) {
+                let _ = thread.queue(|this| {
+                    if this.file_manager_places {
+                        this.refresh_places();
+                    }
+                });
+            }
+        }) {
+            Ok(watcher) => {
+                watcher.sync(&dirs);
+                self.as_mut().rust_mut().places_watcher = Some(watcher);
+            }
+            Err(err) => log::warn!("places watcher unavailable: {err:#}"),
+        }
+    }
 }
 
 fn path_of(s: &QString) -> PathBuf {

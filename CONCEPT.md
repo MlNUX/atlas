@@ -23,7 +23,7 @@ Der entscheidende Grundsatz lautet: **Die Dateien bleiben das Original.** Atlas 
 - Eine große temporäre Schnellansicht wird per Leertaste geöffnet.
 - Markierte PDF-Stellen können als Zitat mit stabilem Seitenlink in Notizen übernommen werden.
 - Der Notizmodus bietet Markdown, Wiki-Links, Tags, Backlinks und einen lokalen Graphen, bleibt aber in die reale Projektordnerstruktur eingebettet.
-- Die linke Navigation trennt feste Systemorte vom aktuell geöffneten Projektordner. Favoriten entfallen; der Projektordner erscheint als persistenter Explorer-Baum nach VS-Code-Vorbild.
+- Die linke Navigation trennt feste Systemorte vom aktuell geöffneten Projektordner. Eigene Favoriten in Atlas entfallen; die Orte des Dateimanagers (Dolphin/KDE, GTK) werden auf Wunsch übernommen, sodass es nur eine Liste gibt. Der Projektordner erscheint als persistenter Explorer-Baum nach VS-Code-Vorbild.
 - Für Informatik- und Linux-Projekte erhält Atlas ein integriertes Terminal, technische Markdown-Darstellung, Codevorschau, Entwicklersuche und benutzerdefinierte Aktionen.
 
 ## Leitprinzipien
@@ -40,7 +40,7 @@ Der entscheidende Grundsatz lautet: **Die Dateien bleiben das Original.** Atlas 
 ### Linke Seitenleiste: Navigation
 
 - kompakter Bereich „Orte“ für Persönlicher Ordner, Schreibtisch, Dokumente, Downloads und Papierkorb
-- keine Favoriten
+- keine eigenen Favoriten; darunter optional (Einstellungen, standardmäßig an) die lokalen Orte aus Dolphin/KDE und GTK-Dateimanagern
 - darunter genau ein aktuell geöffneter Projektordner nach dem Explorer-Prinzip von VS Code
 - vollständiger, aufklappbarer Verzeichnisbaum dieses Projektordners
 - Aktion „Projektordner öffnen“ zum Wechseln der Arbeitsbasis
