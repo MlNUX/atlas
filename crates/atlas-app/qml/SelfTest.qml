@@ -657,6 +657,31 @@ Item {
                 cal.disconnectAccount()
                 check("Konto getrennt: Passwort vergessen", !cal.connected && !cal.unlocked && cal.remembered === "")
             },
+            () => {
+                // The terminal button hides a shown terminal with one click,
+                // also while the focus is in the editor.
+                terminalPanel.visible = true
+                editor.open(path("notes/idee.md"), 0, "tab")
+            },
+            () => {
+                editor.activeTab.forceActiveFocus()
+                const b = window.terminalButton
+                const p = b.mapToItem(null, b.width / 2, b.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                check("Terminal-Knopf: ein Klick blendet aus", !terminalPanel.visible && !window.terminalButton.checked,
+                      terminalPanel.visible + " / " + window.terminalButton.checked)
+                const b = window.terminalButton
+                const p = b.mapToItem(null, b.width / 2, b.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                check("Terminal-Knopf: ein Klick blendet ein", terminalPanel.visible && window.terminalButton.checked,
+                      terminalPanel.visible + " / " + window.terminalButton.checked)
+            },
         ]
         timer.start()
     }

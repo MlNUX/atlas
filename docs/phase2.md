@@ -492,3 +492,11 @@ App-Passwort …“ stehen. Geprüft: Kern-Tests (verschlüsselt mit Ersatz für
 systemd-creds, Rückfall auf Datei, Rechte 700/600, für andere lesbare
 Datei abgelehnt, kaputtes systemd-creds) und Rauchtest (merken, Neustart
 ohne Eingabe, abwählen, wieder merken, Konto trennen).
+
+### Nachtrag – Terminal-Knopf
+
+Der Terminal-Knopf oben rechts klappte das Terminal manchmal erst beim
+zweiten Klick ein: Er nutzte die Logik von Strg+`, die ein sichtbares
+Terminal ohne Fokus zuerst fokussiert. Knopf und Befehlspalette blenden
+jetzt direkt ein/aus; nur Strg+` fokussiert zuerst. Rauchtest mit echten
+Klicks bei Fokus im Editor.

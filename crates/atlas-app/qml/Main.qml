@@ -152,7 +152,7 @@ ApplicationWindow {
             { name: qsTr("Neuer Ordner …"), hint: app.relativePath(dir), run: () => fileActions.newFolder(dir) },
             { name: qsTr("Projektweit suchen"), hint: "Strg+Umschalt+F", run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } },
             { name: qsTr("TODO und FIXME finden"), run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.searchTodos() } },
-            { name: qsTr("Terminal ein-/ausblenden"), hint: "Strg+`", run: () => window.toggleTerminal() },
+            { name: qsTr("Terminal ein-/ausblenden"), hint: "Strg+`", run: () => window.toggleTerminal(true) },
             { name: qsTr("Neues Terminal"), hint: "Strg+Umschalt+`", run: () => window.openTerminal(dir, "panel") },
             { name: qsTr("Terminal als Tab öffnen"), run: () => window.openTerminal(dir, "tab") },
             { name: qsTr("Editor teilen"), hint: "Strg+\\", run: () => { if (editor.activeGroup) editor.splitGroup(editor.activeGroup) } },
@@ -573,8 +573,11 @@ ApplicationWindow {
     /// For tests: the sidebar's width while it is shown.
     function setSidebarWidth(width) { sidebar.SplitView.preferredWidth = width }
 
-    function toggleTerminal() {
-        if (terminalPanel.visible && terminalPanel.currentGroup && terminalPanel.currentGroup.activeTerminal
+    /// Strg+`: a shown terminal without focus gets the focus first; the
+    /// button (`direct`) always shows or hides.
+    readonly property alias terminalButton: terminalButton
+    function toggleTerminal(direct) {
+        if (!direct && terminalPanel.visible && terminalPanel.currentGroup && terminalPanel.currentGroup.activeTerminal
                 && !terminalPanel.currentGroup.activeTerminal.terminalView.activeFocus) {
             terminalPanel.focusTerminal()
             return
@@ -688,6 +691,7 @@ ApplicationWindow {
                     onDeleteRequested: (id) => window.deleteSession(id)
                 }
                 IconButton {
+                    id: terminalButton
                     iconName: "terminal"
                     iconSize: 18
                     implicitWidth: 34
@@ -695,7 +699,7 @@ ApplicationWindow {
                     tip: qsTr("Terminal ein-/ausblenden (Strg+`)")
                     checkable: true
                     checked: terminalPanel.visible
-                    onClicked: window.toggleTerminal()
+                    onClicked: window.toggleTerminal(true)
                 }
                 IconButton {
                     iconName: "sidebar-right"
