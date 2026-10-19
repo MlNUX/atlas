@@ -130,20 +130,24 @@ Popup {
         else openRequested(r.path, r.line || 0, newSplit ? "split" : "tab", r.annot ? { annot: r.annot } : {})
     }
 
-    function glyph(kind) {
-        return ({ action: "›", dir: "📁", note: "📝", file: "📄", tag: "#", line: "↧", search: "🔍", annotation: "❝", calendar: "📅" })[kind] || "•"
+    /// [icon, colour] of a result.
+    function iconOf(r) {
+        const fixed = { action: ["play", Theme.textMuted], tag: ["", ""], line: ["arrow-right", Theme.textMuted], search: ["search", Theme.textMuted],
+                        annotation: ["quote", "#e0b33a"], calendar: ["calendar", Theme.accent] }[r.kind]
+        if (fixed) return fixed
+        return Theme.fileIcon(r.relative || r.title || "", r.kind === "dir")
     }
 
     parent: Overlay.overlay
     x: Math.round((parent.width - width) / 2)
     y: 48
-    width: Math.min(680, parent.width - 40)
-    height: Math.min(480, 54 + Math.max(1, results.length) * 34)
+    width: Math.min(720, parent.width - 40)
+    height: Math.min(520, 70 + Math.max(1, results.length) * 38)
     modal: true
     focus: true
-    padding: 6
+    padding: 8
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    background: Rectangle { color: Theme.header; border.color: Theme.border; radius: 8 }
+    background: Rectangle { color: "#131d30"; border.color: Theme.borderStrong; radius: 12 }
 
     ColumnLayout {
         anchors.fill: parent
@@ -151,6 +155,10 @@ Popup {
         TextField {
             id: input
             Layout.fillWidth: true
+            implicitHeight: 42
+            leftPadding: 40
+            font.pixelSize: 14
+            Icon { name: "search"; size: 18; x: 13; anchors.verticalCenter: parent.verticalCenter }
             placeholderText: qsTr("Datei, Ordner, Notiz oder Aktion … (>Aktion, #Tag, @Zitat, !Termin, :Zeile, ?Volltext)")
             onTextEdited: bar.update()
             Keys.onDownPressed: view.incrementCurrentIndex()
@@ -176,15 +184,22 @@ Popup {
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar {}
             delegate: ItemDelegate {
+                id: resultRow
                 required property var modelData
                 required property int index
                 width: ListView.view.width
-                height: 34
+                height: 38
                 highlighted: ListView.isCurrentItem
-                background: Rectangle { radius: 4; color: parent.highlighted ? Theme.activeSelection : parent.hovered ? Theme.hover : "transparent" }
+                readonly property var resultIcon: bar.iconOf(modelData)
+                background: Rectangle { radius: 7; color: parent.highlighted ? Theme.activeSelection : parent.hovered ? Theme.hover : "transparent" }
                 contentItem: RowLayout {
-                    spacing: 10
-                    Label { text: bar.glyph(modelData.kind); color: Theme.textMuted; Layout.preferredWidth: 18; horizontalAlignment: Text.AlignHCenter }
+                    spacing: 12
+                    Item {
+                        Layout.preferredWidth: 18
+                        Layout.preferredHeight: 18
+                        Icon { anchors.centerIn: parent; visible: !!resultRow.resultIcon[0]; name: resultRow.resultIcon[0]; color: resultRow.resultIcon[1]; size: 17 }
+                        Label { anchors.centerIn: parent; visible: !resultRow.resultIcon[0]; text: "#"; color: Theme.accent; font.bold: true }
+                    }
                     Label { text: modelData.title; color: Theme.textStrong; elide: Text.ElideRight; Layout.maximumWidth: parent.width * 0.5 }
                     Label {
                         Layout.fillWidth: true

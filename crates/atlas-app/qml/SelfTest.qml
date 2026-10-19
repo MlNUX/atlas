@@ -19,6 +19,8 @@ Item {
     property var searchModel
     property var terminalPanel
     property var window
+    property var sendToNote
+    property var sessionMenu
 
     property int failures: 0
     property int step: 0
@@ -420,6 +422,14 @@ Item {
             },
             () => {
                 const [left, right] = editor.groups
+                // Dialogs of the new design.
+                sendToNote.ask("ok", app.projectRoot)
+                check("„In Notiz übernehmen“ öffnet", sendToNote.visible && sendToNote.filtered.length > 0, sendToNote.filtered.length)
+                sendToNote.close()
+                const sessions = JSON.parse(app.sessionSummaries())
+                check("Sessionliste mit Umfang", sessions.length >= 1 && sessions.every(s => s.tabs >= 0 && s.splits >= 0 && !!s.kind), JSON.stringify(sessions))
+                sessionMenu.clicked()
+                check("Sessionfenster öffnet", sessionMenu.sessions.length === sessions.length)
                 check("An den linken Rand: neuer Split links", editor.groups.length === 2 && left.tabs.length === 1 && left.tabs[0] === test.moved
                       && right.tabs.indexOf(test.moved) < 0 && editor.activeGroup === left, names())
             },

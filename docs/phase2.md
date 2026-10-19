@@ -379,3 +379,27 @@ Oberfläche an das dunkle „Navy“-Mockup angeglichen (Screenshot:
 - **Markdown-Vorschau**: Überschriften mit `#`/`##`, farbige Tag-Chips,
   Zitate als Karte mit goldenem Rand und Quellen-Chip, eigene Checkboxen.
 - Terminal in den Farben des Designs.
+
+#### Fenster und Dialoge
+
+- Eigener Qt-Quick-Controls-Stil `qml/AtlasStyle` (wird beim Start gesetzt,
+  `QT_QUICK_CONTROLS_STYLE` überschreibt ihn; nicht gestaltete Controls
+  kommen aus Fusion): Dialoge als Karten mit Titel auf abgedunkeltem
+  Fenster, abgerundete Eingabefelder, Auswahllisten, Checkboxen und
+  Knöpfe (Bestätigen in Akzentfarbe, Standardknöpfe auf Deutsch), Menüs mit
+  runder Hervorhebung und rechtsbündigen Kürzeln, schmale Scrollbalken,
+  Reiter mit Akzentlinie, Tooltips. Damit folgen alle Fenster dem Design –
+  Einstellungen, Eigenschaften, Erweiterungen, Kalender, Konflikte,
+  Umbenennen, Bestätigungen, Kontextmenüs.
+- **Sessionfenster** nach dem Mockup
+  ([previews/15-atlas-sessions-navy.png](../previews/15-atlas-sessions-navy.png)):
+  Suche, alle Sessions mit Symbol nach Inhalt (PDF, Notizen, Code, leer),
+  „3 Tabs · 2 Splits“, aktive Session markiert („Automatisch gespeichert“),
+  sonst Zeit der letzten Speicherung; ⋮ je Session zum Umbenennen und
+  Löschen; unten „Neue Session“ (mit ⋮: Umbenennen, Session speichern,
+  Löschen) und „Aktuelle duplizieren“.
+- Arbeitsleiste mit Suchsymbol und farbigen Dateisymbolen.
+- `--screenshot-dialog NAME` öffnet einen Dialog für Design-Screenshots.
+
+Gefunden und behoben: „In Notiz übernehmen“ (Terminal-Ausgabe, PDF-Zitat)
+öffnete sich nicht – eine lokale Variable `open` verdeckte `open()`.

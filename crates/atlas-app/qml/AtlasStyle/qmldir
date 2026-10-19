@@ -1,0 +1,23 @@
+module AtlasStyle
+# Atlas' own Qt Quick Controls style (navy design, see ../Theme.qml).
+# Controls not listed here come from Fusion.
+import QtQuick.Controls.Fusion auto
+singleton Colors 1.0 Colors.qml
+Button 6.0 Button.qml
+CheckBox 6.0 CheckBox.qml
+ComboBox 6.0 ComboBox.qml
+Dialog 6.0 Dialog.qml
+DialogButtonBox 6.0 DialogButtonBox.qml
+ItemDelegate 6.0 ItemDelegate.qml
+Menu 6.0 Menu.qml
+MenuItem 6.0 MenuItem.qml
+MenuSeparator 6.0 MenuSeparator.qml
+Popup 6.0 Popup.qml
+ScrollBar 6.0 ScrollBar.qml
+ScrollView 6.0 ScrollView.qml
+SpinBox 6.0 SpinBox.qml
+TabBar 6.0 TabBar.qml
+TabButton 6.0 TabButton.qml
+TextArea 6.0 TextArea.qml
+TextField 6.0 TextField.qml
+ToolTip 6.0 ToolTip.qml

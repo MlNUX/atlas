@@ -68,7 +68,7 @@ impl Project {
         self.atlas_dir().join("sessions").join(self.device())
     }
 
-    fn session_path(&self, id: &str) -> PathBuf {
+    pub fn session_path(&self, id: &str) -> PathBuf {
         self.sessions_dir().join(format!("{id}.json"))
     }
 

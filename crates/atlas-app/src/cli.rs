@@ -18,6 +18,10 @@ Options:
   --search PATTERN     Start a project search for PATTERN
   --screenshot FILE    Save a PNG of the window after startup (for tests)
   --screenshot-delay MS  Delay before the screenshot (default 2500)
+  --screenshot-dialog NAME  Open a dialog for the screenshot (sessions,
+                       calendar-settings, extensions, properties, entry,
+                       editor, palette, menu, context-menu, conflicts,
+                       send-to-note, rename, confirm)
   --quit-after MS      Quit MS milliseconds after startup (for tests)
   --self-test          Run the built-in smoke test against PROJECT and exit
                        with its result (0 = passed; for tests)
@@ -34,6 +38,8 @@ pub struct Cli {
     pub no_session: bool,
     pub screenshot: Option<PathBuf>,
     pub screenshot_delay_ms: Option<u32>,
+    /// Dialog shown before the screenshot (design checks).
+    pub screenshot_dialog: Option<String>,
     pub search: Option<String>,
     pub quit_after_ms: Option<u32>,
     pub self_test: bool,
@@ -83,6 +89,7 @@ impl Cli {
                     let v = value("--screenshot-delay")?;
                     cli.screenshot_delay_ms = Some(v.parse().map_err(|_| format!("invalid --screenshot-delay: {v}"))?);
                 }
+                "--screenshot-dialog" => cli.screenshot_dialog = Some(value("--screenshot-dialog")?),
                 "--search" => cli.search = Some(value("--search")?),
                 "--quit-after" => {
                     let v = value("--quit-after")?;

@@ -440,6 +440,7 @@ ApplicationWindow {
             searchPanel.setQuery(app.initialSearch)
         }
         if (app.screenshotPath) screenshotTimer.start()
+        if (app.screenshotDialog) dialogTimer.start()
         if (app.quitAfterMs > 0) quitTimer.start()
         if (app.screenshotPath || app.quitAfterMs > 0) stallProbe.start()
     }
@@ -465,6 +466,31 @@ ApplicationWindow {
     }
 
     // Test hooks (--screenshot / --quit-after).
+    // `--screenshot-dialog NAME`: a dialog for design checks (fixed list).
+    Timer {
+        id: dialogTimer
+        interval: Math.max(200, app.screenshotDelayMs - 1500)
+        onTriggered: {
+            const file = app.projectRoot + "/" + (app.openFiles.length ? app.openFiles[0] : "")
+            const show = {
+                "sessions": () => sessionMenu.clicked(),
+                "calendar-settings": () => fileActions.calendarSync.openSettings(),
+                "conflicts": () => fileActions.calendarSync.showConflicts(),
+                "extensions": () => extensionsDialog.open(),
+                "properties": () => fileActions.showProperties(app.projectRoot),
+                "editor": () => fileActions.configureEditor(),
+                "palette": () => commandPalette.show(""),
+                "menu": () => mainMenu.popup(),
+                "context-menu": () => fileActions.showMenu([app.openFiles.length ? app.openFiles[0] : app.projectRoot], app.projectRoot),
+                "send-to-note": () => sendToNote.ask("$ cargo test\nok", app.projectRoot),
+                "rename": () => fileActions.rename(app.openFiles.length ? app.openFiles[0] : app.projectRoot),
+                "confirm": () => fileActions.purge(["x"], [qsTr("Beispiel.txt")]),
+                "entry": () => window.newCalendarEntry("event"),
+            }[app.screenshotDialog]
+            if (show) show()
+            else console.warn("unknown --screenshot-dialog", app.screenshotDialog)
+        }
+    }
     Timer {
         id: screenshotTimer
         interval: app.screenshotDelayMs
@@ -496,6 +522,7 @@ ApplicationWindow {
             Object.assign(item, {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
+                sendToNote: sendToNote, sessionMenu: sessionMenu,
             })
             item.start()
         }
@@ -625,6 +652,8 @@ ApplicationWindow {
                 SessionMenu {
                     id: sessionMenu
                     app: app
+                    activeTabs: editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                    activeSplits: editor.groups.filter(g => g.tabs.length > 0).length
                     onSwitchRequested: (id) => window.switchSession(id)
                     onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
                     onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }

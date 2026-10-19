@@ -52,6 +52,7 @@ pub mod qobject {
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
         #[qproperty(i32, screenshot_delay_ms, cxx_name = "screenshotDelayMs", READ, CONSTANT)]
+        #[qproperty(QString, screenshot_dialog, cxx_name = "screenshotDialog", READ, CONSTANT)]
         #[qproperty(QString, initial_search, cxx_name = "initialSearch", READ, CONSTANT)]
         #[qproperty(bool, restore_session, cxx_name = "restoreSession", READ, CONSTANT)]
         #[qproperty(bool, persist_session, cxx_name = "persistSession", READ, CONSTANT)]
@@ -167,6 +168,12 @@ pub mod qobject {
             layout_json: &QString,
             expanded: &QStringList,
         ) -> QString;
+
+        /// The sessions for the session list: JSON list of {id, name, tabs,
+        /// splits, kind, saved (Unix seconds of the last save)}.
+        #[qinvokable]
+        #[cxx_name = "sessionSummaries"]
+        fn session_summaries(self: &AppController) -> QString;
 
         #[qinvokable]
         #[cxx_name = "renameSession"]
@@ -470,6 +477,7 @@ pub struct AppControllerRust {
     quit_after_ms: i32,
     self_test: bool,
     screenshot_delay_ms: i32,
+    screenshot_dialog: QString,
     initial_search: QString,
     restore_session: bool,
     persist_session: bool,
@@ -534,6 +542,7 @@ impl Default for AppControllerRust {
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
             self_test: cli.self_test,
             screenshot_delay_ms: cli.screenshot_delay_ms.unwrap_or(2500) as i32,
+            screenshot_dialog: qs(cli.screenshot_dialog.clone().unwrap_or_default()),
             initial_search: qs(cli.search.as_deref().unwrap_or_default()),
             // `--open` starts with just the given files, but the result is
             // remembered as the new session.
@@ -878,6 +887,27 @@ impl qobject::AppController {
                 QString::default()
             }
         }
+    }
+
+    pub fn session_summaries(&self) -> QString {
+        let Some(project) = self.project.as_ref() else { return qs("[]") };
+        let list: Vec<serde_json::Value> = project
+            .list_sessions()
+            .into_iter()
+            .map(|s| {
+                let summary = project.load_named(&s.id).summary();
+                let saved = std::fs::metadata(project.session_path(&s.id))
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs());
+                serde_json::json!({
+                    "id": s.id, "name": s.name, "tabs": summary.tabs, "splits": summary.splits,
+                    "kind": summary.kind, "saved": saved,
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
     }
 
     pub fn rename_session(mut self: Pin<&mut Self>, id: &QString, name: &QString) -> bool {
