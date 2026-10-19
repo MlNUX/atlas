@@ -15,6 +15,8 @@ Item {
     property int line: 0
     /// Preview tabs are replaced by the next preview; pinning makes them stay.
     property bool preview: false
+    /// Viewers without their own toolbars (quick look).
+    property bool compact: false
     /// The EditorGroup showing this tab (changes when the tab is moved).
     property var ownerGroup: null
     // `revision` re-evaluates the kind after the file was moved or deleted.
@@ -116,6 +118,9 @@ Item {
         onLoaded: {
             // Links into PDFs carry a page (`#page=N`) as line.
             if (view.kind === "pdf" && view.line > 0) view.pendingState = Object.assign({}, view.pendingState, { page: view.line - 1 })
+            // The quick look shows whole PDF pages.
+            if (view.compact && view.kind === "pdf" && view.pendingState.zoom === undefined)
+                view.pendingState = Object.assign({}, view.pendingState, { zoom: -1 })
             if (item.applyState) item.applyState(view.pendingState)
         }
     }
@@ -163,6 +168,7 @@ Item {
         id: pdfComponent
         PdfViewer {
             source: view.path
+            chrome: !view.compact
             app: view.app
             actions: view.actions
             onLinkActivated: (path, line, newPane, state) => {

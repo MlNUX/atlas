@@ -45,6 +45,7 @@ ApplicationWindow {
         app: app
         actions: fileActions
         onOpenRequested: (path) => editor.open(path, 0, "tab")
+        onSplitRequested: (path) => editor.open(path, 0, "split")
     }
     Connections {
         target: fileActions
@@ -487,11 +488,13 @@ ApplicationWindow {
         id: dialogTimer
         interval: Math.max(200, app.screenshotDelayMs - 1500)
         onTriggered: {
-            const file = app.projectRoot + "/" + (app.openFiles.length ? app.openFiles[0] : "")
+            const first = app.openFiles.length ? app.openFiles[0] : ""
+            const file = first.startsWith("/") ? first : app.projectRoot + "/" + first
             const show = {
                 "sessions": () => sessionMenu.clicked(),
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "new-session": () => sessionMenu.askNew(),
+                "quick-look": () => fileActions.quickLook(file),
                 "calendar-settings": () => fileActions.calendarSync.openSettings(),
                 "conflicts": () => fileActions.calendarSync.showConflicts(),
                 "extensions": () => extensionsDialog.open(),
@@ -541,6 +544,7 @@ ApplicationWindow {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
                 sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog,
+                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel,
             })
             item.start()
         }

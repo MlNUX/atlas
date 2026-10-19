@@ -22,6 +22,9 @@ Item {
     property var sendToNote
     property var sessionMenu
     property var folderDialog
+    property var projectTree
+    property var quickLook
+    property var treeModel
 
     property int failures: 0
     property int step: 0
@@ -35,6 +38,7 @@ Item {
 
     property string layoutBefore
     property real zoomBefore
+    property int tabsBefore
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -539,6 +543,32 @@ Item {
                 folderDialog.askProject()
                 check("Projektordner öffnen: eigener Dialog", folderDialog.visible && folderDialog.mode === "open")
                 folderDialog.close()
+            },
+            () => {
+                // Ctrl+click on a PDF in the tree: quick look, no new tab.
+                if (treeModel.rowOf(path("docs/umbenannt.pdf")) < 0) treeModel.toggle(treeModel.rowOf(path("docs")))
+                test.tabsBefore = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+            },
+            () => {
+                const item = projectTree.itemFor(path("docs/umbenannt.pdf"))
+                check("PDF im Baum sichtbar", !!item)
+                const p = item.mapToItem(null, item.width / 2, item.height / 2)
+                app.postMouse(window, 10, p.x, p.y, 20)
+                app.postMouse(window, 12, p.x, p.y, 60)
+            },
+            () => {
+                const tabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                check("Strg+Klick: Schnellansicht offen", quickLook.visible && quickLook.path === path("docs/umbenannt.pdf"), quickLook.path)
+                check("… ohne neuen Tab", tabs === test.tabsBefore, tabs + " statt " + test.tabsBefore)
+            },
+            () => {
+                check("Schnellansicht: PDF ganzseitig, ohne eigene Leiste", !!quickLook.pdf && quickLook.pdf.zoom < 0 && !quickLook.pdf.chrome)
+                check("Schnellansicht: Seiten und Infos", quickLook.pdf && quickLook.pdf.pageCount > 0 && quickLook.info.sizeText.length > 0, JSON.stringify(quickLook.info))
+                quickLook.openAsSplit()
+            },
+            () => {
+                check("Schnellansicht → im Split öffnen", !quickLook.visible && editor.activeTab && editor.activeTab.path === path("docs/umbenannt.pdf")
+                      && editor.groups.every(g => g.tabs.length > 0), names())
             },
         ]
         timer.start()

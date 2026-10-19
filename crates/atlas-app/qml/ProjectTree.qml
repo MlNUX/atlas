@@ -17,6 +17,23 @@ Rectangle {
     property string selectedPath
 
     signal openRequested(string path, bool newPane)
+
+    /// The row item showing `path` (null if not visible); for the smoke test.
+    function itemFor(path) {
+        const row = root.model.rowOf(path)
+        return row >= 0 ? list.itemAtIndex(row) : null
+    }
+
+    /// Quick look at `path`; arrow keys move through the visible rows.
+    function quickLook(path) {
+        root.actions.quickLook(path, (step) => {
+            const next = root.model.rowOf(root.selectedPath) + step
+            if (next < 0 || next >= list.count) return ""
+            root.selectedPath = root.model.pathAt(next)
+            list.positionViewAtIndex(next, ListView.Contain)
+            return root.selectedPath
+        })
+    }
     signal openProjectRequested()
     /// Double click on a file: open as permanent tab.
     signal pinRequested(string path)
@@ -140,13 +157,7 @@ Rectangle {
                     if (item && item.isDir) root.model.toggle(row)
                     else if (root.selectedPath) root.openRequested(root.selectedPath, ctrl)
                 } else if (event.key === Qt.Key_Space && root.selectedPath) {
-                    root.actions.quickLook(root.selectedPath, (step) => {
-                        const next = root.model.rowOf(root.selectedPath) + step
-                        if (next < 0 || next >= list.count) return ""
-                        root.selectedPath = root.model.pathAt(next)
-                        list.positionViewAtIndex(next, ListView.Contain)
-                        return root.selectedPath
-                    })
+                    root.quickLook(root.selectedPath)
                 } else if (event.key === Qt.Key_F2 && root.selectedPath) {
                     root.actions.rename(root.selectedPath)
                 } else if (event.key === Qt.Key_Delete && root.selectedPath) {
@@ -295,8 +306,10 @@ Rectangle {
                         const newPane = mouse.button === Qt.MiddleButton
                             || (mouse.modifiers & Qt.ControlModifier)
                         // Folders expand on click; Ctrl/middle click opens
-                        // them as file list in a new split.
+                        // them as file list in a new split. Ctrl+click on a
+                        // file shows the quick look, middle click a split.
                         if (row.isDir && !newPane) root.model.toggle(row.index)
+                        else if (!row.isDir && mouse.button === Qt.LeftButton && newPane) root.quickLook(row.path)
                         else root.openRequested(row.path, newPane)
                     }
                 }

@@ -24,6 +24,14 @@ Rectangle {
     property real zoom: 0
     property int lastRenderMs: 0
     property bool sidebarVisible: false
+    /// false: no toolbar (the quick look brings its own controls).
+    property bool chrome: true
+    readonly property int pageCount: doc.pageCount
+    /// Size of page `index` in millimetres ({ w, h }), from PDF points.
+    function pageSizeMm(index) {
+        if (index < 0 || index >= doc.pageCount) return null
+        return { w: Math.round(doc.pageWidth(index) * 25.4 / 72), h: Math.round(doc.pageHeight(index) * 25.4 / 72) }
+    }
     /// 0 = thumbnails, 1 = outline, 2 = annotations.
     property int sidebarTab: 0
     /// Notes citing or linking to this PDF, and the local graph.
@@ -412,6 +420,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
+            visible: root.chrome
             color: Theme.header
             RowLayout {
                 anchors.fill: parent
@@ -1083,6 +1092,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 20
+            visible: root.chrome || doc.status === "error"
             color: Theme.header
             Label {
                 anchors.fill: parent

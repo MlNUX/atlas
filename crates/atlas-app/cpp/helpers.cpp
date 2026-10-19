@@ -89,7 +89,10 @@ void postMouse(QObject* window, int kind, double x, double y, int delayMs)
     // Through the window system like a real mouse (as QTest does), so the
     // application tracks the button state and drags see the events. Each
     // event has its own timer: they keep firing inside a drag's event loop.
-    QTimer::singleShot(delayMs, [w, kind, x, y] {
+    // kind + 10: with Ctrl held.
+    const Qt::KeyboardModifiers modifiers = kind >= 10 ? Qt::ControlModifier : Qt::NoModifier;
+    kind %= 10;
+    QTimer::singleShot(delayMs, [w, kind, x, y, modifiers] {
         if (!w)
             return;
         const QPointF local(x, y);
@@ -98,7 +101,7 @@ void postMouse(QObject* window, int kind, double x, double y, int delayMs)
         const Qt::MouseButtons buttons = kind == 2 ? Qt::NoButton : Qt::LeftButton;
         static int timestamp = 0;
         timestamp += 50;
-        qt_handleMouseEvent(w, local, w->mapToGlobal(local), buttons, button, type, Qt::NoModifier, timestamp);
+        qt_handleMouseEvent(w, local, w->mapToGlobal(local), buttons, button, type, modifiers, timestamp);
     });
 }
 

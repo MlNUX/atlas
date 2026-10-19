@@ -461,7 +461,7 @@ pub mod qobject {
         #[cxx_name = "setOwner"]
         unsafe fn set_owner(self: &AppController, object: *mut QObject, owner: *mut QObject);
 
-        /// Sends a mouse event (0 press, 1 move, 2 release) at window
+        /// Sends a mouse event (0 press, 1 move, 2 release; +10 with Ctrl) at window
         /// coordinates after `delay_ms`; for the smoke test.
         #[qinvokable]
         #[cxx_name = "postMouse"]
