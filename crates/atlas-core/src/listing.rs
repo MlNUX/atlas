@@ -21,6 +21,9 @@ pub fn places() -> Vec<Place> {
         ("Schreibtisch", "desktop", dirs::desktop_dir()),
         ("Dokumente", "documents", dirs::document_dir()),
         ("Downloads", "downloads", dirs::download_dir()),
+        ("Bilder", "pictures", dirs::picture_dir()),
+        ("Musik", "music", dirs::audio_dir()),
+        ("Videos", "videos", dirs::video_dir()),
         ("Papierkorb", "trash", trash_files_dir()),
     ];
     let mut seen = Vec::new();

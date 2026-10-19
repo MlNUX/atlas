@@ -227,9 +227,9 @@ Rectangle {
                     }
                 }
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
-                IconButton { glyph: "‹"; tip: qsTr("Zurück (Alt+←)"); enabled: cal.mode !== "agenda"; onClicked: cal.step(-1) }
+                IconButton { iconName: "chevron-left"; tip: qsTr("Zurück (Alt+←)"); enabled: cal.mode !== "agenda"; onClicked: cal.step(-1) }
                 IconButton { glyph: qsTr("Heute"); tip: qsTr("Heute (T)"); onClicked: cal.goToday() }
-                IconButton { glyph: "›"; tip: qsTr("Weiter (Alt+→)"); enabled: cal.mode !== "agenda"; onClicked: cal.step(1) }
+                IconButton { iconName: "chevron-right"; tip: qsTr("Weiter (Alt+→)"); enabled: cal.mode !== "agenda"; onClicked: cal.step(1) }
                 Label {
                     text: cal.title
                     color: Theme.textStrong
@@ -272,9 +272,9 @@ Rectangle {
                         MenuItem { text: qsTr("Aufgabe …"); onTriggered: cal.newEntry({ kind: "task" }) }
                     }
                 }
-                IconButton { glyph: "☑"; tip: qsTr("Noch nicht eingeplante Aufgaben"); checkable: true; checked: cal.showTasks; onClicked: cal.showTasks = !cal.showTasks }
-                IconButton { glyph: "ⓘ"; tip: qsTr("Details und Wochenübersicht"); checkable: true; checked: cal.showDetails; onClicked: cal.showDetails = !cal.showDetails }
-                IconButton { glyph: "⚙"; tip: qsTr("Kalender-Einstellungen und Nextcloud"); onClicked: cal.settings() }
+                IconButton { iconName: "check-square"; tip: qsTr("Noch nicht eingeplante Aufgaben"); checkable: true; checked: cal.showTasks; onClicked: cal.showTasks = !cal.showTasks }
+                IconButton { iconName: "info"; tip: qsTr("Details und Wochenübersicht"); checkable: true; checked: cal.showDetails; onClicked: cal.showDetails = !cal.showDetails }
+                IconButton { iconName: "settings"; tip: qsTr("Kalender-Einstellungen und Nextcloud"); onClicked: cal.settings() }
             }
         }
 
@@ -536,7 +536,7 @@ Rectangle {
                                             onClicked: (mouse) => cal.openRequested(cal.absolute(parent.parent.modelData), 0, !!(mouse.modifiers & Qt.ControlModifier), {})
                                         }
                                     }
-                                    IconButton { glyph: "✕"; tip: qsTr("Verknüpfung lösen"); onClicked: cal.model.unlinkFile(cal.selected, parent.modelData) }
+                                    IconButton { iconName: "close"; tip: qsTr("Verknüpfung lösen"); onClicked: cal.model.unlinkFile(cal.selected, parent.modelData) }
                                 }
                             }
                             Button {

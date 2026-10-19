@@ -168,7 +168,7 @@ Rectangle {
                     onClicked: root.app.findLinkRepairs(root.source)
                 }
                 IconButton {
-                    glyph: "⇠ " + contextPanel.count
+                    iconName: "backlinks"; glyph: String(contextPanel.count)
                     tip: qsTr("Rückverweise")
                     checkable: true
                     checked: root.showBacklinks && contextPanel.tab === 0
@@ -178,7 +178,7 @@ Rectangle {
                     }
                 }
                 IconButton {
-                    glyph: "◎"
+                    iconName: "graph"
                     tip: qsTr("Lokaler Graph: verknüpfte Notizen, PDFs und Dateien")
                     checkable: true
                     checked: root.showBacklinks && contextPanel.tab === 1

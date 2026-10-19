@@ -11,10 +11,10 @@ const fn rgb(hex: u32) -> Rgb {
     Rgb { r: (hex >> 16) as u8, g: (hex >> 8) as u8, b: hex as u8 }
 }
 
-pub const FOREGROUND: Rgb = rgb(0xcccccc);
-pub const BACKGROUND: Rgb = rgb(0x181818);
+pub const FOREGROUND: Rgb = rgb(0xc5d0e0);
+pub const BACKGROUND: Rgb = rgb(0x0b111d);
 pub const CURSOR: Rgb = rgb(0xaeafad);
-pub const SELECTION: Rgb = rgb(0x264f78);
+pub const SELECTION: Rgb = rgb(0x1d3a63);
 
 const ANSI: [Rgb; 16] = [
     rgb(0x000000),

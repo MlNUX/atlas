@@ -419,7 +419,7 @@ Rectangle {
                 anchors.rightMargin: 6
                 spacing: 3
                 IconButton {
-                    glyph: "☰"
+                    iconName: "list"
                     tip: qsTr("Seitenleiste: Miniaturen, Inhalt und Annotationen")
                     checkable: true
                     checked: root.sidebarVisible
@@ -440,7 +440,7 @@ Rectangle {
                     color: Theme.textMuted
                     font.pixelSize: Theme.smallFontSize
                 }
-                IconButton { glyph: "−"; tip: qsTr("Verkleinern (Strg+−)"); onClicked: root.zoomBy(1 / 1.2) }
+                IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Strg+−)"); onClicked: root.zoomBy(1 / 1.2) }
                 Label {
                     text: Math.round(root.zoomScale * 100) + " %"
                     color: Theme.text
@@ -448,7 +448,7 @@ Rectangle {
                     Layout.preferredWidth: 40
                     horizontalAlignment: Text.AlignHCenter
                 }
-                IconButton { glyph: "+"; tip: qsTr("Vergrößern (Strg++)"); onClicked: root.zoomBy(1.2) }
+                IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg++)"); onClicked: root.zoomBy(1.2) }
                 IconButton { glyph: "↔"; tip: qsTr("Seitenbreite (Strg+0)"); checkable: true; checked: root.zoom === 0; onClicked: root.zoom = 0 }
                 IconButton { glyph: "▯"; tip: qsTr("Ganze Seite"); checkable: true; checked: root.zoom < 0; onClicked: root.zoom = -1 }
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
@@ -460,7 +460,7 @@ Rectangle {
                     onClicked: root.tool = "select"
                 }
                 IconButton {
-                    glyph: "✎"
+                    iconName: "pen"
                     tip: qsTr("Freihand zeichnen")
                     checkable: true
                     checked: root.tool === "ink"
@@ -499,7 +499,7 @@ Rectangle {
                     onClicked: { root.tool = root.tool === "note" ? "select" : "note"; root.clearSelection() }
                 }
                 IconButton {
-                    glyph: "🔖"
+                    iconName: "bookmark"
                     tip: root.pageBookmarked ? qsTr("Lesezeichen entfernen (Strg+D)") : qsTr("Lesezeichen für diese Seite (Strg+D)")
                     checkable: true
                     checked: root.pageBookmarked
@@ -532,17 +532,17 @@ Rectangle {
                     enabled: doc.status === "ready"
                     onClicked: doc.extractText(root.currentPage)
                 }
-                IconButton { glyph: "⟳"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
+                IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
                 IconButton {
-                    glyph: "⇠ " + contextPanel.count
+                    iconName: "backlinks"; glyph: String(contextPanel.count)
                     tip: qsTr("Notizen, die auf diese PDF verweisen oder daraus zitieren")
                     checkable: true
                     checked: root.showContext && contextPanel.tab === 0
                     onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 0); contextPanel.tab = 0 }
                 }
                 IconButton {
-                    glyph: "◎"
+                    iconName: "graph"
                     tip: qsTr("Lokaler Graph: verknüpfte Notizen und Dateien")
                     checkable: true
                     checked: root.showContext && contextPanel.tab === 1
@@ -739,7 +739,7 @@ Rectangle {
                                         anchors.top: parent.top
                                         anchors.topMargin: 4
                                         visible: annotHover.hovered
-                                        glyph: "✕"
+                                        iconName: "close"
                                         tip: qsTr("Löschen")
                                         onClicked: notes.remove(annotRow.modelData.id)
                                     }

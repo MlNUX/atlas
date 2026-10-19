@@ -539,7 +539,7 @@ Rectangle {
                 IconButton { glyph: "↑"; tip: qsTr("Vorheriger Treffer (Umschalt+Enter)"); onClicked: root.find(findField.text, true) }
                 IconButton { glyph: "↓"; tip: qsTr("Nächster Treffer (Enter)"); onClicked: root.find(findField.text, false) }
                 Item { Layout.fillWidth: true }
-                IconButton { glyph: "✕"; tip: qsTr("Schließen (Esc)"); onClicked: { findBar.visible = false; area.forceActiveFocus() } }
+                IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: { findBar.visible = false; area.forceActiveFocus() } }
             }
         }
 
@@ -576,7 +576,7 @@ Rectangle {
                 IconButton {
                     visible: !root.wrap
                     implicitHeight: 20
-                    glyph: "☰"
+                    iconName: "list"
                     tip: qsTr("Symbolübersicht")
                     checkable: true
                     checked: root.showSymbols
@@ -585,7 +585,7 @@ Rectangle {
                 IconButton {
                     visible: !!root.actions
                     implicitHeight: 20
-                    glyph: "↗"
+                    iconName: "external"
                     tip: qsTr("Im Editor öffnen")
                     onClicked: { root.save(); root.actions.openInEditor(root.source, Math.max(1, area.cursorLine)) }
                 }

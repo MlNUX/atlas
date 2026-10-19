@@ -93,6 +93,12 @@ pub mod qobject {
         #[cxx_name = "fileName"]
         fn file_name(self: &AppController, path: &QString) -> QString;
 
+        /// Space of the file system holding `path`: JSON {free, total} in
+        /// bytes ("" if unknown).
+        #[qinvokable]
+        #[cxx_name = "diskUsage"]
+        fn disk_usage(self: &AppController, path: &QString) -> QString;
+
         #[qinvokable]
         fn exists(self: &AppController, path: &QString) -> bool;
 
@@ -697,6 +703,18 @@ impl qobject::AppController {
 
     pub fn file_kind(&self, path: &QString) -> QString {
         qs(file_kind(&path_of(path)))
+    }
+
+    pub fn disk_usage(&self, path: &QString) -> QString {
+        use std::os::unix::ffi::OsStrExt;
+        let Ok(c) = std::ffi::CString::new(path_of(path).as_os_str().as_bytes()) else { return QString::default() };
+        let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+        // SAFETY: `c` is a valid C string and `st` a writable statvfs.
+        if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+            return QString::default();
+        }
+        let block = st.f_frsize as u64;
+        qs(serde_json::json!({ "free": st.f_bavail as u64 * block, "total": st.f_blocks as u64 * block }).to_string())
     }
 
     pub fn file_name(&self, path: &QString) -> QString {

@@ -20,6 +20,8 @@ Rectangle {
     signal openProjectRequested()
     /// Double click on a file: open as permanent tab.
     signal pinRequested(string path)
+    /// The project row collapses the whole tree.
+    property bool rootExpanded: true
 
     color: Theme.sidebar
 
@@ -46,40 +48,68 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: 30
-            Layout.leftMargin: 12
-            Layout.rightMargin: 6
-            spacing: 2
+            Layout.leftMargin: 14
+            Layout.rightMargin: 8
+            spacing: 0
+            HoverHandler { id: headerHover }
             Label {
                 Layout.fillWidth: true
-                text: root.projectName ? root.projectName.toUpperCase() : qsTr("KEIN PROJEKT")
-                color: Theme.text
+                text: qsTr("PROJEKTORDNER")
+                color: Theme.textMuted
                 font.pixelSize: Theme.smallFontSize
                 font.bold: true
+                font.letterSpacing: 0.6
                 elide: Text.ElideRight
             }
-            IconButton {
-                glyph: "+"
-                tip: qsTr("Neue Datei")
-                enabled: !!root.projectName
-                onClicked: root.actions.newFile(root.targetDir())
+            // Tools appear on hover, like the mockup's quiet header.
+            Row {
+                opacity: headerHover.hovered || root.model.showHidden ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 120 } }
+                IconButton { iconName: "file-plus"; iconSize: 14; tip: qsTr("Neue Datei"); enabled: !!root.projectName; onClicked: root.actions.newFile(root.targetDir()) }
+                IconButton { iconName: "folder-plus"; iconSize: 14; tip: qsTr("Neuer Ordner"); enabled: !!root.projectName; onClicked: root.actions.newFolder(root.targetDir()) }
+                IconButton {
+                    iconName: "hidden"
+                    iconSize: 14
+                    tip: qsTr("Versteckte Dateien anzeigen")
+                    checkable: true
+                    checked: root.model.showHidden
+                    onToggled: root.model.showHidden = checked
+                }
+                IconButton { iconName: "refresh"; iconSize: 14; tip: qsTr("Aktualisieren"); onClicked: root.model.refresh() }
             }
-            IconButton {
-                glyph: "📁"
-                tip: qsTr("Neuer Ordner")
-                enabled: !!root.projectName
-                onClicked: root.actions.newFolder(root.targetDir())
+        }
+
+        // The project folder itself.
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.leftMargin: 8
+            Layout.rightMargin: 8
+            Layout.preferredHeight: 30
+            visible: !!root.projectName
+            radius: 6
+            color: Theme.accentSoft
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 6
+                anchors.rightMargin: 6
+                spacing: 6
+                Icon { name: root.rootExpanded ? "chevron-down" : "chevron-right"; size: 14; color: Theme.textMuted }
+                Icon { name: "folder-fill"; size: 16; color: "#5aa2ff" }
+                Label {
+                    Layout.fillWidth: true
+                    text: root.projectName
+                    color: Theme.textStrong
+                    font.pixelSize: Theme.fontSize
+                    elide: Text.ElideRight
+                }
             }
-            IconButton {
-                glyph: "◌"
-                tip: qsTr("Versteckte Dateien anzeigen")
-                checkable: true
-                checked: root.model.showHidden
-                onToggled: root.model.showHidden = checked
-            }
-            IconButton {
-                glyph: "⟳"
-                tip: qsTr("Aktualisieren")
-                onClicked: root.model.refresh()
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onClicked: (mouse) => {
+                    if (mouse.button === Qt.RightButton) root.actions.showMenu([], root.model.root)
+                    else root.rootExpanded = !root.rootExpanded
+                }
             }
         }
 
@@ -87,6 +117,8 @@ Rectangle {
             id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.topMargin: 2
+            visible: root.rootExpanded || !root.projectName
             clip: true
             model: root.model
             boundsBehavior: Flickable.StopAtBounds
@@ -161,34 +193,63 @@ Rectangle {
                 required property bool isHidden
 
                 width: ListView.view.width
-                height: Theme.rowHeight
-                color: path === root.selectedPath ? (list.activeFocus ? Theme.activeSelection : Theme.selection)
-                     : path === root.currentPath ? Theme.selection
-                     : hover.hovered ? Theme.hover : "transparent"
+                height: Theme.rowHeight + 2
+                color: "transparent"
+                readonly property var fileIcon: Theme.fileIcon(name, isDir)
 
                 HoverHandler { id: hover }
 
+                // Rounded highlight; the current document gets an accent bar.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    anchors.topMargin: 1
+                    anchors.bottomMargin: 1
+                    radius: 6
+                    color: row.path === root.selectedPath ? (list.activeFocus ? Theme.activeSelection : Theme.selection)
+                         : row.path === root.currentPath ? Theme.selection
+                         : hover.hovered ? Theme.hover : "transparent"
+                    Rectangle {
+                        visible: row.path === root.currentPath
+                        width: 2
+                        height: parent.height - 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        radius: 1
+                        color: Theme.accent
+                    }
+                }
+
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
-                    x: 8 + row.depth * 12
-                    spacing: 4
-                    Text {
+                    x: 14 + (row.depth + 1) * 14
+                    spacing: 7
+                    Item {
                         width: 12
-                        text: row.isDir ? (row.loading ? "…" : row.expanded ? "▾" : "▸") : ""
-                        color: Theme.textMuted
-                        font.pixelSize: 12
+                        height: 16
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: row.isDir && !row.loading
+                            name: row.expanded ? "chevron-down" : "chevron-right"
+                            size: 12
+                            color: Theme.textMuted
+                        }
+                        Text { visible: row.loading; text: "…"; color: Theme.textMuted; anchors.centerIn: parent }
                     }
-                    Text {
-                        text: row.isDir ? (row.expanded ? "📂" : "📁") : fileGlyph(row.name)
-                        font.pixelSize: 12
-                        opacity: row.isHidden ? 0.6 : 1
+                    Icon {
+                        name: row.fileIcon[0]
+                        color: row.fileIcon[1]
+                        size: 16
+                        opacity: row.isHidden ? 0.55 : 1
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                     Text {
                         text: row.name + (row.isSymlink ? "  ↪" : "")
-                        color: row.isHidden ? Theme.textMuted : Theme.text
+                        color: row.isHidden ? Theme.textMuted : row.path === root.currentPath ? Theme.textStrong : Theme.text
                         font.pixelSize: Theme.fontSize
                         elide: Text.ElideRight
-                        width: list.width - (8 + row.depth * 12) - 44
+                        width: list.width - (14 + (row.depth + 1) * 14) - 60
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
 
@@ -245,7 +306,8 @@ Rectangle {
                     anchors.rightMargin: 6
                     anchors.verticalCenter: parent.verticalCenter
                     visible: row.isDir && hover.hovered
-                    glyph: "☰"
+                    iconName: "list"
+                    iconSize: 14
                     tip: qsTr("Als Dateiliste öffnen")
                     onClicked: root.openRequested(row.path, false)
                 }
@@ -269,14 +331,5 @@ Rectangle {
             text: qsTr("Projektordner öffnen…")
             onClicked: root.openProjectRequested()
         }
-    }
-
-    function fileGlyph(name) {
-        const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase()
-        if (ext === "pdf") return "📕"
-        if (ext === "md" || ext === "markdown") return "📝"
-        if (["png", "jpg", "jpeg", "gif", "svg", "webp"].indexOf(ext) >= 0) return "🖼"
-        if (["rs", "c", "h", "cpp", "py", "js", "ts", "qml", "nix", "sh", "toml", "json", "yaml", "yml"].indexOf(ext) >= 0) return "⌘"
-        return "📄"
     }
 }

@@ -120,7 +120,7 @@ Rectangle {
                     font.pixelSize: Theme.smallFontSize
                 }
                 IconButton {
-                    glyph: "◌"
+                    iconName: "hidden"
                     tip: qsTr("Versteckte Dateien anzeigen")
                     checkable: true
                     checked: folder.showHidden

@@ -17,13 +17,23 @@ SplitView {
     readonly property var activeTab: activeGroup ? activeGroup.currentTab : null
 
     signal layoutChanged()
+    /// "+" in a tab strip.
+    signal quickOpenRequested()
 
     orientation: Qt.Horizontal
 
-    handle: Rectangle {
-        implicitWidth: 4
-        implicitHeight: 4
-        color: SplitHandle.pressed ? Theme.accent : SplitHandle.hovered ? Theme.border : Theme.window
+    // Splits are cards with a gap between them.
+    handle: Item {
+        implicitWidth: Theme.gap
+        implicitHeight: Theme.gap
+        Rectangle {
+            anchors.centerIn: parent
+            width: area.orientation === Qt.Horizontal ? 2 : 36
+            height: area.orientation === Qt.Horizontal ? 36 : 2
+            radius: 1
+            color: Theme.accent
+            opacity: parent.SplitHandle.pressed ? 1 : parent.SplitHandle.hovered ? 0.6 : 0
+        }
     }
 
     Component {
@@ -50,6 +60,7 @@ SplitView {
         group.splitRequested.connect(() => area.splitGroup(group))
         group.openInSplit.connect((p, l, side, s) => area.openInSplit(group, p, l, side, s))
         group.changed.connect(area.layoutChanged)
+        group.quickOpenRequested.connect(area.quickOpenRequested)
         activeIndex = index
         equalize()
         layoutChanged()
