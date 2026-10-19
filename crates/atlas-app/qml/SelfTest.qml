@@ -23,6 +23,8 @@ Item {
     property int failures: 0
     property int step: 0
     property var steps: []
+    property string annotId
+    property string pdfBefore
 
     function check(name, ok, detail) {
         if (!ok) failures++
@@ -32,6 +34,7 @@ Item {
 
     function start() {
         const note = path("notes/idee.md")
+        const pdf = path("docs/quelle.pdf")
         steps = [
             () => {
                 check("Projekt geöffnet", app.projectRoot !== "")
@@ -88,6 +91,59 @@ Item {
                 app.flushSession()
                 const layout = JSON.parse(app.loadLayout() || "{}")
                 check("Session enthält Tabs", !!layout.editor && layout.editor.groups.length >= 1, JSON.stringify(layout).slice(0, 120))
+                // ---- Phase 2: PDF annotations and quotes
+                test.pdfBefore = app.readTextFile(pdf)
+                editor.open(pdf, 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("PDF-Ansicht", !!v && !!v.annotationStore, editor.activeTab.kind)
+                check("Anmerkungen geladen", v.annotationStore.status === "new", v.annotationStore.status)
+                // Drag over both lines of page 1.
+                v.dragStart = { page: 0, x: 60, y: 120 }
+                v.dragEnd = { page: 0, x: 400, y: 176 }
+                v.requestSelection()
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Text ausgewählt", v.selectionText.indexOf("Zitat aus der Quelle") >= 0 && v.selectionText.indexOf("Zweite Zeile") >= 0, v.selectionText)
+                test.annotId = v.markSelection("highlight", "#ffd400")
+                check("Markierung angelegt", test.annotId !== "" && v.annotationStore.count === 1, v.annotationStore.count)
+                v.annotationStore.update(test.annotId, JSON.stringify({ comment: "Wichtig" }))
+                v.toggleBookmark()
+                v.annotationStore.add(JSON.stringify({ kind: "ink", page: 2, ink: [[[50, 50], [120, 90], [200, 60]]], color: "#ff6b6b", width: 2 }))
+                check("Lesezeichen und Freihand", v.annotationStore.count === 3, v.annotationStore.count)
+                const quote = v.annotationStore.quoteMarkdown(test.annotId, path("notes/zitate.md"))
+                check("Zitat mit Quelle und Seite", quote.indexOf("> Zitat aus der Quelle Zweite Zeile hier") === 0
+                      && quote.indexOf("[quelle.pdf, S. 1](/docs/quelle.pdf#page=1&annot=" + test.annotId + ")") > 0 && quote.indexOf("Wichtig") > 0, quote)
+                check("Zitat in Notiz", app.appendToNote(path("notes/zitate.md"), quote) === "")
+                app.flushSession()
+                const found = JSON.parse(app.annotationSearch("quelle zweite", 5))
+                check("@-Suche findet Markierung", found.length === 1 && found[0].id === test.annotId, JSON.stringify(found))
+                const html = JSON.parse(app.renderMarkdown(app.readTextFile(path("notes/zitate.md")), path("notes/zitate.md"))).html
+                check("Zitat-Link mit Annotation", html.indexOf("data-atlas-annot=\"" + test.annotId + "\"") > 0, html.slice(0, 300))
+                v.goToPage(1)
+            },
+            () => {
+                // Following the quote link jumps back to the marked place.
+                editor.open(pdf, 1, "tab", { annot: test.annotId })
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Zitat öffnet die Stelle", v.focusedAnnot === test.annotId && v.currentPage === 0, v.focusedAnnot + " / " + v.currentPage)
+                v.annotationStore.exportCopy(path("docs/quelle (annotiert).pdf"))
+            },
+            () => {
+                check("Export als Kopie", app.exists(path("docs/quelle (annotiert).pdf")))
+                check("Original-PDF unverändert", app.readTextFile(pdf) === test.pdfBefore)
+                fileActions.ops.rename(pdf, "umbenannt.pdf")
+            },
+            () => {
+                app.flushSession()
+                const text = app.readTextFile(path("notes/zitate.md"))
+                check("Zitat-Link folgt Umbenennung", text.indexOf("(/docs/umbenannt.pdf#page=1&annot=" + test.annotId + ")") > 0, text)
+                const found = JSON.parse(app.annotationSearch("", 10))
+                check("Anmerkungen folgen der PDF", found.length === 3 && found.every(a => a.relative === "docs/umbenannt.pdf"), JSON.stringify(found))
             },
         ]
         timer.start()

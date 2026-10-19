@@ -18,7 +18,7 @@ dirs = "6"
 log = "0.4"
 notify = "8"
 poppler-rs = "0.26"
-poppler-sys-rs = "0.26"
+poppler-sys-rs = { version = "0.26", features = ["v25_6"] }
 glib = "0.22"
 cairo-rs = "0.22"
 serde = { version = "1", features = ["derive"] }

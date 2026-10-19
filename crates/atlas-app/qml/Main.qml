@@ -55,6 +55,7 @@ ApplicationWindow {
         }
         function onOpenTerminalRequested(dir, where) { window.openTerminal(dir, where) }
         function onSendToNoteRequested(text, cwd) { sendToNote.ask(text, cwd) }
+        function onBlockToNoteRequested(heading, makeBlock, cwd, doneText, newNoteName) { sendToNote.askBlock(heading, makeBlock, cwd, doneText, newNoteName) }
     }
     SendToNoteDialog {
         id: sendToNote
@@ -69,7 +70,7 @@ ApplicationWindow {
         id: commandPalette
         app: app
         actions: window.paletteActions()
-        onOpenRequested: (path, line, where) => editor.open(path, line, where)
+        onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
         onSearchRequested: (text) => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.setQuery(text) }
         onLineRequested: (line) => { if (editor.activeTab) editor.activeTab.reveal(line) }
         onAboutToShow: actions = window.paletteActions()

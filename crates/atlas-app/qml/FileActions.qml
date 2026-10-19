@@ -30,6 +30,9 @@ Item {
     signal openTerminalRequested(string dir, string where)
     /// Put `text` (terminal output) into a note; `cwd` suggests a folder.
     signal sendToNoteRequested(string text, string cwd)
+    /// Put a Markdown block into a note: `makeBlock(notePath)` builds it
+    /// (e.g. a PDF quote whose link depends on the note).
+    signal blockToNoteRequested(string heading, var makeBlock, string cwd, string doneText, string newNoteName)
 
     FileOps {
         id: ops
@@ -72,6 +75,10 @@ Item {
     function sendToNote(text, cwd) {
         if (text.trim()) sendToNoteRequested(text, cwd)
         else showMessage(qsTr("Keine Ausgabe zum Übernehmen"))
+    }
+
+    function sendBlockToNote(heading, makeBlock, cwd, doneText, newNoteName) {
+        blockToNoteRequested(heading, makeBlock, cwd || app.projectRoot, doneText || "", newNoteName || "")
     }
 
     function newFile(dir) {

@@ -20,6 +20,7 @@ Projektdaten sind immer **relativ zur Projektwurzel** und verwenden `/`.
 | `metadata.sqlite` | Dokumentidentitäten und Anzeigezustand | teilweise (Positionen gehen verloren) |
 | `index.sqlite` | Dateiliste mit Gerät/Inode | ja, wird bei jedem Start neu aufgebaut |
 | `recovery/<hash>.json` | ungespeicherte Bearbeitungen | nein, bis gespeichert oder verworfen |
+| `annotations/<name>-<8 hex>.json` | PDF-Annotationen, eine Datei je PDF | nein (Nutzerdaten) |
 | `cache/` | reserviert für abgeleitete Daten | ja |
 
 Alle JSON-/TOML-Dateien werden atomar geschrieben (temporäre Datei, fsync,
@@ -80,6 +81,49 @@ gebaut.
 weicht sie beim Wiederherstellen ab, entsteht ein Konflikt statt eines
 stillen Überschreibens.
 
+### PDF-Annotationen (`annotations/*.json`)
+
+Die PDF selbst wird nie verändert. Je annotierter PDF gibt es eine Datei;
+sie wird mit der ersten Anmerkung angelegt und mit der letzten entfernt.
+
+```json
+{
+  "version": 1,
+  "document": {
+    "path": "docs/paper.pdf",
+    "blake3": "<BLAKE3 der ganzen Datei>", "size": 482113, "pages": 12,
+    "pdf_id": "<permanente ID aus dem PDF-Trailer, falls vorhanden>"
+  },
+  "annotations": [
+    { "id": "1a2b3c4d5e6f", "kind": "highlight", "page": 3,
+      "rects": [[72.0, 140.5, 420.25, 16.0]], "text": "markierter Text",
+      "comment": "", "color": "#ffd400", "group": "",
+      "created": 1792355296, "modified": 1792355296 },
+    { "id": "…", "kind": "ink", "page": 4, "ink": [[[80, 300], [150, 340]]],
+      "width": 2.0, "color": "#ff6b6b", "created": …, "modified": … },
+    { "id": "…", "kind": "bookmark", "page": 7, "title": "Methodik", … }
+  ]
+}
+```
+
+- `kind`: `highlight`, `underline`, `strikeout` (Textmarkierungen mit
+  `rects` je Zeile und `text`), `note` (angehefteter Kommentar, `rects`
+  = Symbol), `ink` (Freihandstriche), `bookmark` (Lesezeichen einer Seite).
+- `page` ist 1-basiert wie in Links; Koordinaten sind PDF-Punkte, Ursprung
+  oben links auf der unrotierten Seite.
+- Markierungen über mehrere Seiten sind je Seite ein Eintrag mit gemeinsamer
+  `group`.
+- **Zuordnung:** zuerst über `path`; ist die PDF dort nicht mehr, über
+  `blake3` oder `pdf_id` + `pages` (externes Verschieben – `path` wird dann
+  angepasst). Verschieben und Umbenennen in Atlas aktualisiert `path`
+  direkt. Weicht `blake3` am gleichen Pfad ab, zeigt Atlas einen Hinweis;
+  mit „Verstanden“ wird der Fingerabdruck übernommen.
+- **Export** schreibt eine Kopie mit echten PDF-Annotationen
+  (Highlight/Underline/StrikeOut, Text, Ink); Lesezeichen haben dort keine
+  Entsprechung. Das Original kann nicht als Ziel gewählt werden.
+- PDFs außerhalb eines Projekts: gleiche Dateien unter
+  `$XDG_STATE_HOME/atlas/annotations/`, `path` ist dann absolut.
+
 ## Pro Benutzer
 
 | Ort | Inhalt |
@@ -110,3 +154,15 @@ Atlas speichert nichts Verstecktes in Markdown-Dateien. Es liest Tags aus dem
 YAML-Frontmatter (`tags: [a, b/c]`) und `title:`, und es schreibt Links nur in
 der dokumentierten Form (`/pfad` ab Projektwurzel oder relativ, mit
 `#L10-L20`, `#page=3` oder Überschriften-Anker).
+
+PDF-Zitate sind normales Markdown; der Link führt auf Seite und Anmerkung
+(`#page=8&annot=<id>`). Andere Programme öffnen damit die PDF (die Seite
+verstehen viele Betrachter), Atlas springt zusätzlich zur Markierung:
+
+```markdown
+> Der markierte Text aus der PDF …
+>
+> — [paper.pdf, S. 8](/docs/paper.pdf#page=8&annot=1a2b3c4d5e6f)
+
+Optionaler Kommentar
+```

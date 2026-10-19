@@ -64,6 +64,9 @@ pub mod qobject {
         #[qproperty(QString, recovery_dir, cxx_name = "recoveryDir", READ, NOTIFY = project_root_changed)]
         // Incremented whenever the note index (links, tags) changed.
         #[qproperty(i32, notes_revision, cxx_name = "notesRevision", READ, NOTIFY)]
+        // Folder of the PDF annotation files (`.atlas/annotations`, or Atlas'
+        // state folder without a project).
+        #[qproperty(QString, annotations_dir, cxx_name = "annotationsDir", READ, NOTIFY = project_root_changed)]
         type AppController = super::AppControllerRust;
 
         #[qsignal]
@@ -309,6 +312,13 @@ pub mod qobject {
         #[cxx_name = "notesMessage"]
         fn notes_message(self: Pin<&mut AppController>, message: QString);
 
+        /// PDF annotations of the project matching `query` (fuzzy over text,
+        /// comment, bookmark title and file name; all if empty). JSON list
+        /// of {path, relative, page, id, kind, text, comment, title}.
+        #[qinvokable]
+        #[cxx_name = "annotationSearch"]
+        fn annotation_search(self: &AppController, query: &QString, limit: i32) -> QString;
+
         #[qinvokable]
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: &AppController, text: &QString);
@@ -349,6 +359,7 @@ pub struct AppControllerRust {
     active_session_name: QString,
     recovery_dir: QString,
     notes_revision: i32,
+    annotations_dir: QString,
 
     /// Root of the open project (also set when nothing is persisted).
     root: Option<PathBuf>,
@@ -413,6 +424,7 @@ impl Default for AppControllerRust {
             active_session_name: QString::default(),
             recovery_dir: QString::default(),
             notes_revision: 0,
+            annotations_dir: qs(atlas_core::paths::state_root().join(atlas_core::annotations::DIR).to_string_lossy()),
             root: None,
             project: None,
             metadata: None,
@@ -507,6 +519,12 @@ impl qobject::AppController {
                 .as_ref()
                 .map(|p| p.atlas_dir().join("recovery"))
                 .unwrap_or_else(|| atlas_core::paths::state_root().join("recovery"))
+                .to_string_lossy());
+            this.annotations_dir = qs(project
+                .as_ref()
+                .map(|p| p.atlas_dir())
+                .unwrap_or_else(atlas_core::paths::state_root)
+                .join(atlas_core::annotations::DIR)
                 .to_string_lossy());
             this.index_ready = project.is_none();
             this.index_status = qs(if project.is_some() { "Index wird aufgebaut …" } else { "" });
@@ -684,6 +702,7 @@ impl qobject::AppController {
 
     pub fn flush_session(&self) {
         crate::text_document::flush_io();
+        crate::annotations_model::flush_io();
         if let Some(writer) = self.writer.as_ref() {
             writer.flush();
         }
@@ -1010,6 +1029,15 @@ impl qobject::AppController {
 
     pub fn files_moved(mut self: Pin<&mut Self>, from: &QString, to: &QString) -> i32 {
         let moves = vec![(path_of(from), path_of(to))];
+        // Annotations follow their PDFs (pending writes land first).
+        if self.project.is_some() {
+            crate::annotations_model::flush_io();
+            let store = atlas_core::annotations::Store::new(self.annotations_dir.to_string());
+            let (old, new) = (self.relative(&moves[0].0), self.relative(&moves[0].1));
+            if let Err(err) = store.moved(&old.to_string_lossy(), &new.to_string_lossy()) {
+                log::warn!("cannot update annotation paths: {err:#}");
+            }
+        }
         let Some(done) = self.with_notes(|n| {
             let plan = n.plan_relink(&moves);
             n.apply(&moves, &plan)
@@ -1081,6 +1109,51 @@ impl qobject::AppController {
             self.as_mut().notes_message(qs(format!("{} Link(s) repariert", fixes.len())));
         }
         done
+    }
+
+    pub fn annotation_search(&self, query: &QString, limit: i32) -> QString {
+        crate::annotations_model::flush_io();
+        let query = query.to_string();
+        let query = query.trim();
+        let store = atlas_core::annotations::Store::new(self.annotations_dir.to_string());
+        let mut found: Vec<(i32, serde_json::Value)> = Vec::new();
+        for (_, file) in store.all() {
+            let key = &file.document.path;
+            let path = if Path::new(key).is_absolute() {
+                PathBuf::from(key)
+            } else {
+                self.root.as_ref().map(|r| r.join(key)).unwrap_or_else(|| PathBuf::from(key))
+            };
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let mut groups = std::collections::HashSet::new();
+            for a in &file.annotations {
+                // One entry per multi-page markup.
+                if !a.group.is_empty() && !groups.insert(a.group.clone()) {
+                    continue;
+                }
+                let haystack = format!("{} {} {} {name}", a.text, a.comment, a.title);
+                let score = if query.is_empty() { 0 } else { finder::score(query, &haystack).unwrap_or(-1) };
+                if score < 0 {
+                    continue;
+                }
+                found.push((
+                    score,
+                    serde_json::json!({
+                        "path": path.to_string_lossy(),
+                        "relative": key,
+                        "page": a.page,
+                        "id": a.id,
+                        "kind": a.kind,
+                        "text": a.text,
+                        "comment": a.comment,
+                        "title": a.title,
+                    }),
+                ));
+            }
+        }
+        found.sort_by_key(|f| std::cmp::Reverse(f.0));
+        found.truncate(limit.max(1) as usize);
+        qs(serde_json::Value::from(found.into_iter().map(|f| f.1).collect::<Vec<_>>()).to_string())
     }
 
     pub fn copy_to_clipboard(&self, text: &QString) {

@@ -3,6 +3,7 @@
 
 //! Atlas Workspace – Qt 6/QML shell.
 
+mod annotations_model;
 mod app;
 mod cli;
 mod file_ops;

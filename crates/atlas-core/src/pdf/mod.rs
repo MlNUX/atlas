@@ -58,6 +58,24 @@ pub struct SearchHit {
 
 /// Upper bound for search hits in one document.
 pub const MAX_SEARCH_HITS: usize = 5000;
+/// Pages a selection may span (longer drags are cut off).
+pub const MAX_SELECTION_PAGES: usize = 30;
+
+/// How text selection snaps (drag, double click, triple click).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectionStyle {
+    Glyph,
+    Word,
+    Line,
+}
+
+/// Selected text on one page: line rectangles (points, origin top left).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Selection {
+    pub page: usize,
+    pub rects: Vec<[f64; 4]>,
+    pub text: String,
+}
 
 /// Engine specific implementation; lives on the worker thread.
 trait Backend {
@@ -66,7 +84,49 @@ trait Backend {
     fn text(&mut self, path: &Path, page: usize) -> Result<String>;
     fn outline(&mut self, path: &Path) -> Result<Vec<OutlineItem>>;
     fn search(&mut self, path: &Path, query: &str, limit: usize) -> Result<Vec<SearchHit>>;
+    /// Text in `area` (`[x1, y1, x2, y2]`: start and end of the drag).
+    fn select(
+        &mut self,
+        path: &Path,
+        page: usize,
+        area: [f64; 4],
+        style: SelectionStyle,
+    ) -> Result<(Vec<[f64; 4]>, String)>;
+    fn document_id(&mut self, path: &Path) -> Result<Option<String>>;
     fn close(&mut self, path: &Path);
+}
+
+/// Splits a drag from `start` to `end` (`(page, x, y)`, points) into one
+/// selection area per page: the first page from the start point to its
+/// end, pages in between completely, the last page up to the end point.
+pub fn selection_spans(
+    page_sizes: &[(f64, f64)],
+    start: (usize, f64, f64),
+    end: (usize, f64, f64),
+) -> Vec<(usize, [f64; 4])> {
+    let (a, b) = if (end.0, end.2, end.1) < (start.0, start.2, start.1) && end.0 != start.0 || end.0 < start.0 {
+        (end, start)
+    } else {
+        (start, end)
+    };
+    let last = page_sizes.len().saturating_sub(1);
+    let (first_page, last_page) = (a.0.min(last), b.0.min(last).min(a.0 + MAX_SELECTION_PAGES - 1));
+    if first_page == last_page {
+        return vec![(first_page, [a.1, a.2, b.1, b.2])];
+    }
+    (first_page..=last_page)
+        .map(|page| {
+            let (w, h) = page_sizes[page];
+            let area = if page == first_page {
+                [a.1, a.2, w, h]
+            } else if page == b.0 {
+                [0.0, 0.0, b.1, b.2]
+            } else {
+                [0.0, 0.0, w, h]
+            };
+            (page, area)
+        })
+        .collect()
 }
 
 type Job = Box<dyn FnOnce(&mut dyn Backend, &mut HashMap<PathBuf, DocInfo>) + Send>;
@@ -206,6 +266,52 @@ impl PdfService {
         }));
     }
 
+    /// Selects text along `spans` (see [`selection_spans`]).
+    pub fn select(
+        &self,
+        path: PathBuf,
+        spans: Vec<(usize, [f64; 4])>,
+        style: SelectionStyle,
+        cancel: CancelToken,
+        done: impl FnOnce(Result<Vec<Selection>>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, _| {
+            if cancel.is_cancelled() {
+                return;
+            }
+            let result = spans
+                .into_iter()
+                .map(|(page, area)| {
+                    backend.select(&path, page, area, style).map(|(rects, text)| Selection { page, rects, text })
+                })
+                .filter(|s| !matches!(s, Ok(sel) if sel.rects.is_empty()))
+                .collect();
+            done(result)
+        }));
+    }
+
+    /// Permanent ID from the PDF trailer (hex), if present.
+    pub fn document_id(&self, path: PathBuf, done: impl FnOnce(Result<Option<String>>) + Send + 'static) {
+        self.submit(Box::new(move |backend, _| done(backend.document_id(&path))));
+    }
+
+    /// Writes a copy of `src` with the annotations embedded to `dst` (on
+    /// the worker thread; the original is never written).
+    pub fn export_annotated(
+        &self,
+        src: PathBuf,
+        dst: PathBuf,
+        annotations: Vec<crate::annotations::Annotation>,
+        done: impl FnOnce(Result<usize>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |_, _| done(poppler::export_annotated(&src, &dst, &annotations))));
+    }
+
+    /// Annotations stored inside a PDF: (0-based page, poppler type).
+    pub fn list_annotations(&self, path: &Path) -> Result<Vec<(usize, i32)>> {
+        poppler::list_annotations(path)
+    }
+
     /// Synchronous helpers for benchmarks and tests.
     pub fn open_blocking(&self, path: &Path) -> Result<DocInfo> {
         let (tx, rx) = crossbeam_channel::bounded(1);
@@ -337,5 +443,117 @@ mod outline_tests {
         // Baseline at y = 200 from the top: the box spans just above it.
         assert!(hit.y > 170.0 && hit.y < 200.0 && hit.y + hit.height > 195.0, "{hit:?}");
         assert!(hit.x > 100.0 && hit.width > 40.0, "{hit:?}");
+    }
+}
+
+#[cfg(test)]
+mod annotation_tests {
+    use super::*;
+    use crate::annotations::{Annotation, Kind};
+
+    fn three_pages(path: &Path) {
+        let surface = cairo::PdfSurface::new(595.0, 842.0, path).unwrap();
+        let cr = cairo::Context::new(&surface).unwrap();
+        cr.set_font_size(20.0);
+        for page in 0..3 {
+            cr.move_to(100.0, 200.0);
+            cr.show_text(&format!("Zeile eins Seite {}", page + 1)).unwrap();
+            cr.move_to(100.0, 230.0);
+            cr.show_text("Zeile zwei").unwrap();
+            cr.show_page().unwrap();
+        }
+        surface.finish();
+    }
+
+    fn blocking<T: Send + 'static>(f: impl FnOnce(crossbeam_channel::Sender<T>)) -> T {
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        f(tx);
+        rx.recv().unwrap()
+    }
+
+    #[test]
+    fn spans_cover_pages_between_start_and_end() {
+        let sizes = vec![(100.0, 200.0); 4];
+        assert_eq!(selection_spans(&sizes, (1, 10.0, 20.0), (1, 50.0, 60.0)), vec![(1, [10.0, 20.0, 50.0, 60.0])]);
+        let spans = selection_spans(&sizes, (2, 50.0, 60.0), (0, 10.0, 20.0));
+        assert_eq!(
+            spans,
+            vec![(0, [10.0, 20.0, 100.0, 200.0]), (1, [0.0, 0.0, 100.0, 200.0]), (2, [0.0, 0.0, 50.0, 60.0])],
+            "dragging upwards selects the same range"
+        );
+    }
+
+    #[test]
+    fn selects_text_and_exports_a_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("quelle.pdf");
+        three_pages(&path);
+        let original = std::fs::read(&path).unwrap();
+        let service = PdfService::get();
+        let info = service.open_blocking(&path).unwrap();
+
+        // Drag over both lines of page 2.
+        let spans = selection_spans(&info.page_sizes, (1, 95.0, 185.0), (1, 200.0, 232.0));
+        let sel = blocking(|tx| {
+            service.select(path.clone(), spans, SelectionStyle::Glyph, CancelToken::default(), move |r| {
+                tx.send(r).unwrap()
+            })
+        })
+        .unwrap();
+        assert_eq!(sel.len(), 1);
+        assert_eq!(sel[0].page, 1);
+        assert!(sel[0].text.contains("Seite 2") && sel[0].text.contains("Zeile zwei"), "{:?}", sel[0].text);
+        assert_eq!(sel[0].rects.len(), 2, "one bar per line: {:?}", sel[0].rects);
+        let first = sel[0].rects[0];
+        assert!(first[0] >= 99.0 && first[1] > 170.0 && first[1] < 200.0, "{first:?}");
+
+        // A selection over a page break yields one part per page.
+        let spans = selection_spans(&info.page_sizes, (0, 95.0, 225.0), (1, 150.0, 205.0));
+        let parts = blocking(|tx| {
+            service
+                .select(path.clone(), spans, SelectionStyle::Word, CancelToken::default(), move |r| tx.send(r).unwrap())
+        })
+        .unwrap();
+        assert_eq!(parts.iter().map(|p| p.page).collect::<Vec<_>>(), [0, 1], "{parts:?}");
+
+        let id = blocking(|tx| service.document_id(path.clone(), move |r| tx.send(r).unwrap())).unwrap();
+        assert!(id.is_none_or(|id| id.len() == 32), "permanent ID is hex");
+
+        let annotation = |kind, page| Annotation {
+            id: crate::annotations::new_id(),
+            kind,
+            page,
+            rects: sel[0].rects.clone(),
+            text: sel[0].text.clone(),
+            comment: "Kommentar".into(),
+            color: "#ffd400".into(),
+            ink: if kind == Kind::Ink { vec![vec![[10.0, 10.0], [50.0, 60.0], [90.0, 20.0]]] } else { Vec::new() },
+            width: Some(2.0),
+            title: String::new(),
+            group: String::new(),
+            created: 0,
+            modified: 0,
+        };
+        let list = vec![
+            annotation(Kind::Highlight, 2),
+            annotation(Kind::Underline, 2),
+            annotation(Kind::Note, 1),
+            annotation(Kind::Ink, 3),
+            annotation(Kind::Bookmark, 3),
+        ];
+        let out = dir.path().join("quelle (annotiert).pdf");
+        let added = blocking(|tx| {
+            service.export_annotated(path.clone(), out.clone(), list.clone(), move |r| tx.send(r).unwrap())
+        })
+        .unwrap();
+        assert_eq!(added, 4, "bookmarks are not PDF annotations");
+        let embedded = service.list_annotations(&out).unwrap();
+        assert_eq!(embedded.len(), 4, "{embedded:?}");
+        assert_eq!(std::fs::read(&path).unwrap(), original, "the original stays untouched");
+        assert_eq!(service.list_annotations(&path).unwrap().len(), 0);
+
+        let err =
+            blocking(|tx| service.export_annotated(path.clone(), path.clone(), list, move |r| tx.send(r).unwrap()));
+        assert!(err.is_err(), "exporting over the original is refused");
     }
 }

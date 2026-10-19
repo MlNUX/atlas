@@ -25,6 +25,8 @@ pub enum Anchor {
     Heading(String),
     Lines(u32, u32),
     Page(u32),
+    /// A PDF annotation (`#page=8&annot=<id>`); the page is the fallback.
+    Annotation(u32, String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,8 +164,15 @@ fn parse_anchor(fragment: &str) -> Anchor {
     if fragment.is_empty() {
         return Anchor::None;
     }
-    if let Some(page) = fragment.strip_prefix("page=").and_then(|p| p.parse().ok()) {
-        return Anchor::Page(page);
+    if let Some(params) = fragment.strip_prefix("page=") {
+        let mut parts = params.split('&');
+        if let Some(Ok(page)) = parts.next().map(str::parse::<u32>) {
+            let annot = parts.find_map(|p| p.strip_prefix("annot=")).filter(|id| !id.is_empty());
+            return match annot {
+                Some(id) => Anchor::Annotation(page, percent_decode(id)),
+                None => Anchor::Page(page),
+            };
+        }
     }
     if let Some(lines) = fragment.strip_prefix('L') {
         let mut parts = lines.splitn(2, "-L");
@@ -397,6 +406,9 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
                         match anchor {
                             Anchor::Lines(a, _) => attrs += &format!(" data-atlas-line=\"{a}\""),
                             Anchor::Page(p) => attrs += &format!(" data-atlas-page=\"{p}\""),
+                            Anchor::Annotation(p, id) => {
+                                attrs += &format!(" data-atlas-page=\"{p}\" data-atlas-annot=\"{}\"", escape_attr(id))
+                            }
                             Anchor::Heading(h) => {
                                 attrs += &format!(" data-atlas-anchor=\"{}\"", escape_attr(&slugify(h)))
                             }
@@ -567,6 +579,10 @@ mod tests {
         assert_eq!(resolve("#ziel", &f, root), Target::SameDocument("ziel".into()));
         assert!(matches!(resolve("https://example.org", &f, root), Target::External(_)));
         assert!(matches!(resolve("a.pdf?page=3", &f, root), Target::File { anchor: Anchor::Page(3), .. }));
+        assert_eq!(
+            resolve("/a.pdf#page=3&annot=ab%2012", &f, root),
+            Target::File { path: file("a.pdf"), anchor: Anchor::Annotation(3, "ab 12".into()), root_relative: true }
+        );
     }
 
     #[test]

@@ -71,6 +71,7 @@ window.atlas = (function () {
             line: +(d.atlasLine || 0),
             page: +(d.atlasPage || 0),
             anchor: d.atlasAnchor || "",
+            annot: d.atlasAnnot || "",
             broken: !!d.broken,
             newTab: ev.ctrlKey || ev.button === 1,
         });

@@ -48,7 +48,7 @@ SplitView {
         group.emptied.connect(() => { if (area.groups.length > 1) area.closeGroup(group) })
         group.closeRequested.connect(() => area.closeGroup(group))
         group.splitRequested.connect(() => area.splitGroup(group))
-        group.openInSplit.connect((p, l, side) => area.openInSplit(group, p, l, side))
+        group.openInSplit.connect((p, l, side, s) => area.openInSplit(group, p, l, side, s))
         group.changed.connect(area.layoutChanged)
         activeIndex = index
         equalize()
@@ -79,12 +79,12 @@ SplitView {
     }
 
     /// Opens next to `from`: on the given side, or in the next split.
-    function openInSplit(from, path, line, side) {
+    function openInSplit(from, path, line, side, state) {
         const index = groups.indexOf(from)
         let target = null
         if (side === "left" || side === "right") target = addGroup(side === "left" ? index : index + 1)
         if (!target) target = groups.length < maxGroups ? addGroup(index + 1) : groups[(index + 1) % groups.length]
-        target.openTab(path, line, "tab")
+        target.openTab(path, line, "tab", state)
         activeIndex = groups.indexOf(target)
     }
 
@@ -93,22 +93,21 @@ SplitView {
     ///   "tab"       – permanent tab in the active split
     ///   "split"     – permanent tab in a new split
     ///   "temporary" – the temporary split (created or reused)
-    function open(path, line, where) {
+    function open(path, line, where, state) {
         if (!path) return
         if (where === "split") {
             const g = groups.length < maxGroups ? addGroup(activeIndex + 1) : activeGroup
-            g.openTab(path, line, "tab")
-            return
+            return g.openTab(path, line, "tab", state)
         }
         if (where === "temporary") {
             let g = groups.find(x => x.temporary)
             if (!g) g = groups.length < maxGroups ? addGroup(groups.length, true) : activeGroup
-            const tab = g.openTab(path, line, "preview")
+            const tab = g.openTab(path, line, "preview", state)
             activeIndex = groups.indexOf(g)
             return tab
         }
         if (!activeGroup) addGroup()
-        return activeGroup.openTab(path, line, where === "tab" ? "tab" : "preview")
+        return activeGroup.openTab(path, line, where === "tab" ? "tab" : "preview", state)
     }
 
     /// Compatibility helper: `newPane` opens in a new split, otherwise preview.

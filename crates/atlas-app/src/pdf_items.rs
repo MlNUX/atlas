@@ -4,11 +4,14 @@
 //! QML types for PDFs: `PdfDocument` (page sizes,
 //! open timing) and `PdfPage` (one asynchronously rendered page).
 
+// `PdfDocument::select` takes a start and an end point with page each.
+#![allow(clippy::too_many_arguments)]
+
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Instant;
 
-use atlas_core::pdf::{CancelToken, PdfService, RenderedPage};
+use atlas_core::pdf::{CancelToken, PdfService, RenderedPage, SelectionStyle, selection_spans};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QImage, QImageFormat, QRect, QString};
 
@@ -67,6 +70,27 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "searchFinished"]
         fn search_finished(self: Pin<&mut PdfDocument>, query: QString, hits_json: QString, ms: i32);
+
+        /// Selects text from (page1, x1, y1) to (page2, x2, y2) – 0-based
+        /// pages, points from the top left – snapping to glyphs (0), words
+        /// (1) or lines (2). Returns a request number; the result arrives via
+        /// `selectionReady` (older requests are dropped).
+        #[qinvokable]
+        fn select(
+            self: Pin<&mut PdfDocument>,
+            page1: i32,
+            x1: f64,
+            y1: f64,
+            page2: i32,
+            x2: f64,
+            y2: f64,
+            style: i32,
+        ) -> i32;
+
+        /// `json`: [{page, rects: [[x, y, w, h]], text}] (0-based pages).
+        #[qsignal]
+        #[cxx_name = "selectionReady"]
+        fn selection_ready(self: Pin<&mut PdfDocument>, request: i32, json: QString);
     }
 
     unsafe extern "RustQt" {
@@ -109,6 +133,8 @@ pub struct PdfDocumentRust {
     generation: u64,
     outline_json: QString,
     search_cancel: CancelToken,
+    select_cancel: CancelToken,
+    select_request: i32,
 }
 
 impl Default for PdfDocumentRust {
@@ -124,6 +150,8 @@ impl Default for PdfDocumentRust {
             generation: 0,
             outline_json: QString::default(),
             search_cancel: CancelToken::default(),
+            select_cancel: CancelToken::default(),
+            select_request: 0,
         }
     }
 }
@@ -226,6 +254,48 @@ impl qobject::PdfDocument {
             let ms = started.elapsed().as_millis() as i32;
             let _ = thread.queue(move |doc| doc.search_finished(query, QString::from(json.as_str()), ms));
         });
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn select(
+        mut self: Pin<&mut Self>,
+        page1: i32,
+        x1: f64,
+        y1: f64,
+        page2: i32,
+        x2: f64,
+        y2: f64,
+        style: i32,
+    ) -> i32 {
+        self.select_cancel.cancel();
+        let token = CancelToken::default();
+        let request = self.select_request.wrapping_add(1);
+        {
+            let mut this = self.as_mut().rust_mut();
+            this.select_cancel = token.clone();
+            this.select_request = request;
+        }
+        let style = match style {
+            1 => SelectionStyle::Word,
+            2 => SelectionStyle::Line,
+            _ => SelectionStyle::Glyph,
+        };
+        let spans = selection_spans(&self.page_sizes, (page1.max(0) as usize, x1, y1), (page2.max(0) as usize, x2, y2));
+        let thread = self.qt_thread();
+        PdfService::get().select(PathBuf::from(self.source.to_string()), spans, style, token, move |result| {
+            let list: Vec<serde_json::Value> = result
+                .unwrap_or_default()
+                .into_iter()
+                .map(|s| serde_json::json!({ "page": s.page, "rects": s.rects, "text": s.text }))
+                .collect();
+            let json = serde_json::Value::Array(list).to_string();
+            let _ = thread.queue(move |doc| {
+                if doc.select_request == request {
+                    doc.selection_ready(request, QString::from(json.as_str()));
+                }
+            });
+        });
+        request
     }
 
     pub fn page_width(&self, page: i32) -> f64 {

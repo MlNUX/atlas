@@ -9,7 +9,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 | Kürzel | Aktion |
 |---|---|
-| Strg+P | Arbeitsleiste: Dateien, Ordner, Notizen, Aktionen (`>` Aktionen, `#` Tags, `:` Zeile, `?` Volltext, `pfad:42`) |
+| Strg+P | Arbeitsleiste: Dateien, Ordner, Notizen, Aktionen (`>` Aktionen, `#` Tags, `@` Zitate und PDF-Anmerkungen, `:` Zeile, `?` Volltext, `pfad:42`) |
 | Strg+Umschalt+P | Arbeitsleiste mit Aktionen |
 | Strg+O | Projektordner öffnen |
 | Strg+Umschalt+F | Projektweite Suche |
@@ -61,6 +61,14 @@ alle übrigen Tasten gehen dort an das Programm im Terminal.
 | Bild↑ / Bild↓, Strg+Pos1 / Strg+Ende | Seiten blättern, Anfang / Ende |
 | Strg++ / Strg+− / Strg+Mausrad | Zoom |
 | Strg+0 | Seitenbreite |
+| Ziehen / Doppelklick | Text auswählen (Wort); Umschalt+Klick erweitert die Auswahl |
+| Strg+C | Ausgewählten Text kopieren |
+| Strg+H | Auswahl markieren (zuletzt gewählte Farbe) |
+| Strg+Q | Auswahl markieren und als Zitat in eine Notiz übernehmen |
+| Strg+D | Lesezeichen für die aktuelle Seite setzen / entfernen |
+| Klick / Rechtsklick auf eine Anmerkung | Kommentar, Farbe, Zitat, Link kopieren, Löschen |
+| Strg+Enter (im Kommentar) | Kommentar übernehmen |
+| Esc | Auswahl aufheben, zurück zum Auswahlwerkzeug |
 
 ## Terminal
 

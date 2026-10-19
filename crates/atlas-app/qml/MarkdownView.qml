@@ -28,7 +28,7 @@ Rectangle {
     property var actions: null
 
     /// Follow a link: `newPane` for Ctrl/middle click.
-    signal linkActivated(string path, int line, bool newPane)
+    signal linkActivated(string path, int line, bool newPane, var state)
     signal message(string text)
     signal savedAs(string path)
 
@@ -84,7 +84,7 @@ Rectangle {
         let target = link.line || link.page
         if (!target && link.anchor && root.app.fileKind(link.path) === "markdown")
             target = root.app.headingLine(link.path, link.anchor)
-        root.linkActivated(link.path, target, link.newTab)
+        root.linkActivated(link.path, target, link.newTab, link.annot ? { annot: link.annot } : {})
     }
 
     onSourceChanged: { refreshBacklinks(); Qt.callLater(render) }
@@ -264,7 +264,7 @@ Rectangle {
                                     Layout.fillWidth: true
                                 }
                             }
-                            onClicked: root.linkActivated(modelData.source, modelData.line, false)
+                            onClicked: root.linkActivated(modelData.source, modelData.line, false, {})
                         }
                         Label {
                             anchors.centerIn: parent

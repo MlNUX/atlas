@@ -30,7 +30,8 @@ Item {
 
     /// Open `path` in another tab or split (e.g. a file chosen in a folder).
     /// `where`: "tab", "preview" or "split".
-    signal openRequested(string path, int line, string where)
+    /// `state` is passed to the viewer (e.g. `{annot: id}` for PDFs).
+    signal openRequested(string path, int line, string where, var state)
     /// The user interacted in a way that should pin a preview tab.
     signal pinRequested()
     /// The tab should close (e.g. its terminal exited).
@@ -41,11 +42,14 @@ Item {
     function terminalStartDir() { return path.slice(9, path.lastIndexOf("#") > 9 ? path.lastIndexOf("#") : path.length) }
 
     /// Shows `newPath` in this tab and remembers the old location.
-    function navigate(newPath, newLine) {
-        if (newPath === path && (newLine || 0) === line) return
+    function navigate(newPath, newLine, state) {
+        if (newPath === path && (newLine || 0) === line) {
+            if (state && viewer.item && viewer.item.applyState) viewer.item.applyState(state)
+            return
+        }
         if (path) backStack = backStack.concat([{ path: path, state: viewState() }])
         forwardStack = []
-        show(newPath, newLine || 0, {})
+        show(newPath, newLine || 0, state || {})
     }
     function goBack() {
         if (!canGoBack) return
@@ -115,7 +119,7 @@ Item {
             source: view.path
             onActivated: (path, isDir, newPane) => {
                 if (isDir && !newPane) view.navigate(path, 0)
-                else view.openRequested(path, 0, newPane ? "split" : "tab")
+                else view.openRequested(path, 0, newPane ? "split" : "tab", {})
             }
         }
     }
@@ -133,7 +137,7 @@ Item {
     }
     Component {
         id: pdfComponent
-        PdfViewer { source: view.path; app: view.app }
+        PdfViewer { source: view.path; app: view.app; actions: view.actions }
     }
     Component {
         id: textComponent
@@ -151,9 +155,9 @@ Item {
             source: view.path
             app: view.app
             line: view.line
-            onLinkActivated: (path, line, newPane) => {
-                if (newPane) view.openRequested(path, line, "split")
-                else view.navigate(path, line)
+            onLinkActivated: (path, line, newPane, state) => {
+                if (newPane) view.openRequested(path, line, "split", state)
+                else view.navigate(path, line, state)
             }
             onMessage: (text) => { if (view.actions) view.actions.showMessage(text) }
             actions: view.actions

@@ -46,6 +46,39 @@ impl Parser {
 
 fn main() {}
 RS
+# A two page PDF with known text positions (Helvetica 20 pt at y = 700
+# and 670 from the bottom), written with a correct cross-reference table.
+pdf() {
+  local out="$1" objs=() offsets=() i body
+  local page1="BT /F1 20 Tf 72 700 Td (Zitat aus der Quelle) Tj 0 -30 Td (Zweite Zeile hier) Tj ET"
+  local page2="BT /F1 20 Tf 72 700 Td (Seite zwei Text) Tj ET"
+  objs+=("<< /Type /Catalog /Pages 2 0 R >>")
+  objs+=("<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>")
+  objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >> >>")
+  objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>")
+  objs+=("<< /Length ${#page1} >>
+stream
+$page1
+endstream")
+  objs+=("<< /Length ${#page2} >>
+stream
+$page2
+endstream")
+  objs+=("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+  body="%PDF-1.4"$'\n'
+  for i in "${!objs[@]}"; do
+    offsets+=("$(printf '%s' "$body" | wc -c)")
+    body+="$((i + 1)) 0 obj"$'\n'"${objs[$i]}"$'\n'"endobj"$'\n'
+  done
+  local xref
+  xref=$(printf '%s' "$body" | wc -c)
+  body+="xref"$'\n'"0 $((${#objs[@]} + 1))"$'\n'"0000000000 65535 f "$'\n'
+  for i in "${offsets[@]}"; do body+="$(printf '%010d' "$i") 00000 n "$'\n'; done
+  body+="trailer"$'\n'"<< /Size $((${#objs[@]} + 1)) /Root 1 0 R >>"$'\n'"startxref"$'\n'"$xref"$'\n'"%%EOF"$'\n'
+  printf '%s' "$body" > "$out"
+}
+pdf "$project/docs/quelle.pdf"
+
 echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"

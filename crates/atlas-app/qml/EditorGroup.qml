@@ -24,7 +24,7 @@ Rectangle {
     signal closeRequested()
     signal splitRequested()
     /// Open in another split: `side` is "left", "right" or "" (default).
-    signal openInSplit(string path, int line, string side)
+    signal openInSplit(string path, int line, string side, var state)
     signal changed()
 
     color: Theme.editor
@@ -49,6 +49,7 @@ Rectangle {
         if (index >= 0) {
             if (mode !== "preview") tabs[index].preview = false
             if (line) tabs[index].reveal(line)
+            if (state && state.annot) tabs[index].applyState({ annot: state.annot })
             current = index
             changed()
             return tabs[index]
@@ -65,9 +66,9 @@ Rectangle {
         }
         const tab = tabComponent.createObject(content, { path: path, line: line || 0, preview: mode === "preview" })
         if (state) tab.applyState(state)
-        tab.openRequested.connect((p, l, where) => {
-            if (where === "split") group.openInSplit(p, l, "")
-            else group.openTab(p, l, where)
+        tab.openRequested.connect((p, l, where, s) => {
+            if (where === "split") group.openInSplit(p, l, "", s || {})
+            else group.openTab(p, l, where, s)
         })
         tab.pinRequested.connect(() => { tab.preview = false; group.changed() })
         tab.closeRequested.connect(() => group.closeTab(group.tabs.indexOf(tab)))
@@ -332,7 +333,7 @@ Rectangle {
             const paths = event.urls.map(u => group.app.urlToPath(u.toString()))
             if (paths.length === 0) return
             if (side === "center") for (const p of paths) group.openTab(p, 0, "tab")
-            else for (const p of paths) group.openInSplit(p, 0, side)
+            else for (const p of paths) group.openInSplit(p, 0, side, {})
             event.accept(Qt.CopyAction)
             group.activated()
         }
