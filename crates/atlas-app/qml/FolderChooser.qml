@@ -20,6 +20,7 @@ Dialog {
     readonly property string chosenPath: selectedPath || folderPath
     property alias sessionName: nameField.text
     readonly property alias folders: folder
+    readonly property alias pathBar: pathEdit
 
     signal chosen(string path, string sessionName)
 

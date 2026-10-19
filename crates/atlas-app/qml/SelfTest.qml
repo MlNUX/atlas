@@ -536,6 +536,15 @@ Item {
                 check("Ordnerauswahl: nur Ordner", folderDialog.folders.count === 0 && !folderDialog.folders.error, folderDialog.folders.count)
                 const crumbs = folderDialog.segments(path("notes"))
                 check("Pfadleiste endet im Ordner", crumbs[crumbs.length - 1].name === "notes" && crumbs[crumbs.length - 1].path === path("notes"))
+                // A click next to the segments switches to typing the path.
+                const bar = folderDialog.pathBar
+                const p = bar.mapToItem(null, bar.width - 12, bar.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                check("Pfadleiste: Klick daneben zum Eintippen", folderDialog.pathBar.editing)
+                folderDialog.pathBar.editing = false
                 folderDialog.navigate(app.projectRoot)
             },
             () => {

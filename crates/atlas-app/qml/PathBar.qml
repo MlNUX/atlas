@@ -49,6 +49,15 @@ Rectangle {
     border.color: editing ? Theme.accent : Theme.border
     clip: true
 
+    // The free space right of the segments edits the path. The list is not
+    // interactive, so clicks besides the segments fall through to here.
+    MouseArea {
+        anchors.fill: parent
+        visible: !root.editing
+        cursorShape: Qt.IBeamCursor
+        onClicked: root.startEditing()
+    }
+
     ListView {
         id: crumbs
         visible: !root.editing
@@ -102,13 +111,9 @@ Rectangle {
                 MouseArea { anchors.fill: parent; onClicked: root.navigateRequested(crumb.modelData.path) }
             }
         }
-        // The free space right of the segments edits the path.
-        footer: MouseArea {
-            width: Math.max(40, crumbs.width - crumbs.contentWidth)
-            height: crumbs.height
-            cursorShape: Qt.IBeamCursor
-            onClicked: root.startEditing()
-        }
+        // Some free space after the last segment, also when the path is
+        // longer than the bar (clicks there reach the area below).
+        footer: Item { width: 40; height: crumbs.height }
     }
     // Leading segments scrolled out of view.
     Rectangle {
