@@ -1,17 +1,18 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The places of the desktop's file managers, shown below Atlas' fixed
-//! places when `[places] file_manager` is on:
+//! The places in the sidebar when `[places] file_manager` is on:
 //!
-//! - KDE/Dolphin: `$XDG_DATA_HOME/user-places.xbel` (XBEL, shared with the
-//!   KDE file dialogs);
-//! - GTK (Nautilus, Thunar, …): `$XDG_CONFIG_HOME/gtk-3.0/bookmarks`.
+//! - with KDE/Dolphin's `$XDG_DATA_HOME/user-places.xbel` (shared with the
+//!   KDE file dialogs): exactly Dolphin's places, in its order, instead of
+//!   Atlas' fixed ones – a place removed or hidden there is gone here too;
+//! - otherwise Atlas' fixed places, followed by the GTK bookmarks
+//!   (`$XDG_CONFIG_HOME/gtk-3.0/bookmarks`; Nautilus, Thunar, …).
 //!
-//! Only local folders that exist are taken; hidden entries, entries limited
-//! to another application, network places (`sftp://`, `smb://`, …) and
-//! special KIO places (`trash:/`, `remote:/`) are left out. Devices are not
-//! in these files (Dolphin asks UDisks2 for them).
+//! Only local folders that exist are taken, and `trash:/` as Atlas' trash;
+//! hidden entries, entries limited to another application, network places
+//! (`sftp://`, `smb://`, …) and other KIO places (`remote:/`, …) are left
+//! out. Devices are not in these files (Dolphin asks UDisks2 for them).
 
 use std::path::{Path, PathBuf};
 
@@ -19,29 +20,38 @@ use crate::listing::Place;
 
 /// The files the places are read from (for watching).
 pub fn sources() -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    if let Some(dir) = dirs::data_dir() {
-        files.push(dir.join("user-places.xbel"));
-    }
-    if let Some(dir) = dirs::config_dir() {
-        files.push(dir.join("gtk-3.0").join("bookmarks"));
-    }
-    files
+    sources_pair().into_iter().flatten().collect()
 }
 
-/// The file managers' places that are not among `fixed`, in their order
-/// (KDE first, then GTK), each folder once.
-pub fn file_manager_places(fixed: &[Place]) -> Vec<Place> {
-    let mut found = Vec::new();
-    for source in sources() {
-        let Ok(text) = std::fs::read_to_string(&source) else { continue };
-        if source.extension().is_some_and(|e| e == "xbel") {
-            found.extend(parse_xbel(&text));
-        } else {
-            found.extend(parse_gtk_bookmarks(&text));
-        }
+/// The sidebar's places and how many of them are Atlas' `fixed` ones (0
+/// when Dolphin's replace them).
+pub fn sidebar_places(fixed: Vec<Place>, file_manager: bool) -> (Vec<Place>, usize) {
+    let count = fixed.len();
+    if !file_manager {
+        return (fixed, count);
     }
-    select(found, fixed)
+    let [xbel, gtk] = sources_pair().map(|f| f.and_then(|f| std::fs::read_to_string(f).ok()));
+    choose(fixed, xbel.as_deref(), gtk.as_deref())
+}
+
+/// `sidebar_places` for the given file contents (`None`: no such file).
+fn choose(fixed: Vec<Place>, xbel: Option<&str>, gtk: Option<&str>) -> (Vec<Place>, usize) {
+    let count = fixed.len();
+    if let Some(dolphin) = xbel.and_then(parse_xbel) {
+        return (select(dolphin, &[]), 0);
+    }
+    let bookmarks = gtk.map(parse_gtk_bookmarks).unwrap_or_default();
+    let extra = select(bookmarks, &fixed);
+    let mut all = fixed;
+    all.extend(extra);
+    (all, count)
+}
+
+fn sources_pair() -> [Option<PathBuf>; 2] {
+    [
+        dirs::data_dir().map(|d| d.join("user-places.xbel")),
+        dirs::config_dir().map(|d| d.join("gtk-3.0").join("bookmarks")),
+    ]
 }
 
 /// Drops duplicates (also of `fixed`) and folders that do not exist.
@@ -63,17 +73,20 @@ fn normalize(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-/// Places of a KDE `user-places.xbel`.
-pub fn parse_xbel(text: &str) -> Vec<Place> {
+/// Places of a KDE `user-places.xbel` (`None` if it is not valid XML).
+pub fn parse_xbel(text: &str) -> Option<Vec<Place>> {
     // KDE writes `<!DOCTYPE xbel>`.
     let options = roxmltree::ParsingOptions { allow_dtd: true, ..Default::default() };
     let Ok(doc) = roxmltree::Document::parse_with_options(text, options) else {
         log::warn!("user-places.xbel is not valid XML");
-        return Vec::new();
+        return None;
     };
     let mut out = Vec::new();
     for bookmark in doc.descendants().filter(|n| n.is_element() && n.tag_name().name() == "bookmark") {
-        let Some(path) = bookmark.attribute("href").and_then(local_path) else { continue };
+        let href = bookmark.attribute("href").unwrap_or("");
+        let trash = href.starts_with("trash:");
+        let path = if trash { crate::listing::trash_files_dir() } else { local_path(href) };
+        let Some(path) = path else { continue };
         let child_text = |name: &str| {
             bookmark
                 .descendants()
@@ -90,10 +103,30 @@ pub fn parse_xbel(text: &str) -> Vec<Place> {
             .find(|n| n.is_element() && n.tag_name().name() == "icon")
             .and_then(|n| n.attribute("name"))
             .unwrap_or("");
-        let title = child_text("title");
-        out.push(place(title, icon, path));
+        let mut title = child_text("title");
+        // KDE keeps its own places with English titles and translates them
+        // for display.
+        if child_text("isSystemItem") == "true" {
+            title = system_title(&title).map(str::to_owned).unwrap_or(title);
+        }
+        out.push(place(title, if trash { "user-trash" } else { icon }, path));
     }
-    out
+    Some(out)
+}
+
+fn system_title(title: &str) -> Option<&'static str> {
+    Some(match title {
+        "Home" => "Persönlicher Ordner",
+        "Desktop" => "Schreibtisch",
+        "Documents" => "Dokumente",
+        "Downloads" => "Downloads",
+        "Pictures" => "Bilder",
+        "Music" => "Musik",
+        "Videos" => "Videos",
+        "Trash" => "Papierkorb",
+        "Root" => "Basisordner",
+        _ => return None,
+    })
 }
 
 /// Places of a GTK `bookmarks` file: `URI [label]` per line.
@@ -197,19 +230,61 @@ mod tests {
 
     #[test]
     fn xbel_local_visible_places() {
-        let places = parse_xbel(XBEL);
+        let places = parse_xbel(XBEL).unwrap();
         let summary: Vec<(String, String, String)> =
             places.iter().map(|p| (p.name.clone(), p.icon.clone(), p.path.to_string_lossy().into_owned())).collect();
         assert_eq!(
             summary,
             vec![
-                ("Home".into(), "home".into(), "/home/leo".into()),
+                // A KDE system place, translated.
+                ("Persönlicher Ordner".into(), "home".into(), "/home/leo".into()),
                 ("Arbeit".into(), "folder".into(), "/home/leo/Projects/Meine Arbeit".into()),
+                // trash:/ is Atlas' trash.
+                (
+                    "Papierkorb".into(),
+                    "trash".into(),
+                    crate::listing::trash_files_dir().unwrap().to_string_lossy().into_owned()
+                ),
                 // No title: the folder's name.
                 ("Musik".into(), "music".into(), "/home/leo/Musik".into()),
             ]
         );
-        assert!(parse_xbel("<kaputt").is_empty());
+        assert!(parse_xbel("<kaputt").is_none());
+    }
+
+    #[test]
+    fn dolphin_replaces_the_fixed_places() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = |name: &str| {
+            let d = tmp.path().join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            normalize(&d)
+        };
+        let (home, desk, work) = (dir("home"), dir("Schreibtisch"), dir("arbeit"));
+        let fixed = vec![
+            Place { name: "Persönlicher Ordner".into(), icon: "home".into(), path: home.clone() },
+            Place { name: "Schreibtisch".into(), icon: "desktop".into(), path: desk.clone() },
+        ];
+        // The desktop was removed in Dolphin, a work folder added before home.
+        let xbel = format!(
+            "<?xml version=\"1.0\"?>\n<!DOCTYPE xbel>\n<xbel>\
+             <bookmark href=\"file://{}\"><title>Arbeit</title></bookmark>\
+             <bookmark href=\"file://{}\"><title>Home</title><info><metadata><isSystemItem>true</isSystemItem></metadata></info></bookmark>\
+             </xbel>",
+            work.display(),
+            home.display()
+        );
+        let gtk = format!("file://{} GTK", desk.display());
+        let (places, count) = choose(fixed.clone(), Some(&xbel), Some(&gtk));
+        let names: Vec<&str> = places.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!((names, count), (vec!["Arbeit", "Persönlicher Ordner"], 0));
+        // Everything removed in Dolphin: nothing shown.
+        assert!(choose(fixed.clone(), Some("<xbel/>"), None).0.is_empty());
+        // No (valid) Dolphin file: fixed places plus GTK bookmarks.
+        let (places, count) =
+            choose(fixed.clone(), Some("<kaputt"), Some(&format!("file://{} Arbeit", work.display())));
+        assert_eq!((places.len(), count), (3, 2));
+        assert_eq!(choose(fixed.clone(), None, None), (fixed, 2));
     }
 
     #[test]

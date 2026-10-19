@@ -503,21 +503,24 @@ Klicks bei Fokus im Editor.
 
 ### Nachtrag – Orte aus Dolphin
 
-Unter den festen Orten zeigt die Seitenleiste (abgesetzt als
-„Dateimanager“) die lokalen Orte aus Dolphin/KDE
-(`~/.local/share/user-places.xbel`) und GTK-Dateimanagern
-(`~/.config/gtk-3.0/bookmarks`), in deren Reihenfolge
-(`atlas_core::places`). Ausgeblendete Einträge, Einträge nur für eine
-andere App, Netzwerk-Orte (`sftp://`, `smb://`), KIO-Orte (`trash:/`) und
-nicht vorhandene Ordner fallen weg, ebenso Duplikate der festen Orte.
-Laufwerke stehen nicht in diesen Dateien (Dolphin fragt UDisks2) und
-fehlen daher. Änderungen in Dolphin erscheinen sofort (Dateiüberwachung);
-die Orte gelten auch in Ordnerauswahl und Pfadleiste. Neu: der Dialog
-**Einstellungen** (Menü, Befehlspalette) mit dem Schalter
-„Orte aus Dolphin und anderen Dateimanagern anzeigen“ (`[places]
-file_manager`, standardmäßig an) und Wegen zu Editor-, Kalender- und
-Erweiterungs-Einstellungen. Der Rauchtest nutzt eigene `XDG_DATA_HOME`/
-`XDG_CONFIG_HOME` und fasst die echten Orte nie an. Geprüft: Kern-Tests
-(XBEL mit `<!DOCTYPE>`, ausgeblendete/fremde/Netzwerk-Einträge,
-Prozentkodierung, GTK-Lesezeichen, Duplikate) und Rauchtest (übernommen,
-aus- und wieder einschalten).
+Mit „Orte wie in Dolphin anzeigen“ (Einstellungen, `[places]
+file_manager`, standardmäßig an) zeigt die Seitenleiste **genau Dolphins
+Orte** aus `~/.local/share/user-places.xbel`, in Dolphins Reihenfolge und
+statt der festen Orte (`atlas_core::places`): Was in Dolphin entfernt oder
+ausgeblendet ist, fehlt auch in Atlas. KDE-Systemorte stehen dort mit
+englischen Titeln und werden wie in KDE übersetzt („Home“ → „Persönlicher
+Ordner“), `trash:/` ist der Papierkorb von Atlas. Einträge nur für eine
+andere App, Netzwerk-Orte (`sftp://`, `smb://`, `remote:/`) und nicht
+vorhandene Ordner fallen weg; Laufwerke stehen nicht in der Datei (Dolphin
+fragt UDisks2) und fehlen daher. Ohne Dolphin-Datei zeigt Atlas die festen
+Orte und darunter, abgesetzt als „Dateimanager“, die Lesezeichen von
+GTK-Dateimanagern (`~/.config/gtk-3.0/bookmarks`); ausgeschaltet nur die
+festen Orte. Änderungen erscheinen sofort (Dateiüberwachung); die Orte
+gelten auch in Ordnerauswahl und Pfadleiste. Neu ist der Dialog
+**Einstellungen** (Menü, Befehlspalette) mit diesem Schalter und Wegen zu
+Editor-, Kalender- und Erweiterungs-Einstellungen. Der Rauchtest nutzt
+eigene `XDG_DATA_HOME`/`XDG_CONFIG_HOME` und fasst die echten Orte nie an.
+Geprüft: Kern-Tests (Dolphin ersetzt die festen Orte, alles entfernt =
+keine Orte, kaputte oder fehlende Datei, XBEL mit `<!DOCTYPE>`,
+Systemorte übersetzt, Papierkorb, Prozentkodierung, GTK-Lesezeichen,
+Duplikate) und Rauchtest (wie in Dolphin, aus- und wieder einschalten).

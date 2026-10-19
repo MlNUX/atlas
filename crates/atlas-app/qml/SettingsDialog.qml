@@ -31,7 +31,7 @@ Dialog {
         CheckBox {
             id: fileManagerBox
             Layout.fillWidth: true
-            text: qsTr("Orte aus Dolphin und anderen Dateimanagern anzeigen")
+            text: qsTr("Orte wie in Dolphin anzeigen")
             checked: dialog.app.fileManagerPlaces
             onToggled: dialog.app.fileManagerPlaces = checked
         }
@@ -41,10 +41,12 @@ Dialog {
             wrapMode: Text.Wrap
             color: Theme.textMuted
             font.pixelSize: Theme.smallFontSize
-            text: qsTr("Unter den festen Orten erscheinen die lokalen Orte aus Dolphin/KDE (~/.local/share/user-places.xbel) und GTK-Dateimanagern (~/.config/gtk-3.0/bookmarks). Ausgeblendete Einträge, Netzwerk-Orte und Laufwerke werden nicht übernommen; Änderungen in Dolphin erscheinen sofort.")
+            text: qsTr("Die Seitenleiste zeigt genau die Orte aus Dolphin (~/.local/share/user-places.xbel) in derselben Reihenfolge – was du dort entfernst oder ausblendest, fehlt auch hier; Änderungen erscheinen sofort. Netzwerk-Orte und Laufwerke werden nicht übernommen. Ohne Dolphin: die festen Orte und die Lesezeichen von GTK-Dateimanagern. Ausgeschaltet: die festen Orte von Atlas.")
                 + (dialog.app.fileManagerPlaces
-                    ? "\n" + (dialog.extraPlaces > 0 ? qsTr("Übernommen: %1").arg(dialog.app.placeNames.slice(dialog.app.fixedPlaceCount).join(", "))
-                                                       : qsTr("Keine weiteren Orte gefunden."))
+                    ? "\n" + (dialog.app.fixedPlaceCount === 0
+                        ? qsTr("Aus Dolphin: %1").arg(dialog.app.placeNames.join(", ") || qsTr("keine"))
+                        : dialog.extraPlaces > 0 ? qsTr("Keine Dolphin-Orte gefunden; aus GTK: %1").arg(dialog.app.placeNames.slice(dialog.app.fixedPlaceCount).join(", "))
+                        : qsTr("Keine Dolphin-Orte gefunden."))
                     : "")
         }
 

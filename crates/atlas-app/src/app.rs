@@ -45,12 +45,12 @@ pub mod qobject {
         #[qproperty(QStringList, open_files, cxx_name = "openFiles", READ, CONSTANT)]
         // Line per entry of `openFiles` ("0" = none).
         #[qproperty(QStringList, open_lines, cxx_name = "openLines", READ, CONSTANT)]
-        /// Places: the fixed ones first, then the file managers' (Dolphin/KDE,
-        /// GTK) if `fileManagerPlaces` is on.
+        /// Places: Atlas' fixed ones, or with `fileManagerPlaces` exactly
+        /// Dolphin's (without KDE: the fixed ones plus the GTK bookmarks).
         #[qproperty(QStringList, place_names, cxx_name = "placeNames", READ, NOTIFY = places_changed)]
         #[qproperty(QStringList, place_paths, cxx_name = "placePaths", READ, NOTIFY = places_changed)]
         #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, NOTIFY = places_changed)]
-        /// How many of the places are Atlas' fixed ones.
+        /// How many of the places are Atlas' fixed ones (0: Dolphin's).
         #[qproperty(i32, fixed_place_count, cxx_name = "fixedPlaceCount", READ, NOTIFY = places_changed)]
         /// Setting `[places] file_manager` (saved when changed).
         #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
@@ -620,23 +620,27 @@ fn qs(s: impl AsRef<str>) -> QString {
 
 impl qobject::AppController {
     pub fn refresh_places(mut self: Pin<&mut Self>) {
-        let fixed = atlas_core::listing::places();
-        let extra = if self.file_manager_places { atlas_core::places::file_manager_places(&fixed) } else { Vec::new() };
+        let (places, fixed) =
+            atlas_core::places::sidebar_places(atlas_core::listing::places(), self.file_manager_places);
         let (mut names, mut paths, mut icons) =
             (QStringList::default(), QStringList::default(), QStringList::default());
-        for place in fixed.iter().chain(&extra) {
+        for place in &places {
             names.append(qs(&place.name));
             paths.append(qs(place.path.to_string_lossy()));
             icons.append(qs(&place.icon));
         }
-        if paths == self.place_paths && names == self.place_names && icons == self.place_icons {
+        if paths == self.place_paths
+            && names == self.place_names
+            && icons == self.place_icons
+            && fixed as i32 == self.fixed_place_count
+        {
             return;
         }
         let mut r = self.as_mut().rust_mut();
         r.place_names = names;
         r.place_paths = paths;
         r.place_icons = icons;
-        r.fixed_place_count = fixed.len() as i32;
+        r.fixed_place_count = fixed as i32;
         self.places_changed();
     }
 

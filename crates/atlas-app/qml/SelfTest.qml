@@ -686,16 +686,17 @@ Item {
                       terminalPanel.visible + " / " + window.terminalButton.checked)
             },
             () => {
-                // Places of Dolphin/KDE and GTK below the fixed ones (switchable).
-                const extra = app.placeNames.slice(app.fixedPlaceCount)
-                check("Dateimanager-Orte übernommen", app.fileManagerPlaces && extra.join(",") === "Belege,Notizen"
-                      && app.placePaths[app.fixedPlaceCount] === path("docs"), extra.join(","))
+                // With Dolphin's places file: exactly its visible local places,
+                // instead of the fixed ones (GTK bookmarks are not added).
+                check("Orte wie in Dolphin", app.fileManagerPlaces && app.fixedPlaceCount === 0
+                      && app.placeNames.join(",") === "Belege" && app.placePaths[0] === path("docs"), app.placeNames.join(","))
                 settingsDialog.open()
                 check("Einstellungen öffnen", settingsDialog.visible)
                 app.fileManagerPlaces = false
-                check("Dateimanager-Orte aus", app.placeNames.length === app.fixedPlaceCount, app.placeNames.join(","))
+                check("Ausgeschaltet: feste Orte", app.fixedPlaceCount > 0 && app.placeNames.length === app.fixedPlaceCount
+                      && app.placeNames.indexOf("Belege") < 0, app.placeNames.join(","))
                 app.fileManagerPlaces = true
-                check("Dateimanager-Orte wieder an", app.placeNames.length === app.fixedPlaceCount + 2)
+                check("Wieder an: Dolphins Orte", app.placeNames.join(",") === "Belege" && app.fixedPlaceCount === 0)
                 settingsDialog.close()
             },
         ]

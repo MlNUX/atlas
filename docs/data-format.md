@@ -241,7 +241,7 @@ shell = "/run/current-system/sw/bin/fish"        # Standard: Login-Shell
 disabled = ["beispiel"]                          # ausgeschaltete Erweiterungen
 
 [places]
-file_manager = true                              # Orte aus Dolphin/KDE und GTK zeigen (Standard)
+file_manager = true                              # Orte wie in Dolphin (ohne KDE: feste + GTK-Lesezeichen); Standard
 
 [calendar]                                       # Nextcloud/CalDAV – ohne Passwort
 server = "https://cloud.example.com"
