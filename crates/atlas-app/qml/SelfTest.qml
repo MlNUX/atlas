@@ -500,6 +500,20 @@ Item {
                 md.editorItem.save()
                 check("Abhaken gespeichert", app.readTextFile(path("notes/todo.md")).indexOf("- [x] Literatur sichten") >= 0)
             },
+            () => {
+                // An empty window has no close button and never stays as a split.
+                editor.restore({})
+                check("Leeres Fenster ohne Schließen-Knopf", editor.groups.length === 1 && !editor.groups[0].closeButton.visible)
+                editor.open(path("notes/idee.md"), 0, "split")
+                check("Öffnen im Split nutzt das leere Fenster", editor.groups.length === 1 && editor.groups[0].tabs.length === 1, names())
+                check("Fenster mit Dokument hat Schließen-Knopf", editor.groups[0].closeButton.visible)
+                editor.restore({})
+                editor.openInSplit(editor.groups[0], path("notes/wiki.md"), 0, "right", {})
+                check("Split neben leerem Fenster: kein leerer Split bleibt", editor.groups.length === 1 && editor.groups[0].tabs.length === 1, names())
+                editor.restore({})
+                editor.open(path("notes/wiki.md"), 0, "temporary")
+                check("Temporärer Split ersetzt das leere Fenster", editor.groups.length === 1, names())
+            },
         ]
         timer.start()
     }

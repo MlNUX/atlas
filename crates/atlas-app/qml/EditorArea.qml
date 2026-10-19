@@ -101,10 +101,21 @@ SplitView {
         layoutChanged()
     }
 
+    /// A split without tabs (reused instead of opening another split).
+    function emptyGroup() { return groups.find(g => g.tabs.length === 0) || null }
+
+    /// Closes empty splits as soon as another split shows something: an
+    /// empty window never stays beside a document.
+    function pruneEmpty() {
+        if (!groups.some(g => g.tabs.length > 0)) return
+        for (const g of groups.slice()) if (g.tabs.length === 0 && groups.length > 1) closeGroup(g)
+    }
+
     /// Duplicates the current tab of `group` into a new split to its right.
     function splitGroup(group) {
         const index = groups.indexOf(group)
         const tab = group.currentTab
+        if (!tab) return
         const target = addGroup(index + 1)
         if (target && tab && tab.path) target.openTab(tab.path, 0, "tab", tab.viewState())
     }
@@ -152,11 +163,12 @@ SplitView {
     /// Opens next to `from`: on the given side, or in the next split.
     function openInSplit(from, path, line, side, state) {
         const index = groups.indexOf(from)
-        let target = null
-        if (side === "left" || side === "right") target = addGroup(side === "left" ? index : index + 1)
+        let target = emptyGroup()
+        if (!target && (side === "left" || side === "right")) target = addGroup(side === "left" ? index : index + 1)
         if (!target) target = groups.length < maxGroups ? addGroup(index + 1) : groups[(index + 1) % groups.length]
         target.openTab(path, line, "tab", state)
         activeIndex = groups.indexOf(target)
+        pruneEmpty()
     }
 
     /// Opens a file. `where`:
@@ -166,19 +178,19 @@ SplitView {
     ///   "temporary" – the temporary split (created or reused)
     function open(path, line, where, state) {
         if (!path) return
-        if (where === "split") {
-            const g = groups.length < maxGroups ? addGroup(activeIndex + 1) : activeGroup
-            return g.openTab(path, line, "tab", state)
-        }
-        if (where === "temporary") {
-            let g = groups.find(x => x.temporary)
-            if (!g) g = groups.length < maxGroups ? addGroup(groups.length, true) : activeGroup
-            const tab = g.openTab(path, line, "preview", state)
+        let tab = null
+        if (where === "split" || where === "temporary") {
+            // An empty split is used instead of opening another one.
+            let g = emptyGroup() || (where === "temporary" ? groups.find(x => x.temporary) : null)
+            if (!g) g = groups.length < maxGroups ? addGroup(where === "split" ? activeIndex + 1 : groups.length, where === "temporary") : activeGroup
+            tab = g.openTab(path, line, where === "split" ? "tab" : "preview", state)
             activeIndex = groups.indexOf(g)
-            return tab
+        } else {
+            if (!activeGroup) addGroup()
+            tab = activeGroup.openTab(path, line, where === "tab" ? "tab" : "preview", state)
         }
-        if (!activeGroup) addGroup()
-        return activeGroup.openTab(path, line, where === "tab" ? "tab" : "preview", state)
+        pruneEmpty()
+        return tab
     }
 
     /// Compatibility helper: `newPane` opens in a new split, otherwise preview.
