@@ -573,9 +573,15 @@ Rectangle {
             // Ctrl+wheel zooms the icons, like in Dolphin.
             WheelHandler {
                 acceptedModifiers: Qt.ControlModifier
+                property real pending: 0
                 onWheel: (event) => {
-                    const step = event.angleDelta.y > 0 ? 16 : -16
-                    root.iconSize = Math.max(zoom.from, Math.min(zoom.to, root.iconSize + step))
+                    event.accepted = true
+                    // One size step per notch, also from small touchpad deltas.
+                    pending += (event.angleDelta.y || event.pixelDelta.y * 2.4) / 120
+                    const steps = pending > 0 ? Math.floor(pending) : Math.ceil(pending)
+                    if (!steps) return
+                    pending -= steps
+                    root.iconSize = Math.max(zoom.from, Math.min(zoom.to, root.iconSize + 16 * steps))
                 }
             }
 

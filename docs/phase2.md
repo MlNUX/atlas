@@ -413,12 +413,18 @@ Behoben:
   der Seitenleiste blieben Lücken. Die Splits merken sich ihre Anteile und
   werden bei jeder Größenänderung neu verteilt; Dokumente gehören nicht mehr
   zur SplitView (dort zählten sie als zusätzliche Splits).
-- **Strg+Mausrad zoomt PDFs** um den Punkt unter der Maus.
+- **Strg+Mausrad zoomt PDFs** um den Punkt unter der Maus – auch mit
+  Touchpad und feinem Scrollen unter Wayland: Diese Ereignisse tragen nur
+  ein Pixel-Delta (`angleDelta` 0) und liefen vorher ins Scrollen. Strg+Rad
+  scrollt nie mehr; gleiches gilt für den Symbol-Zoom der Dateiansicht.
 - **Projektwechsel** öffnete Dateien des vorherigen Projekts (z. B.
   `paper.pdf`, `README.md`): Dateien von der Kommandozeile gelten nur beim
   Start und nur, wenn sie existieren.
 - **Checkboxen in der Markdown-Vorschau** sind anklickbar und haken die
-  Zeile im Quelltext ab (wird wie jede Änderung gespeichert).
+  Zeile im Quelltext ab (wird wie jede Änderung gespeichert). Sie ersetzen
+  den Aufzählungspunkt, sitzen auf der Textlinie (Häkchen als SVG statt
+  Zeichen, das die Grundlinie verschob), erledigte Aufgaben erscheinen
+  gedämpft und durchgestrichen.
 - **Leeres Fenster**: ohne „Split teilen“/„Schließen“-Knopf; wer etwas im
   Split oder temporären Split öffnet, während nur das leere Fenster da ist,
   bekommt es dort – ein leeres Fenster bleibt nie neben einem Dokument

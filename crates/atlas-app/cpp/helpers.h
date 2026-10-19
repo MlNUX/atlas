@@ -37,7 +37,7 @@ bool saveWindowImage(QObject* window, const QString& path);
 
 // Sends a wheel event (`delta` in eighths of a degree, 120 = one notch) at
 // (x, y), with Ctrl if `ctrl`; for the smoke test.
-void sendWheel(QObject* window, double x, double y, int delta, bool ctrl);
+void sendWheel(QObject* window, double x, double y, int delta, int flags);
 
 // Makes `owner` the QObject parent of `object` (its lifetime owner),
 // independent of the visual parent.

@@ -64,14 +64,18 @@ bool saveWindowImage(QObject* window, const QString& path)
 }
 
 
-void sendWheel(QObject* window, double x, double y, int delta, bool ctrl)
+void sendWheel(QObject* window, double x, double y, int delta, int flags)
 {
     auto* w = qobject_cast<QWindow*>(window);
     if (!w)
         return;
     const QPointF local(x, y);
-    QWheelEvent event(local, w->mapToGlobal(local), QPoint(), QPoint(0, delta), Qt::NoButton,
-                      ctrl ? Qt::ControlModifier : Qt::NoModifier, Qt::NoScrollPhase, false);
+    // flags: 1 Ctrl held, 2 touchpad-like (pixel delta only, in a scroll
+    // phase), 4 the gesture's ScrollBegin.
+    const bool pixel = flags & 2;
+    QWheelEvent event(local, w->mapToGlobal(local), pixel ? QPoint(0, delta) : QPoint(), pixel ? QPoint() : QPoint(0, delta),
+                      Qt::NoButton, (flags & 1) ? Qt::ControlModifier : Qt::NoModifier,
+                      (flags & 4) ? Qt::ScrollBegin : pixel ? Qt::ScrollUpdate : Qt::NoScrollPhase, false);
     QCoreApplication::sendEvent(w, &event);
 }
 

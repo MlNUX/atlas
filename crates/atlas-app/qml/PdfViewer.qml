@@ -391,6 +391,14 @@ Rectangle {
     onZoomScaleChanged: renderTimer.restart()
     Timer { id: renderTimer; interval: 120; onTriggered: root.renderScale = root.zoomScale }
 
+    /// Wheel notches of a wheel event, fractional for touchpads and
+    /// high-resolution wheels (120 per notch; 50 px of pixel-only deltas).
+    function wheelSteps(event) {
+        const d = event.angleDelta.y || event.angleDelta.x
+        if (d) return d / 120
+        const p = event.pixelDelta.y || event.pixelDelta.x
+        return p / 50
+    }
     function zoomBy(factor) { zoom = Math.max(0.2, Math.min(6, zoomScale * factor)) }
 
     Keys.onPressed: (event) => {
@@ -801,10 +809,13 @@ Rectangle {
 
                 // Ctrl+wheel zooms (on the list itself: it would take every
                 // wheel event for scrolling); the spot under the mouse stays.
+                // Touchpads and high-resolution wheels (Wayland) send small or
+                // pixel-only deltas; Ctrl+wheel never scrolls.
                 WheelHandler {
                     acceptedModifiers: Qt.ControlModifier
                     onWheel: (event) => {
-                        const steps = event.angleDelta.y / 120
+                        event.accepted = true
+                        const steps = root.wheelSteps(event)
                         if (!steps) return
                         const at = Qt.point(pages.contentX + event.x - pages.originX, pages.contentY + event.y - pages.originY)
                         const before = root.zoomScale

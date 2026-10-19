@@ -475,6 +475,12 @@ Item {
                 const plain = v.zoomScale
                 app.sendWheel(window, p.x, p.y, -120, false)
                 check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
+                // Touchpads (and fine scrolling on Wayland): a gesture with
+                // pixel-only deltas zooms as well and never scrolls.
+                app.sendWheel(window, p.x, p.y, 0, 7)
+                app.sendWheel(window, p.x, p.y, 40, 3)
+                app.sendWheel(window, p.x, p.y, 40, 3)
+                check("Strg+Touchpad zoomt die PDF", v.zoomScale > plain * 1.1, plain + " → " + v.zoomScale)
                 // Dialogs of the new design.
                 sendToNote.ask("ok", app.projectRoot)
                 check("„In Notiz übernehmen“ öffnet", sendToNote.visible && sendToNote.filtered.length > 0, sendToNote.filtered.length)
