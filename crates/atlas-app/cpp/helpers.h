@@ -35,6 +35,14 @@ void installWebSchemeHandler();
 // Renders a QQuickWindow (passed from QML as QObject) into a PNG file.
 bool saveWindowImage(QObject* window, const QString& path);
 
+// Sends a wheel event (`delta` in eighths of a degree, 120 = one notch) at
+// (x, y), with Ctrl if `ctrl`; for the smoke test.
+void sendWheel(QObject* window, double x, double y, int delta, int flags);
+
+// Makes `owner` the QObject parent of `object` (its lifetime owner),
+// independent of the visual parent.
+void setOwner(QObject* object, QObject* owner);
+
 // Sends a left mouse event at (x, y) in window coordinates after `delayMs`:
 // kind 0 press, 1 move, 2 release. Used by the smoke test to drive real
 // drag-and-drop.

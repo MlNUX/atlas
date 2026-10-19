@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Place {
-    pub name: &'static str,
-    pub icon: &'static str,
+    pub name: String,
+    pub icon: String,
     pub path: PathBuf,
 }
 
@@ -36,7 +36,7 @@ pub fn places() -> Vec<Place> {
                 return None;
             }
             seen.push(path.clone());
-            Some(Place { name, icon, path })
+            Some(Place { name: name.into(), icon: icon.into(), path })
         })
         .collect()
 }

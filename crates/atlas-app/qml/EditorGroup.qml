@@ -23,6 +23,7 @@ Rectangle {
 
     signal activated()
     signal emptied()
+    readonly property alias closeButton: closeSplitButton
     signal closeRequested()
     signal splitRequested()
     /// Open in another split: `side` is "left", "right" or "" (default).
@@ -73,7 +74,7 @@ Rectangle {
             return tab
         }
         const props = { app: group.app, actions: group.actions, path: path, line: line || 0, preview: mode === "preview" }
-        const tab = group.editorArea ? group.editorArea.createDocument(props) : tabComponent.createObject(content, props)
+        const tab = group.editorArea ? group.editorArea.createDocument(props, content) : tabComponent.createObject(content, props)
         tab.parent = content
         if (state) tab.applyState(state)
         // Connections go through `ownerGroup`, so a tab moved to another
@@ -395,8 +396,9 @@ Rectangle {
                     tip: qsTr("Split anheften")
                     onClicked: { group.temporary = false; group.changed() }
                 }
-                IconButton { iconName: "split"; tip: qsTr("Split rechts (Strg+\\)"); onClicked: group.splitRequested() }
-                IconButton { iconName: "close"; tip: qsTr("Split schließen"); onClicked: group.closeRequested() }
+                // An empty split (nothing open) has nothing to split or close.
+                IconButton { visible: group.tabs.length > 0; iconName: "split"; tip: qsTr("Split rechts (Strg+\\)"); onClicked: group.splitRequested() }
+                IconButton { id: closeSplitButton; visible: group.tabs.length > 0; iconName: "close"; tip: qsTr("Split schließen"); onClicked: group.closeRequested() }
                 }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }

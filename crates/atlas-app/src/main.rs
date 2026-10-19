@@ -29,8 +29,9 @@ fn main() {
         if std::env::var_os("QT_QPA_PLATFORM").is_none() && std::env::var_os("WAYLAND_DISPLAY").is_some() {
             std::env::set_var("QT_QPA_PLATFORM", "wayland");
         }
+        // Atlas' own style (qml/AtlasStyle, falls back to Fusion).
         if std::env::var_os("QT_QUICK_CONTROLS_STYLE").is_none() {
-            std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Fusion");
+            std::env::set_var("QT_QUICK_CONTROLS_STYLE", "AtlasStyle");
         }
     }
 

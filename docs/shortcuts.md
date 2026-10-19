@@ -44,6 +44,9 @@ alle übrigen Tasten gehen dort an das Programm im Terminal.
 | Entf | In den Papierkorb |
 | Strg+C / Strg+X / Strg+V | Kopieren / Ausschneiden / Einfügen (kompatibel mit anderen Dateimanagern) |
 | Alt+↑, Rücktaste | Übergeordneter Ordner (Dateiliste) |
+| Strg+Klick (Datei im Baum) | Schnellansicht |
+| Strg+L | Pfad eintippen (Dateiliste, Ordnerauswahl) |
+| Strg+Mausrad, Strg+Plus/Minus | Symbole größer/kleiner (Dateiliste) |
 
 ## Texte, Code und Markdown
 

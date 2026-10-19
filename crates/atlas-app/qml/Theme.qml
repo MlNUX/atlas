@@ -48,6 +48,14 @@ QtObject {
         dir: "#5aa2ff", binary: "#8a97ad", missing: "#5c6981", terminal: "#8a97ad"
     })
 
+    /// Bytes as "12,3 GB" (binary units, one decimal from GB up).
+    function formatBytes(n) {
+        const units = ["B", "KB", "MB", "GB", "TB"]
+        let i = 0
+        while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
+        return (i >= 3 ? n.toFixed(1).replace(".", ",") : Math.round(n)) + " " + units[i]
+    }
+
     /// Icon name and colour of a file: [icon, colour].
     function fileIcon(fileName, isDir) {
         if (isDir) return ["folder-fill", "#5aa2ff"]

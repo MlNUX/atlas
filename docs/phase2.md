@@ -379,3 +379,160 @@ Oberfläche an das dunkle „Navy“-Mockup angeglichen (Screenshot:
 - **Markdown-Vorschau**: Überschriften mit `#`/`##`, farbige Tag-Chips,
   Zitate als Karte mit goldenem Rand und Quellen-Chip, eigene Checkboxen.
 - Terminal in den Farben des Designs.
+
+#### Fenster und Dialoge
+
+- Eigener Qt-Quick-Controls-Stil `qml/AtlasStyle` (wird beim Start gesetzt,
+  `QT_QUICK_CONTROLS_STYLE` überschreibt ihn; nicht gestaltete Controls
+  kommen aus Fusion): Dialoge als Karten mit Titel auf abgedunkeltem
+  Fenster, abgerundete Eingabefelder, Auswahllisten, Checkboxen und
+  Knöpfe (Bestätigen in Akzentfarbe, Standardknöpfe auf Deutsch), Menüs mit
+  runder Hervorhebung und rechtsbündigen Kürzeln, schmale Scrollbalken,
+  Reiter mit Akzentlinie, Tooltips. Damit folgen alle Fenster dem Design –
+  Einstellungen, Eigenschaften, Erweiterungen, Kalender, Konflikte,
+  Umbenennen, Bestätigungen, Kontextmenüs.
+- **Sessionfenster** nach dem Mockup
+  ([previews/15-atlas-sessions-navy.png](../previews/15-atlas-sessions-navy.png)):
+  Suche, alle Sessions mit Symbol nach Inhalt (PDF, Notizen, Code, leer),
+  „3 Tabs · 2 Splits“, aktive Session markiert („Automatisch gespeichert“),
+  sonst Zeit der letzten Speicherung; ⋮ je Session zum Umbenennen und
+  Löschen; unten „Neue Session“ (mit ⋮: Umbenennen, Session speichern,
+  Löschen) und „Aktuelle duplizieren“.
+- Arbeitsleiste mit Suchsymbol und farbigen Dateisymbolen.
+- `--screenshot-dialog NAME` öffnet einen Dialog für Design-Screenshots.
+
+Gefunden und behoben: „In Notiz übernehmen“ (Terminal-Ausgabe, PDF-Zitat)
+öffnete sich nicht – eine lokale Variable `open` verdeckte `open()`.
+
+### Nachtrag – Rückmeldungen aus dem Test
+
+Behoben:
+
+- **Splits füllen den Editorbereich immer**: Beim Vergrößern eines Splits
+  gegen die Seitenleiste, beim Ein-/Ausblenden und beim Ändern der Breite
+  der Seitenleiste blieben Lücken. Die Splits merken sich ihre Anteile und
+  werden bei jeder Größenänderung neu verteilt; Dokumente gehören nicht mehr
+  zur SplitView (dort zählten sie als zusätzliche Splits).
+- **Strg+Mausrad zoomt PDFs** um den Punkt unter der Maus – auch mit
+  Touchpad und feinem Scrollen unter Wayland: Diese Ereignisse tragen nur
+  ein Pixel-Delta (`angleDelta` 0) und liefen vorher ins Scrollen. Strg+Rad
+  scrollt nie mehr; gleiches gilt für den Symbol-Zoom der Dateiansicht.
+- **Projektwechsel** öffnete Dateien des vorherigen Projekts (z. B.
+  `paper.pdf`, `README.md`): Dateien von der Kommandozeile gelten nur beim
+  Start und nur, wenn sie existieren.
+- **Checkboxen in der Markdown-Vorschau** sind anklickbar und haken die
+  Zeile im Quelltext ab (wird wie jede Änderung gespeichert). Sie ersetzen
+  den Aufzählungspunkt, sitzen auf der Textlinie (Häkchen als SVG statt
+  Zeichen, das die Grundlinie verschob), erledigte Aufgaben erscheinen
+  gedämpft und durchgestrichen.
+- **Leeres Fenster**: ohne „Split teilen“/„Schließen“-Knopf; wer etwas im
+  Split oder temporären Split öffnet, während nur das leere Fenster da ist,
+  bekommt es dort – ein leeres Fenster bleibt nie neben einem Dokument
+  stehen.
+
+Neu gestaltet:
+
+- **Schnellansicht** nach
+  [previews/03-schnellansicht-dark.png](../previews/03-schnellansicht-dark.png):
+  Kopfzeile „Schnellansicht – Name“ mit Seitenwechsel, Zoom und „Ganze
+  Seite“, das Dokument ohne eigene Leisten (PDFs ganzseitig), rechts eine
+  Infospalte (Art, Größe, Änderung, Ordner; bei PDFs Seiten, Abmessungen und
+  Anmerkungen, bei Notizen Überschriften und Schlagwörter) mit „Im Tab
+  öffnen“ / „Im Split öffnen“, darunter die Tastenhinweise. **Strg+Klick auf
+  eine Datei im Projektbaum** öffnet sie in der Schnellansicht (Mittelklick
+  weiterhin im Split, Strg+Klick auf Ordner als Dateiliste im Split).
+- **Dateiansicht wie Dolphin**: Pfadleiste mit anklickbaren Abschnitten
+  (beginnt beim Projekt bzw. Ort, Klick auf die freie Fläche oder Strg+L zum
+  Eintippen), Symbolansicht mit großen Symbolen und Bildvorschau oder
+  Detailansicht mit Spalten, Zoom-Regler und Strg+Mausrad, Statusleiste mit
+  „5 Ordner, 3 Dateien (1,2 MB)“ bzw. der Auswahl und dem freien
+  Speicherplatz. Ansicht und Symbolgröße stehen in der Session.
+- **Ordnerauswahl** („Projektordner öffnen“, Strg+O) als eigenes Fenster im
+  Design statt des Systemdialogs: Projekt und Orte links, Pfadleiste,
+  Unterordner, Ordner per Doppelklick betreten, „Ordner öffnen“ übernimmt
+  den gezeigten oder markierten Ordner.
+- **Neue Session** (Sessionmenü oben rechts, Befehlspalette) fragt immer
+  nach dem Projektordner und dem Namen; liegt der Ordner außerhalb des
+  aktuellen Projekts, wird dieses Projekt geöffnet und die Session dort
+  angelegt.
+
+Geprüft im Rauchtest: echte Mausereignisse für Strg+Klick im Baum, Klick und
+Strg+Mausrad in der Dateiansicht, Wechsel Symbol-/Detailansicht mit
+erhaltener Auswahl, Ordnerauswahl und Anlegen einer Session, leeres Fenster
+und Splits, Checkbox-Klick in der Vorschau, PDF-Zoom.
+
+### Nachtrag – App-Passwort aus einem Passwort-Befehl
+
+Statt eines Schlüsselbunds (kein Secret-Service-Dienst nötig) kann in den
+Kalender-Einstellungen ein **Passwort-Befehl** stehen
+(`[calendar] password_command`), etwa `pass show nextcloud/atlas`,
+`rbw get nextcloud` oder `systemd-creds --user decrypt …`. Atlas führt ihn
+einmal pro Start im Hintergrund aus (ohne Shell, ohne Eingabe, 90 s
+Zeitlimit für pinentry), nimmt die erste Zeile als App-Passwort und hält es
+wie bisher nur im Arbeitsspeicher. Während er läuft, fragt Atlas nicht
+nach; scheitert er, nennt der Hinweis Code und Fehlerzeile und bietet
+„Erneut versuchen“, „Eingeben …“ und „Später“. „Verbindung testen“ nutzt
+den Befehl, wenn kein Passwort eingetippt ist. Ein geänderter Befehl wird
+sofort neu ausgeführt; „Konto trennen“ vergisst Passwort und Ergebnis.
+Geprüft: Kern-Tests (erste Zeile, Fehler mit Code und stderr ohne
+Passwort, leere Ausgabe, fehlendes Programm, Zeitlimit) und Rauchtest
+(Fehlerhinweis, erfolgreicher Befehl entsperrt, Passwort nicht im Konto).
+
+### Nachtrag – App-Passwort einmal eingeben
+
+„Auf diesem Rechner merken“ (Einstellungen und Passwort-Abfrage, vorbelegt)
+legt das App-Passwort einmal ab, ohne Schlüsselbund-Dienst
+(`atlas_core::secret`): verschlüsselt mit `systemd-creds --user`, an den
+Rechner gebunden, sonst als Datei mit Rechten 600 (wird angezeigt). Beim
+Start lädt Atlas es im Hintergrund, vor einem Passwort-Befehl; danach wird
+nicht mehr gefragt. Abwählen, Konto trennen oder Kontowechsel löschen es.
+Gefunden und behoben: ein „Erneut versuchen“ während eines laufenden
+Abrufs ließ dessen Ergebnis verfallen und die Anzeige auf „Hole
+App-Passwort …“ stehen. Geprüft: Kern-Tests (verschlüsselt mit Ersatz für
+systemd-creds, Rückfall auf Datei, Rechte 700/600, für andere lesbare
+Datei abgelehnt, kaputtes systemd-creds) und Rauchtest (merken, Neustart
+ohne Eingabe, abwählen, wieder merken, Konto trennen).
+
+### Nachtrag – Terminal-Knopf
+
+Der Terminal-Knopf oben rechts klappte das Terminal manchmal erst beim
+zweiten Klick ein: Er nutzte die Logik von Strg+`, die ein sichtbares
+Terminal ohne Fokus zuerst fokussiert. Knopf und Befehlspalette blenden
+jetzt direkt ein/aus; nur Strg+` fokussiert zuerst. Rauchtest mit echten
+Klicks bei Fokus im Editor.
+
+### Nachtrag – Orte aus Dolphin
+
+Mit „Orte wie in Dolphin anzeigen“ (Einstellungen, `[places]
+file_manager`, standardmäßig an) zeigt die Seitenleiste **genau Dolphins
+Orte** aus `~/.local/share/user-places.xbel`, in Dolphins Reihenfolge und
+statt der festen Orte (`atlas_core::places`): Was in Dolphin entfernt oder
+ausgeblendet ist, fehlt auch in Atlas. KDE-Systemorte stehen dort mit
+englischen Titeln und werden wie in KDE übersetzt („Home“ → „Persönlicher
+Ordner“), `trash:/` ist der Papierkorb von Atlas. Einträge nur für eine
+andere App, Netzwerk-Orte (`sftp://`, `smb://`, `remote:/`) und nicht
+vorhandene Ordner fallen weg; Laufwerke stehen nicht in der Datei (Dolphin
+fragt UDisks2) und fehlen daher. Ohne Dolphin-Datei zeigt Atlas die festen
+Orte und darunter, abgesetzt als „Dateimanager“, die Lesezeichen von
+GTK-Dateimanagern (`~/.config/gtk-3.0/bookmarks`); ausgeschaltet nur die
+festen Orte. Änderungen erscheinen sofort (Dateiüberwachung); die Orte
+gelten auch in Ordnerauswahl und Pfadleiste. Neu ist der Dialog
+**Einstellungen** (Menü, Befehlspalette) mit diesem Schalter und Wegen zu
+Editor-, Kalender- und Erweiterungs-Einstellungen. Der Rauchtest nutzt
+eigene `XDG_DATA_HOME`/`XDG_CONFIG_HOME` und fasst die echten Orte nie an.
+Geprüft: Kern-Tests (Dolphin ersetzt die festen Orte, alles entfernt =
+keine Orte, kaputte oder fehlende Datei, XBEL mit `<!DOCTYPE>`,
+Systemorte übersetzt, Papierkorb, Prozentkodierung, GTK-Lesezeichen,
+Duplikate) und Rauchtest (wie in Dolphin, aus- und wieder einschalten).
+
+### Nachtrag – Strg+Mausrad unter Wayland
+
+Unter Wayland (Hyprland, sway) zoomte Strg+Mausrad nicht: Qt meldet dort
+selbst Mausräder als Gerät „touchpad“ mit Zeigertyp „Finger“, und die
+WheelHandler (PDF-Zoom, Symbol-Zoom der Dateiansicht, Scrollen der
+Kalenderwoche) nahmen diesen Typ nicht an. Sie akzeptieren jetzt alle
+Geräte- und Zeigertypen; die Kalenderwoche wertet außerdem reine
+Pixel-Deltas aus. Gefunden mit echten Wayland-Ereignissen (sway headless,
+virtuelle Maus über das wlroots-Protokoll, Strg über eine virtuelle
+Tastatur); der Rauchtest schickt jetzt auch Rad-Ereignisse eines solchen
+„Touchpad“-Geräts und Rasten in Scroll-Phasen.

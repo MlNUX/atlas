@@ -49,14 +49,25 @@ th { background: var(--raised); color: var(--strong); }
 tr:nth-child(even) td { background: #121c2e; }
 img { max-width: 100%; border-radius: 6px; }
 hr { border: 0; border-top: 1px solid var(--border); }
-li.task-list-item, ul > li > input[type=checkbox] { list-style: none; }
-ul:has(> li > input[type=checkbox]) { padding-left: 0.4em; }
+/* Task lists: no bullets, the box takes the bullet's place. */
+li:has(> input[type=checkbox]), li:has(> p > input[type=checkbox]) { list-style: none; margin: 0.2em 0; }
+ul:has(> li > input[type=checkbox]), ul:has(> li > p > input[type=checkbox]) { padding-left: 0.3em; }
 input[type=checkbox] {
-  appearance: none; width: 16px; height: 16px; margin: 0 0.6em 0 0; vertical-align: -3px;
-  border: 1.5px solid var(--muted); border-radius: 4px; background: transparent;
+  appearance: none; flex: none; width: 17px; height: 17px; margin: 0 0.55em 0 0;
+  vertical-align: -3px; border: 1.5px solid #4a5874; border-radius: 5px; background: var(--raised);
+  background-repeat: no-repeat; background-position: center; background-size: 12px 12px;
+  transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
-input[type=checkbox]:checked { background: var(--accent); border-color: var(--accent); }
-input[type=checkbox]:checked::after { content: "✓"; display: block; color: white; font-size: 12px; line-height: 13px; text-align: center; }
+input.task { cursor: pointer; }
+input.task:hover { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(61, 139, 253, 0.18); }
+input[type=checkbox]:checked {
+  background-color: var(--accent); border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* Done tasks step back. */
+li:has(> input[type=checkbox]:checked), li:has(> p > input[type=checkbox]:checked) {
+  color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(138, 151, 173, 0.55);
+}
 
 .atlas-tags { margin-bottom: 1em; }
 .tag {

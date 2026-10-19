@@ -45,13 +45,20 @@ pub mod qobject {
         #[qproperty(QStringList, open_files, cxx_name = "openFiles", READ, CONSTANT)]
         // Line per entry of `openFiles` ("0" = none).
         #[qproperty(QStringList, open_lines, cxx_name = "openLines", READ, CONSTANT)]
-        #[qproperty(QStringList, place_names, cxx_name = "placeNames", READ, CONSTANT)]
-        #[qproperty(QStringList, place_paths, cxx_name = "placePaths", READ, CONSTANT)]
-        #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, CONSTANT)]
+        /// Places: Atlas' fixed ones, or with `fileManagerPlaces` exactly
+        /// Dolphin's (without KDE: the fixed ones plus the GTK bookmarks).
+        #[qproperty(QStringList, place_names, cxx_name = "placeNames", READ, NOTIFY = places_changed)]
+        #[qproperty(QStringList, place_paths, cxx_name = "placePaths", READ, NOTIFY = places_changed)]
+        #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, NOTIFY = places_changed)]
+        /// How many of the places are Atlas' fixed ones (0: Dolphin's).
+        #[qproperty(i32, fixed_place_count, cxx_name = "fixedPlaceCount", READ, NOTIFY = places_changed)]
+        /// Setting `[places] file_manager` (saved when changed).
+        #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
         #[qproperty(i32, screenshot_delay_ms, cxx_name = "screenshotDelayMs", READ, CONSTANT)]
+        #[qproperty(QString, screenshot_dialog, cxx_name = "screenshotDialog", READ, CONSTANT)]
         #[qproperty(QString, initial_search, cxx_name = "initialSearch", READ, CONSTANT)]
         #[qproperty(bool, restore_session, cxx_name = "restoreSession", READ, CONSTANT)]
         #[qproperty(bool, persist_session, cxx_name = "persistSession", READ, CONSTANT)]
@@ -74,6 +81,19 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "projectRootChanged"]
         fn project_root_changed(self: Pin<&mut AppController>);
+
+        #[qsignal]
+        #[cxx_name = "placesChanged"]
+        fn places_changed(self: Pin<&mut AppController>);
+
+        #[cxx_name = "setFileManagerPlaces"]
+        fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
+
+        /// Reads the places again (also done when the file managers' files
+        /// change).
+        #[qinvokable]
+        #[cxx_name = "refreshPlaces"]
+        fn refresh_places(self: Pin<&mut AppController>);
 
         /// Opens `path` as the project folder and remembers it.
         #[qinvokable]
@@ -167,6 +187,12 @@ pub mod qobject {
             layout_json: &QString,
             expanded: &QStringList,
         ) -> QString;
+
+        /// The sessions for the session list: JSON list of {id, name, tabs,
+        /// splits, kind, saved (Unix seconds of the last save)}.
+        #[qinvokable]
+        #[cxx_name = "sessionSummaries"]
+        fn session_summaries(self: &AppController) -> QString;
 
         #[qinvokable]
         #[cxx_name = "renameSession"]
@@ -443,7 +469,18 @@ pub mod qobject {
         #[cxx_name = "saveWindowImage"]
         unsafe fn save_window_image(self: &AppController, window: *mut QObject, path: &QString) -> bool;
 
-        /// Sends a mouse event (0 press, 1 move, 2 release) at window
+        /// Sends a wheel event at window coordinates; for the smoke test.
+        #[qinvokable]
+        #[cxx_name = "sendWheel"]
+        unsafe fn send_wheel(self: &AppController, window: *mut QObject, x: f64, y: f64, delta: i32, flags: i32);
+
+        /// Makes `owner` responsible for deleting `object` (QObject parent),
+        /// whatever its visual parent.
+        #[qinvokable]
+        #[cxx_name = "setOwner"]
+        unsafe fn set_owner(self: &AppController, object: *mut QObject, owner: *mut QObject);
+
+        /// Sends a mouse event (0 press, 1 move, 2 release; +10 with Ctrl) at window
         /// coordinates after `delay_ms`; for the smoke test.
         #[qinvokable]
         #[cxx_name = "postMouse"]
@@ -466,10 +503,15 @@ pub struct AppControllerRust {
     place_names: QStringList,
     place_paths: QStringList,
     place_icons: QStringList,
+    fixed_place_count: i32,
+    file_manager_places: bool,
+    /// Watches the file managers' places files.
+    places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
     quit_after_ms: i32,
     self_test: bool,
     screenshot_delay_ms: i32,
+    screenshot_dialog: QString,
     initial_search: QString,
     restore_session: bool,
     persist_session: bool,
@@ -510,14 +552,6 @@ impl Default for AppControllerRust {
         for f in &cli.open {
             open_files.append(qs(f.to_string_lossy()));
         }
-        let mut place_names = QStringList::default();
-        let mut place_paths = QStringList::default();
-        let mut place_icons = QStringList::default();
-        for place in atlas_core::listing::places() {
-            place_names.append(qs(place.name));
-            place_paths.append(qs(place.path.to_string_lossy()));
-            place_icons.append(qs(place.icon));
-        }
         Self {
             project_root: QString::default(),
             project_name: QString::default(),
@@ -527,13 +561,17 @@ impl Default for AppControllerRust {
             index_status: QString::default(),
             open_files,
             open_lines,
-            place_names,
-            place_paths,
-            place_icons,
+            place_names: QStringList::default(),
+            place_paths: QStringList::default(),
+            place_icons: QStringList::default(),
+            fixed_place_count: 0,
+            file_manager_places: Config::load().places.file_manager,
+            places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
             self_test: cli.self_test,
             screenshot_delay_ms: cli.screenshot_delay_ms.unwrap_or(2500) as i32,
+            screenshot_dialog: qs(cli.screenshot_dialog.clone().unwrap_or_default()),
             initial_search: qs(cli.search.as_deref().unwrap_or_default()),
             // `--open` starts with just the given files, but the result is
             // remembered as the new session.
@@ -561,7 +599,9 @@ impl Default for AppControllerRust {
 }
 
 impl cxx_qt::Initialize for qobject::AppController {
-    fn initialize(self: Pin<&mut Self>) {
+    fn initialize(mut self: Pin<&mut Self>) {
+        self.as_mut().refresh_places();
+        self.as_mut().watch_places();
         let cli = Cli::get();
         let initial = cli
             .project
@@ -576,6 +616,71 @@ impl cxx_qt::Initialize for qobject::AppController {
 
 fn qs(s: impl AsRef<str>) -> QString {
     QString::from(s.as_ref())
+}
+
+impl qobject::AppController {
+    pub fn refresh_places(mut self: Pin<&mut Self>) {
+        let (places, fixed) =
+            atlas_core::places::sidebar_places(atlas_core::listing::places(), self.file_manager_places);
+        let (mut names, mut paths, mut icons) =
+            (QStringList::default(), QStringList::default(), QStringList::default());
+        for place in &places {
+            names.append(qs(&place.name));
+            paths.append(qs(place.path.to_string_lossy()));
+            icons.append(qs(&place.icon));
+        }
+        if paths == self.place_paths
+            && names == self.place_names
+            && icons == self.place_icons
+            && fixed as i32 == self.fixed_place_count
+        {
+            return;
+        }
+        let mut r = self.as_mut().rust_mut();
+        r.place_names = names;
+        r.place_paths = paths;
+        r.place_icons = icons;
+        r.fixed_place_count = fixed as i32;
+        self.places_changed();
+    }
+
+    pub fn set_file_manager_places(mut self: Pin<&mut Self>, on: bool) {
+        if self.file_manager_places == on {
+            return;
+        }
+        let mut config = Config::load().places;
+        config.file_manager = on;
+        if let Err(err) = Config::save_places(&config) {
+            log::warn!("cannot save [places]: {err:#}");
+        }
+        self.as_mut().rust_mut().file_manager_places = on;
+        self.as_mut().places_changed();
+        self.refresh_places();
+    }
+
+    /// Dolphin or a GTK file manager changed its places: read them again.
+    fn watch_places(mut self: Pin<&mut Self>) {
+        let sources = atlas_core::places::sources();
+        let dirs: Vec<PathBuf> =
+            sources.iter().filter_map(|f| f.parent().map(Path::to_path_buf)).filter(|d| d.is_dir()).collect();
+        let thread = self.qt_thread();
+        let watched = sources.clone();
+        match atlas_core::watcher::DirWatcher::new(move |changed| {
+            if changed.iter().any(|p| watched.contains(p)) {
+                let _ = thread.queue(|this| {
+                    if this.file_manager_places {
+                        this.refresh_places();
+                    }
+                });
+            }
+        }) {
+            Ok(watcher) => {
+                watcher.sync(&dirs);
+                self.as_mut().rust_mut().places_watcher = Some(watcher);
+            }
+            Err(err) => log::warn!("places watcher unavailable: {err:#}"),
+        }
+    }
 }
 
 fn path_of(s: &QString) -> PathBuf {
@@ -878,6 +983,27 @@ impl qobject::AppController {
                 QString::default()
             }
         }
+    }
+
+    pub fn session_summaries(&self) -> QString {
+        let Some(project) = self.project.as_ref() else { return qs("[]") };
+        let list: Vec<serde_json::Value> = project
+            .list_sessions()
+            .into_iter()
+            .map(|s| {
+                let summary = project.load_named(&s.id).summary();
+                let saved = std::fs::metadata(project.session_path(&s.id))
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs());
+                serde_json::json!({
+                    "id": s.id, "name": s.name, "tabs": summary.tabs, "splits": summary.splits,
+                    "kind": summary.kind, "saved": saved,
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
     }
 
     pub fn rename_session(mut self: Pin<&mut Self>, id: &QString, name: &QString) -> bool {
@@ -1679,6 +1805,18 @@ impl qobject::AppController {
     /// window object).
     pub unsafe fn save_window_image(&self, window: *mut cxx_qt::QObject, path: &QString) -> bool {
         unsafe { crate::qt_helpers::save_window_image(window, path) }
+    }
+
+    /// # Safety
+    /// As for `save_window_image`.
+    pub unsafe fn send_wheel(&self, window: *mut cxx_qt::QObject, x: f64, y: f64, delta: i32, flags: i32) {
+        unsafe { crate::qt_helpers::send_wheel(window, x, y, delta, flags) }
+    }
+
+    /// # Safety
+    /// Both must be null or live QObjects (passed from QML).
+    pub unsafe fn set_owner(&self, object: *mut cxx_qt::QObject, owner: *mut cxx_qt::QObject) {
+        unsafe { crate::qt_helpers::set_owner(object, owner) }
     }
 
     /// # Safety

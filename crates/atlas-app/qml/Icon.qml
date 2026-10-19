@@ -6,7 +6,7 @@ import Atlas
 
 // A line icon (24 × 24 grid, drawn as SVG in any colour). Unknown names
 // draw nothing.
-Image {
+Item {
     id: icon
     property string name
     property color color: Theme.textMuted
@@ -43,9 +43,12 @@ Image {
         "session": "<rect x='3' y='4' width='18' height='12' rx='2'/><path d='M8 20h8M12 16v4'/>",
         "menu": "<path d='M4 7h16M4 12h16M4 17h16'/>",
         "plus": "<path d='M12 5v14M5 12h14'/>",
+        "check": "<path d='m5 12.5 4.5 4.5L19 7.5'/>",
         "minus": "<path d='M5 12h14'/>",
         "close": "<path d='M6 6l12 12M18 6 6 18'/>",
         "arrow-left": "<path d='M19 12H5M11 6l-6 6 6 6'/>",
+        "arrow-up": "<path d='M12 19V5M6 11l6-6 6 6'/>",
+        "grid": "<rect x='4' y='4' width='6.5' height='6.5' rx='1.5'/><rect x='13.5' y='4' width='6.5' height='6.5' rx='1.5'/><rect x='4' y='13.5' width='6.5' height='6.5' rx='1.5'/><rect x='13.5' y='13.5' width='6.5' height='6.5' rx='1.5'/>",
         "arrow-right": "<path d='M5 12h14M13 6l6 6-6 6'/>",
         "terminal": "<rect x='3' y='4' width='18' height='16' rx='2'/><path d='m7 9 3 3-3 3M12.5 15H17'/>",
         "split": "<rect x='3' y='4' width='18' height='16' rx='2'/><path d='M12 4v16'/>",
@@ -88,10 +91,16 @@ Image {
 
     width: size
     height: size
-    sourceSize.width: size * 2
-    sourceSize.height: size * 2
-    fillMode: Image.PreserveAspectFit
-    smooth: true
-    source: svg ? "data:image/svg+xml;utf8," + encodeURIComponent(svg) : ""
+    // Layouts go by the implicit size.
+    implicitWidth: size
+    implicitHeight: size
 
+    Image {
+        anchors.fill: parent
+        sourceSize.width: icon.size * 2
+        sourceSize.height: icon.size * 2
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        source: icon.svg ? "data:image/svg+xml;utf8," + encodeURIComponent(icon.svg) : ""
+    }
 }

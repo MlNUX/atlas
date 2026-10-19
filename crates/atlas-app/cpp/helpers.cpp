@@ -10,6 +10,7 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QImage>
 #include <QtGui/QMouseEvent>
+#include <QtGui/QPointingDevice>
 #include <QtGui/QWindow>
 #include <QtCore/QCoreApplication>
 #include <QtCore/QPointer>
@@ -64,6 +65,33 @@ bool saveWindowImage(QObject* window, const QString& path)
 }
 
 
+void sendWheel(QObject* window, double x, double y, int delta, int flags)
+{
+    auto* w = qobject_cast<QWindow*>(window);
+    if (!w)
+        return;
+    const QPointF local(x, y);
+    // flags: 1 Ctrl held, 2 touchpad-like (pixel delta only, in a scroll
+    // phase), 4 the gesture's ScrollBegin, 8 wheel notches in a scroll phase,
+    // 16 from a "touchpad" device with finger pointer type (as Qt on Wayland
+    // reports even mouse wheels).
+    static QPointingDevice touchpad(QStringLiteral("touchpad"), 0x7a71, QInputDevice::DeviceType::TouchPad,
+                                    QPointingDevice::PointerType::Finger, QInputDevice::Capability::Position
+                                        | QInputDevice::Capability::Scroll, 10, 0);
+    const bool pixel = flags & 2;
+    const Qt::ScrollPhase phase = (flags & 4) ? Qt::ScrollBegin : (flags & (2 | 8)) ? Qt::ScrollUpdate : Qt::NoScrollPhase;
+    QWheelEvent event(local, w->mapToGlobal(local), pixel ? QPoint(0, delta) : QPoint(), pixel ? QPoint() : QPoint(0, delta),
+                      Qt::NoButton, (flags & 1) ? Qt::ControlModifier : Qt::NoModifier, phase, false,
+                      Qt::MouseEventNotSynthesized, (flags & 16) ? &touchpad : QPointingDevice::primaryPointingDevice());
+    QCoreApplication::sendEvent(w, &event);
+}
+
+void setOwner(QObject* object, QObject* owner)
+{
+    if (object && owner)
+        object->setParent(owner);
+}
+
 void postMouse(QObject* window, int kind, double x, double y, int delayMs)
 {
     QPointer<QWindow> w = qobject_cast<QWindow*>(window);
@@ -72,7 +100,10 @@ void postMouse(QObject* window, int kind, double x, double y, int delayMs)
     // Through the window system like a real mouse (as QTest does), so the
     // application tracks the button state and drags see the events. Each
     // event has its own timer: they keep firing inside a drag's event loop.
-    QTimer::singleShot(delayMs, [w, kind, x, y] {
+    // kind + 10: with Ctrl held.
+    const Qt::KeyboardModifiers modifiers = kind >= 10 ? Qt::ControlModifier : Qt::NoModifier;
+    kind %= 10;
+    QTimer::singleShot(delayMs, [w, kind, x, y, modifiers] {
         if (!w)
             return;
         const QPointF local(x, y);
@@ -81,7 +112,7 @@ void postMouse(QObject* window, int kind, double x, double y, int delayMs)
         const Qt::MouseButtons buttons = kind == 2 ? Qt::NoButton : Qt::LeftButton;
         static int timestamp = 0;
         timestamp += 50;
-        qt_handleMouseEvent(w, local, w->mapToGlobal(local), buttons, button, type, Qt::NoModifier, timestamp);
+        qt_handleMouseEvent(w, local, w->mapToGlobal(local), buttons, button, type, modifiers, timestamp);
     });
 }
 

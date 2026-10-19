@@ -31,6 +31,9 @@ const QML_FILES: &[&str] = &[
     "qml/ProjectTree.qml",
     "qml/PropertiesDialog.qml",
     "qml/QuickLook.qml",
+    "qml/FolderChooser.qml",
+    "qml/PathBar.qml",
+    "qml/SettingsDialog.qml",
     "qml/SearchPanel.qml",
     "qml/SendToNoteDialog.qml",
     "qml/SelfTest.qml",
@@ -67,6 +70,7 @@ fn main() {
         .qt_module("WebEngineCore")
         .qt_module("WebEngineQuick")
         .qrc_resources(web_resources())
+        .qrc_resources(style_resources())
         .files(RUST_BRIDGES.iter().copied())
         .cpp_file("cpp/helpers.cpp")
         .build();
@@ -81,6 +85,17 @@ fn main() {
         let lib = String::from_utf8_lossy(&out.stdout).trim().to_owned();
         println!("cargo::rustc-link-arg-bins=-Wl,-rpath,{lib}");
     }
+}
+
+/// Atlas' Qt Quick Controls style, a plain QML module at
+/// `qrc:/qt/qml/AtlasStyle` (on the default import path).
+fn style_resources() -> QResources {
+    let dir = std::path::Path::new("qml/AtlasStyle");
+    let mut files: Vec<String> =
+        std::fs::read_dir(dir).expect("style dir").flatten().map(|e| e.path().to_string_lossy().into_owned()).collect();
+    files.sort();
+    println!("cargo::rerun-if-changed=qml/AtlasStyle");
+    QResources::new().resource(QResource::new().prefix("/qt").files(files))
 }
 
 /// The Markdown preview page and its bundled libraries, served from

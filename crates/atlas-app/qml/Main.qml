@@ -3,7 +3,6 @@
 
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import Atlas
 
@@ -46,6 +45,7 @@ ApplicationWindow {
         app: app
         actions: fileActions
         onOpenRequested: (path) => editor.open(path, 0, "tab")
+        onSplitRequested: (path) => editor.open(path, 0, "split")
     }
     Connections {
         target: fileActions
@@ -147,17 +147,17 @@ ApplicationWindow {
             { name: qsTr("Session speichern"), hint: app.activeSessionName, run: () => { app.requestSaveAll(); saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) } },
             { name: qsTr("Neue Session …"), run: () => sessionMenu.askNew() },
             { name: qsTr("Alle Dateien speichern"), hint: "Strg+S", run: () => app.requestSaveAll() },
-            { name: qsTr("Projektordner öffnen …"), hint: "Strg+O", run: () => folderDialog.open() },
+            { name: qsTr("Projektordner öffnen …"), hint: "Strg+O", run: () => folderDialog.askProject() },
             { name: qsTr("Neue Datei …"), hint: app.relativePath(dir), run: () => fileActions.newFile(dir) },
             { name: qsTr("Neuer Ordner …"), hint: app.relativePath(dir), run: () => fileActions.newFolder(dir) },
             { name: qsTr("Projektweit suchen"), hint: "Strg+Umschalt+F", run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } },
             { name: qsTr("TODO und FIXME finden"), run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.searchTodos() } },
-            { name: qsTr("Terminal ein-/ausblenden"), hint: "Strg+`", run: () => window.toggleTerminal() },
+            { name: qsTr("Terminal ein-/ausblenden"), hint: "Strg+`", run: () => window.toggleTerminal(true) },
             { name: qsTr("Neues Terminal"), hint: "Strg+Umschalt+`", run: () => window.openTerminal(dir, "panel") },
             { name: qsTr("Terminal als Tab öffnen"), run: () => window.openTerminal(dir, "tab") },
             { name: qsTr("Editor teilen"), hint: "Strg+\\", run: () => { if (editor.activeGroup) editor.splitGroup(editor.activeGroup) } },
             { name: qsTr("Tab schließen"), hint: "Strg+W", run: () => { if (editor.activeGroup) editor.activeGroup.closeCurrent() } },
-            { name: qsTr("Seitenleiste ein-/ausblenden"), hint: "Strg+B", run: () => { sidebar.visible = !sidebar.visible; saveTimer.restart() } },
+            { name: qsTr("Seitenleiste ein-/ausblenden"), hint: "Strg+B", run: () => window.toggleSidebar() },
             { name: qsTr("Explorer zeigen"), hint: "Strg+Umschalt+E", run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 0 } },
             { name: qsTr("Versteckte Dateien ein-/ausblenden"), run: () => { treeModel.showHidden = !treeModel.showHidden } },
             { name: qsTr("Papierkorb öffnen"), run: () => { const t = app.placePaths.find(p => app.fileKind(p) === "trash"); if (t) editor.open(t, 0, "tab") } },
@@ -170,6 +170,7 @@ ApplicationWindow {
             { name: qsTr("Neuer Arbeitsblock …"), run: () => window.newCalendarEntry("block") },
             { name: qsTr("Neue Frist …"), run: () => window.newCalendarEntry("deadline") },
             { name: qsTr("Neue Aufgabe …"), run: () => window.newCalendarEntry("task") },
+            { name: qsTr("Einstellungen …"), hint: qsTr("Orte, Editor, Kalender"), run: () => settingsDialog.open() },
             { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
         ]
         if (calendar.connected) {
@@ -275,10 +276,25 @@ ApplicationWindow {
 
     SearchModel { id: searchModel }
 
-    FolderDialog {
+    SettingsDialog {
+        id: settingsDialog
+        app: app
+        actions: fileActions
+        onExtensionsRequested: extensionsDialog.open()
+    }
+
+    FolderChooser {
         id: folderDialog
-        title: qsTr("Projektordner öffnen")
-        onAccepted: app.openProject(app.urlToPath(selectedFolder.toString()))
+        app: app
+        function askProject() { ask("open", app.projectRoot ? parentOf(app.projectRoot) : "", "") }
+        function parentOf(path) { const i = path.lastIndexOf("/"); return i > 0 ? path.slice(0, i) : "/" }
+        onChosen: (path, name) => {
+            if (mode === "open") { app.openProject(path); return }
+            // A new session always belongs to the chosen project folder.
+            if (path !== app.projectRoot && !app.openProject(path)) return
+            window.createSession(name, false)
+            fileActions.showMessage(qsTr("Session „%1“ in %2 angelegt").arg(name).arg(app.projectName))
+        }
     }
 
     // ---------------------------------------------------------------- session
@@ -301,14 +317,23 @@ ApplicationWindow {
     }
 
     /// Files from `--open FILE[:LINE]`.
+    /// Only for the project Atlas started with: projects opened later get
+    /// their own session, not the files from the command line.
+    property bool cliFilesOpened: false
     function openCliFiles() {
-        for (let i = 0; i < app.openFiles.length; ++i)
-            if (app.openFiles[i] === "calendar:") openCalendar({})
-            else editor.open(app.absolutePath(app.openFiles[i]), parseInt(app.openLines[i]) || 0, editor.documents().length > 0 ? "split" : "tab")
+        if (cliFilesOpened) return
+        cliFilesOpened = true
+        for (let i = 0; i < app.openFiles.length; ++i) {
+            const file = app.openFiles[i]
+            if (file === "calendar:") openCalendar({})
+            else if (app.exists(app.absolutePath(file)))
+                editor.open(app.absolutePath(file), parseInt(app.openLines[i]) || 0, editor.documents().length > 0 ? "split" : "tab")
+        }
     }
 
     function readLayout() {
-        if (!app.restoreSession) return {}
+        // `--open` skips the session of the start project only.
+        if (!app.restoreSession && !(cliFilesOpened && app.persistSession)) return {}
         try { return JSON.parse(app.loadLayout() || "{}") } catch (e) { return {} }
     }
 
@@ -440,6 +465,7 @@ ApplicationWindow {
             searchPanel.setQuery(app.initialSearch)
         }
         if (app.screenshotPath) screenshotTimer.start()
+        if (app.screenshotDialog) dialogTimer.start()
         if (app.quitAfterMs > 0) quitTimer.start()
         if (app.screenshotPath || app.quitAfterMs > 0) stallProbe.start()
     }
@@ -465,6 +491,36 @@ ApplicationWindow {
     }
 
     // Test hooks (--screenshot / --quit-after).
+    // `--screenshot-dialog NAME`: a dialog for design checks (fixed list).
+    Timer {
+        id: dialogTimer
+        interval: Math.max(200, app.screenshotDelayMs - 1500)
+        onTriggered: {
+            const first = app.openFiles.length ? app.openFiles[0] : ""
+            const file = first.startsWith("/") ? first : app.projectRoot + "/" + first
+            const show = {
+                "sessions": () => sessionMenu.clicked(),
+                "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
+                "settings": () => settingsDialog.open(),
+                "new-session": () => sessionMenu.askNew(),
+                "quick-look": () => fileActions.quickLook(file),
+                "calendar-settings": () => fileActions.calendarSync.openSettings(),
+                "conflicts": () => fileActions.calendarSync.showConflicts(),
+                "extensions": () => extensionsDialog.open(),
+                "properties": () => fileActions.showProperties(app.projectRoot),
+                "editor": () => fileActions.configureEditor(),
+                "palette": () => commandPalette.show(""),
+                "menu": () => mainMenu.popup(),
+                "context-menu": () => fileActions.showMenu([app.openFiles.length ? app.openFiles[0] : app.projectRoot], app.projectRoot),
+                "send-to-note": () => sendToNote.ask("$ cargo test\nok", app.projectRoot),
+                "rename": () => fileActions.rename(app.openFiles.length ? app.openFiles[0] : app.projectRoot),
+                "confirm": () => fileActions.purge(["x"], [qsTr("Beispiel.txt")]),
+                "entry": () => window.newCalendarEntry("event"),
+            }[app.screenshotDialog]
+            if (show) show()
+            else console.warn("unknown --screenshot-dialog", app.screenshotDialog)
+        }
+    }
     Timer {
         id: screenshotTimer
         interval: app.screenshotDelayMs
@@ -496,6 +552,8 @@ ApplicationWindow {
             Object.assign(item, {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
+                sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, settingsDialog: settingsDialog,
+                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel,
             })
             item.start()
         }
@@ -503,7 +561,7 @@ ApplicationWindow {
 
     // -------------------------------------------------------------- shortcuts
 
-    Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.open() }
+    Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.askProject() }
     Shortcut { sequence: "Ctrl+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show("") }
     Shortcut { sequence: "Ctrl+Shift+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show(">") }
     Shortcut { sequence: "Ctrl+`"; context: Qt.ApplicationShortcut; onActivated: window.toggleTerminal() }
@@ -517,10 +575,18 @@ ApplicationWindow {
     // In the calendar: previous / next week or month.
     Shortcut { sequence: "Alt+Left"; onActivated: if (editor.activeTab) { if (editor.activeTab.kind === "calendar") editor.activeTab.viewerItem.step(-1); else editor.activeTab.goBack() } }
     Shortcut { sequence: "Alt+Right"; onActivated: if (editor.activeTab) { if (editor.activeTab.kind === "calendar") editor.activeTab.viewerItem.step(1); else editor.activeTab.goForward() } }
-    Shortcut { sequence: "Ctrl+B"; onActivated: { sidebar.visible = !sidebar.visible; saveTimer.restart() } }
+    Shortcut { sequence: "Ctrl+B"; onActivated: window.toggleSidebar() }
 
-    function toggleTerminal() {
-        if (terminalPanel.visible && terminalPanel.currentGroup && terminalPanel.currentGroup.activeTerminal
+    function toggleSidebar() { setSidebarVisible(!sidebar.visible) }
+    function setSidebarVisible(visible) { sidebar.visible = visible; saveTimer.restart() }
+    /// For tests: the sidebar's width while it is shown.
+    function setSidebarWidth(width) { sidebar.SplitView.preferredWidth = width }
+
+    /// Strg+`: a shown terminal without focus gets the focus first; the
+    /// button (`direct`) always shows or hides.
+    readonly property alias terminalButton: terminalButton
+    function toggleTerminal(direct) {
+        if (!direct && terminalPanel.visible && terminalPanel.currentGroup && terminalPanel.currentGroup.activeTerminal
                 && !terminalPanel.currentGroup.activeTerminal.terminalView.activeFocus) {
             terminalPanel.focusTerminal()
             return
@@ -625,12 +691,16 @@ ApplicationWindow {
                 SessionMenu {
                     id: sessionMenu
                     app: app
+                    activeTabs: editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                    activeSplits: editor.groups.filter(g => g.tabs.length > 0).length
                     onSwitchRequested: (id) => window.switchSession(id)
                     onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
+                    onNewSessionRequested: (name) => folderDialog.ask("session", app.projectRoot, name || qsTr("Neue Session"))
                     onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }
                     onDeleteRequested: (id) => window.deleteSession(id)
                 }
                 IconButton {
+                    id: terminalButton
                     iconName: "terminal"
                     iconSize: 18
                     implicitWidth: 34
@@ -638,7 +708,7 @@ ApplicationWindow {
                     tip: qsTr("Terminal ein-/ausblenden (Strg+`)")
                     checkable: true
                     checked: terminalPanel.visible
-                    onClicked: window.toggleTerminal()
+                    onClicked: window.toggleTerminal(true)
                 }
                 IconButton {
                     iconName: "sidebar-right"
@@ -659,7 +729,7 @@ ApplicationWindow {
                     onClicked: mainMenu.popup(0, height + 4)
                     Menu {
                         id: mainMenu
-                        MenuItem { text: qsTr("Projektordner öffnen …\tStrg+O"); onTriggered: folderDialog.open() }
+                        MenuItem { text: qsTr("Projektordner öffnen …\tStrg+O"); onTriggered: folderDialog.askProject() }
                         MenuItem { text: qsTr("Alle Befehle …\tStrg+Umschalt+P"); onTriggered: commandPalette.show(">") }
                         MenuSeparator {}
                         MenuItem { text: qsTr("Editor teilen\tStrg+\\"); onTriggered: if (editor.activeGroup) editor.splitGroup(editor.activeGroup) }
@@ -667,9 +737,10 @@ ApplicationWindow {
                             text: editor.orientation === Qt.Horizontal ? qsTr("Splits untereinander") : qsTr("Splits nebeneinander")
                             onTriggered: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
                         }
-                        MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: { sidebar.visible = !sidebar.visible; saveTimer.restart() } }
+                        MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: window.toggleSidebar() }
                         MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
                         MenuSeparator {}
+                        MenuItem { text: qsTr("Einstellungen …"); onTriggered: settingsDialog.open() }
                         MenuItem { text: qsTr("Kalender-Einstellungen …"); onTriggered: fileActions.calendarSync.openSettings() }
                         MenuItem { text: qsTr("Erweiterungen verwalten …"); onTriggered: extensionsDialog.open() }
                         MenuItem { text: qsTr("Externen Editor festlegen …"); onTriggered: fileActions.configureEditor() }
@@ -693,14 +764,19 @@ ApplicationWindow {
         Banner {
             height: visible ? 36 : 0
             width: parent.width
-            tone: Theme.accent
-            visible: window.calendar.connected && !window.calendar.unlocked && !window.calendarPasswordLater
-            message: qsTr("Nextcloud-Kalender: App-Passwort für diese Atlas-Sitzung eingeben, um Termine abzugleichen.")
+            // While the password command runs (pinentry, …) nothing is asked.
+            visible: window.calendar.connected && !window.calendar.unlocked && !window.calendar.fetchingPassword
+                && !window.calendarPasswordLater
+            tone: window.calendar.passwordError ? Theme.warn : Theme.accent
+            message: (window.calendar.passwordError
+                    ? qsTr("Nextcloud-Kalender: Passwort-Befehl fehlgeschlagen – %1").arg(window.calendar.passwordError)
+                    : qsTr("Nextcloud-Kalender: App-Passwort für diese Atlas-Sitzung eingeben, um Termine abzugleichen."))
                 + (window.calendar.pending ? qsTr(" %n Änderung(en) warten auf Übertragung.", "", window.calendar.pending) : "")
-            actions: [
-                { text: qsTr("Eingeben …"), run: () => fileActions.calendarSync.askPassword() },
-                { text: qsTr("Später"), run: () => window.calendarPasswordLater = true },
-            ]
+            actions: (window.calendar.passwordError ? [{ text: qsTr("Erneut versuchen"), run: () => window.calendar.retryPasswordCommand() }] : [])
+                .concat([
+                    { text: qsTr("Eingeben …"), run: () => fileActions.calendarSync.askPassword() },
+                    { text: qsTr("Später"), run: () => window.calendarPasswordLater = true },
+                ])
         }
         Banner {
             height: visible ? 36 : 0
@@ -773,6 +849,7 @@ ApplicationWindow {
                             names: app.placeNames
                             paths: app.placePaths
                             icons: app.placeIcons
+                            fixedCount: app.fixedPlaceCount
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
                             onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
                         }
@@ -787,7 +864,7 @@ ApplicationWindow {
                             projectName: app.projectName
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
                             onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
-                            onOpenProjectRequested: folderDialog.open()
+                            onOpenProjectRequested: folderDialog.askProject()
                             onPinRequested: (path) => editor.open(path, 0, "tab")
                         }
                     }
@@ -851,7 +928,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 46
                     hoverEnabled: true
-                    onClicked: folderDialog.open()
+                    onClicked: folderDialog.askProject()
                     background: Rectangle { color: openProject.hovered ? Theme.hover : "transparent" }
                     contentItem: Item {
                         Row {

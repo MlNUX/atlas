@@ -16,6 +16,37 @@ pub mod ical;
 pub mod recur;
 pub mod sync;
 
+/// Runs the configured password command (no shell, no input, killed after
+/// `timeout`) and returns the first line of its output. Errors name the
+/// program and its error output, never the password.
+pub fn password_from_command(command: &str, timeout: std::time::Duration) -> anyhow::Result<String> {
+    use anyhow::{Context, bail};
+    let argv = crate::config::split_words(command)?;
+    let program = argv.first().context("Passwort-Befehl ist leer")?.clone();
+    let built = crate::actions::Built {
+        argv,
+        display: program.clone(),
+        cwd: dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/")),
+    };
+    let finished = crate::extensions::run(&built, timeout)?;
+    if finished.code != Some(0) {
+        let detail = finished.stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_owned();
+        match finished.code {
+            Some(code) => bail!(
+                "„{program}“ ist mit Code {code} beendet{}",
+                if detail.is_empty() { String::new() } else { format!(": {detail}") }
+            ),
+            None => bail!("„{program}“ wurde abgebrochen"),
+        }
+    }
+    let text = String::from_utf8(finished.stdout).with_context(|| format!("Ausgabe von „{program}“ ist kein UTF-8"))?;
+    let password = text.lines().next().unwrap_or("").trim_end_matches('\r').to_owned();
+    if password.is_empty() {
+        bail!("„{program}“ hat kein Passwort ausgegeben");
+    }
+    Ok(password)
+}
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -681,6 +712,26 @@ pub fn parse_local(text: &str) -> Option<NaiveDateTime> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn password_command_first_line() {
+        let t = std::time::Duration::from_secs(5);
+        assert_eq!(password_from_command("printf 'geheim 1\\nzweite'", t).unwrap(), "geheim 1");
+        // Spaces only inside the password; trailing newline dropped.
+        assert_eq!(password_from_command("echo 'a b'", t).unwrap(), "a b");
+    }
+
+    #[test]
+    fn password_command_errors_without_password() {
+        let t = std::time::Duration::from_secs(5);
+        let err = password_from_command("sh -c 'echo geheim; echo kaputt >&2; exit 3'", t).unwrap_err().to_string();
+        assert!(err.contains("Code 3") && err.contains("kaputt") && !err.contains("geheim"), "{err}");
+        assert!(password_from_command("true", t).unwrap_err().to_string().contains("kein Passwort"));
+        assert!(password_from_command("", t).is_err());
+        assert!(password_from_command("/nonexistent/atlas-pw", t).is_err());
+        let slow = password_from_command("sleep 5", std::time::Duration::from_millis(300)).unwrap_err().to_string();
+        assert!(slow.contains("nicht geantwortet"), "{slow}");
+    }
 
     fn dt(s: &str) -> NaiveDateTime {
         parse_local(s).unwrap()

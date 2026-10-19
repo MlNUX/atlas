@@ -24,6 +24,14 @@ Rectangle {
     property real zoom: 0
     property int lastRenderMs: 0
     property bool sidebarVisible: false
+    /// false: no toolbar (the quick look brings its own controls).
+    property bool chrome: true
+    readonly property int pageCount: doc.pageCount
+    /// Size of page `index` in millimetres ({ w, h }), from PDF points.
+    function pageSizeMm(index) {
+        if (index < 0 || index >= doc.pageCount) return null
+        return { w: Math.round(doc.pageWidth(index) * 25.4 / 72), h: Math.round(doc.pageHeight(index) * 25.4 / 72) }
+    }
     /// 0 = thumbnails, 1 = outline, 2 = annotations.
     property int sidebarTab: 0
     /// Notes citing or linking to this PDF, and the local graph.
@@ -383,6 +391,14 @@ Rectangle {
     onZoomScaleChanged: renderTimer.restart()
     Timer { id: renderTimer; interval: 120; onTriggered: root.renderScale = root.zoomScale }
 
+    /// Wheel notches of a wheel event, fractional for touchpads and
+    /// high-resolution wheels (120 per notch; 50 px of pixel-only deltas).
+    function wheelSteps(event) {
+        const d = event.angleDelta.y || event.angleDelta.x
+        if (d) return d / 120
+        const p = event.pixelDelta.y || event.pixelDelta.x
+        return p / 50
+    }
     function zoomBy(factor) { zoom = Math.max(0.2, Math.min(6, zoomScale * factor)) }
 
     Keys.onPressed: (event) => {
@@ -412,6 +428,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
+            visible: root.chrome
             color: Theme.header
             RowLayout {
                 anchors.fill: parent
@@ -790,6 +807,33 @@ Rectangle {
                 ScrollBar.vertical: ScrollBar {}
                 ScrollBar.horizontal: ScrollBar {}
 
+                // Ctrl+wheel zooms (on the list itself: it would take every
+                // wheel event for scrolling); the spot under the mouse stays.
+                // Touchpads and high-resolution wheels (Wayland) send small or
+                // pixel-only deltas; Ctrl+wheel never scrolls. Qt on Wayland
+                // reports even mouse wheels as a "touchpad" with finger pointer
+                // type: every device and pointer type counts.
+                WheelHandler {
+                    acceptedDevices: PointerDevice.AllDevices
+                    acceptedPointerTypes: PointerDevice.AllPointerTypes
+                    acceptedModifiers: Qt.ControlModifier
+                    onWheel: (event) => {
+                        event.accepted = true
+                        const steps = root.wheelSteps(event)
+                        if (!steps) return
+                        const at = Qt.point(pages.contentX + event.x - pages.originX, pages.contentY + event.y - pages.originY)
+                        const before = root.zoomScale
+                        root.zoomBy(Math.pow(1.1, steps))
+                        const k = root.zoomScale / before
+                        Qt.callLater(() => {
+                            pages.contentX = Math.max(0, at.x * k - event.x) + pages.originX
+                            pages.contentY = Math.max(0, at.y * k - event.y) + pages.originY
+                            pages.returnToBounds()
+                        })
+                        event.accepted = true
+                    }
+                }
+
                 delegate: Item {
                     id: pageDelegate
                     required property int index
@@ -1046,10 +1090,6 @@ Rectangle {
                     }
                 }
 
-                WheelHandler {
-                    acceptedModifiers: Qt.ControlModifier
-                    onWheel: (event) => root.zoomBy(event.angleDelta.y > 0 ? 1.1 : 1 / 1.1)
-                }
             }
 
             // Notes citing this PDF and the local graph.
@@ -1067,6 +1107,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 20
+            visible: root.chrome || doc.status === "error"
             color: Theme.header
             Label {
                 anchors.fill: parent

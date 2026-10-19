@@ -42,15 +42,26 @@ Item {
         title: qsTr("Nextcloud-Kalender")
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAboutToShow: { passwordField.text = ""; Qt.callLater(passwordField.forceActiveFocus) }
-        onAccepted: if (passwordField.text) sync.model.setPassword(passwordField.text)
+        onAccepted: if (passwordField.text) {
+            sync.model.rememberPassword(rememberOnce.checked)
+            sync.model.setPassword(passwordField.text)
+        }
         ColumnLayout {
             anchors.fill: parent
             spacing: 8
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                text: qsTr("App-Passwort für %1 bei %2. Es wird nur für diese Atlas-Sitzung im Arbeitsspeicher gehalten und nirgends gespeichert.")
+                text: qsTr("App-Passwort für %1 bei %2. Gemerkt wird es verschlüsselt mit systemd-creds (an diesen Rechner gebunden), sonst nur für diese Atlas-Sitzung im Arbeitsspeicher gehalten.")
                     .arg(sync.accountInfo().user || "?").arg(sync.accountInfo().server || sync.accountInfo().davUrl || "?")
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: sync.model.passwordError !== ""
+                wrapMode: Text.Wrap
+                color: Theme.error
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("Passwort-Befehl fehlgeschlagen: %1").arg(sync.model.passwordError)
             }
             TextField {
                 id: passwordField
@@ -58,6 +69,11 @@ Item {
                 echoMode: TextInput.Password
                 placeholderText: qsTr("App-Passwort")
                 onAccepted: passwordDialog.accept()
+            }
+            CheckBox {
+                id: rememberOnce
+                text: qsTr("Auf diesem Rechner merken")
+                checked: true
             }
         }
     }
@@ -92,6 +108,8 @@ Item {
             serverField.text = a.server || ""
             userField.text = a.user || ""
             davField.text = a.davUrl || ""
+            commandField.text = a.passwordCommand || ""
+            rememberBox.checked = a.rememberPassword !== undefined && sync.model.connected ? a.rememberPassword : true
             advanced = !!a.davUrl
             appPassword.text = ""
             found = []
@@ -124,7 +142,7 @@ Item {
                     wrapMode: Text.Wrap
                     color: Theme.textMuted
                     font.pixelSize: Theme.smallFontSize
-                    text: qsTr("Atlas nutzt CalDAV, keine Nextcloud-App nötig. Lege in Nextcloud unter Einstellungen → Sicherheit ein App-Passwort an. Es wird nicht gespeichert, sondern einmal pro Atlas-Start abgefragt.")
+                    text: qsTr("Atlas nutzt CalDAV, keine Nextcloud-App nötig. Lege in Nextcloud unter Einstellungen → Sicherheit ein App-Passwort an. Atlas merkt es sich auf Wunsch verschlüsselt auf diesem Rechner; alternativ holt ein Passwort-Befehl es z. B. aus pass oder rbw.")
                 }
                 GridLayout {
                     Layout.fillWidth: true
@@ -140,6 +158,33 @@ Item {
                         echoMode: TextInput.Password
                         placeholderText: sync.model.unlocked ? qsTr("bekannt für diese Sitzung") : ""
                     }
+                    Item { width: 1; height: 1 }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        CheckBox {
+                            id: rememberBox
+                            text: qsTr("Auf diesem Rechner merken")
+                            onToggled: if (sync.model.connected) sync.model.rememberPassword(checked)
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            font.pixelSize: Theme.smallFontSize
+                            color: sync.model.remembered === "file" ? Theme.warn : Theme.textMuted
+                            text: sync.model.remembered === "encrypted" ? qsTr("✓ verschlüsselt gespeichert (systemd-creds, nur auf diesem Rechner)")
+                                : sync.model.remembered === "file" ? qsTr("gespeichert ohne Verschlüsselung (systemd-creds fehlt), nur für deinen Benutzer lesbar")
+                                : ""
+                        }
+                    }
+                    Label { text: qsTr("Passwort-Befehl"); color: Theme.textMuted }
+                    TextField {
+                        id: commandField
+                        Layout.fillWidth: true
+                        placeholderText: qsTr("optional, z. B. pass show nextcloud/atlas")
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 600
+                        ToolTip.text: qsTr("Wird beim Start ohne Shell ausgeführt; die erste Zeile der Ausgabe ist das App-Passwort. Beispiele: rbw get nextcloud · keepassxc-cli show -sa password db.kdbx Nextcloud · systemd-creds --user decrypt nextcloud.cred")
+                    }
                     Label { text: qsTr("CalDAV-URL"); color: Theme.textMuted; visible: settings.advanced }
                     TextField {
                         id: davField
@@ -151,25 +196,27 @@ Item {
                 RowLayout {
                     Button {
                         text: settings.testing ? qsTr("Prüfe …") : qsTr("Verbindung testen")
-                        enabled: !settings.testing && userField.text && (serverField.text || davField.text) && (appPassword.text || sync.model.unlocked)
+                        enabled: !settings.testing && userField.text && (serverField.text || davField.text) && (appPassword.text || sync.model.unlocked || commandField.text.trim())
                         onClicked: {
                             settings.testing = true
                             settings.problem = ""
                             settings.status = ""
-                            sync.model.testConnection(serverField.text, userField.text, appPassword.text, davField.text)
+                            sync.model.testConnection(serverField.text, userField.text, appPassword.text, davField.text, commandField.text)
                         }
                     }
                     Button {
                         text: sync.model.connected ? qsTr("Speichern") : qsTr("Verbinden")
                         highlighted: settings.found.length > 0
                         enabled: settings.found.length > 0 || (sync.model.connected && appPassword.text === "")
+                            || (sync.model.connected && commandField.text.trim() !== (sync.accountInfo().passwordCommand || ""))
                         onClicked: {
                             // Newly found calendars are visible; known ones keep their choice.
                             const known = settings.calendars.filter(c => c.remote)
                             const list = settings.found.length
                                 ? settings.found.map(c => ({ url: c.url, name: c.name, visible: (known.find(k => k.id === c.url) || { visible: true }).visible }))
                                 : known.map(c => ({ url: c.id, name: c.name, visible: c.visible }))
-                            sync.model.saveAccount(serverField.text, userField.text, appPassword.text, davField.text, JSON.stringify(list))
+                            sync.model.rememberPassword(rememberBox.checked)
+                            sync.model.saveAccount(serverField.text, userField.text, appPassword.text, davField.text, JSON.stringify(list), commandField.text)
                             appPassword.text = ""
                             settings.found = []
                             settings.status = qsTr("Gespeichert")

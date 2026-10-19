@@ -47,15 +47,16 @@ Dialog {
         dialog.doneText = doneText || qsTr("In %1 übernommen")
         dialog.newNoteName = newNoteName || qsTr("Notiz")
         // The last target, open Markdown tabs, then all notes of the project.
-        const open = dialog.editor.documents().filter(p => dialog.app.fileKind(p) === "markdown")
+        // (Not called `open`: that would hide `open()` below.)
+        const openNotes = dialog.editor.documents().filter(p => dialog.app.fileKind(p) === "markdown")
         const all = dialog.app.noteList()
         const first = dialog.lastTarget && dialog.app.exists(dialog.lastTarget) ? [dialog.lastTarget] : []
         const seen = {}
-        dialog.candidates = first.concat(open, all).filter(p => !seen[p] && (seen[p] = true))
+        dialog.candidates = first.concat(openNotes, all).filter(p => !seen[p] && (seen[p] = true))
         filterField.text = ""
         updateFilter()
         list.currentIndex = 0
-        open()
+        dialog.open()
         filterField.forceActiveFocus()
     }
     function updateFilter() {
@@ -124,14 +125,17 @@ Dialog {
                 required property int index
                 width: ListView.view.width
                 highlighted: ListView.isCurrentItem
-                background: Rectangle { color: parent.highlighted ? Theme.selection : parent.hovered ? Theme.hover : "transparent" }
-                contentItem: ColumnLayout {
-                    spacing: 0
-                    Label {
-                        text: dialog.app.fileName(modelData) + (modelData === dialog.lastTarget ? qsTr("  · zuletzt") : "")
-                        color: Theme.text
+                contentItem: RowLayout {
+                    spacing: 12
+                    Icon { name: "file-text"; color: Theme.kindColors.markdown; size: 18 }
+                    ColumnLayout {
+                        spacing: 0
+                        Label {
+                            text: dialog.app.fileName(modelData) + (modelData === dialog.lastTarget ? qsTr("  · zuletzt") : "")
+                            color: Theme.textStrong
+                        }
+                        Label { text: dialog.app.relativePath(modelData); color: Theme.textFaint; font.pixelSize: Theme.smallFontSize; elide: Text.ElideMiddle; Layout.fillWidth: true }
                     }
-                    Label { text: dialog.app.relativePath(modelData); color: Theme.textFaint; font.pixelSize: Theme.smallFontSize; elide: Text.ElideMiddle; Layout.fillWidth: true }
                 }
                 onClicked: dialog.sendTo(modelData)
             }

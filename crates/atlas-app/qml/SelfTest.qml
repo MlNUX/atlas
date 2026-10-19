@@ -19,6 +19,13 @@ Item {
     property var searchModel
     property var terminalPanel
     property var window
+    property var sendToNote
+    property var sessionMenu
+    property var folderDialog
+    property var settingsDialog
+    property var projectTree
+    property var quickLook
+    property var treeModel
 
     property int failures: 0
     property int step: 0
@@ -29,6 +36,17 @@ Item {
     property var term: null
     property var moved: null
     property string before
+
+    property string layoutBefore
+    property real zoomBefore
+    property int tabsBefore
+    /// Widths of the editor area and its splits, for messages.
+    function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
+    /// The splits (with the gaps between them) cover the editor area.
+    function filled() {
+        const sum = editor.groups.reduce((n, g) => n + g.width, 0) + (editor.groups.length - 1) * 8
+        return editor.width > 100 && Math.abs(sum - editor.width) <= 2
+    }
 
     /// "a.md,b.md | c.md" – tabs per split, for messages.
     function names() { return editor.groups.map(g => g.tabs.map(t => t.title).join(",")).join(" | ") }
@@ -422,6 +440,284 @@ Item {
                 const [left, right] = editor.groups
                 check("An den linken Rand: neuer Split links", editor.groups.length === 2 && left.tabs.length === 1 && left.tabs[0] === test.moved
                       && right.tabs.indexOf(test.moved) < 0 && editor.activeGroup === left, names())
+                // ---- layout: splits fill the editor area
+                editor.restore({})
+                editor.open(path("notes/idee.md"), 0, "tab")
+                editor.open(path("notes/wiki.md"), 0, "split")
+            },
+            () => {
+                test.layoutBefore = layoutText()
+                window.setSidebarVisible(false)
+            },
+            () => {
+                check("Seitenleiste zu: Splits füllen den Platz", filled(), layoutText() + " vorher " + test.layoutBefore)
+                window.setSidebarVisible(true)
+                window.setSidebarWidth(520)
+            },
+            () => {
+                check("Breitere Seitenleiste: Splits passen sich an", filled() && editor.groups.every(g => g.width > 80), layoutText())
+                window.setSidebarWidth(200)
+            },
+            () => {
+                check("Schmalere Seitenleiste: Splits wachsen mit", filled(), layoutText())
+                window.setSidebarWidth(280)
+                editor.open(path("docs/umbenannt.pdf"), 0, "tab")
+            },
+            () => {
+                // Ctrl+wheel over the pages zooms, the wheel alone scrolls.
+                const v = editor.activeTab.viewerItem
+                const p = v.mapToItem(null, v.width / 2, v.height * 0.6)
+                // Qt on Wayland reports mouse wheels as a "touchpad" device with
+                // finger pointer type: Ctrl+wheel zooms all the same.
+                const before = v.zoomScale
+                app.sendWheel(window, p.x, p.y, 120, 17)
+                app.sendWheel(window, p.x, p.y, 120, 17)
+                check("Wayland: Strg+Mausrad vom „Touchpad“-Gerät zoomt", v.zoomScale > before * 1.15, before + " → " + v.zoomScale)
+                // Wheel notches in scroll phases without a ScrollBegin (as from
+                // some Wayland compositors) zoom too.
+                const start = v.zoomScale
+                app.sendWheel(window, p.x, p.y, 120, 9)
+                app.sendWheel(window, p.x, p.y, 120, 9)
+                check("Strg+Mausrad ohne Gestenbeginn zoomt", v.zoomScale > start * 1.15, start + " → " + v.zoomScale)
+                test.zoomBefore = v.zoomScale
+                app.sendWheel(window, p.x, p.y, 120, true)
+                check("Strg+Mausrad vergrößert die PDF", v.zoomScale > test.zoomBefore * 1.05, test.zoomBefore + " → " + v.zoomScale)
+                const zoomed = v.zoomScale
+                app.sendWheel(window, p.x, p.y, -240, true)
+                check("Strg+Mausrad zurück verkleinert", v.zoomScale < zoomed, zoomed + " → " + v.zoomScale)
+                const plain = v.zoomScale
+                app.sendWheel(window, p.x, p.y, -120, false)
+                check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
+                // Touchpads (and fine scrolling on Wayland): a gesture with
+                // pixel-only deltas zooms as well and never scrolls.
+                app.sendWheel(window, p.x, p.y, 0, 7)
+                app.sendWheel(window, p.x, p.y, 40, 3)
+                app.sendWheel(window, p.x, p.y, 40, 3)
+                check("Strg+Touchpad zoomt die PDF", v.zoomScale > plain * 1.1, plain + " → " + v.zoomScale)
+                // Wayland: wheel notches come in scroll phases; a gesture begun
+                // without Ctrl (scrolling) continues with Ctrl held.
+                const touch = v.zoomScale
+                app.sendWheel(window, p.x, p.y, 0, 4)
+                app.sendWheel(window, p.x, p.y, -120, 8)
+                app.sendWheel(window, p.x, p.y, 120, 9)
+                app.sendWheel(window, p.x, p.y, 120, 9)
+                check("Wayland: Strg+Mausrad mitten in einer Scroll-Geste zoomt", v.zoomScale > touch * 1.15, touch + " → " + v.zoomScale)
+                // Dialogs of the new design.
+                sendToNote.ask("ok", app.projectRoot)
+                check("„In Notiz übernehmen“ öffnet", sendToNote.visible && sendToNote.filtered.length > 0, sendToNote.filtered.length)
+                sendToNote.close()
+                const sessions = JSON.parse(app.sessionSummaries())
+                check("Sessionliste mit Umfang", sessions.length >= 1 && sessions.every(s => s.tabs >= 0 && s.splits >= 0 && !!s.kind), JSON.stringify(sessions))
+                sessionMenu.clicked()
+                check("Sessionfenster öffnet", sessionMenu.sessions.length === sessions.length)
+            },
+            () => {
+                // Task list checkboxes in the preview toggle the source line.
+                editor.open(path("notes/todo.md"), 0, "tab")
+                const md = editor.activeTab.viewerItem
+                md.mode = "preview"
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("document.querySelector('input.task[data-line=\"7\"]').click()")
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Checkbox in der Vorschau hakt ab", md.editorItem.text.indexOf("- [x] Literatur sichten") >= 0, md.editorItem.text)
+                md.previewItem.runJavaScript("document.querySelector('input.task[data-line=\"8\"]').click()")
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("… und wieder ab", md.editorItem.text.indexOf("- [ ] Gliederung") >= 0, md.editorItem.text)
+                md.editorItem.save()
+                check("Abhaken gespeichert", app.readTextFile(path("notes/todo.md")).indexOf("- [x] Literatur sichten") >= 0)
+            },
+            () => {
+                // An empty window has no close button and never stays as a split.
+                editor.restore({})
+                check("Leeres Fenster ohne Schließen-Knopf", editor.groups.length === 1 && !editor.groups[0].closeButton.visible)
+                editor.open(path("notes/idee.md"), 0, "split")
+                check("Öffnen im Split nutzt das leere Fenster", editor.groups.length === 1 && editor.groups[0].tabs.length === 1, names())
+                check("Fenster mit Dokument hat Schließen-Knopf", editor.groups[0].closeButton.visible)
+                editor.restore({})
+                editor.openInSplit(editor.groups[0], path("notes/wiki.md"), 0, "right", {})
+                check("Split neben leerem Fenster: kein leerer Split bleibt", editor.groups.length === 1 && editor.groups[0].tabs.length === 1, names())
+                editor.restore({})
+                editor.open(path("notes/wiki.md"), 0, "temporary")
+                check("Temporärer Split ersetzt das leere Fenster", editor.groups.length === 1, names())
+            },
+            () => {
+                // "Neue Session" asks for the project folder (own dialog).
+                sessionMenu.askNew()
+                check("Neue Session fragt nach dem Projektordner", folderDialog.visible && folderDialog.mode === "session"
+                      && folderDialog.folderPath === app.projectRoot && folderDialog.sessionName.length > 0, folderDialog.folderPath)
+                folderDialog.navigate(path("notes"))
+            },
+            () => {
+                check("Ordnerauswahl: nur Ordner", folderDialog.folders.count === 0 && !folderDialog.folders.error, folderDialog.folders.count)
+                const crumbs = folderDialog.segments(path("notes"))
+                // (notes is also a file manager place, "Notizen", in the smoke test.)
+                check("Pfadleiste endet im Ordner", crumbs[crumbs.length - 1].path === path("notes"), JSON.stringify(crumbs))
+                // A click next to the segments switches to typing the path.
+                const bar = folderDialog.pathBar
+                const p = bar.mapToItem(null, bar.width - 12, bar.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                check("Pfadleiste: Klick daneben zum Eintippen", folderDialog.pathBar.editing)
+                folderDialog.pathBar.editing = false
+                folderDialog.navigate(app.projectRoot)
+            },
+            () => {
+                check("Ordnerauswahl listet Unterordner", folderDialog.folders.count >= 3, folderDialog.folders.count)
+                folderDialog.sessionName = "Selbsttest-Session"
+                folderDialog.accept()
+            },
+            () => {
+                check("Session im gewählten Projekt angelegt", !folderDialog.visible && app.sessionNames.indexOf("Selbsttest-Session") >= 0
+                      && app.sessionIds[app.sessionNames.indexOf("Selbsttest-Session")] === app.activeSession, app.sessionNames.join(", "))
+                folderDialog.askProject()
+                check("Projektordner öffnen: eigener Dialog", folderDialog.visible && folderDialog.mode === "open")
+                folderDialog.close()
+            },
+            () => {
+                // Ctrl+click on a PDF in the tree: quick look, no new tab.
+                if (treeModel.rowOf(path("docs/umbenannt.pdf")) < 0) treeModel.toggle(treeModel.rowOf(path("docs")))
+                test.tabsBefore = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+            },
+            () => {
+                const item = projectTree.itemFor(path("docs/umbenannt.pdf"))
+                check("PDF im Baum sichtbar", !!item)
+                const p = item.mapToItem(null, item.width / 2, item.height / 2)
+                app.postMouse(window, 10, p.x, p.y, 20)
+                app.postMouse(window, 12, p.x, p.y, 60)
+            },
+            () => {
+                const tabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                check("Strg+Klick: Schnellansicht offen", quickLook.visible && quickLook.path === path("docs/umbenannt.pdf"), quickLook.path)
+                check("… ohne neuen Tab", tabs === test.tabsBefore, tabs + " statt " + test.tabsBefore)
+            },
+            () => {
+                check("Schnellansicht: PDF ganzseitig, ohne eigene Leiste", !!quickLook.pdf && quickLook.pdf.zoom < 0 && !quickLook.pdf.chrome)
+                check("Schnellansicht: Seiten und Infos", quickLook.pdf && quickLook.pdf.pageCount > 0 && quickLook.info.sizeText.length > 0, JSON.stringify(quickLook.info))
+                quickLook.openAsSplit()
+            },
+            () => {
+                check("Schnellansicht → im Split öffnen", !quickLook.visible && editor.activeTab && editor.activeTab.path === path("docs/umbenannt.pdf")
+                      && editor.groups.every(g => g.tabs.length > 0), names())
+            },
+            () => {
+                // Folder tab like Dolphin: icons, details, zoom, status bar.
+                editor.open(path("notes"), 0, "tab")
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                check("Ordner: Symbolansicht", f.viewMode === "icons" && f.activeView.count === f.folderModel.count && f.folderModel.count > 3, f.viewMode + " " + f.folderModel.count)
+                const sum = JSON.parse(f.folderModel.summary)
+                check("Ordner: Statusleiste zählt", sum.files === f.folderModel.count && sum.dirs === 0, f.folderModel.summary)
+                check("Ordner: nichts vorausgewählt", f.selectedPaths().length === 0, f.selectedPaths().join(","))
+                const item = f.activeView.itemAtIndex(1)
+                const p = item.mapToItem(null, item.width / 2, item.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+                test.zoomBefore = f.iconSize
+                app.sendWheel(window, p.x, p.y, 120, 17)
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                check("Ordner: Klick wählt aus", f.selectedPaths().length === 1 && f.selectedPaths()[0] === f.folderModel.pathAt(1), f.selectedPaths().join(","))
+                check("Ordner: Strg+Mausrad zoomt", f.iconSize > test.zoomBefore, test.zoomBefore + " → " + f.iconSize)
+                f.viewMode = "details"
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                check("Ordner: Detailansicht behält Auswahl", f.activeView.count === f.folderModel.count && f.activeView.currentIndex === 1
+                      && f.selectedPaths().length === 1, f.activeView.currentIndex)
+                const state = f.viewState()
+                check("Ordner: Ansicht im Sitzungszustand", state.viewMode === "details" && state.iconSize === f.iconSize)
+            },
+            () => {
+                // Nextcloud app password from a command (never stored).
+                const cal = window.calendar
+                cal.saveAccount("http://127.0.0.1:9", "selbsttest", "", "", "[]", "sh -c 'echo kaputt >&2; exit 2'")
+            },
+            () => {
+                const cal = window.calendar
+                check("Passwort-Befehl: Fehler sichtbar", cal.connected && !cal.unlocked && cal.passwordError.indexOf("kaputt") >= 0
+                      && cal.passwordError.indexOf("Code 2") >= 0, cal.passwordError)
+                cal.saveAccount("http://127.0.0.1:9", "selbsttest", "", "", "[]", "sh -c 'echo pw-$((6*7))'")
+            },
+            () => {
+                const cal = window.calendar
+                check("Passwort-Befehl liefert das App-Passwort", cal.unlocked && cal.passwordError === "" && !cal.fetchingPassword, cal.syncStatus)
+                check("Passwort-Befehl steht im Konto, das Passwort nicht", JSON.parse(cal.account()).passwordCommand.indexOf("6*7") >= 0
+                      && cal.account().indexOf("pw-42") < 0, cal.account())
+                // Entered once and remembered on this machine.
+                cal.rememberPassword(true)
+                cal.saveAccount("http://127.0.0.1:9", "selbsttest", "einmal-42", "", "[]", "")
+            },
+            () => {},  // (storing runs in the background, systemd-creds may be slow)
+            () => {
+                const cal = window.calendar
+                check("Passwort gemerkt", cal.remembered === "encrypted" || cal.remembered === "file", cal.remembered + " " + cal.error)
+                check("Gemerktes Passwort nicht in den Einstellungen", cal.account().indexOf("einmal-42") < 0 && JSON.parse(cal.account()).rememberPassword)
+                // As after a restart: nothing in memory, the remembered one loads.
+                cal.setPassword("")
+                check("Ohne Passwort im Speicher gesperrt", !cal.unlocked)
+                cal.retryPasswordCommand()
+            },
+            () => {
+                const cal = window.calendar
+                check("Nach Neustart ohne Eingabe entsperrt", cal.unlocked && cal.passwordError === "", cal.syncStatus + " " + cal.passwordError)
+                cal.rememberPassword(false)
+                check("Nicht mehr merken: gelöscht", cal.remembered === "", cal.remembered)
+                cal.rememberPassword(true)
+            },
+            () => {
+                const cal = window.calendar
+                check("Wieder merken mit bekanntem Passwort", cal.remembered !== "", cal.remembered)
+                cal.disconnectAccount()
+                check("Konto getrennt: Passwort vergessen", !cal.connected && !cal.unlocked && cal.remembered === "")
+            },
+            () => {
+                // The terminal button hides a shown terminal with one click,
+                // also while the focus is in the editor.
+                terminalPanel.visible = true
+                editor.open(path("notes/idee.md"), 0, "tab")
+            },
+            () => {
+                editor.activeTab.forceActiveFocus()
+                const b = window.terminalButton
+                const p = b.mapToItem(null, b.width / 2, b.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                check("Terminal-Knopf: ein Klick blendet aus", !terminalPanel.visible && !window.terminalButton.checked,
+                      terminalPanel.visible + " / " + window.terminalButton.checked)
+                const b = window.terminalButton
+                const p = b.mapToItem(null, b.width / 2, b.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                check("Terminal-Knopf: ein Klick blendet ein", terminalPanel.visible && window.terminalButton.checked,
+                      terminalPanel.visible + " / " + window.terminalButton.checked)
+            },
+            () => {
+                // With Dolphin's places file: exactly its visible local places,
+                // instead of the fixed ones (GTK bookmarks are not added).
+                check("Orte wie in Dolphin", app.fileManagerPlaces && app.fixedPlaceCount === 0
+                      && app.placeNames.join(",") === "Belege" && app.placePaths[0] === path("docs"), app.placeNames.join(","))
+                settingsDialog.open()
+                check("Einstellungen öffnen", settingsDialog.visible)
+                app.fileManagerPlaces = false
+                check("Ausgeschaltet: feste Orte", app.fixedPlaceCount > 0 && app.placeNames.length === app.fixedPlaceCount
+                      && app.placeNames.indexOf("Belege") < 0, app.placeNames.join(","))
+                app.fileManagerPlaces = true
+                check("Wieder an: Dolphins Orte", app.placeNames.join(",") === "Belege" && app.fixedPlaceCount === 0)
+                settingsDialog.close()
             },
         ]
         timer.start()
@@ -436,7 +732,7 @@ Item {
                 try {
                     test.steps[test.step]()
                 } catch (e) {
-                    test.check("Schritt " + (test.step + 1), false, e)
+                    test.check("Schritt " + (test.step + 1), false, e + (e.lineNumber ? " (Zeile " + e.lineNumber + ")" : "") + (e.stack ? " " + e.stack.split("\n")[0] : ""))
                 }
                 test.step++
                 return

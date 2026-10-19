@@ -13,11 +13,18 @@
 //! [terminal]
 //! shell = "/run/current-system/sw/bin/fish"   # default: login shell
 //!
+//! [places]
+//! file_manager = true            # also Dolphin's/GTK's places (default)
+//!
 //! [calendar]                     # Nextcloud/CalDAV (never a password)
 //! server = "https://cloud.example.com"
 //! user = "minux"
 //! dav_url = ""                   # optional, if discovery fails
 //! default = "https://…/calendars/minux/personal/"   # "" = only in the project
+//! # Optional: prints the app password (first line of its output), e.g. from
+//! # pass, rbw, keepassxc-cli, age or systemd-creds; no shell.
+//! password_command = "pass show nextcloud/atlas"
+//! remember_password = true       # kept by Atlas (systemd-creds or mode 600)
 //!
 //! [[calendar.calendars]]
 //! url = "https://…/calendars/minux/personal/"
@@ -77,7 +84,8 @@ impl CalendarChoice {
     }
 }
 
-/// Nextcloud/CalDAV account. The app password is never stored.
+/// Nextcloud/CalDAV account. The app password is never stored; it is asked
+/// once per start or comes from `password_command`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalendarConfig {
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -86,6 +94,14 @@ pub struct CalendarConfig {
     pub user: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub dav_url: String,
+    /// Program that prints the app password (split like a shell, run
+    /// without one); the password itself is never stored.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub password_command: String,
+    /// Remember the app password on this machine (see `secret`); only the
+    /// choice is stored here.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remember_password: bool,
     /// Default calendar for new entries in all projects ("" = local).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub default: String,
@@ -99,6 +115,24 @@ impl CalendarConfig {
     }
 }
 
+/// The places above the project tree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlacesConfig {
+    /// Also show the places of Dolphin/KDE and GTK file managers.
+    #[serde(default = "enabled")]
+    pub file_manager: bool,
+}
+
+fn enabled() -> bool {
+    true
+}
+
+impl Default for PlacesConfig {
+    fn default() -> Self {
+        Self { file_manager: true }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -109,6 +143,8 @@ pub struct Config {
     pub extensions: ExtensionsConfig,
     #[serde(default)]
     pub calendar: CalendarConfig,
+    #[serde(default)]
+    pub places: PlacesConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -147,6 +183,11 @@ impl Config {
 
     pub fn save_editor_to(path: &Path, editor: &EditorConfig) -> Result<()> {
         save_table(path, "editor", editor)
+    }
+
+    /// Updates only the `[places]` table.
+    pub fn save_places(places: &PlacesConfig) -> Result<()> {
+        save_table(&config_file(), "places", places)
     }
 
     /// Updates only the `[extensions]` table.
