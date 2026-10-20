@@ -615,3 +615,9 @@ Inhalts). Weicht sie beim Öffnen ab, wurde die PDF inzwischen verändert
 mehr auf dem richtigen Text liegen. Der Hinweis nennt jetzt die Zahl der
 Anmerkungen und erscheint nur, wenn es welche gibt; „Verstanden“ übernimmt
 die neue Fassung.
+
+### Nachtrag – Projektordner nicht einklappbar
+
+Die Zeile des Projektordners im Baum klappt nichts mehr ein (kein Pfeil,
+Rechtsklick-Menü bleibt): eingeklappt rutschte sie ans untere Ende der
+Seitenleiste und ließ eine große Lücke. Unterordner klappen wie bisher.

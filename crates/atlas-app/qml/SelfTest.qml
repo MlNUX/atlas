@@ -921,6 +921,19 @@ Item {
                 if (waitFor(() => ["exact", "new"].indexOf(v.annotationStore.status) >= 0)) return
                 check("Geänderte PDF ohne Anmerkungen: kein Hinweis", !v.changeNotice && v.annotationStore.count === 0, v.annotationStore.status)
             },
+            () => {
+                // The project folder cannot be collapsed: a click on it keeps the tree.
+                const rows = treeModel.rowOf(path("docs")) >= 0
+                const header = projectTree.rootRow
+                const p = header.mapToItem(null, header.width / 2, header.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+                check("Projektordner-Zeile ohne Pfeil", !header.hasChevron && rows)
+            },
+            () => {
+                check("Projektordner bleibt offen", projectTree.treeList.visible && projectTree.treeList.count > 0
+                      && treeModel.rowOf(path("docs")) >= 0, projectTree.treeList.count)
+            },
         ]
         timer.start()
     }
