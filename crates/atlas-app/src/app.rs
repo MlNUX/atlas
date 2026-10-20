@@ -307,6 +307,13 @@ pub mod qobject {
         #[qinvokable]
         fn backlinks(self: &AppController, path: &QString) -> QString;
 
+        /// All quotes of PDF annotations in the project's notes: JSON list
+        /// like `backlinks` plus {target, targetRelative, page, annot}, by
+        /// PDF, then note and line.
+        #[qinvokable]
+        #[cxx_name = "projectQuotes"]
+        fn project_quotes(self: &AppController) -> QString;
+
         /// Notes with `due:` in the front matter (shown read-only in the
         /// calendar): JSON list of {path, relative, title, due, status,
         /// estimate}; `due` as `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`.
@@ -616,6 +623,17 @@ impl cxx_qt::Initialize for qobject::AppController {
 
 fn qs(s: impl AsRef<str>) -> QString {
     QString::from(s.as_ref())
+}
+
+/// Note texts read once per call, for the quoted text of quote links.
+#[derive(Default)]
+struct NoteTexts(std::collections::HashMap<PathBuf, Option<String>>);
+
+impl NoteTexts {
+    fn quote(&mut self, note: &Path, line: usize) -> Option<String> {
+        let text = self.0.entry(note.to_path_buf()).or_insert_with(|| std::fs::read_to_string(note).ok());
+        atlas_core::notes::quote_text(text.as_deref()?, line)
+    }
 }
 
 impl qobject::AppController {
@@ -1253,6 +1271,7 @@ impl qobject::AppController {
     pub fn backlinks(&self, path: &QString) -> QString {
         use atlas_core::notes::LinkAnchor;
         let path = path_of(path);
+        let mut texts = NoteTexts::default();
         let list = self
             .with_notes(|n| {
                 n.backlinks(&path)
@@ -1275,9 +1294,44 @@ impl qobject::AppController {
                             "anchor": anchor,
                             "anchorKind": anchor_kind,
                             "context": b.context,
+                            "quote": if anchor_kind == "quote" { texts.quote(&b.source, b.line) } else { None },
                             "title": note.and_then(|n| n.title.clone()),
                             "tags": note.map(|n| n.tags.clone()).unwrap_or_default(),
                         })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn project_quotes(&self) -> QString {
+        use atlas_core::notes::LinkAnchor;
+        let mut texts = NoteTexts::default();
+        let list = self
+            .with_notes(|n| {
+                n.quotes()
+                    .iter()
+                    .filter_map(|(target, q)| {
+                        let LinkAnchor::Annotation(page, id) = &q.anchor else { return None };
+                        let note = n.note(&q.source);
+                        Some(serde_json::json!({
+                            "source": q.source.to_string_lossy(),
+                            "relative": self.relative(&q.source).to_string_lossy(),
+                            "line": q.line,
+                            "raw": q.raw,
+                            "kind": q.kind.as_str(),
+                            "anchor": format!("S. {page}"),
+                            "anchorKind": "quote",
+                            "context": q.context,
+                            "quote": texts.quote(&q.source, q.line),
+                            "title": note.and_then(|n| n.title.clone()),
+                            "tags": note.map(|n| n.tags.clone()).unwrap_or_default(),
+                            "target": target.to_string_lossy(),
+                            "targetRelative": self.relative(target).to_string_lossy(),
+                            "page": page,
+                            "annot": id,
+                        }))
                     })
                     .collect::<Vec<_>>()
             })

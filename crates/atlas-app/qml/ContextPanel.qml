@@ -20,6 +20,10 @@ Rectangle {
     /// Graph only, without depth switch and legend (overview cards).
     property bool compact: false
     property int depth: 1
+    /// Backlinks: "file" (links to `path`) or "project" (all quotes of PDF
+    /// annotations in the project's notes, by PDF).
+    property string scope: "file"
+    readonly property bool projectScope: scope === "project"
     property var backlinkList: []
     property var graph: ({ nodes: [], edges: [], truncated: 0 })
     readonly property int count: backlinkList.length
@@ -30,6 +34,8 @@ Rectangle {
     color: Theme.sidebar
 
     function refresh() {
+        // (`scope`, not `projectScope`: this also runs from onScopeChanged.)
+        if (scope === "project" && tab === 0) { backlinkList = JSON.parse(app.projectQuotes()); return }
         if (!path) { backlinkList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
         backlinkList = JSON.parse(app.backlinks(path))
         if (visible && tab === 1) graph = JSON.parse(app.contextGraph(path, depth))
@@ -37,6 +43,7 @@ Rectangle {
     onPathChanged: refresh()
     onTabChanged: refresh()
     onDepthChanged: refresh()
+    onScopeChanged: refresh()
     onVisibleChanged: if (visible) refresh()
     Component.onCompleted: refresh()
     Connections {
@@ -68,7 +75,7 @@ Rectangle {
     }
 
     function matches(b) {
-        const k = filterKind
+        const k = projectScope ? "" : filterKind
         if (k === "wiki" && b.kind !== "wiki") return false
         if (k === "link" && (b.kind === "wiki" || b.kind === "image")) return false
         if (k === "image" && b.kind !== "image") return false
@@ -83,27 +90,30 @@ Rectangle {
         }
         if (filterText) {
             const q = filterText.toLowerCase()
-            const hay = (b.relative + " " + (b.title || "") + " " + b.context).toLowerCase()
+            const hay = (b.relative + " " + (b.title || "") + " " + b.context + " " + (b.quote || "") + " " + (b.targetRelative || "")).toLowerCase()
             if (q.split(/\s+/).some(w => w && hay.indexOf(w) < 0)) return false
         }
         return true
     }
-    /// Header row per source note, then its links.
+    /// Header row per source note (project quotes: per PDF), then its links.
     readonly property var rows: {
         const out = []
         let last = ""
-        let shown = 0
         for (const b of backlinkList) {
             if (!matches(b)) continue
-            shown++
-            if (b.source !== last) {
-                out.push({ header: true, source: b.source, relative: b.relative, title: b.title || "", tags: b.tags || [] })
-                last = b.source
+            const key = projectScope ? b.target : b.source
+            if (key !== last) {
+                out.push(projectScope
+                    ? { header: true, source: b.target, relative: b.targetRelative, title: app.fileName(b.target), tags: [], pdf: true }
+                    : { header: true, source: b.source, relative: b.relative, title: b.title || "", tags: b.tags || [] })
+                last = key
             }
             out.push(Object.assign({ header: false }, b))
         }
         return out
     }
+    /// PDFs among the project quotes (for the summary).
+    readonly property int quotedPdfs: projectScope ? new Set(backlinkList.map(b => b.target)).size : 0
     readonly property int shownCount: rows.filter(r => !r.header).length
 
     // ------------------------------------------------------------- graph
@@ -172,6 +182,34 @@ Rectangle {
             // ---- backlinks with filters
             ColumnLayout {
                 spacing: 4
+                Row {
+                    id: scopeSwitch
+                    Layout.leftMargin: 6
+                    Layout.topMargin: 6
+                    spacing: 4
+                    Repeater {
+                        model: [{ scope: "file", text: qsTr("Dieses Dokument") }, { scope: "project", text: qsTr("Zitate im Projekt") }]
+                        Rectangle {
+                            id: scopeButton
+                            required property var modelData
+                            readonly property bool current: panel.scope === modelData.scope
+                            width: scopeLabel.implicitWidth + 18
+                            height: 24
+                            radius: 6
+                            color: current ? Theme.accentSoft : scopeHover.hovered ? Theme.hover : "transparent"
+                            border.color: current ? Qt.rgba(0.24, 0.55, 0.99, 0.5) : Theme.border
+                            Text {
+                                id: scopeLabel
+                                anchors.centerIn: parent
+                                text: scopeButton.modelData.text
+                                color: scopeButton.current ? Theme.textStrong : Theme.textMuted
+                                font.pixelSize: Theme.smallFontSize
+                            }
+                            HoverHandler { id: scopeHover }
+                            MouseArea { anchors.fill: parent; onClicked: panel.scope = scopeButton.modelData.scope }
+                        }
+                    }
+                }
                 TextField {
                     Layout.fillWidth: true
                     Layout.leftMargin: 6
@@ -189,6 +227,7 @@ Rectangle {
                     spacing: 4
                     ComboBox {
                         Layout.fillWidth: true
+                        visible: !panel.projectScope
                         implicitHeight: 24
                         font.pixelSize: Theme.smallFontSize
                         textRole: "text"
@@ -263,6 +302,14 @@ Rectangle {
                                 Layout.fillWidth: true
                                 spacing: 6
                                 Label {
+                                    visible: panel.projectScope
+                                    Layout.maximumWidth: rowColumn.width * 0.55
+                                    text: row.modelData.title || row.modelData.relative || ""
+                                    color: Theme.textMuted
+                                    font.pixelSize: Theme.smallFontSize
+                                    elide: Text.ElideMiddle
+                                }
+                                Label {
                                     text: qsTr("Z. %1").arg(row.modelData.line || 0)
                                     color: Theme.textFaint
                                     font.pixelSize: Theme.smallFontSize
@@ -279,16 +326,34 @@ Rectangle {
                                     color: Theme.textMuted
                                     font.pixelSize: Theme.smallFontSize
                                 }
+                                Item { Layout.fillWidth: true }
                             }
-                            Label {
+                            // Quotes show the quoted text (gold bar), other links
+                            // their line.
+                            Item {
                                 visible: !row.modelData.header
                                 Layout.fillWidth: true
-                                text: row.modelData.context || ""
-                                color: Theme.text
-                                font.pixelSize: Theme.smallFontSize
-                                wrapMode: Text.Wrap
-                                maximumLineCount: 3
-                                elide: Text.ElideRight
+                                implicitHeight: contextLabel.implicitHeight + (row.modelData.quote ? 4 : 0)
+                                Rectangle {
+                                    visible: !!row.modelData.quote
+                                    width: 2
+                                    height: parent.height
+                                    radius: 1
+                                    color: "#ffd400"
+                                }
+                                Label {
+                                    id: contextLabel
+                                    x: row.modelData.quote ? 8 : 0
+                                    y: row.modelData.quote ? 2 : 0
+                                    width: parent.width - x
+                                    text: row.modelData.quote ? "„" + row.modelData.quote + "“" : (row.modelData.context || "")
+                                    color: row.modelData.quote ? Theme.textStrong : Theme.text
+                                    font.pixelSize: Theme.smallFontSize
+                                    font.italic: !!row.modelData.quote
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: row.modelData.quote ? 4 : 3
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
                         MouseArea {
@@ -296,6 +361,17 @@ Rectangle {
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                             onClicked: (mouse) => panel.openRequested(row.modelData.source, row.modelData.header ? 0 : row.modelData.line,
                                 mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier), {})
+                        }
+                        // Project quotes: straight to the marked passage in the PDF.
+                        IconButton {
+                            visible: panel.projectScope && !row.modelData.header && (rowHover.hovered || hovered)
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6
+                            y: 2
+                            implicitHeight: 22
+                            glyph: qsTr("↗ PDF")
+                            tip: qsTr("Markierte Stelle in %1 öffnen (S. %2)").arg(panel.app.fileName(row.modelData.target || "")).arg(row.modelData.page || 0)
+                            onClicked: panel.openRequested(row.modelData.target, row.modelData.page, false, { annot: row.modelData.annot })
                         }
                     }
                     Label {
@@ -306,14 +382,18 @@ Rectangle {
                         horizontalAlignment: Text.AlignHCenter
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
-                        text: panel.count === 0 ? qsTr("Keine Notiz verweist auf diese Datei.") : qsTr("Kein Rückverweis passt zum Filter.")
+                        text: panel.projectScope
+                            ? (panel.count === 0 ? qsTr("Noch keine Zitate im Projekt.\nMarkiere Text in einer PDF und übernimm ihn mit „Zitat übernehmen“ in eine Notiz.")
+                                                 : qsTr("Kein Zitat passt zum Filter."))
+                            : panel.count === 0 ? qsTr("Keine Notiz verweist auf diese Datei.") : qsTr("Kein Rückverweis passt zum Filter.")
                     }
                 }
                 Label {
                     Layout.fillWidth: true
                     Layout.margins: 6
-                    visible: panel.count > 0 && panel.shownCount !== panel.count
-                    text: qsTr("%1 von %2 angezeigt").arg(panel.shownCount).arg(panel.count)
+                    visible: panel.count > 0 && (panel.shownCount !== panel.count || panel.projectScope)
+                    text: (panel.projectScope ? qsTr("%1 Zitate aus %2 PDFs").arg(panel.count).arg(panel.quotedPdfs) + (panel.shownCount !== panel.count ? " · " : "") : "")
+                        + (panel.shownCount !== panel.count ? qsTr("%1 von %2 angezeigt").arg(panel.shownCount).arg(panel.count) : "")
                     color: Theme.textFaint
                     font.pixelSize: Theme.smallFontSize
                 }

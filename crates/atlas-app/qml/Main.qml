@@ -71,6 +71,17 @@ ApplicationWindow {
     readonly property var calendar: fileActions.calendar
     /// The calendar tab (`state`: {mode, date, selected}).
     function openCalendar(state) { return editor.open("calendar:", 0, "tab", state || {}) }
+    /// The calendar button: closes the calendar when it is the active tab,
+    /// opens (or shows) it otherwise.
+    function toggleCalendar() {
+        const tab = editor.activeTab
+        if (tab && tab.kind === "calendar" && tab.ownerGroup) {
+            tab.ownerGroup.closeTab(tab.ownerGroup.tabs.indexOf(tab))
+            return
+        }
+        openCalendar({})
+    }
+    readonly property alias calendarButton: calendarButton
     function newCalendarEntry(kind) {
         const tab = openCalendar({})
         Qt.callLater(() => { if (tab && tab.viewerItem && tab.viewerItem.newEntry) tab.viewerItem.newEntry({ kind: kind, allDay: kind === "deadline" }) })
@@ -502,6 +513,7 @@ ApplicationWindow {
                 "sessions": () => sessionMenu.clicked(),
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "settings": () => settingsDialog.open(),
+                "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },
                 "new-session": () => sessionMenu.askNew(),
                 "quick-look": () => fileActions.quickLook(file),
                 "calendar-settings": () => fileActions.calendarSync.openSettings(),
@@ -553,7 +565,7 @@ ApplicationWindow {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
                 sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, settingsDialog: settingsDialog,
-                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel,
+                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector,
             })
             item.start()
         }
@@ -669,7 +681,7 @@ ApplicationWindow {
                     implicitHeight: 34
                     implicitWidth: calendarRow.implicitWidth + 28
                     hoverEnabled: true
-                    onClicked: window.openCalendar({})
+                    onClicked: window.toggleCalendar()
                     background: Rectangle {
                         radius: 8
                         color: calendarButton.active ? Theme.accentSoft : calendarButton.hovered ? Theme.hover : Theme.header

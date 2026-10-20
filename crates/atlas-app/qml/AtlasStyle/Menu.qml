@@ -16,8 +16,23 @@ T.Menu {
 
     delegate: MenuItem {}
 
+    // Size from the entries themselves: the list only estimates heights of
+    // entries it has not created yet, and is not as wide as its widest one.
+    function entriesSize() {
+        let w = 0, h = 0
+        for (let i = 0; i < control.count; ++i) {
+            const item = control.itemAt(i)
+            if (!item || !item.visible) continue
+            w = Math.max(w, item.implicitWidth)
+            h += item.implicitHeight
+        }
+        return Qt.size(w, h)
+    }
+
     contentItem: ListView {
-        implicitHeight: contentHeight
+        readonly property size entries: control.count >= 0 ? control.entriesSize() : Qt.size(0, 0)
+        implicitWidth: entries.width
+        implicitHeight: Math.max(contentHeight, entries.height)
         model: control.contentModel
         interactive: Window.window ? contentHeight + control.topPadding + control.bottomPadding > Window.window.height : false
         clip: true

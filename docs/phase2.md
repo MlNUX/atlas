@@ -536,3 +536,20 @@ Pixel-Deltas aus. Gefunden mit echten Wayland-Ereignissen (sway headless,
 virtuelle Maus über das wlroots-Protokoll, Strg über eine virtuelle
 Tastatur); der Rauchtest schickt jetzt auch Rad-Ereignisse eines solchen
 „Touchpad“-Geräts und Rasten in Scroll-Phasen.
+
+### Nachtrag – Kalender-Knopf, Menüs, Zitate im Projekt
+
+- **Kalender-Knopf** schaltet: Ist der Kalender der aktive Tab, schließt
+  ein Klick ihn; sonst öffnet bzw. zeigt er ihn.
+- **Menüs** messen Breite und Höhe an ihren Einträgen: Texte wurden
+  abgeschnitten („Projektordner öffne…“), und die geschätzte Höhe ließ
+  einen Eintrag („Einstellungen …“) wegfallen. Kürzel und gesperrte
+  Einträge sind besser lesbar.
+- **Verknüpfungen: „Zitate im Projekt“** neben „Dieses Dokument“: alle
+  Zitate aus PDF-Anmerkungen in allen Notizen, nach PDF gruppiert, mit dem
+  zitierten Text (`notes::quote_text` liest das Blockzitat über dem
+  Quellen-Link), Notiz, Zeile und Seite; Filter nach Text, Tag und Ordner.
+  Klick öffnet die Notiz an der Stelle, „↗ PDF“ die markierte Stelle in der
+  PDF. Auch Zitate in der Dokument-Ansicht zeigen jetzt den Zitattext.
+- Rauchtest: Zeitlimit des Skripts auf 300 s (bei 120 s brach der
+  gewachsene Selbsttest kurz vor dem Ende ab).

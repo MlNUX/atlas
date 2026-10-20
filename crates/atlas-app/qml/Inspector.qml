@@ -17,6 +17,7 @@ Rectangle {
     /// 0 = Anmerkungen (overview), 1 = Verknüpfungen, 2 = Lokaler Graph,
     /// 3 = Aktionen.
     property int tab: 0
+    readonly property alias linksPanel: linksPanel
 
     signal openRequested(string path, int line, string where, var state)
 
@@ -213,6 +214,7 @@ Rectangle {
 
             // ---- links
             ContextPanel {
+                id: linksPanel
                 app: inspector.app
                 path: inspector.document
                 tab: 0

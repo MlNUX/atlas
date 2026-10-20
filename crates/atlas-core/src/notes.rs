@@ -90,6 +90,33 @@ pub struct Backlink {
     pub context: String,
 }
 
+/// The quoted text of a quote link on `line` (1-based) of a note: the
+/// blockquote lines above it (`> text`, as „In Notiz übernehmen“ writes
+/// them) and any text before the link on its own line, joined.
+pub fn quote_text(text: &str, line: usize) -> Option<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    let own = *lines.get(line.checked_sub(1)?)?;
+    let strip = |l: &str| l.trim_start().strip_prefix('>').map(|r| r.trim().to_owned());
+    let mut parts = Vec::new();
+    // Before the link on its own line ("> Text — [quelle.pdf, S. 3](…)").
+    if let Some(rest) = strip(own) {
+        let before = rest.split('[').next().unwrap_or("").trim().trim_end_matches(['—', '–', '-']).trim();
+        if !before.is_empty() {
+            parts.push(before.to_owned());
+        }
+        for l in lines[..line - 1].iter().rev() {
+            match strip(l) {
+                Some(t) => parts.push(t),
+                None => break,
+            }
+        }
+    }
+    parts.reverse();
+    let quote = parts.into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(" ");
+    let quote = quote.trim_matches(['„', '“', '"', ' ']).to_owned();
+    (!quote.is_empty()).then_some(quote)
+}
+
 /// A file in the local context graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphNode {
@@ -264,6 +291,32 @@ impl NoteIndex {
                 }
             }
         }
+        out
+    }
+
+    /// All quotes of PDF annotations in all notes: (quoted PDF, the link),
+    /// by PDF, then note and line.
+    pub fn quotes(&self) -> Vec<(PathBuf, Backlink)> {
+        let mut out: Vec<(PathBuf, Backlink)> = self
+            .notes
+            .iter()
+            .flat_map(|(source, note)| {
+                note.links.iter().filter(|l| matches!(l.anchor, LinkAnchor::Annotation(..))).map(|link| {
+                    (
+                        link.target.clone(),
+                        Backlink {
+                            source: source.clone(),
+                            line: link.line,
+                            raw: link.raw.clone(),
+                            kind: link.kind,
+                            anchor: link.anchor.clone(),
+                            context: link.context.clone(),
+                        },
+                    )
+                })
+            })
+            .collect();
+        out.sort_by(|a, b| (&a.0, &a.1.source, a.1.line).cmp(&(&b.0, &b.1.source, b.1.line)));
         out
     }
 
@@ -620,5 +673,52 @@ mod graph_tests {
         assert!(back.iter().any(|b| b.kind == LinkKind::Inline && b.context.starts_with("Auch")));
         let to_b = index.backlinks(&b);
         assert_eq!(to_b[0].kind, LinkKind::Wiki);
+    }
+
+    #[test]
+    fn quoted_text_above_the_link() {
+        let note = "# T\n\n> Erste Zeile\n> zweite Zeile\n>\n> — [q.pdf, S. 1](/q.pdf#page=1&annot=a)\n\n> Kurz — [q, S. 2](/q.pdf#page=2&annot=b)\n\nText [S. 3](/q.pdf#page=3&annot=c)\n";
+        assert_eq!(quote_text(note, 6).as_deref(), Some("Erste Zeile zweite Zeile"));
+        assert_eq!(quote_text(note, 8).as_deref(), Some("Kurz"));
+        // Not in a blockquote: no quoted text.
+        assert_eq!(quote_text(note, 10), None);
+        assert_eq!(quote_text(note, 99), None);
+        assert_eq!(quote_text(note, 0), None);
+    }
+
+    #[test]
+    fn all_quotes_of_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let paper = write(root, "docs/paper.pdf", "%PDF");
+        let buch = write(root, "docs/buch.pdf", "%PDF");
+        let a = write(
+            root,
+            "notes/a.md",
+            "> Eins\n> — [p](/docs/paper.pdf#page=2&annot=a1)\n\nNur [Seite](/docs/paper.pdf#page=5)\n",
+        );
+        let b = write(
+            root,
+            "notes/b.md",
+            "> Zwei\n> — [b](../docs/buch.pdf#page=7&annot=b1)\n> Drei\n> — [p](../docs/paper.pdf#page=9&annot=a2)\n",
+        );
+        let index = NoteIndex::build(root);
+        let quotes = index.quotes();
+        // Only quotes (not the page link), by PDF, then note and line.
+        let summary: Vec<(PathBuf, PathBuf, String)> = quotes
+            .iter()
+            .map(|(pdf, q)| match &q.anchor {
+                LinkAnchor::Annotation(_, id) => (pdf.clone(), q.source.clone(), id.clone()),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                (buch.clone(), b.clone(), "b1".into()),
+                (paper.clone(), a.clone(), "a1".into()),
+                (paper.clone(), b.clone(), "a2".into()),
+            ]
+        );
     }
 }

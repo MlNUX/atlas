@@ -26,6 +26,7 @@ Item {
     property var projectTree
     property var quickLook
     property var treeModel
+    property var inspector
 
     property int failures: 0
     property int step: 0
@@ -718,6 +719,44 @@ Item {
                 app.fileManagerPlaces = true
                 check("Wieder an: Dolphins Orte", app.placeNames.join(",") === "Belege" && app.fixedPlaceCount === 0)
                 settingsDialog.close()
+            },
+            () => {
+                // All quotes of the project in the links panel, by PDF.
+                const quotes = JSON.parse(app.projectQuotes())
+                check("Zitate im Projekt", quotes.some(q => q.annot === test.annotId && q.target === path("docs/umbenannt.pdf")
+                      && q.source === path("notes/zitate.md") && q.page === 1
+                      && (q.quote || "").indexOf("Zitat aus der Quelle Zweite Zeile hier") === 0), JSON.stringify(quotes))
+                const panel = inspector.linksPanel
+                window.inspectorVisible = true
+                inspector.tab = 1
+                panel.scope = "project"
+                const header = panel.rows.find(r => r.header && r.source === path("docs/umbenannt.pdf"))
+                check("Verknüpfungen: Zitate nach PDF gruppiert", !!header && header.pdf
+                      && panel.rows.some(r => !r.header && r.annot === test.annotId), JSON.stringify(panel.rows.slice(0, 3)))
+                // Opening a quote at its place in the PDF.
+                panel.openRequested(path("docs/umbenannt.pdf"), 1, false, { annot: test.annotId })
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Zitat öffnet die PDF-Stelle", editor.activeTab.path === path("docs/umbenannt.pdf") && v.focusedAnnot === test.annotId,
+                      editor.activeTab.path + " " + (v ? v.focusedAnnot : ""))
+                inspector.linksPanel.scope = "file"
+                // The calendar button opens the calendar and closes it again.
+                const b = window.calendarButton
+                const p = b.mapToItem(null, b.width / 2, b.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                check("Kalender-Knopf öffnet", editor.activeTab && editor.activeTab.kind === "calendar")
+                const b = window.calendarButton
+                const p = b.mapToItem(null, b.width / 2, b.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                const open = editor.groups.some(g => g.tabs.some(t => t.kind === "calendar"))
+                check("Kalender-Knopf schließt", !open && (!editor.activeTab || editor.activeTab.kind !== "calendar"), names())
             },
         ]
         timer.start()

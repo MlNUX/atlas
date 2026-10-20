@@ -148,7 +148,8 @@ export QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1
 export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu"
 
 status=0
-timeout 120 "$bin" "$project" --self-test 2> "$work/log" || status=$?
+# One step every 1.5 s; generous for slow machines.
+timeout 300 "$bin" "$project" --self-test 2> "$work/log" || status=$?
 grep -E "selftest:" "$work/log" | sed 's/^qml: //' || true
 if [ "$status" -ne 0 ]; then
   echo "--- Fehler (Exit $status); letzte Ausgabe:" >&2
