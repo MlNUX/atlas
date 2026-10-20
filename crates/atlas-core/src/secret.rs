@@ -258,15 +258,16 @@ mod tests {
     use super::*;
 
     fn fake_creds(dir: &Path) -> String {
-        // Stands in for systemd-creds: "encrypts" by reversing the text.
+        // Stands in for systemd-creds: "encrypts" with ROT13 (`tr` is in
+        // every build environment, unlike `rev`).
         let script = dir.join("fake-creds");
         std::fs::write(
             &script,
             "#!/bin/sh\n\
              [ \"$1\" = --user ] || exit 9\n\
              case \"$2\" in\n\
-               encrypt) rev > \"$5\" ;;\n\
-               decrypt) rev < \"$4\" ;;\n\
+               encrypt) tr a-z n-za-m > \"$5\" ;;\n\
+               decrypt) tr a-z n-za-m < \"$4\" ;;\n\
                *) exit 8 ;;\n\
              esac\n",
         )
