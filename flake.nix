@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Minux
 # SPDX-License-Identifier: GPL-3.0-or-later
 {
-  description = "Atlas Workspace – Linux-first, file-centric desktop workspace (Phase 1 alpha)";
+  description = "Atlas Workspace – Linux-first, file-centric desktop workspace ";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -75,6 +75,8 @@
       # QML modules needed at run time (not part of the merged Qt prefix).
       qmlDeps = pkgs: [ pkgs.kdePackages.syntax-highlighting ];
 
+      version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
+
       libDeps =
         pkgs: with pkgs; [
           poppler # poppler-glib
@@ -87,7 +89,7 @@
       packages = forAllSystems (pkgs: {
         default = pkgs.rustPlatform.buildRustPackage {
           pname = "atlas";
-          version = "0.1.0";
+          inherit version;
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
 
@@ -114,12 +116,18 @@
 
           meta = {
             description = "File-centric desktop workspace with PDF, Markdown and terminal";
+            homepage = "https://github.com/MlNUX/atlas";
             license = pkgs.lib.licenses.gpl3Plus;
             mainProgram = "atlas";
             platforms = pkgs.lib.platforms.linux;
           };
         };
       });
+
+      # `pkgs.atlas` in a NixOS configuration: nixpkgs.overlays = [ atlas.overlays.default ];
+      overlays.default = final: prev: {
+        atlas = self.packages.${final.stdenv.hostPlatform.system}.default;
+      };
 
       apps = forAllSystems (pkgs: {
         default = {

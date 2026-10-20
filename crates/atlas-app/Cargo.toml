@@ -6,6 +6,7 @@ description = "Qt 6 / QML desktop shell of Atlas Workspace"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 authors.workspace = true
 
 [[bin]]

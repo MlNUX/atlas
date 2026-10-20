@@ -201,29 +201,29 @@ mod tests {
 <!DOCTYPE xbel>
 <xbel xmlns:bookmark="http://www.freedesktop.org/standards/desktop-bookmarks" xmlns:mime="http://www.freedesktop.org/standards/shared-mime-info" xmlns:kdepriv="http://www.kde.org/kdepriv">
  <info><metadata owner="http://www.kde.org"><kde_places_version>4</kde_places_version></metadata></info>
- <bookmark href="file:///home/leo">
+ <bookmark href="file:///home/user">
   <title>Home</title>
   <info>
    <metadata owner="http://freedesktop.org"><bookmark:icon name="user-home"/></metadata>
    <metadata owner="http://www.kde.org"><ID>1/0</ID><isSystemItem>true</isSystemItem></metadata>
   </info>
  </bookmark>
- <bookmark href="file:///home/leo/Projects/Meine%20Arbeit">
+ <bookmark href="file:///home/user/Projects/Meine%20Arbeit">
   <title>Arbeit</title>
   <info><metadata owner="http://freedesktop.org"><bookmark:icon name="folder-blue"/></metadata></info>
  </bookmark>
- <bookmark href="file:///home/leo/Versteckt">
+ <bookmark href="file:///home/user/Versteckt">
   <title>Versteckt</title>
   <info><metadata owner="http://www.kde.org"><IsHidden>true</IsHidden></metadata></info>
  </bookmark>
- <bookmark href="file:///home/leo/NurDolphin">
+ <bookmark href="file:///home/user/NurDolphin">
   <title>Nur Dolphin</title>
   <info><metadata owner="http://www.kde.org"><OnlyInApp>org.kde.dolphin</OnlyInApp></metadata></info>
  </bookmark>
  <bookmark href="trash:/"><title>Papierkorb</title></bookmark>
  <bookmark href="sftp://server/home"><title>Server</title></bookmark>
  <separator/>
- <bookmark href="file:///home/leo/Musik"><title></title>
+ <bookmark href="file:///home/user/Musik"><title></title>
   <info><metadata owner="http://freedesktop.org"><bookmark:icon name="folder-music"/></metadata></info>
  </bookmark>
 </xbel>"#;
@@ -237,8 +237,8 @@ mod tests {
             summary,
             vec![
                 // A KDE system place, translated.
-                ("Persönlicher Ordner".into(), "home".into(), "/home/leo".into()),
-                ("Arbeit".into(), "folder".into(), "/home/leo/Projects/Meine Arbeit".into()),
+                ("Persönlicher Ordner".into(), "home".into(), "/home/user".into()),
+                ("Arbeit".into(), "folder".into(), "/home/user/Projects/Meine Arbeit".into()),
                 // trash:/ is Atlas' trash.
                 (
                     "Papierkorb".into(),
@@ -246,7 +246,7 @@ mod tests {
                     crate::listing::trash_files_dir().unwrap().to_string_lossy().into_owned()
                 ),
                 // No title: the folder's name.
-                ("Musik".into(), "music".into(), "/home/leo/Musik".into()),
+                ("Musik".into(), "music".into(), "/home/user/Musik".into()),
             ]
         );
         assert!(parse_xbel("<kaputt").is_none());

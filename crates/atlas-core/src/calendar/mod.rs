@@ -26,7 +26,8 @@ pub fn password_from_command(command: &str, timeout: std::time::Duration) -> any
     let built = crate::actions::Built {
         argv,
         display: program.clone(),
-        cwd: dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/")),
+        // A missing home (build sandboxes) would make the start fail.
+        cwd: dirs::home_dir().filter(|home| home.is_dir()).unwrap_or_else(|| std::path::PathBuf::from("/")),
     };
     let finished = crate::extensions::run(&built, timeout)?;
     if finished.code != Some(0) {
