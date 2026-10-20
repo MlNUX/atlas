@@ -5,7 +5,7 @@
 # Nach einem neuen Tag: pkgver anpassen, `updpkgsums` und
 # `makepkg --printsrcinfo > .SRCINFO` ausführen.
 
-# Maintainer: Minux
+# Maintainer: Minux (https://github.com/MlNUX)
 pkgname=atlas-workspace
 pkgver=1.0.0
 pkgrel=1
