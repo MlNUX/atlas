@@ -41,6 +41,7 @@ Item {
     property string layoutBefore
     property real zoomBefore
     property int tabsBefore
+    property string htmlProbe
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -828,6 +829,47 @@ Item {
                 check("Kontextmenü leere Fläche: keine Datei-Befehle", empty.indexOf("Neue Datei …") >= 0 && empty.indexOf("Terminal hier öffnen") >= 0
                       && ["Öffnen", "Umbenennen …", "Kopieren", "Ausschneiden", "In den Papierkorb", "Pfad kopieren"].every(t => empty.indexOf(t) < 0),
                       empty.join(" | "))
+            },
+            () => {
+                // HTML rendered as a web page (built-in action).
+                check("HTML-Aktion im Kontextmenü", (() => {
+                    fileActions.showMenu([path("docs/seite.html")], path("docs"))
+                    const e = fileActions.contextMenu.shownEntries()
+                    fileActions.contextMenu.close()
+                    return e.indexOf("Als Webseite anzeigen") >= 0
+                })())
+                fileActions.renderHtml(path("docs/seite.html"))
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v && v.webItem && !v.webItem.loading && v.webItem.title === "Testseite")) return
+                check("HTML gerendert", !!v.webItem && v.webItem.title === "Testseite", v.webItem ? v.webItem.title : "kein Web")
+                v.webItem.runJavaScript("document.getElementById('js').textContent + '|' + getComputedStyle(document.getElementById('kopf')).color",
+                                        (r) => test.htmlProbe = r)
+                test.tabsBefore = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+            },
+            () => {
+                if (waitFor(() => test.htmlProbe !== "")) return
+                check("HTML: Skript und CSS wirken", test.htmlProbe === "mit Skript|rgb(1, 2, 3)", test.htmlProbe)
+                editor.activeTab.viewerItem.showSourceRequested()
+            },
+            () => {
+                const tab = editor.activeTab
+                check("HTML: Quelltext im selben Tab", tab.path === path("docs/seite.html") && !!tab.viewerItem.editorItem === false
+                      && tab.viewerItem.text !== undefined && tab.viewerItem.text.indexOf("<h1 id=\"kopf\">") >= 0, tab.kind)
+                fileActions.renderHtml(path("docs/seite.html"))
+            },
+            () => {
+                const tabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                check("HTML: wieder gerendert, kein zweiter Tab", !!editor.activeTab.viewerItem.webItem && tabs === test.tabsBefore, tabs + " / " + test.tabsBefore)
+                check("HTML: Ansicht in der Sitzung", editor.activeTab.viewState().processor === "atlas:html", JSON.stringify(editor.activeTab.viewState()))
+                // Saved elsewhere: the page reloads by itself.
+                check("HTML geändert", app.appendToNote(path("docs/seite.html"), "<script>document.title = 'Neu geladen'</script>") === "")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.webItem && v.webItem.title === "Neu geladen")) return
+                check("HTML lädt beim Speichern neu", v.webItem.title === "Neu geladen", v.webItem.title)
             },
         ]
         timer.start()

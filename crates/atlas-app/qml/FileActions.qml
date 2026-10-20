@@ -59,6 +59,11 @@ Item {
     }
 
     /// "Als Aufgabe einplanen": an unscheduled task linked with `path`.
+    /// HTML files can be shown rendered.
+    function isHtml(path) { return /\.x?html?$/i.test(path || "") }
+    /// Shows an HTML file rendered (in its tab if it is open).
+    function renderHtml(path) { actions.openWithState(path, { processor: "atlas:html" }) }
+
     function planAsTask(path) {
         const uid = calendarModel.taskForFile(path)
         if (uid) showMessage(qsTr("Aufgabe „%1“ angelegt – im Kalender unter „Noch nicht eingeplant“").arg(baseName(path)))
@@ -334,6 +339,12 @@ Item {
             visible: menu.single
             height: visible ? implicitHeight : 0
             onTriggered: actions.openRequested(menu.paths[0], true)
+        }
+        MenuItem {
+            text: qsTr("Als Webseite anzeigen")
+            visible: menu.single && actions.isHtml(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.renderHtml(menu.paths[0])
         }
         MenuItem {
             text: qsTr("Im Editor öffnen")

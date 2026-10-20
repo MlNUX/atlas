@@ -123,6 +123,13 @@ actions:
 YAML
 printf 'hallo\000welt\n' > "$project/daten.dat"
 
+cat > "$project/docs/seite.html" <<'HTML'
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Testseite</title><link rel="stylesheet" href="seite.css"></head>
+<body><h1 id="kopf">Hallo HTML</h1><p id="js">ohne Skript</p>
+<script>document.getElementById("js").textContent = "mit Skript"</script></body></html>
+HTML
+printf 'h1 { color: rgb(1, 2, 3); }\n' > "$project/docs/seite.css"
 echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"

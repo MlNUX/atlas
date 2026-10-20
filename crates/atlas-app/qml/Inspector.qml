@@ -79,6 +79,9 @@ Rectangle {
             out.push({ icon: "export", name: qsTr("PDF-Kopie exportieren"), enabled: true,
                        tip: qsTr("Kopie mit Anmerkungen; das Original bleibt unverändert"), run: () => pdfViewer.exportCopy() })
         }
+        if (document && actions.isHtml(document))
+            out.push({ icon: "eye", name: qsTr("Als Webseite anzeigen"), enabled: true, tip: qsTr("HTML gerendert anzeigen (lädt beim Speichern neu)"),
+                       run: () => actions.renderHtml(document) })
         if (kind === "markdown")
             out.push({ icon: "check-square", name: qsTr("Checkliste als Aufgaben"), enabled: true, tip: qsTr("Punkte in den Kalender übernehmen"),
                        run: () => actions.calendarSync.importChecklist(document) })

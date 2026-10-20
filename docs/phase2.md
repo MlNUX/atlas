@@ -577,3 +577,17 @@ Editor öffnen“ nur bei Text und Markdown. Entfernt: „Terminal als Tab
 …“ sowie „Projekt-/Globale Aktionen bearbeiten …“ und „Erweiterungen …“
 aus dem Aktionen-Untermenü – diese stehen jetzt im Dialog Einstellungen.
 Rauchtest prüft die Einträge für PDF, Notiz und leere Fläche.
+
+### Nachtrag – HTML als Webseite anzeigen
+
+Eingebaute Aktion **„Als Webseite anzeigen“** für `.html`/`.htm`/`.xhtml`:
+im Rechtsklick-Menü, unter „Aktionen“ in der Kontextleiste und in der
+Befehlspalette. Die Datei erscheint gerendert (QtWebEngine, `HtmlView`) –
+im selben Tab, wenn ihr Quelltext schon offen ist; „Quelltext anzeigen“
+schaltet zurück. Leiste mit Zoom, Neu laden (F5), Quelltext und „Im
+Browser öffnen“; gespeicherte Änderungen (auch aus anderen Editoren)
+laden die Seite neu. Die Ansicht steht in der Session. Seiten dürfen
+Skripte ausführen und Dateien neben sich laden (CSS, Bilder), aber nicht
+ins Netz; Links auf Webseiten öffnen den System-Browser, lokale Links
+bleiben in der Ansicht. Rauchtest: Rendern mit Skript und CSS, Umschalten
+im selben Tab, Session, Neuladen nach Änderung.
