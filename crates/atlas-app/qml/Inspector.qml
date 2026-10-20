@@ -80,6 +80,9 @@ Rectangle {
             out.push({ icon: "export", name: qsTr("PDF-Kopie exportieren"), enabled: true,
                        tip: qsTr("Kopie mit Anmerkungen; das Original bleibt unverändert"), run: () => pdfViewer.exportCopy() })
         }
+        if (document && app.isRunnable(document))
+            out.push({ icon: "play", name: qsTr("Ausführen"), enabled: true, tip: qsTr("Skript im Terminal starten (im Ordner des Skripts)"),
+                       run: () => actions.runScript(document) })
         if (document && actions.isHtml(document))
             out.push({ icon: "eye", name: qsTr("Als Webseite anzeigen"), enabled: true, tip: qsTr("HTML gerendert anzeigen (lädt beim Speichern neu)"),
                        run: () => actions.renderHtml(document) })

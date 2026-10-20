@@ -628,3 +628,12 @@ Die Reiter (Anmerkungen, Verknüpfungen, Lokaler Graph, Aktionen) werden
 nicht mehr gekürzt („Anmerkung…“): Sie bleiben ausgeschrieben; reicht der
 Platz nicht, scrollt die Leiste seitwärts (schmale Scrollleiste, Mausrad),
 und der gewählte Reiter rückt ins Bild.
+
+### Nachtrag – Skripte ausführen
+
+Eingebaute Aktion **„Ausführen“** (Rechtsklick-Menü, Aktionen der
+Kontextleiste, Befehlspalette) für `.sh`/`.bash` – mit bash, auch ohne
+Ausführrecht – und für ausführbare Dateien mit `#!`-Zeile (z. B. ein
+Python-Skript mit `chmod +x`). Das Skript läuft sichtbar im Terminal-Panel,
+im Ordner des Skripts; Ausgabe und „✓ beendet“ bzw. „✗ Code n“ bleiben
+stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).

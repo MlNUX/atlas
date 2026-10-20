@@ -396,6 +396,18 @@ pub mod qobject {
         /// The command of action `id` for `paths` at `line`: JSON {argv,
         /// display, cwd, confirm, destructive, placement ("panel"/"tab"),
         /// name} or {error}.
+        /// `path` is a script Atlas can run („Ausführen“): `.sh`/`.bash`, or
+        /// executable with a `#!` line.
+        #[qinvokable]
+        #[cxx_name = "isRunnable"]
+        fn is_runnable(self: &AppController, path: &QString) -> bool;
+
+        /// The command running the script at `path` in the terminal: JSON
+        /// {name, argv, display, cwd} or {error}.
+        #[qinvokable]
+        #[cxx_name = "prepareScript"]
+        fn prepare_script(self: &AppController, path: &QString) -> QString;
+
         #[qinvokable]
         #[cxx_name = "prepareAction"]
         fn prepare_action(self: &AppController, id: &QString, paths: &QStringList, line: i32) -> QString;
@@ -1911,6 +1923,23 @@ impl qobject::AppController {
                 }),
                 Err(err) => serde_json::json!({ "error": format!("„{}“: {err:#}", action.name) }),
             },
+        };
+        qs(result.to_string())
+    }
+
+    pub fn is_runnable(&self, path: &QString) -> bool {
+        atlas_core::actions::script_command(&path_of(path)).is_some()
+    }
+
+    pub fn prepare_script(&self, path: &QString) -> QString {
+        let result = match atlas_core::actions::prepare_script(&path_of(path)) {
+            Ok((p, name)) => serde_json::json!({
+                "name": name,
+                "argv": p.argv,
+                "display": p.display,
+                "cwd": p.cwd.to_string_lossy(),
+            }),
+            Err(err) => serde_json::json!({ "error": format!("{err:#}") }),
         };
         qs(result.to_string())
     }

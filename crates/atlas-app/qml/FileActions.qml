@@ -59,6 +59,19 @@ Item {
     }
 
     /// "Als Aufgabe einplanen": an unscheduled task linked with `path`.
+    /// Runs a script (`.sh`, or executable with `#!`) visibly in the
+    /// terminal panel, in its folder; output and status stay until Enter.
+    function runScript(path) {
+        const p = JSON.parse(app.prepareScript(path))
+        if (p.error) {
+            errorDialog.text = p.error
+            errorDialog.open()
+            return
+        }
+        actions.runInTerminal(p.argv, p.cwd)
+        showMessage(qsTr("„%1“ läuft im Terminal").arg(p.name))
+    }
+
     /// HTML files can be shown rendered.
     function isHtml(path) { return /\.x?html?$/i.test(path || "") }
     /// Shows an HTML file rendered (in its tab if it is open).
@@ -339,6 +352,12 @@ Item {
             visible: menu.single
             height: visible ? implicitHeight : 0
             onTriggered: actions.openRequested(menu.paths[0], true)
+        }
+        MenuItem {
+            text: qsTr("Ausführen")
+            visible: menu.single && app.isRunnable(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.runScript(menu.paths[0])
         }
         MenuItem {
             text: qsTr("Als Webseite anzeigen")

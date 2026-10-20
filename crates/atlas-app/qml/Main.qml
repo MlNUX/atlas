@@ -194,6 +194,8 @@ ApplicationWindow {
             list.push({ name: qsTr("Im Editor öffnen"), hint: app.fileName(current), run: () => fileActions.openInEditor(current, 0) })
             list.push({ name: qsTr("Pfad kopieren"), hint: app.fileName(current), run: () => fileActions.copyPaths([current]) })
             list.push({ name: qsTr("Im Explorer zeigen"), hint: app.fileName(current), run: () => window.revealInTree(current) })
+            if (app.isRunnable(current))
+                list.push({ name: qsTr("Ausführen"), hint: app.fileName(current), run: () => fileActions.runScript(current) })
             if (fileActions.isHtml(current))
                 list.push({ name: qsTr("Als Webseite anzeigen"), hint: app.fileName(current), run: () => fileActions.renderHtml(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })

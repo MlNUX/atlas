@@ -948,6 +948,22 @@ Item {
                 check("Aktiver Reiter ins Bild gerückt", bar.contentX > 0 && bar.contentX + bar.width >= bar.contentWidth - 1, bar.contentX)
                 inspector.tab = 0
             },
+            () => {
+                // Built-in action „Ausführen“ for scripts.
+                fileActions.showMenu([path("src/hallo.sh")], path("src"))
+                const sh = fileActions.contextMenu.shownEntries()
+                fileActions.contextMenu.close()
+                fileActions.showMenu([path("notes/idee.md")], path("notes"))
+                const md = fileActions.contextMenu.shownEntries()
+                fileActions.contextMenu.close()
+                check("„Ausführen“ nur bei Skripten", sh.indexOf("Ausführen") >= 0 && md.indexOf("Ausführen") < 0, sh.join(" | "))
+                fileActions.runScript(path("src/hallo.sh"))
+            },
+            () => {
+                const done = () => app.readTextFile(path("src/gelaufen.txt")).indexOf("lief in src") === 0
+                if (waitFor(done)) return
+                check("Skript lief im Terminal, im eigenen Ordner", done() && terminalPanel.visible, app.readTextFile(path("src/gelaufen.txt")))
+            },
         ]
         timer.start()
     }

@@ -138,6 +138,7 @@ const s = document.createElement("script"); s.src = "https://cdn.example.invalid
 fetch("https://cdn.example.invalid/data.json").catch(e => console.error("fetch: " + e))
 </script><script src="fehlt.js"></script><script>initSqlJs()</script>
 HTML
+printf 'echo "lief in $(basename "$PWD")" > gelaufen.txt\n' > "$project/src/hallo.sh"
 echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"
