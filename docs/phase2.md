@@ -546,10 +546,23 @@ Tastatur); der Rauchtest schickt jetzt auch Rad-Ereignisse eines solchen
   einen Eintrag („Einstellungen …“) wegfallen. Kürzel und gesperrte
   Einträge sind besser lesbar.
 - **Verknüpfungen: „Zitate im Projekt“** neben „Dieses Dokument“: alle
-  Zitate aus PDF-Anmerkungen in allen Notizen, nach PDF gruppiert, mit dem
-  zitierten Text (`notes::quote_text` liest das Blockzitat über dem
-  Quellen-Link), Notiz, Zeile und Seite; Filter nach Text, Tag und Ordner.
-  Klick öffnet die Notiz an der Stelle, „↗ PDF“ die markierte Stelle in der
-  PDF. Auch Zitate in der Dokument-Ansicht zeigen jetzt den Zitattext.
+  markierten Textstellen aller PDFs des Projekts (nach PDF und Seite, mit
+  Farbe und Kommentar) und wo Notizen sie zitieren („zitiert in …, Z. 10“
+  bzw. „noch in keiner Notiz zitiert“); Zitate in Notizen, deren Markierung
+  gelöscht ist, bleiben sichtbar (Zitattext aus dem Blockzitat,
+  `notes::quote_text`). Klick springt zur Markierung in der PDF, „Notiz ↗“
+  zur zitierenden Notiz; Textfilter. Die Liste folgt dem Anmerkungsspeicher
+  (Dateiüberwachung, `annotationsRevision`), eine neue Markierung erscheint
+  also gleich – auch nach dem Schließen der PDF. Zitate in der
+  Dokument-Ansicht zeigen jetzt den Zitattext.
+- Behoben: Ohne Tags und Art-Filter nahm die leere Filterzeile der Liste
+  den Platz weg (Layouts dehnen sich standardmäßig) – die Zitate waren
+  vorhanden, aber nicht zu sehen.
+- Behoben: Wurde das App-Passwort kurz hintereinander zweimal gemerkt,
+  schrieben zwei Threads dieselbe temporäre Datei („cannot replace …“),
+  oder ein älteres Passwort gewann. Speichern und Vergessen laufen jetzt
+  nacheinander, ein neuerer Auftrag verdrängt einen wartenden älteren.
+- Selbsttest: Schritte mit Hintergrundarbeit warten jetzt bis zu acht
+  Takte auf ihr Ergebnis (`waitFor`), statt nach festen 1,5 s zu prüfen.
 - Rauchtest: Zeitlimit des Skripts auf 300 s (bei 120 s brach der
   gewachsene Selbsttest kurz vor dem Ende ab).

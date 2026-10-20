@@ -71,6 +71,8 @@ pub mod qobject {
         #[qproperty(QString, recovery_dir, cxx_name = "recoveryDir", READ, NOTIFY = project_root_changed)]
         // Incremented whenever the note index (links, tags) changed.
         #[qproperty(i32, notes_revision, cxx_name = "notesRevision", READ, NOTIFY)]
+        /// Incremented when the project's PDF annotations change on disk.
+        #[qproperty(i32, annotations_revision, cxx_name = "annotationsRevision", READ, NOTIFY)]
         // Folder of the PDF annotation files (`.atlas/annotations`, or Atlas'
         // state folder without a project).
         #[qproperty(QString, annotations_dir, cxx_name = "annotationsDir", READ, NOTIFY = project_root_changed)]
@@ -307,9 +309,11 @@ pub mod qobject {
         #[qinvokable]
         fn backlinks(self: &AppController, path: &QString) -> QString;
 
-        /// All quotes of PDF annotations in the project's notes: JSON list
-        /// like `backlinks` plus {target, targetRelative, page, annot}, by
-        /// PDF, then note and line.
+        /// All quotes of the project: the marked text of all its PDFs (and
+        /// quotes in notes whose mark is gone), by PDF and page. JSON list of
+        /// {target, targetRelative, page, annot, quote, comment, color,
+        /// missing, cited: [{source, relative, line, title}], source,
+        /// relative, line, title (first citing note, else the PDF), …}.
         #[qinvokable]
         #[cxx_name = "projectQuotes"]
         fn project_quotes(self: &AppController) -> QString;
@@ -529,6 +533,9 @@ pub struct AppControllerRust {
     active_session_name: QString,
     recovery_dir: QString,
     notes_revision: i32,
+    annotations_revision: i32,
+    /// Watches the annotation store (`annotationsRevision`).
+    annotations_watcher: Option<atlas_core::watcher::DirWatcher>,
     annotations_dir: QString,
     untrusted_extensions: QStringList,
 
@@ -591,6 +598,8 @@ impl Default for AppControllerRust {
             active_session_name: QString::default(),
             recovery_dir: QString::default(),
             notes_revision: 0,
+            annotations_revision: 0,
+            annotations_watcher: None,
             annotations_dir: qs(atlas_core::paths::state_root().join(atlas_core::annotations::DIR).to_string_lossy()),
             untrusted_extensions: QStringList::default(),
             root: None,
@@ -772,6 +781,7 @@ impl qobject::AppController {
                 .unwrap_or_else(atlas_core::paths::state_root)
                 .join(atlas_core::annotations::DIR)
                 .to_string_lossy());
+            this.annotations_watcher = None;
             this.index_ready = project.is_none();
             this.index_status = qs(if project.is_some() { "Index wird aufgebaut …" } else { "" });
             this.generation
@@ -820,8 +830,30 @@ impl qobject::AppController {
         }
         self.as_mut().refresh_sessions();
         self.as_mut().refresh_extensions();
+        self.as_mut().watch_annotations();
         self.project_root_changed();
         true
+    }
+
+    /// Bumps `annotationsRevision` when the annotation store changes (marks
+    /// are saved shortly after they are made, also from other windows).
+    fn watch_annotations(mut self: Pin<&mut Self>) {
+        let dir = PathBuf::from(self.annotations_dir.to_string());
+        let _ = std::fs::create_dir_all(&dir);
+        let thread = self.qt_thread();
+        match atlas_core::watcher::DirWatcher::new(move |_| {
+            let _ = thread.queue(|mut this| {
+                let revision = this.annotations_revision.wrapping_add(1);
+                this.as_mut().rust_mut().annotations_revision = revision;
+                this.annotations_revision_changed();
+            });
+        }) {
+            Ok(watcher) => {
+                watcher.sync(&[dir]);
+                self.as_mut().rust_mut().annotations_watcher = Some(watcher);
+            }
+            Err(err) => log::warn!("annotations watcher unavailable: {err:#}"),
+        }
     }
 
     pub fn url_to_path(&self, url: &QString) -> QString {
@@ -1307,36 +1339,100 @@ impl qobject::AppController {
 
     pub fn project_quotes(&self) -> QString {
         use atlas_core::notes::LinkAnchor;
+        use serde_json::{Value, json};
+        crate::annotations_model::flush_io();
+        let Some(root) = self.root.clone() else { return qs("[]") };
         let mut texts = NoteTexts::default();
-        let list = self
-            .with_notes(|n| {
-                n.quotes()
-                    .iter()
-                    .filter_map(|(target, q)| {
-                        let LinkAnchor::Annotation(page, id) = &q.anchor else { return None };
-                        let note = n.note(&q.source);
-                        Some(serde_json::json!({
-                            "source": q.source.to_string_lossy(),
-                            "relative": self.relative(&q.source).to_string_lossy(),
-                            "line": q.line,
-                            "raw": q.raw,
-                            "kind": q.kind.as_str(),
-                            "anchor": format!("S. {page}"),
-                            "anchorKind": "quote",
-                            "context": q.context,
-                            "quote": texts.quote(&q.source, q.line),
-                            "title": note.and_then(|n| n.title.clone()),
-                            "tags": note.map(|n| n.tags.clone()).unwrap_or_default(),
-                            "target": target.to_string_lossy(),
-                            "targetRelative": self.relative(target).to_string_lossy(),
-                            "page": page,
-                            "annot": id,
-                        }))
-                    })
-                    .collect::<Vec<_>>()
+        // Where notes quote annotations: annotation id → citations; plus the
+        // quotes themselves (for marks that no longer exist).
+        let mut cited: std::collections::HashMap<String, Vec<Value>> = std::collections::HashMap::new();
+        let mut note_quotes: Vec<(PathBuf, u32, String, Value, Option<String>)> = Vec::new();
+        self.with_notes(|n| {
+            for (target, q) in n.quotes() {
+                let LinkAnchor::Annotation(page, id) = &q.anchor else { continue };
+                let note = n.note(&q.source);
+                let citation = json!({
+                    "source": q.source.to_string_lossy(),
+                    "relative": self.relative(&q.source).to_string_lossy(),
+                    "line": q.line,
+                    "title": note.and_then(|n| n.title.clone()),
+                });
+                cited.entry(id.clone()).or_default().push(citation.clone());
+                note_quotes.push((target, *page, id.clone(), citation, texts.quote(&q.source, q.line)));
+            }
+        });
+        let entry = |target: &Path, page: u32, id: &str, quote: String, comment: &str, color: &str, missing: bool| {
+            let citations = cited.get(id).cloned().unwrap_or_default();
+            let first = citations.first();
+            json!({
+                "target": target.to_string_lossy(),
+                "targetRelative": self.relative(target).to_string_lossy(),
+                "page": page,
+                "annot": id,
+                "quote": quote,
+                "comment": comment,
+                "color": color,
+                "missing": missing,
+                "cited": citations,
+                // For the filters: the citing note, else the PDF.
+                "source": first.and_then(|c| c["source"].as_str()).map(str::to_owned).unwrap_or_else(|| target.to_string_lossy().into_owned()),
+                "relative": first.and_then(|c| c["relative"].as_str()).map(str::to_owned).unwrap_or_else(|| self.relative(target).to_string_lossy().into_owned()),
+                "line": first.and_then(|c| c["line"].as_u64()).unwrap_or(0),
+                "title": first.and_then(|c| c["title"].as_str()),
+                "anchor": format!("S. {page}"),
+                "anchorKind": "quote",
+                "kind": "markup",
+                "context": "",
+                "tags": [],
             })
-            .unwrap_or_default();
-        qs(serde_json::Value::from(list).to_string())
+        };
+        // Marked text of all the project's PDFs.
+        let store = atlas_core::annotations::Store::new(self.annotations_dir.to_string());
+        let mut list: Vec<(String, u32, usize, Value)> = Vec::new();
+        let mut marks = std::collections::HashSet::new();
+        for (_, file) in store.all() {
+            let key = &file.document.path;
+            let path =
+                if Path::new(key).is_absolute() { PathBuf::from(key) } else { root.join(key.trim_start_matches('/')) };
+            if !path.starts_with(&root) {
+                continue;
+            }
+            let sort_key = self.relative(&path).to_string_lossy().into_owned();
+            // A mark over several pages: one entry, its text joined.
+            let mut groups: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            for a in file.annotations.iter().filter(|a| a.kind.is_text_markup() && !a.text.trim().is_empty()) {
+                marks.insert(a.id.clone());
+                if !a.group.is_empty()
+                    && let Some(&i) = groups.get(&a.group)
+                {
+                    let joined = format!("{} {}", list[i].3["quote"].as_str().unwrap_or(""), a.text.trim());
+                    list[i].3["quote"] = Value::from(joined);
+                    continue;
+                }
+                if !a.group.is_empty() {
+                    groups.insert(a.group.clone(), list.len());
+                }
+                let order = list.len();
+                list.push((
+                    sort_key.clone(),
+                    a.page,
+                    order,
+                    entry(&path, a.page, &a.id, a.text.trim().to_owned(), &a.comment, &a.color, false),
+                ));
+            }
+        }
+        // Quotes in notes whose mark is gone: still listed (from the note).
+        for (target, page, id, _, quote) in note_quotes {
+            if marks.contains(&id) {
+                continue;
+            }
+            marks.insert(id.clone());
+            let order = list.len();
+            let sort_key = self.relative(&target).to_string_lossy().into_owned();
+            list.push((sort_key, page, order, entry(&target, page, &id, quote.unwrap_or_default(), "", "", true)));
+        }
+        list.sort_by(|a, b| (&a.0, a.1, a.2).cmp(&(&b.0, b.1, b.2)));
+        qs(Value::from(list.into_iter().map(|e| e.3).collect::<Vec<_>>()).to_string())
     }
 
     pub fn note_deadlines(&self) -> QString {

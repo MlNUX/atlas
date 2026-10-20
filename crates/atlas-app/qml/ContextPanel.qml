@@ -20,10 +20,12 @@ Rectangle {
     /// Graph only, without depth switch and legend (overview cards).
     property bool compact: false
     property int depth: 1
-    /// Backlinks: "file" (links to `path`) or "project" (all quotes of PDF
-    /// annotations in the project's notes, by PDF).
+    /// Backlinks: "file" (links to `path`) or "project" (all marked text of
+    /// the project's PDFs and where notes quote it, by PDF).
     property string scope: "file"
     readonly property bool projectScope: scope === "project"
+    /// The list of backlinks (for tests).
+    readonly property alias backlinkView: backList
     property var backlinkList: []
     property var graph: ({ nodes: [], edges: [], truncated: 0 })
     readonly property int count: backlinkList.length
@@ -49,6 +51,8 @@ Rectangle {
     Connections {
         target: panel.app
         function onNotesRevisionChanged() { refreshTimer.restart() }
+        // New or changed marks in any PDF of the project.
+        function onAnnotationsRevisionChanged() { if (panel.scope === "project") refreshTimer.restart() }
     }
     Timer { id: refreshTimer; interval: 200; onTriggered: panel.refresh() }
 
@@ -220,8 +224,12 @@ Rectangle {
                     placeholderText: qsTr("Filtern …")
                     onTextChanged: panel.filterText = text.trim()
                 }
+                // (Layouts fill the height by default: with every filter hidden
+                // this row took the list's space.)
                 RowLayout {
+                    visible: !panel.projectScope || panel.tagChoices.length > 0 || panel.folderChoices.length > 1
                     Layout.fillWidth: true
+                    Layout.fillHeight: false
                     Layout.leftMargin: 6
                     Layout.rightMargin: 6
                     spacing: 4
@@ -302,14 +310,7 @@ Rectangle {
                                 Layout.fillWidth: true
                                 spacing: 6
                                 Label {
-                                    visible: panel.projectScope
-                                    Layout.maximumWidth: rowColumn.width * 0.55
-                                    text: row.modelData.title || row.modelData.relative || ""
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.smallFontSize
-                                    elide: Text.ElideMiddle
-                                }
-                                Label {
+                                    visible: !panel.projectScope
                                     text: qsTr("Z. %1").arg(row.modelData.line || 0)
                                     color: Theme.textFaint
                                     font.pixelSize: Theme.smallFontSize
@@ -339,7 +340,7 @@ Rectangle {
                                     width: 2
                                     height: parent.height
                                     radius: 1
-                                    color: "#ffd400"
+                                    color: row.modelData.color || "#ffd400"
                                 }
                                 Label {
                                     id: contextLabel
@@ -355,23 +356,56 @@ Rectangle {
                                     elide: Text.ElideRight
                                 }
                             }
+                            // Project quotes: comment and where notes quote the mark.
+                            Label {
+                                visible: panel.projectScope && !row.modelData.header && !!row.modelData.comment
+                                Layout.fillWidth: true
+                                text: "💬 " + (row.modelData.comment || "")
+                                color: Theme.text
+                                font.pixelSize: Theme.smallFontSize
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                visible: panel.projectScope && !row.modelData.header
+                                Layout.fillWidth: true
+                                readonly property var cited: row.modelData.cited || []
+                                text: row.modelData.missing
+                                    ? qsTr("Markierung gelöscht · zitiert in %1").arg(cited.map(c => c.relative).join(", "))
+                                    : cited.length
+                                    ? qsTr("zitiert in %1").arg(cited.map(c => c.relative + " (Z. " + c.line + ")").join(", "))
+                                    : qsTr("noch in keiner Notiz zitiert")
+                                color: cited.length ? Theme.textMuted : Theme.textFaint
+                                font.pixelSize: Theme.smallFontSize
+                                elide: Text.ElideRight
+                            }
                         }
                         MouseArea {
                             anchors.fill: parent
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                            onClicked: (mouse) => panel.openRequested(row.modelData.source, row.modelData.header ? 0 : row.modelData.line,
-                                mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier), {})
+                            onClicked: (mouse) => {
+                                const newPane = mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier)
+                                const d = row.modelData
+                                // Project quotes: to the marked passage in the PDF.
+                                if (panel.projectScope && !d.header && !d.missing) panel.openRequested(d.target, d.page, newPane, { annot: d.annot })
+                                else panel.openRequested(d.source, d.header ? 0 : d.line, newPane, {})
+                            }
                         }
-                        // Project quotes: straight to the marked passage in the PDF.
+                        // Project quotes: the note quoting the mark.
                         IconButton {
-                            visible: panel.projectScope && !row.modelData.header && (rowHover.hovered || hovered)
+                            visible: panel.projectScope && !row.modelData.header && (row.modelData.cited || []).length > 0
+                                && !row.modelData.missing && (rowHover.hovered || hovered)
                             anchors.right: parent.right
                             anchors.rightMargin: 6
                             y: 2
                             implicitHeight: 22
-                            glyph: qsTr("↗ PDF")
-                            tip: qsTr("Markierte Stelle in %1 öffnen (S. %2)").arg(panel.app.fileName(row.modelData.target || "")).arg(row.modelData.page || 0)
-                            onClicked: panel.openRequested(row.modelData.target, row.modelData.page, false, { annot: row.modelData.annot })
+                            glyph: qsTr("Notiz ↗")
+                            tip: qsTr("%1 an der Stelle des Zitats öffnen").arg(((row.modelData.cited || [])[0] || {}).relative || "")
+                            onClicked: {
+                                const c = row.modelData.cited[0]
+                                panel.openRequested(c.source, c.line, false, {})
+                            }
                         }
                     }
                     Label {
@@ -383,7 +417,7 @@ Rectangle {
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
                         text: panel.projectScope
-                            ? (panel.count === 0 ? qsTr("Noch keine Zitate im Projekt.\nMarkiere Text in einer PDF und übernimm ihn mit „Zitat übernehmen“ in eine Notiz.")
+                            ? (panel.count === 0 ? qsTr("Noch keine Zitate im Projekt.\nMarkiere Text in einer PDF – die Markierung erscheint hier.")
                                                  : qsTr("Kein Zitat passt zum Filter."))
                             : panel.count === 0 ? qsTr("Keine Notiz verweist auf diese Datei.") : qsTr("Kein Rückverweis passt zum Filter.")
                     }
@@ -392,7 +426,8 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.margins: 6
                     visible: panel.count > 0 && (panel.shownCount !== panel.count || panel.projectScope)
-                    text: (panel.projectScope ? qsTr("%1 Zitate aus %2 PDFs").arg(panel.count).arg(panel.quotedPdfs) + (panel.shownCount !== panel.count ? " · " : "") : "")
+                    text: (panel.projectScope ? qsTr("%1 Zitate aus %2 PDFs · %3 in Notizen").arg(panel.count).arg(panel.quotedPdfs)
+                                                  .arg(panel.backlinkList.filter(b => (b.cited || []).length).length) + (panel.shownCount !== panel.count ? " · " : "") : "")
                         + (panel.shownCount !== panel.count ? qsTr("%1 von %2 angezeigt").arg(panel.shownCount).arg(panel.count) : "")
                     color: Theme.textFaint
                     font.pixelSize: Theme.smallFontSize

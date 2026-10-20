@@ -68,6 +68,17 @@ Item {
     }
     function dragTab(group, index, target, x, y) { dragTabTo(group, index, target, x, y) }
 
+    /// Background work (autosave, storing a password, watched files): a
+    /// step starting with `if (waitFor(cond)) return` runs again on the next
+    /// tick until `cond()` holds, at most 8 times; then it checks anyway.
+    property bool retry: false
+    property int attempts: 0
+    function waitFor(cond) {
+        if (cond() || attempts >= 8) return false
+        retry = true
+        return true
+    }
+
     function check(name, ok, detail) {
         if (!ok) failures++
         console.log("selftest:", ok ? "ok  " : "FAIL", name, ok ? "" : "– " + (detail === undefined ? "" : detail))
@@ -90,6 +101,7 @@ Item {
                 check("Bearbeitung erkannt", md.editorItem.modified)
             },
             () => {
+                if (waitFor(() => app.readTextFile(note).indexOf("Autosave-Test") >= 0)) return
                 check("Autosave geschrieben", app.readTextFile(note).indexOf("Autosave-Test") >= 0)
                 check("keine Recovery nach Speichern", !editor.activeTab.viewerItem.editorItem.document.hasRecovery)
                 const back = JSON.parse(app.backlinks(path("notes/plan.md")))
@@ -658,9 +670,10 @@ Item {
                 cal.rememberPassword(true)
                 cal.saveAccount("http://127.0.0.1:9", "selbsttest", "einmal-42", "", "[]", "")
             },
-            () => {},  // (storing runs in the background, systemd-creds may be slow)
             () => {
                 const cal = window.calendar
+                // (Storing runs in the background; systemd-creds may be slow.)
+                if (waitFor(() => cal.remembered !== "")) return
                 check("Passwort gemerkt", cal.remembered === "encrypted" || cal.remembered === "file", cal.remembered + " " + cal.error)
                 check("Gemerktes Passwort nicht in den Einstellungen", cal.account().indexOf("einmal-42") < 0 && JSON.parse(cal.account()).rememberPassword)
                 // As after a restart: nothing in memory, the remembered one loads.
@@ -670,6 +683,7 @@ Item {
             },
             () => {
                 const cal = window.calendar
+                if (waitFor(() => cal.unlocked)) return
                 check("Nach Neustart ohne Eingabe entsperrt", cal.unlocked && cal.passwordError === "", cal.syncStatus + " " + cal.passwordError)
                 cal.rememberPassword(false)
                 check("Nicht mehr merken: gelöscht", cal.remembered === "", cal.remembered)
@@ -677,6 +691,7 @@ Item {
             },
             () => {
                 const cal = window.calendar
+                if (waitFor(() => cal.remembered !== "")) return
                 check("Wieder merken mit bekanntem Passwort", cal.remembered !== "", cal.remembered)
                 cal.disconnectAccount()
                 check("Konto getrennt: Passwort vergessen", !cal.connected && !cal.unlocked && cal.remembered === "")
@@ -721,11 +736,13 @@ Item {
                 settingsDialog.close()
             },
             () => {
-                // All quotes of the project in the links panel, by PDF.
+                // All quotes of the project: the marks of all PDFs and where
+                // notes quote them.
                 const quotes = JSON.parse(app.projectQuotes())
-                check("Zitate im Projekt", quotes.some(q => q.annot === test.annotId && q.target === path("docs/umbenannt.pdf")
-                      && q.source === path("notes/zitate.md") && q.page === 1
-                      && (q.quote || "").indexOf("Zitat aus der Quelle Zweite Zeile hier") === 0), JSON.stringify(quotes))
+                const q = quotes.find(x => x.annot === test.annotId)
+                check("Zitate im Projekt: Markierung mit Notiz", !!q && q.target === path("docs/umbenannt.pdf") && q.page === 1
+                      && q.quote.indexOf("Zitat aus der Quelle") === 0 && q.comment === "Wichtig"
+                      && q.cited.length === 1 && q.cited[0].source === path("notes/zitate.md"), JSON.stringify(quotes))
                 const panel = inspector.linksPanel
                 window.inspectorVisible = true
                 inspector.tab = 1
@@ -733,8 +750,29 @@ Item {
                 const header = panel.rows.find(r => r.header && r.source === path("docs/umbenannt.pdf"))
                 check("Verknüpfungen: Zitate nach PDF gruppiert", !!header && header.pdf
                       && panel.rows.some(r => !r.header && r.annot === test.annotId), JSON.stringify(panel.rows.slice(0, 3)))
+                // As reported: mark text in a PDF, close it – the mark shows up.
+                editor.open(path("docs/umbenannt.pdf"), 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                v.annotationStore.add(JSON.stringify({ kind: "highlight", page: 2, text: "Nur markiert, nicht zitiert",
+                    rects: [[40, 40, 200, 12]], color: "#7bd88f" }))
+                editor.activeGroup.closeTab(editor.activeGroup.tabs.indexOf(editor.activeTab))
+            },
+            () => {
+                const panel = inspector.linksPanel
+                // (The store is written and watched in the background.)
+                if (waitFor(() => panel.rows.some(r => r.quote === "Nur markiert, nicht zitiert"))) return
+                const row = panel.rows.find(r => !r.header && r.quote === "Nur markiert, nicht zitiert")
+                check("Neue Markierung erscheint nach dem Schließen", !!row && row.page === 2 && row.cited.length === 0,
+                      JSON.stringify(panel.rows.map(r => r.quote || r.relative)))
+                // … and is really visible: the list keeps its height without
+                // tag/kind filters (they took the space before).
+                check("Zitatliste hat Platz", panel.backlinkView.height > panel.height / 2
+                      && panel.backlinkView.contentHeight > 0, panel.backlinkView.height + " von " + panel.height)
                 // Opening a quote at its place in the PDF.
-                panel.openRequested(path("docs/umbenannt.pdf"), 1, false, { annot: test.annotId })
+                const mine = panel.rows.find(r => !r.header && r.annot === test.annotId)
+                panel.openRequested(mine.target, mine.page, false, { annot: mine.annot })
             },
             () => {
                 const v = editor.activeTab.viewerItem
@@ -768,12 +806,18 @@ Item {
         repeat: true
         onTriggered: {
             if (test.step < test.steps.length) {
+                test.retry = false
                 try {
                     test.steps[test.step]()
                 } catch (e) {
                     test.check("Schritt " + (test.step + 1), false, e + (e.lineNumber ? " (Zeile " + e.lineNumber + ")" : "") + (e.stack ? " " + e.stack.split("\n")[0] : ""))
                 }
-                test.step++
+                if (test.retry) {
+                    test.attempts++
+                } else {
+                    test.attempts = 0
+                    test.step++
+                }
                 return
             }
             stop()

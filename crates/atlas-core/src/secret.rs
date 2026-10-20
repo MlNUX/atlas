@@ -38,6 +38,13 @@ impl Kind {
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 
+/// Temporary file names unique within the process (several threads may
+/// store at once).
+fn unique() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!("{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+}
+
 pub struct SecretStore {
     dir: PathBuf,
     name: String,
@@ -103,7 +110,7 @@ impl SecretStore {
 
     fn encrypt(&self, secret: &str) -> Result<()> {
         let target = self.encrypted_path();
-        let tmp = self.dir.join(format!(".{}.cred.tmp-{}", self.name, std::process::id()));
+        let tmp = self.dir.join(format!(".{}.cred.tmp-{}", self.name, unique()));
         let name = format!("--name={}", self.name);
         let tmp_arg = tmp.to_string_lossy().into_owned();
         let result =
@@ -171,8 +178,7 @@ fn create_private_dir(dir: &Path) -> Result<()> {
 /// Writes `contents` atomically, readable only by the user from the start.
 fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
     let parent = path.parent().context("file without parent directory")?;
-    let tmp =
-        parent.join(format!(".{}.tmp-{}", path.file_name().unwrap_or_default().to_string_lossy(), std::process::id()));
+    let tmp = parent.join(format!(".{}.tmp-{}", path.file_name().unwrap_or_default().to_string_lossy(), unique()));
     let result = (|| -> Result<()> {
         let mut file = std::fs::OpenOptions::new()
             .write(true)
@@ -312,6 +318,31 @@ mod tests {
         assert_eq!(store.load().unwrap().unwrap().0, "b");
         assert!(store.store("").is_err());
         assert!(store.store("a\nb").is_err());
+    }
+
+    #[test]
+    fn concurrent_stores_do_not_collide() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("s");
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    SecretStore::new(&dir, "nc").with_creds_program("/nonexistent").store(&format!("pw{i}"))
+                })
+            })
+            .collect();
+        for t in threads {
+            assert_eq!(t.join().unwrap().unwrap(), Kind::File);
+        }
+        let stored = SecretStore::new(&dir, "nc").load().unwrap().unwrap().0;
+        assert!(stored.starts_with("pw"), "{stored}");
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains("tmp"))
+            .collect();
+        assert!(leftovers.is_empty());
     }
 
     #[test]
