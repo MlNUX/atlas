@@ -59,6 +59,16 @@ impl Project {
         Self::open_as(root, &paths::device_id())
     }
 
+    /// Opens `root` only if it already has sessions of this device; unlike
+    /// [`Project::open`] it never creates `.atlas/` in a folder.
+    pub fn open_existing(root: &Path) -> Option<Self> {
+        let device = paths::device_id();
+        if !root.join(ATLAS_DIR).join("sessions").join(&device).is_dir() {
+            return None;
+        }
+        Self::open_as(root, &device).ok()
+    }
+
     /// Like [`Project::open`] with an explicit device ID.
     pub fn open_as(root: &Path, device: &str) -> Result<Self> {
         let root = root.canonicalize().with_context(|| format!("cannot open {}", root.display()))?;

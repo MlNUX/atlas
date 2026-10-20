@@ -197,6 +197,11 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "sessionSummaries"]
         fn session_summaries(self: &AppController) -> QString;
+        /// Sessions of all opened projects (this one first), each with
+        /// `root`, `project` and `active` (the active one of its project).
+        #[qinvokable]
+        #[cxx_name = "allSessions"]
+        fn all_sessions(self: &AppController) -> QString;
 
         #[qinvokable]
         #[cxx_name = "renameSession"]
@@ -729,6 +734,29 @@ fn path_of(s: &QString) -> PathBuf {
     PathBuf::from(s.to_string())
 }
 
+/// The sessions of `project` for the session list.
+fn session_entries(project: &Project) -> Vec<serde_json::Value> {
+    let active = project.active_session();
+    let root = project.root().to_string_lossy().into_owned();
+    let name = project.root().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| root.clone());
+    project
+        .list_sessions()
+        .into_iter()
+        .map(|s| {
+            let summary = project.load_named(&s.id).summary();
+            let saved = std::fs::metadata(project.session_path(&s.id))
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs());
+            serde_json::json!({
+                "id": s.id, "name": s.name, "tabs": summary.tabs, "splits": summary.splits,
+                "kind": summary.kind, "saved": saved, "root": root, "project": name, "active": s.id == active,
+            })
+        })
+        .collect()
+}
+
 fn describe(report: &Report) -> String {
     let previous = match &report.previous {
         Previous::Valid => "aktualisiert".to_owned(),
@@ -838,7 +866,7 @@ impl qobject::AppController {
 
         if self.persist_session {
             let mut app = AppState::load();
-            app.last_project = Some(root);
+            app.remember(&root);
             if let Err(err) = app.save() {
                 log::warn!("cannot save app state: {err:#}");
             }
@@ -1051,23 +1079,22 @@ impl qobject::AppController {
     }
 
     pub fn session_summaries(&self) -> QString {
-        let Some(project) = self.project.as_ref() else { return qs("[]") };
-        let list: Vec<serde_json::Value> = project
-            .list_sessions()
-            .into_iter()
-            .map(|s| {
-                let summary = project.load_named(&s.id).summary();
-                let saved = std::fs::metadata(project.session_path(&s.id))
-                    .and_then(|m| m.modified())
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs());
-                serde_json::json!({
-                    "id": s.id, "name": s.name, "tabs": summary.tabs, "splits": summary.splits,
-                    "kind": summary.kind, "saved": saved,
-                })
-            })
-            .collect();
+        let list = self.project.as_ref().map(|p| session_entries(p)).unwrap_or_default();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn all_sessions(&self) -> QString {
+        let mut list = self.project.as_ref().map(|p| session_entries(p)).unwrap_or_default();
+        if self.persist_session {
+            for root in AppState::load().projects {
+                if Some(&root) == self.root.as_ref() || !root.is_dir() {
+                    continue;
+                }
+                if let Some(project) = Project::open_existing(&root) {
+                    list.extend(session_entries(&project));
+                }
+            }
+        }
         qs(serde_json::Value::from(list).to_string())
     }
 

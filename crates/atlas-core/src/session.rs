@@ -14,16 +14,31 @@ use crate::paths;
 
 pub const FORMAT_VERSION: u32 = 1;
 
+/// Projects kept in [`AppState::projects`].
+const MAX_PROJECTS: usize = 30;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppState {
     #[serde(default)]
     pub version: u32,
     pub last_project: Option<PathBuf>,
+    /// Opened projects, most recent first (for the sessions of all
+    /// projects).
+    #[serde(default)]
+    pub projects: Vec<PathBuf>,
 }
 
 impl AppState {
     pub fn load() -> Self {
         read_json(&paths::app_state_file()).unwrap_or_default()
+    }
+
+    /// Makes `root` the last and most recently used project.
+    pub fn remember(&mut self, root: &Path) {
+        self.last_project = Some(root.to_owned());
+        self.projects.retain(|p| p != root);
+        self.projects.insert(0, root.to_owned());
+        self.projects.truncate(MAX_PROJECTS);
     }
 
     pub fn save(&mut self) -> Result<()> {
@@ -121,6 +136,22 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remembers_projects_most_recent_first() {
+        let mut state: AppState = serde_json::from_str(r#"{"version": 1, "last_project": "/a"}"#).unwrap();
+        assert!(state.projects.is_empty());
+        for p in ["/a", "/b", "/a", "/c"] {
+            state.remember(Path::new(p));
+        }
+        assert_eq!(state.projects, ["/c", "/a", "/b"].map(PathBuf::from));
+        assert_eq!(state.last_project.as_deref(), Some(Path::new("/c")));
+        for i in 0..40 {
+            state.remember(&PathBuf::from(format!("/p{i}")));
+        }
+        assert_eq!(state.projects.len(), MAX_PROJECTS);
+        assert_eq!(state.projects[0], PathBuf::from("/p39"));
+    }
 
     #[test]
     fn summary_counts_tabs_splits_and_kind() {

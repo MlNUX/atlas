@@ -37,6 +37,8 @@ Item {
     property var term: null
     property var moved: null
     property string before
+    property string firstRoot
+    property string firstSession
 
     property string layoutBefore
     property real zoomBefore
@@ -963,6 +965,36 @@ Item {
                 const done = () => app.readTextFile(path("src/gelaufen.txt")).indexOf("lief in src") === 0
                 if (waitFor(done)) return
                 check("Skript lief im Terminal, im eigenen Ordner", done() && terminalPanel.visible, app.readTextFile(path("src/gelaufen.txt")))
+            },
+            () => {
+                // A session in another folder must not touch this one.
+                editor.open(path("notes/idee.md"), 0, "tab")
+                window.saveSession()
+                app.flushSession()
+                test.firstRoot = app.projectRoot
+                test.firstSession = app.activeSession
+                test.layoutBefore = app.loadLayout()
+                folderDialog.ask("session", app.projectRoot.replace(/\/[^/]*$/, "/zweites"), "Zweite")
+                folderDialog.accept()
+            },
+            () => {
+                check("Neue Session im anderen Ordner", app.projectRoot.endsWith("/zweites") && app.activeSessionName === "Zweite", app.projectRoot + " " + app.activeSessionName)
+                editor.open(app.projectRoot + "/texte/start.md", 0, "tab")
+                window.saveSession()
+                app.flushSession()
+                sessionMenu.clicked()
+                const all = sessionMenu.sessions
+                check("Sessionliste enthält beide Projekte", all.some(s => s.root === test.firstRoot && s.id === test.firstSession)
+                      && all.length > 0 && all[0].root === app.projectRoot && all.some(s => s.root === app.projectRoot && s.name === "Zweite"),
+                      JSON.stringify(all.map(s => s.project + "/" + s.name)))
+                sessionMenu.clicked()
+                // A click on the first session: back into its project.
+                sessionMenu.openRequested(test.firstRoot, test.firstSession)
+            },
+            () => {
+                check("Erste Session unverändert", app.projectRoot === test.firstRoot && app.activeSession === test.firstSession
+                      && app.loadLayout() === test.layoutBefore && names().indexOf("idee.md") >= 0 && names().indexOf("start.md") < 0,
+                      app.activeSessionName + ": " + names())
             },
         ]
         timer.start()

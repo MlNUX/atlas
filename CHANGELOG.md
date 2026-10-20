@@ -8,6 +8,17 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
+## [Unveröffentlicht]
+
+### Behoben
+- Sessions in anderen Projektordnern: Das Sessionfenster zeigt jetzt die
+  Sessions aller geöffneten Projekte, nach Ordner gruppiert; ein Klick
+  wechselt in den Ordner und die Session. Bisher waren nach „Neue Session“
+  in einem anderen Ordner die Sessions des vorigen Ordners nicht mehr zu
+  sehen und wirkten überschrieben.
+- Vor dem Wechsel in einen anderen Projektordner wird die aktuelle Session
+  gespeichert.
+
 ## [1.0.0] – 2026-10-20
 
 Erste öffentliche Version.

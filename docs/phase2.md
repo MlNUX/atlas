@@ -653,3 +653,19 @@ stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).
 - README für die Veröffentlichung neu geschrieben, mit echten Screenshots;
   die Konzept-Mockups stehen jetzt in [design.md](design.md).
 - `CHANGELOG.md` und GitHub-CI (`nix flake check`).
+
+### Nachtrag – Sessions aller Projekte
+
+Sessions liegen weiter je Projekt in `.atlas/sessions/`. „Neue Session“ in
+einem anderen Ordner wechselte aber das Projekt, und die Liste zeigte nur
+noch dessen Sessions – die vorige wirkte überschrieben. Jetzt merkt sich
+Atlas die geöffneten Projekte (`projects` in `app.json`, die letzten 30),
+und das Sessionfenster listet die Sessions aller dieser Projekte, nach
+Ordner gruppiert, das geöffnete zuerst. Ein Klick auf eine Session eines
+anderen Projekts öffnet den Ordner und aktiviert sie. Umbenennen und
+Löschen gibt es für Sessions des geöffneten Projekts. Vor jedem
+Projektwechsel wird die aktuelle Session gespeichert. Ordner ohne
+Atlas-Sessions bekommen dabei kein `.atlas/`.
+
+Rauchtest: Session im Projekt, neue Session in einem zweiten Ordner, beide
+in der Liste, Rückkehr zur ersten mit unverändertem Layout.

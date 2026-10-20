@@ -7,8 +7,8 @@ import QtQuick.Layouts
 import Atlas
 
 // Session button in the title bar ("Sitzung: …") and its panel: search,
-// all sessions with their size, switch with a click; new, duplicate,
-// rename, save and delete.
+// the sessions of all opened projects with their size, switch with a
+// click (also into another project); new, rename, save and delete.
 AbstractButton {
     id: root
     required property AppController app
@@ -17,6 +17,8 @@ AbstractButton {
     property int activeSplits: 0
 
     signal switchRequested(string id)
+    /// A session of another project: open `projectRoot`, then activate `id`.
+    signal openRequested(string projectRoot, string id)
     signal createRequested(string name, bool duplicate)
     /// A new, empty session: Main asks for the project folder and name.
     signal newSessionRequested(string name)
@@ -76,9 +78,10 @@ AbstractButton {
     }
 
     property var sessions: []
+    function isActive(s) { return s.root === app.projectRoot && s.id === app.activeSession }
     readonly property var shown: {
         const q = search.text.trim().toLowerCase()
-        return sessions.filter(s => !q || s.name.toLowerCase().indexOf(q) >= 0)
+        return sessions.filter(s => !q || s.name.toLowerCase().indexOf(q) >= 0 || s.project.toLowerCase().indexOf(q) >= 0)
     }
 
     Popup {
@@ -92,13 +95,15 @@ AbstractButton {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         onAboutToShow: {
             search.text = ""
-            try { root.sessions = JSON.parse(root.app.sessionSummaries()) } catch (e) { root.sessions = [] }
-            list.currentIndex = Math.max(0, root.shown.findIndex(s => s.id === root.app.activeSession))
+            try { root.sessions = JSON.parse(root.app.allSessions()) } catch (e) { root.sessions = [] }
+            list.currentIndex = Math.max(0, root.shown.findIndex(s => root.isActive(s)))
             Qt.callLater(search.forceActiveFocus)
         }
         function pick(s) {
             panel.close()
-            if (s && s.id !== root.app.activeSession) root.switchRequested(s.id)
+            if (!s || root.isActive(s)) return
+            if (s.root === root.app.projectRoot) root.switchRequested(s.id)
+            else root.openRequested(s.root, s.id)
         }
 
         contentItem: ColumnLayout {
@@ -124,18 +129,49 @@ AbstractButton {
             ListView {
                 id: list
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(contentHeight, 4.5 * 62)
+                Layout.preferredHeight: Math.min(contentHeight, 6 * 62)
                 clip: true
                 spacing: 2
                 model: root.shown
                 boundsBehavior: Flickable.StopAtBounds
                 highlightMoveDuration: 0
                 ScrollBar.vertical: ScrollBar {}
+                // One heading per project folder; the open one comes first.
+                section.property: "root"
+                section.delegate: Item {
+                    required property string section
+                    width: list.width
+                    height: 30
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.verticalCenterOffset: 3
+                        x: 4
+                        spacing: 8
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "folder"
+                            size: 14
+                            color: section === root.app.projectRoot ? Theme.accent : Theme.textMuted
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: section.slice(section.lastIndexOf("/") + 1) + (section === root.app.projectRoot ? qsTr("  ·  geöffnet") : "")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.smallFontSize
+                            font.weight: Font.DemiBold
+                        }
+                    }
+                    ToolTip.visible: sectionHover.hovered
+                    ToolTip.delay: 600
+                    ToolTip.text: section
+                    HoverHandler { id: sectionHover }
+                }
                 delegate: Rectangle {
                     id: entry
                     required property var modelData
                     required property int index
-                    readonly property bool active: modelData.id === root.app.activeSession
+                    readonly property bool active: root.isActive(modelData)
+                    readonly property bool here: modelData.root === root.app.projectRoot
                     // The active session counts what is open right now.
                     readonly property int tabs: active ? root.activeTabs : modelData.tabs
                     readonly property int splits: active ? root.activeSplits : modelData.splits
@@ -194,7 +230,8 @@ AbstractButton {
                         }
                         IconButton {
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: entryHover.hovered && !entry.active
+                            // Renaming and deleting work in the open project.
+                            visible: entryHover.hovered && !entry.active && entry.here
                             iconName: "more"
                             tip: qsTr("Umbenennen oder löschen")
                             onClicked: rowMenu.openFor(entry.modelData, this)

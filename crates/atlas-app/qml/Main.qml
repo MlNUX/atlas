@@ -304,9 +304,9 @@ ApplicationWindow {
         function askProject() { ask("open", app.projectRoot ? parentOf(app.projectRoot) : "", "") }
         function parentOf(path) { const i = path.lastIndexOf("/"); return i > 0 ? path.slice(0, i) : "/" }
         onChosen: (path, name) => {
-            if (mode === "open") { app.openProject(path); return }
+            if (mode === "open") { window.openProject(path); return }
             // A new session always belongs to the chosen project folder.
-            if (path !== app.projectRoot && !app.openProject(path)) return
+            if (path !== app.projectRoot && !window.openProject(path)) return
             window.createSession(name, false)
             fileActions.showMessage(qsTr("Session „%1“ in %2 angelegt").arg(name).arg(app.projectName))
         }
@@ -422,6 +422,22 @@ ApplicationWindow {
         restoring = true
         applyLayout(readLayout())
         restoring = false
+    }
+
+    /// Opens another project folder; the session of the current one is
+    /// saved first.
+    function openProject(path) {
+        if (path === app.projectRoot) return true
+        app.requestSaveAll()
+        saveSession()
+        app.flushSession()
+        return app.openProject(path)
+    }
+
+    /// Activates session `id` of the project in `root` (opening it first).
+    function openSession(root, id) {
+        if (root !== app.projectRoot && !openProject(root)) return
+        switchSession(id)
     }
 
     function createSession(name, duplicate) {
@@ -712,6 +728,7 @@ ApplicationWindow {
                     activeTabs: editor.groups.reduce((n, g) => n + g.tabs.length, 0)
                     activeSplits: editor.groups.filter(g => g.tabs.length > 0).length
                     onSwitchRequested: (id) => window.switchSession(id)
+                    onOpenRequested: (projectRoot, id) => window.openSession(projectRoot, id)
                     onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
                     onNewSessionRequested: (name) => folderDialog.ask("session", app.projectRoot, name || qsTr("Neue Session"))
                     onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }

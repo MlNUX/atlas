@@ -217,7 +217,7 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 
 | Ort | Inhalt |
 |---|---|
-| `$XDG_STATE_HOME/atlas/app.json` | `{"version": 1, "last_project": "/pfad"}` |
+| `$XDG_STATE_HOME/atlas/app.json` | `{"version": 1, "last_project": "/pfad", "projects": ["/pfad", …]}` – zuletzt geöffnete Projekte (höchstens 30) für die Sessionliste |
 | `$XDG_STATE_HOME/atlas/device-id` | `<hostname>-<8 hex>`, einmal erzeugt |
 | `$XDG_STATE_HOME/atlas/recovery/` | Recovery für Dateien außerhalb von Projekten |
 | `$XDG_CONFIG_HOME/atlas/config.toml` | Einstellungen (siehe unten) |

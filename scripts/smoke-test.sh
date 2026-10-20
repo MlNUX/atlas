@@ -16,6 +16,9 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 project="$work/projekt"
 mkdir -p "$project"/{notes,src,docs,target,node_modules/x}
+# A second project for sessions in another folder.
+mkdir -p "$work/zweites/texte"
+printf '# Zweites Projekt\n' > "$work/zweites/texte/start.md"
 
 cat > "$project/notes/idee.md" <<'MD'
 ---
