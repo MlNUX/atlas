@@ -6,6 +6,7 @@ description = "System and application core of Atlas Workspace"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 authors.workspace = true
 
 [dependencies]

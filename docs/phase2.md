@@ -643,3 +643,13 @@ stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).
   „Neue Session“ im Sessionmenü.
 
 - Im Sessionmenü ist „Aktuelle duplizieren“ entfernt.
+
+### Release 1.0
+
+- Version 1.0.0; die Flake liest sie aus `Cargo.toml` und bietet ein
+  Overlay (`pkgs.atlas`).
+- `packaging/arch/PKGBUILD` baut das Archiv des Tags `v$pkgver` und ist
+  bereit fürs AUR (`atlas-workspace`, mit `.SRCINFO`).
+- README für die Veröffentlichung neu geschrieben, mit echten Screenshots;
+  die Konzept-Mockups stehen jetzt in [design.md](design.md).
+- `CHANGELOG.md` und GitHub-CI (`nix flake check`).
