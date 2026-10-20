@@ -934,6 +934,20 @@ Item {
                 check("Projektordner bleibt offen", projectTree.treeList.visible && projectTree.treeList.count > 0
                       && treeModel.rowOf(path("docs")) >= 0, projectTree.treeList.count)
             },
+            () => {
+                // Context bar tabs: written out, scrollable when narrow.
+                window.inspectorVisible = true
+            },
+            () => {
+                const bar = inspector.tabBar
+                check("Kontextleiste schmal: Reiter scrollbar", bar.contentWidth > bar.width, bar.contentWidth + " / " + bar.width)
+                inspector.tab = 3
+            },
+            () => {
+                const bar = inspector.tabBar
+                check("Aktiver Reiter ins Bild gerückt", bar.contentX > 0 && bar.contentX + bar.width >= bar.contentWidth - 1, bar.contentX)
+                inspector.tab = 0
+            },
         ]
         timer.start()
     }

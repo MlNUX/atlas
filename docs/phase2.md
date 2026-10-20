@@ -621,3 +621,10 @@ die neue Fassung.
 Die Zeile des Projektordners im Baum klappt nichts mehr ein (kein Pfeil,
 Rechtsklick-Menü bleibt): eingeklappt rutschte sie ans untere Ende der
 Seitenleiste und ließ eine große Lücke. Unterordner klappen wie bisher.
+
+### Nachtrag – Reiter der Kontextleiste
+
+Die Reiter (Anmerkungen, Verknüpfungen, Lokaler Graph, Aktionen) werden
+nicht mehr gekürzt („Anmerkung…“): Sie bleiben ausgeschrieben; reicht der
+Platz nicht, scrollt die Leiste seitwärts (schmale Scrollleiste, Mausrad),
+und der gewählte Reiter rückt ins Bild.
