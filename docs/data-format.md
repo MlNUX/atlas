@@ -15,7 +15,7 @@ Projektdaten sind immer **relativ zur Projektwurzel** und verwenden `/`.
 | Datei | Inhalt | Wiederherstellbar? |
 |---|---|---|
 | `project.toml` | `format_version`, Projekt-`id` (UUID), `created_unix` | wird bei Fehlen neu angelegt |
-| `sessions/<device-id>/<session>.json` | benannte Sessions dieses Geräts | nein (Nutzerzustand) |
+| `sessions/<device-id>/<session>.json` | die Session des Ordners auf diesem Gerät (eine je Projektordner; ältere Projekte können mehrere haben, genutzt wird die aktive) | nein (Nutzerzustand) |
 | `sessions/<device-id>/active.json` | `{"session": "<id>"}` – aktive Session | ja (Standard-Session) |
 | `metadata.sqlite` | Dokumentidentitäten und Anzeigezustand | teilweise (Positionen gehen verloren) |
 | `index.sqlite` | Dateiliste mit Gerät/Inode | ja, wird bei jedem Start neu aufgebaut |

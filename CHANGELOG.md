@@ -14,13 +14,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - „Lokaler Graph“ heißt jetzt „Graph“ und zeigt in einer Ansicht das ganze
   Projekt: die aktuelle Datei in der Mitte, verknüpfte Dateien um sie
   herum, den Rest außen; mit Zoom und Verschieben.
-
-### Behoben
-- Sessions in anderen Projektordnern: Das Sessionfenster zeigt jetzt die
-  Sessions aller geöffneten Projekte, nach Ordner gruppiert; ein Klick
-  wechselt in den Ordner und die Session. Bisher waren nach „Neue Session“
-  in einem anderen Ordner die Sessions des vorigen Ordners nicht mehr zu
-  sehen und wirkten überschrieben.
+- Eine Session ist jetzt ein Projektordner: jeder Ordner hat genau eine
+  Session (Tabs, Splits, Baum), benannt nach dem Ordner oder mit eigenem
+  Namen. Das Sessionfenster listet die Sessions aller geöffneten Ordner,
+  ein Klick wechselt dorthin; „Neue Session“ wählt einen Ordner. Bisher
+  verschwanden nach „Neue Session“ in einem anderen Ordner die Sessions des
+  vorigen aus der Liste und wirkten überschrieben.
 - Vor dem Wechsel in einen anderen Projektordner wird die aktuelle Session
   gespeichert.
 

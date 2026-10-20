@@ -654,21 +654,25 @@ stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).
   die Konzept-Mockups stehen jetzt in [design.md](design.md).
 - `CHANGELOG.md` und GitHub-CI (`nix flake check`).
 
-### Nachtrag – Sessions aller Projekte
+### Nachtrag – Eine Session je Projektordner
 
-Sessions liegen weiter je Projekt in `.atlas/sessions/`. „Neue Session“ in
-einem anderen Ordner wechselte aber das Projekt, und die Liste zeigte nur
-noch dessen Sessions – die vorige wirkte überschrieben. Jetzt merkt sich
-Atlas die geöffneten Projekte (`projects` in `app.json`, die letzten 30),
-und das Sessionfenster listet die Sessions aller dieser Projekte, nach
-Ordner gruppiert, das geöffnete zuerst. Ein Klick auf eine Session eines
-anderen Projekts öffnet den Ordner und aktiviert sie. Umbenennen und
-Löschen gibt es für Sessions des geöffneten Projekts. Vor jedem
-Projektwechsel wird die aktuelle Session gespeichert. Ordner ohne
-Atlas-Sessions bekommen dabei kein `.atlas/`.
+Eine Session ist ein Projektordner: jeder Ordner hat genau eine Session
+(Tabs, Splits, aufgeklappte Ordner), gespeichert wie bisher in
+`.atlas/sessions/<gerät>/`. Ihr Name ist der Ordnername, außer sie wurde
+umbenannt. Atlas merkt sich die geöffneten Ordner (`projects` in
+`app.json`, die letzten 30); das Sessionfenster listet je Ordner einen
+Eintrag mit Pfad und Umfang, ein Klick öffnet den Ordner (vorher wird die
+aktuelle Session gespeichert). „Neue Session“ wählt einen Ordner und
+optional einen Namen – hat der Ordner schon eine Session, wird sie
+geöffnet (und ggf. umbenannt). Umbenennen geht für jede Session,
+„Aus der Liste entfernen“ für andere Ordner: Tabs und Anordnung werden
+vergessen, die Dateien bleiben. „In Session wechseln“ im Kalender öffnet
+den Ordner der genannten Session. Ältere Projekte mit mehreren benannten
+Sessions nutzen ihre zuletzt aktive.
 
-Rauchtest: Session im Projekt, neue Session in einem zweiten Ordner, beide
-in der Liste, Rückkehr zur ersten mit unverändertem Layout.
+Rauchtest: Session des Projekts benennen (kein zweiter Eintrag), Session
+in einem zweiten Ordner (nach ihm benannt), Liste mit beiden, Rückkehr mit
+unverändertem Layout, Wechsel über den Kalender, Entfernen.
 
 ### Nachtrag – Graph des ganzen Projekts
 

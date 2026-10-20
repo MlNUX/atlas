@@ -18,6 +18,8 @@ Dialog {
     property string kind: "event"
     property var checklist: []
     property var files: []
+    /// Names of the sessions of all project folders (for the session field).
+    property var sessionChoices: []
     property bool rruleChanged: false
     property bool rruleSupported: true
 
@@ -96,6 +98,7 @@ Dialog {
         descriptionField.text = e.description || ""
         checklist = (e.checklist || []).map(c => ({ done: c.done, text: c.text }))
         files = (e.files || []).slice()
+        try { sessionChoices = JSON.parse(app.allSessions()).map(s => s.name) } catch (err) { sessionChoices = [] }
         sessionBox.editText = e.session || ""
         estimateField.text = e.estimate ? (e.estimate % 60 === 0 ? (e.estimate / 60) + "h" : e.estimate + "m") : ""
         const r = (e.reminders || [])[0]
@@ -289,7 +292,7 @@ Dialog {
                 id: sessionBox
                 Layout.fillWidth: true
                 editable: true
-                model: [""].concat(dialog.app.sessionNames)
+                model: [""].concat(dialog.sessionChoices)
             }
 
             Label { text: qsTr("Erinnerung"); color: Theme.textMuted; visible: dialog.kind !== "task" }

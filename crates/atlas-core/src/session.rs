@@ -41,6 +41,14 @@ impl AppState {
         self.projects.truncate(MAX_PROJECTS);
     }
 
+    /// Takes `root` off the list of projects.
+    pub fn forget(&mut self, root: &Path) {
+        self.projects.retain(|p| p != root);
+        if self.last_project.as_deref() == Some(root) {
+            self.last_project = self.projects.first().cloned();
+        }
+    }
+
     pub fn save(&mut self) -> Result<()> {
         self.version = FORMAT_VERSION;
         let data = serde_json::to_vec_pretty(self).context("serialize app state")?;
@@ -151,6 +159,9 @@ mod tests {
         }
         assert_eq!(state.projects.len(), MAX_PROJECTS);
         assert_eq!(state.projects[0], PathBuf::from("/p39"));
+        state.forget(Path::new("/p39"));
+        assert_eq!(state.projects[0], PathBuf::from("/p38"));
+        assert_eq!(state.last_project.as_deref(), Some(Path::new("/p38")));
     }
 
     #[test]

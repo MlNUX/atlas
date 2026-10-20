@@ -197,11 +197,22 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "sessionSummaries"]
         fn session_summaries(self: &AppController) -> QString;
-        /// Sessions of all opened projects (this one first), each with
-        /// `root`, `project` and `active` (the active one of its project).
+        /// The sessions of all opened project folders (one each, this
+        /// project first), each with `root`.
         #[qinvokable]
         #[cxx_name = "allSessions"]
         fn all_sessions(self: &AppController) -> QString;
+
+        /// Names the session of the project in `root` (one session per
+        /// project folder).
+        #[qinvokable]
+        #[cxx_name = "renameProjectSession"]
+        fn rename_project_session(self: Pin<&mut AppController>, root: &QString, name: &QString) -> bool;
+        /// Removes the session of another project from the list (its tabs
+        /// and layout; the folder stays).
+        #[qinvokable]
+        #[cxx_name = "forgetProject"]
+        fn forget_project(self: Pin<&mut AppController>, root: &QString) -> bool;
 
         #[qinvokable]
         #[cxx_name = "renameSession"]
@@ -736,27 +747,20 @@ fn path_of(s: &QString) -> PathBuf {
     PathBuf::from(s.to_string())
 }
 
-/// The sessions of `project` for the session list.
-fn session_entries(project: &Project) -> Vec<serde_json::Value> {
-    let active = project.active_session();
-    let root = project.root().to_string_lossy().into_owned();
-    let name = project.root().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| root.clone());
-    project
-        .list_sessions()
-        .into_iter()
-        .map(|s| {
-            let summary = project.load_named(&s.id).summary();
-            let saved = std::fs::metadata(project.session_path(&s.id))
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs());
-            serde_json::json!({
-                "id": s.id, "name": s.name, "tabs": summary.tabs, "splits": summary.splits,
-                "kind": summary.kind, "saved": saved, "root": root, "project": name, "active": s.id == active,
-            })
-        })
-        .collect()
+/// The session of `project` (one per project folder) for the session
+/// list.
+fn session_entry(project: &Project) -> serde_json::Value {
+    let id = project.active_session();
+    let summary = project.load_named(&id).summary();
+    let saved = std::fs::metadata(project.session_path(&id))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+    serde_json::json!({
+        "id": id, "name": project.session_name(), "tabs": summary.tabs, "splits": summary.splits,
+        "kind": summary.kind, "saved": saved, "root": project.root().to_string_lossy(),
+    })
 }
 
 fn describe(report: &Report) -> String {
@@ -975,10 +979,8 @@ impl qobject::AppController {
         let (mut active, mut active_name) = (String::new(), String::new());
         if let Some(project) = self.project.clone() {
             active = project.active_session();
+            active_name = project.session_name();
             for s in project.list_sessions() {
-                if s.id == active {
-                    active_name = s.name.clone();
-                }
                 ids.append(qs(&s.id));
                 names.append(qs(&s.name));
             }
@@ -1081,23 +1083,68 @@ impl qobject::AppController {
     }
 
     pub fn session_summaries(&self) -> QString {
-        let list = self.project.as_ref().map(|p| session_entries(p)).unwrap_or_default();
+        let list: Vec<_> = self.project.as_deref().map(session_entry).into_iter().collect();
         qs(serde_json::Value::from(list).to_string())
     }
 
     pub fn all_sessions(&self) -> QString {
-        let mut list = self.project.as_ref().map(|p| session_entries(p)).unwrap_or_default();
+        let mut list: Vec<_> = self.project.as_deref().map(session_entry).into_iter().collect();
         if self.persist_session {
             for root in AppState::load().projects {
                 if Some(&root) == self.root.as_ref() || !root.is_dir() {
                     continue;
                 }
                 if let Some(project) = Project::open_existing(&root) {
-                    list.extend(session_entries(&project));
+                    list.push(session_entry(&project));
                 }
             }
         }
         qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn rename_project_session(mut self: Pin<&mut Self>, root: &QString, name: &QString) -> bool {
+        let root = path_of(root);
+        let result = if Some(&root) == self.root.as_ref() {
+            let Some(project) = self.project.clone() else { return false };
+            self.flush_session();
+            project.rename(&name.to_string())
+        } else {
+            match Project::open_existing(&root) {
+                Some(project) => project.rename(&name.to_string()),
+                None => Err(anyhow::anyhow!("{} hat keine Session.", root.display())),
+            }
+        };
+        match result {
+            Ok(()) => {
+                self.refresh_sessions();
+                true
+            }
+            Err(err) => {
+                self.as_mut().session_failed(err);
+                false
+            }
+        }
+    }
+
+    pub fn forget_project(mut self: Pin<&mut Self>, root: &QString) -> bool {
+        let root = path_of(root);
+        if Some(&root) == self.root.as_ref() {
+            return false;
+        }
+        if let Some(project) = Project::open_existing(&root)
+            && let Err(err) = project.clear_sessions()
+        {
+            self.as_mut().session_failed(err);
+            return false;
+        }
+        let mut state = AppState::load();
+        state.forget(&root);
+        if let Err(err) = state.save() {
+            self.as_mut().session_failed(err);
+            return false;
+        }
+        self.sessions_changed();
+        true
     }
 
     pub fn rename_session(mut self: Pin<&mut Self>, id: &QString, name: &QString) -> bool {

@@ -18,8 +18,9 @@ verändert weder PDFs noch Notizen ungefragt.
 
 - **Projektordner** mit Verzeichnisbaum, Dateiansicht (Symbole oder Details),
   Orten wie in Dolphin, Papierkorb sowie Besitzer, Gruppe und Rechten.
-- **Tabs und Splits** mit Ziehen und Ablegen; **Sessions** je Projekt werden
-  automatisch gespeichert.
+- **Tabs und Splits** mit Ziehen und Ablegen. Jeder Projektordner ist eine
+  **Session**: Tabs, Splits und Baum werden automatisch gespeichert, das
+  Sessionmenü wechselt zwischen deinen Ordnern.
 - **Schnellansicht** mit der Leertaste für PDFs, Bilder, Markdown und Code.
 - **PDFs** markieren, kommentieren, mit Lesezeichen versehen und zitieren –
   die PDF selbst bleibt unverändert; Export als Kopie mit Anmerkungen.

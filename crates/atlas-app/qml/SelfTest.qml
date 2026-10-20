@@ -570,7 +570,7 @@ Item {
                 // "Neue Session" asks for the project folder (own dialog).
                 sessionMenu.askNew()
                 check("Neue Session fragt nach dem Projektordner", folderDialog.visible && folderDialog.mode === "session"
-                      && folderDialog.folderPath === app.projectRoot && folderDialog.sessionName.length > 0, folderDialog.folderPath)
+                      && app.projectRoot.indexOf(folderDialog.folderPath) === 0, folderDialog.folderPath)
                 folderDialog.navigate(path("notes"))
             },
             () => {
@@ -595,8 +595,9 @@ Item {
                 folderDialog.accept()
             },
             () => {
-                check("Session im gewählten Projekt angelegt", !folderDialog.visible && app.sessionNames.indexOf("Selbsttest-Session") >= 0
-                      && app.sessionIds[app.sessionNames.indexOf("Selbsttest-Session")] === app.activeSession, app.sessionNames.join(", "))
+                // The folder already has its session: it is named, not doubled.
+                check("Eine Session je Projektordner", !folderDialog.visible && app.activeSessionName === "Selbsttest-Session"
+                      && JSON.parse(app.allSessions()).length === 1, app.activeSessionName + " " + app.allSessions())
                 folderDialog.askProject()
                 check("Projektordner öffnen: eigener Dialog", folderDialog.visible && folderDialog.mode === "open")
                 folderDialog.close()
@@ -978,29 +979,38 @@ Item {
                 window.saveSession()
                 app.flushSession()
                 test.firstRoot = app.projectRoot
-                test.firstSession = app.activeSession
+                test.firstSession = app.activeSessionName
                 test.layoutBefore = app.loadLayout()
-                folderDialog.ask("session", app.projectRoot.replace(/\/[^/]*$/, "/zweites"), "Zweite")
+                folderDialog.ask("session", app.projectRoot.replace(/\/[^/]*$/, "/zweites"), "")
                 folderDialog.accept()
             },
             () => {
-                check("Neue Session im anderen Ordner", app.projectRoot.endsWith("/zweites") && app.activeSessionName === "Zweite", app.projectRoot + " " + app.activeSessionName)
+                check("Neue Session im anderen Ordner, nach ihm benannt", app.projectRoot.endsWith("/zweites") && app.activeSessionName === "zweites", app.projectRoot + " " + app.activeSessionName)
                 editor.open(app.projectRoot + "/texte/start.md", 0, "tab")
                 window.saveSession()
                 app.flushSession()
                 sessionMenu.clicked()
                 const all = sessionMenu.sessions
-                check("Sessionliste enthält beide Projekte", all.some(s => s.root === test.firstRoot && s.id === test.firstSession)
-                      && all.length > 0 && all[0].root === app.projectRoot && all.some(s => s.root === app.projectRoot && s.name === "Zweite"),
-                      JSON.stringify(all.map(s => s.project + "/" + s.name)))
+                check("Sessionliste: ein Eintrag je Ordner", all.length === 2 && all[0].root === app.projectRoot && all[0].name === "zweites"
+                      && all[1].root === test.firstRoot && all[1].name === test.firstSession, JSON.stringify(all.map(s => s.root + ": " + s.name)))
                 sessionMenu.clicked()
                 // A click on the first session: back into its project.
-                sessionMenu.openRequested(test.firstRoot, test.firstSession)
+                sessionMenu.openRequested(test.firstRoot)
             },
             () => {
-                check("Erste Session unverändert", app.projectRoot === test.firstRoot && app.activeSession === test.firstSession
+                check("Erste Session unverändert", app.projectRoot === test.firstRoot && app.activeSessionName === test.firstSession
                       && app.loadLayout() === test.layoutBefore && names().indexOf("idee.md") >= 0 && names().indexOf("start.md") < 0,
                       app.activeSessionName + ": " + names())
+                // A calendar entry names a session: its folder opens.
+                test.before = app.projectRoot.replace(/\/[^/]*$/, "/zweites")
+                window.switchSessionByName("zweites")
+            },
+            () => {
+                check("Kalender: „In Session wechseln“ öffnet ihren Ordner", app.projectRoot === test.before, app.projectRoot)
+                window.openProject(test.firstRoot)
+                check("Offene Session lässt sich nicht entfernen", !app.forgetProject(test.firstRoot))
+                check("Andere Session aus der Liste entfernt", app.forgetProject(test.before)
+                      && JSON.parse(app.allSessions()).length === 1, app.allSessions())
             },
         ]
         timer.start()

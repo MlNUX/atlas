@@ -217,6 +217,28 @@ impl Project {
         self.write(id, &session)
     }
 
+    /// Name of the project's session (one per project folder): the name
+    /// it was given, otherwise the folder name.
+    pub fn session_name(&self) -> String {
+        let name = self.load_named(&self.active_session()).name;
+        if name.is_empty() || name == DEFAULT_NAME {
+            self.root().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into())
+        } else {
+            name
+        }
+    }
+
+    /// Names the project's session.
+    pub fn rename(&self, name: &str) -> Result<()> {
+        self.rename_session(&self.active_session(), name)
+    }
+
+    /// Removes the sessions of this device (open tabs, layout); the files of
+    /// the project stay.
+    pub fn clear_sessions(&self) -> Result<()> {
+        std::fs::remove_dir_all(self.sessions_dir()).context("Session konnte nicht gelöscht werden")
+    }
+
     /// Deletes a session. The active session cannot be deleted: activate
     /// another one first.
     pub fn delete_session(&self, id: &str) -> Result<()> {
@@ -233,6 +255,21 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_session_named_after_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("Hausarbeit");
+        std::fs::create_dir(&root).unwrap();
+        let p = Project::open_as(&root, "dev").unwrap();
+        assert_eq!(p.session_name(), "Hausarbeit");
+        p.rename("Seminar").unwrap();
+        assert_eq!(p.session_name(), "Seminar");
+        assert_eq!(p.list_sessions().len(), 1);
+        p.clear_sessions().unwrap();
+        assert!(!p.sessions_dir().exists());
+        assert_eq!(p.session_name(), "Hausarbeit", "a fresh session again");
+    }
 
     fn project() -> (tempfile::TempDir, Project) {
         let dir = tempfile::tempdir().unwrap();

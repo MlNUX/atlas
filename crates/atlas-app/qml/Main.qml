@@ -92,17 +92,15 @@ ApplicationWindow {
         reminders = list
     }
 
-    /// "In Session wechseln": saves the current session and opens the one
-    /// called `name` (created empty if there is none yet).
+    /// "In Session wechseln": saves the current session and opens the
+    /// project folder of the session called `name`.
     function switchSessionByName(name) {
-        const i = app.sessionNames.indexOf(name)
-        if (i >= 0) {
-            if (app.sessionIds[i] === app.activeSession) fileActions.showMessage(qsTr("Session „%1“ ist bereits aktiv").arg(name))
-            else switchSession(app.sessionIds[i])
-        } else {
-            createSession(name, false)
-            fileActions.showMessage(qsTr("Session „%1“ neu angelegt").arg(name))
-        }
+        let sessions = []
+        try { sessions = JSON.parse(app.allSessions()) } catch (e) {}
+        const s = sessions.find(s => s.name === name)
+        if (!s) fileActions.showMessage(qsTr("Keine Session „%1“ – zuerst über „Neue Session“ einen Ordner wählen").arg(name))
+        else if (s.root === app.projectRoot) fileActions.showMessage(qsTr("Session „%1“ ist bereits aktiv").arg(name))
+        else openProject(s.root)
     }
 
     // Reminders appear while Atlas runs.
@@ -202,9 +200,10 @@ ApplicationWindow {
             if (app.fileKind(current) === "markdown")
                 list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
         }
-        for (let i = 0; i < app.sessionIds.length; ++i) {
-            const id = app.sessionIds[i]
-            if (id !== app.activeSession) list.push({ name: qsTr("Session wechseln: %1").arg(app.sessionNames[i]), run: () => window.switchSession(id) })
+        let sessions = []
+        try { sessions = JSON.parse(app.allSessions()) } catch (e) {}
+        for (const s of sessions) {
+            if (s.root !== app.projectRoot) list.push({ name: qsTr("Session wechseln: %1").arg(s.name), hint: s.root, run: () => window.openProject(s.root) })
         }
         // User defined actions: for the active document, then for the project.
         const seen = {}
@@ -304,11 +303,10 @@ ApplicationWindow {
         function askProject() { ask("open", app.projectRoot ? parentOf(app.projectRoot) : "", "") }
         function parentOf(path) { const i = path.lastIndexOf("/"); return i > 0 ? path.slice(0, i) : "/" }
         onChosen: (path, name) => {
-            if (mode === "open") { window.openProject(path); return }
-            // A new session always belongs to the chosen project folder.
-            if (path !== app.projectRoot && !window.openProject(path)) return
-            window.createSession(name, false)
-            fileActions.showMessage(qsTr("Session „%1“ in %2 angelegt").arg(name).arg(app.projectName))
+            // The session of a folder is opened with it; a new name names it.
+            if (!window.openProject(path)) return
+            if (mode === "session" && name && name !== app.activeSessionName) app.renameProjectSession(app.projectRoot, name)
+            if (mode === "session") fileActions.showMessage(qsTr("Session „%1“ – %2").arg(app.activeSessionName).arg(app.projectRoot))
         }
     }
 
@@ -413,19 +411,8 @@ ApplicationWindow {
         app.saveSession(JSON.stringify(currentLayout()), treeModel.expandedDirs(), editor.documents())
     }
 
-    /// Saves the active session, then activates `id` and applies its layout.
-    function switchSession(id) {
-        if (id === app.activeSession) return
-        app.requestSaveAll()
-        saveSession()
-        if (!app.switchSession(id)) return
-        restoring = true
-        applyLayout(readLayout())
-        restoring = false
-    }
-
-    /// Opens another project folder; the session of the current one is
-    /// saved first.
+    /// Opens another project folder and so its session (one per folder);
+    /// the session of the current one is saved first.
     function openProject(path) {
         if (path === app.projectRoot) return true
         app.requestSaveAll()
@@ -434,28 +421,6 @@ ApplicationWindow {
         return app.openProject(path)
     }
 
-    /// Activates session `id` of the project in `root` (opening it first).
-    function openSession(root, id) {
-        if (root !== app.projectRoot && !openProject(root)) return
-        switchSession(id)
-    }
-
-    function createSession(name, duplicate) {
-        saveSession()
-        const id = app.createSession(name, duplicate ? JSON.stringify(currentLayout()) : "",
-                                     duplicate ? treeModel.expandedDirs() : [])
-        if (id) switchSession(id)
-    }
-
-    /// The active session is deleted only after another one is active.
-    function deleteSession(id) {
-        if (id === app.activeSession) {
-            const other = app.sessionIds.find(s => s !== id)
-            if (other) switchSession(other)
-            else createSession(qsTr("Neue Session"), false)
-        }
-        if (id !== app.activeSession) app.deleteSession(id)
-    }
 
     Dialog {
         id: sessionError
@@ -729,12 +694,9 @@ ApplicationWindow {
                     app: app
                     activeTabs: editor.groups.reduce((n, g) => n + g.tabs.length, 0)
                     activeSplits: editor.groups.filter(g => g.tabs.length > 0).length
-                    onSwitchRequested: (id) => window.switchSession(id)
-                    onOpenRequested: (projectRoot, id) => window.openSession(projectRoot, id)
-                    onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
-                    onNewSessionRequested: (name) => folderDialog.ask("session", app.projectRoot, name || qsTr("Neue Session"))
+                    onOpenRequested: (projectRoot) => window.openProject(projectRoot)
+                    onNewSessionRequested: (name) => folderDialog.ask("session", app.projectRoot ? folderDialog.parentOf(app.projectRoot) : "", name)
                     onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }
-                    onDeleteRequested: (id) => window.deleteSession(id)
                 }
                 IconButton {
                     id: terminalButton
