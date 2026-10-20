@@ -397,7 +397,7 @@ Oberfläche an das dunkle „Navy“-Mockup angeglichen (Screenshot:
   „3 Tabs · 2 Splits“, aktive Session markiert („Automatisch gespeichert“),
   sonst Zeit der letzten Speicherung; ⋮ je Session zum Umbenennen und
   Löschen; unten „Neue Session“ (mit ⋮: Umbenennen, Session speichern,
-  Löschen) und „Aktuelle duplizieren“.
+  Löschen).
 - Arbeitsleiste mit Suchsymbol und farbigen Dateisymbolen.
 - `--screenshot-dialog NAME` öffnet einen Dialog für Design-Screenshots.
 
@@ -641,3 +641,5 @@ stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).
 - Der Knopf „Projektordner öffnen“ unten links ist entfernt; Projekte
   öffnen weiter über das Menü oben rechts, die Befehlspalette, Strg+O und
   „Neue Session“ im Sessionmenü.
+
+- Im Sessionmenü ist „Aktuelle duplizieren“ entfernt.

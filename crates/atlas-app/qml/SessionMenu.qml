@@ -231,11 +231,6 @@ AbstractButton {
                         onClicked: activeMenu.popup(moreButton, moreButton.width - activeMenu.width + 40, moreButton.height + 4)
                     }
                 }
-                PanelAction {
-                    icon: "split"
-                    text: qsTr("Aktuelle duplizieren")
-                    onTriggered: { panel.close(); nameDialog.ask(qsTr("Session duplizieren"), qsTr("%1 (Kopie)").arg(root.app.activeSessionName), "duplicate", "") }
-                }
             }
         }
     }
@@ -279,7 +274,7 @@ AbstractButton {
 
     Dialog {
         id: nameDialog
-        /// "new", "duplicate" or "rename".
+        /// "new" or "rename".
         property string mode: "new"
         property string targetId
         anchors.centerIn: Overlay.overlay
@@ -307,8 +302,7 @@ AbstractButton {
             anchors.fill: parent
             spacing: 10
             Label {
-                text: nameDialog.mode === "duplicate" ? qsTr("Übernimmt Tabs, Splits und Positionen der aktuellen Session.")
-                    : nameDialog.mode === "new" ? qsTr("Beginnt mit einer leeren Arbeitsanordnung.") : ""
+                text: nameDialog.mode === "new" ? qsTr("Beginnt mit einer leeren Arbeitsanordnung.") : ""
                 visible: text.length > 0
                 color: Theme.textMuted
                 wrapMode: Text.Wrap
