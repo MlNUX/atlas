@@ -565,3 +565,15 @@ Tastatur); der Rauchtest schickt jetzt auch Rad-Ereignisse eines solchen
   Takte auf ihr Ergebnis (`waitFor`), statt nach festen 1,5 s zu prüfen.
 - Rauchtest: Zeitlimit des Skripts auf 300 s (bei 120 s brach der
   gewachsene Selbsttest kurz vor dem Ende ab).
+
+### Nachtrag – aufgeräumtes Kontextmenü
+
+Das Rechtsklick-Menü für Dateien und Ordner zeigt nur noch, was passt:
+keine ausgegrauten Einträge mehr (Ausschneiden/Kopieren/Umbenennen/
+Papierkorb nur mit Auswahl, Einfügen nur bei Dateien in der Zwischenablage,
+„Anzeigen mit“/„Exportieren als“/„Aktionen“ nur mit Einträgen), „Im
+Editor öffnen“ nur bei Text und Markdown. Entfernt: „Terminal als Tab
+öffnen“ (doppelt zu „Terminal hier öffnen“), „Externen Editor festlegen
+…“ sowie „Projekt-/Globale Aktionen bearbeiten …“ und „Erweiterungen …“
+aus dem Aktionen-Untermenü – diese stehen jetzt im Dialog Einstellungen.
+Rauchtest prüft die Einträge für PDF, Notiz und leere Fläche.

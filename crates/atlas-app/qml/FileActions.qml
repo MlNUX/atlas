@@ -280,6 +280,11 @@ Item {
         menu.actionList = actionsFor(paths)
         menu.processorList = paths.length === 1 ? processorsFor(paths[0]) : []
         menu.exporterList = exportersFor(paths)
+        menu.canPaste = canPaste()
+        // Submenus without entries are left out.
+        menu.showSubmenu(actionsMenu, menu.actionList.length > 0)
+        menu.showSubmenu(viewMenu, menu.processorList.length > 0)
+        menu.showSubmenu(exportMenu, menu.exporterList.length > 0)
         menu.popup()
     }
 
@@ -294,6 +299,27 @@ Item {
         property var exporterList: []
         readonly property bool single: paths.length === 1
         readonly property bool any: paths.length > 0
+        property bool canPaste: false
+        /// Only what applies is shown (nothing greyed out).
+        readonly property bool textFile: single && ["markdown", "text"].indexOf(app.fileKind(paths[0])) >= 0
+        function showSubmenu(sub, on) {
+            for (let i = 0; i < count; ++i) {
+                const item = itemAt(i)
+                if (item && item.subMenu === sub) {
+                    item.visible = on
+                    item.height = on ? item.implicitHeight : 0
+                }
+            }
+        }
+        /// Texts of the shown entries (for the smoke test).
+        function shownEntries() {
+            const out = []
+            for (let i = 0; i < count; ++i) {
+                const item = itemAt(i)
+                if (item && item.visible && item.text) out.push(item.text.split("\t")[0])
+            }
+            return out
+        }
         /// The clicked folder, or the folder the menu was opened in.
         function terminalDir() { return single && ops.isDir(paths[0]) ? paths[0] : dir }
 
@@ -311,7 +337,7 @@ Item {
         }
         MenuItem {
             text: qsTr("Im Editor öffnen")
-            visible: menu.single && !ops.isDir(menu.paths[0])
+            visible: menu.textFile
             height: visible ? implicitHeight : 0
             onTriggered: actions.openInEditor(menu.paths[0], 0)
         }
@@ -319,10 +345,6 @@ Item {
         MenuItem {
             text: qsTr("Terminal hier öffnen")
             onTriggered: actions.openTerminalRequested(menu.terminalDir(), "panel")
-        }
-        MenuItem {
-            text: qsTr("Terminal als Tab öffnen")
-            onTriggered: actions.openTerminalRequested(menu.terminalDir(), "tab")
         }
         Menu {
             id: actionsMenu
@@ -339,21 +361,10 @@ Item {
                 onObjectAdded: (index, object) => actionsMenu.insertItem(index, object)
                 onObjectRemoved: (index, object) => actionsMenu.removeItem(object)
             }
-            MenuItem {
-                text: qsTr("Keine passende Aktion")
-                enabled: false
-                visible: menu.actionList.length === 0
-                height: visible ? implicitHeight : 0
-            }
-            MenuSeparator {}
-            MenuItem { text: qsTr("Projektaktionen bearbeiten …"); enabled: !!app.projectRoot; onTriggered: actions.editActions(false) }
-            MenuItem { text: qsTr("Globale Aktionen bearbeiten …"); onTriggered: actions.editActions(true) }
-            MenuItem { text: qsTr("Erweiterungen …"); onTriggered: actions.extensionsRequested() }
         }
         Menu {
             id: viewMenu
             title: qsTr("Anzeigen mit")
-            enabled: menu.processorList.length > 0
             Instantiator {
                 model: menu.processorList
                 delegate: MenuItem {
@@ -368,7 +379,6 @@ Item {
         Menu {
             id: exportMenu
             title: qsTr("Exportieren als")
-            enabled: menu.exporterList.length > 0
             Instantiator {
                 model: menu.exporterList
                 delegate: MenuItem {
@@ -395,13 +405,13 @@ Item {
         MenuSeparator {}
         MenuItem { text: qsTr("Neue Datei …"); onTriggered: actions.newFile(menu.dir) }
         MenuItem { text: qsTr("Neuer Ordner …"); onTriggered: actions.newFolder(menu.dir) }
-        MenuSeparator {}
-        MenuItem { text: qsTr("Ausschneiden\tStrg+X"); enabled: menu.any; onTriggered: actions.cut(menu.paths) }
-        MenuItem { text: qsTr("Kopieren\tStrg+C"); enabled: menu.any; onTriggered: actions.copy(menu.paths) }
-        MenuItem { text: qsTr("Einfügen\tStrg+V"); enabled: actions.canPaste(); onTriggered: actions.paste(menu.dir) }
-        MenuSeparator {}
-        MenuItem { text: qsTr("Umbenennen …\tF2"); enabled: menu.single; onTriggered: actions.rename(menu.paths[0]) }
-        MenuItem { text: qsTr("Pfad kopieren"); enabled: menu.any; onTriggered: actions.copyPaths(menu.paths) }
+        MenuSeparator { visible: menu.any || menu.canPaste; height: visible ? implicitHeight : 0 }
+        MenuItem { text: qsTr("Ausschneiden\tStrg+X"); visible: menu.any; height: visible ? implicitHeight : 0; onTriggered: actions.cut(menu.paths) }
+        MenuItem { text: qsTr("Kopieren\tStrg+C"); visible: menu.any; height: visible ? implicitHeight : 0; onTriggered: actions.copy(menu.paths) }
+        MenuItem { text: qsTr("Einfügen\tStrg+V"); visible: menu.canPaste; height: visible ? implicitHeight : 0; onTriggered: actions.paste(menu.dir) }
+        MenuSeparator { visible: menu.any; height: visible ? implicitHeight : 0 }
+        MenuItem { text: qsTr("Umbenennen …\tF2"); visible: menu.single; height: visible ? implicitHeight : 0; onTriggered: actions.rename(menu.paths[0]) }
+        MenuItem { text: qsTr("Pfad kopieren"); visible: menu.any; height: visible ? implicitHeight : 0; onTriggered: actions.copyPaths(menu.paths) }
         MenuItem {
             text: qsTr("Mit Standardprogramm öffnen")
             visible: menu.single
@@ -420,11 +430,11 @@ Item {
             height: visible ? implicitHeight : 0
             onTriggered: actions.showProperties(menu.paths[0])
         }
-        MenuSeparator {}
-        MenuItem { text: qsTr("In den Papierkorb\tEntf"); enabled: menu.any; onTriggered: actions.trash(menu.paths) }
-        MenuSeparator {}
-        MenuItem { text: qsTr("Externen Editor festlegen …"); onTriggered: actions.configureEditor() }
+        MenuSeparator { visible: menu.any; height: visible ? implicitHeight : 0 }
+        MenuItem { text: qsTr("In den Papierkorb\tEntf"); visible: menu.any; height: visible ? implicitHeight : 0; onTriggered: actions.trash(menu.paths) }
     }
+    /// The file context menu (for the smoke test).
+    readonly property alias contextMenu: menu
 
     // --------------------------------------------------------------- dialogs
 

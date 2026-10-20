@@ -809,6 +809,26 @@ Item {
                 const open = editor.groups.some(g => g.tabs.some(t => t.kind === "calendar"))
                 check("Kalender-Knopf schließt", !open && (!editor.activeTab || editor.activeTab.kind !== "calendar"), names())
             },
+            () => {
+                // Context menu: only what applies, no settings, no duplicates.
+                const m = fileActions.contextMenu
+                fileActions.showMenu([path("docs/umbenannt.pdf")], path("docs"))
+                const pdf = m.shownEntries()
+                m.close()
+                check("Kontextmenü PDF: nur Passendes", pdf.indexOf("Öffnen") >= 0 && pdf.indexOf("Umbenennen …") >= 0
+                      && pdf.indexOf("In den Papierkorb") >= 0 && pdf.indexOf("Im Editor öffnen") < 0
+                      && pdf.indexOf("Terminal als Tab öffnen") < 0 && pdf.indexOf("Externen Editor festlegen …") < 0, pdf.join(" | "))
+                fileActions.showMenu([path("notes/idee.md")], path("notes"))
+                const md = m.shownEntries()
+                m.close()
+                check("Kontextmenü Notiz: externer Editor", md.indexOf("Im Editor öffnen") >= 0 && md.indexOf("Checkliste als Aufgaben übernehmen …") >= 0, md.join(" | "))
+                fileActions.showMenu([], path("notes"))
+                const empty = m.shownEntries()
+                m.close()
+                check("Kontextmenü leere Fläche: keine Datei-Befehle", empty.indexOf("Neue Datei …") >= 0 && empty.indexOf("Terminal hier öffnen") >= 0
+                      && ["Öffnen", "Umbenennen …", "Kopieren", "Ausschneiden", "In den Papierkorb", "Pfad kopieren"].every(t => empty.indexOf(t) < 0),
+                      empty.join(" | "))
+            },
         ]
         timer.start()
     }
