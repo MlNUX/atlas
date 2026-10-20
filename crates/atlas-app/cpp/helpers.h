@@ -39,6 +39,9 @@ bool saveWindowImage(QObject* window, const QString& path);
 // (x, y), with Ctrl if `ctrl`; for the smoke test.
 void sendWheel(QObject* window, double x, double y, int delta, int flags);
 
+// File suffixes of the image formats Qt can read here (lower case).
+QStringList imageFormats();
+
 // Makes `owner` the QObject parent of `object` (its lifetime owner),
 // independent of the visual parent.
 void setOwner(QObject* object, QObject* owner);

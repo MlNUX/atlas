@@ -50,6 +50,8 @@ pub mod qobject {
         #[qproperty(QStringList, place_names, cxx_name = "placeNames", READ, NOTIFY = places_changed)]
         #[qproperty(QStringList, place_paths, cxx_name = "placePaths", READ, NOTIFY = places_changed)]
         #[qproperty(QStringList, place_icons, cxx_name = "placeIcons", READ, NOTIFY = places_changed)]
+        /// Image formats Qt can read here (file suffixes, lower case).
+        #[qproperty(QStringList, image_formats, cxx_name = "imageFormats", READ, CONSTANT)]
         /// How many of the places are Atlas' fixed ones (0: Dolphin's).
         #[qproperty(i32, fixed_place_count, cxx_name = "fixedPlaceCount", READ, NOTIFY = places_changed)]
         /// Setting `[places] file_manager` (saved when changed).
@@ -513,6 +515,7 @@ pub struct AppControllerRust {
     place_names: QStringList,
     place_paths: QStringList,
     place_icons: QStringList,
+    image_formats: QStringList,
     fixed_place_count: i32,
     file_manager_places: bool,
     /// Watches the file managers' places files.
@@ -577,6 +580,7 @@ impl Default for AppControllerRust {
             place_names: QStringList::default(),
             place_paths: QStringList::default(),
             place_icons: QStringList::default(),
+            image_formats: crate::qt_helpers::image_formats(),
             fixed_place_count: 0,
             file_manager_places: Config::load().places.file_manager,
             places_watcher: None,

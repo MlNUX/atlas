@@ -130,6 +130,7 @@ cat > "$project/docs/seite.html" <<'HTML'
 <script>document.getElementById("js").textContent = "mit Skript"</script></body></html>
 HTML
 printf 'h1 { color: rgb(1, 2, 3); }\n' > "$project/docs/seite.css"
+printf '<!doctype html><title>Web</title><script src="https://cdn.example.invalid/sql-wasm.js"></script><p>x</p>\n' > "$project/docs/web.html"
 echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"

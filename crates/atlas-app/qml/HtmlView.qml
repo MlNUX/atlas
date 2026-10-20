@@ -8,14 +8,19 @@ import QtWebEngine
 import Atlas
 
 // An HTML file rendered (action "Als Webseite anzeigen"). Reloads when the
-// file is saved. Pages may run scripts and load files next to them, but not
-// reach the network; links to other sites open in the system browser.
+// file is saved. Pages may run scripts and load files next to them, but
+// reach the network only when allowed for this file (a page referring to
+// web resources says so); links to other sites open in the system browser.
 Rectangle {
     id: root
     required property AppController app
     property var actions: null
     required property string source
     property real zoom: 1
+    /// Network access for this file (asked, kept in the session).
+    property bool allowRemote: false
+    /// The page refers to scripts, styles or images on the web.
+    property bool usesRemote: false
 
     /// Back to the source in this tab.
     signal showSourceRequested()
@@ -26,14 +31,23 @@ Rectangle {
     readonly property alias webItem: web
     property real modified: 0
 
-    function viewState() { return { processor: "atlas:html", zoom: root.zoom } }
-    function applyState(state) { if (state.zoom) root.zoom = state.zoom }
+    function viewState() { return { processor: "atlas:html", zoom: root.zoom, remote: root.allowRemote } }
+    function applyState(state) {
+        if (state.zoom) root.zoom = state.zoom
+        if (state.remote !== undefined) root.allowRemote = !!state.remote
+    }
+    function checkRemote() {
+        const text = root.app.readTextFile(root.source) || ""
+        usesRemote = /<(script|link|img|iframe|source|video|audio)\b[^>]*\b(src|href)\s*=\s*["']?(https?:)?\/\//i.test(text)
+            || /@import\s+(url\()?["']?https?:/i.test(text)
+    }
+    onAllowRemoteChanged: web.reload()
     function reload() { web.reload() }
 
     function modifiedTime() {
         try { return JSON.parse(root.actions.ops.properties(root.source)).modified || 0 } catch (e) { return 0 }
     }
-    Component.onCompleted: modified = modifiedTime()
+    Component.onCompleted: { modified = modifiedTime(); checkRemote() }
 
     // Saved in an editor (Atlas or another): show the new version.
     Timer {
@@ -44,6 +58,7 @@ Rectangle {
             const m = root.modifiedTime()
             if (m && m !== root.modified) {
                 root.modified = m
+                root.checkRemote()
                 web.reload()
             }
         }
@@ -85,6 +100,19 @@ Rectangle {
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
         }
 
+        // Web resources are blocked unless allowed for this file.
+        Banner {
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? 36 : 0
+            visible: root.usesRemote && !root.allowRemote
+            tone: Theme.warn
+            message: qsTr("Die Seite lädt Inhalte aus dem Internet (Skripte, Stylesheets, Bilder) – blockiert, sie kann unvollständig sein.")
+            actions: [
+                { text: qsTr("Trotzdem laden"), run: () => root.allowRemote = true },
+                { text: qsTr("Im Browser öffnen"), run: () => Qt.openUrlExternally(root.fileUrl) },
+            ]
+        }
+
         WebEngineView {
             id: web
             Layout.fillWidth: true
@@ -94,7 +122,7 @@ Rectangle {
             backgroundColor: "white"
             settings.javascriptEnabled: true
             settings.localContentCanAccessFileUrls: true
-            settings.localContentCanAccessRemoteUrls: false
+            settings.localContentCanAccessRemoteUrls: root.allowRemote
             settings.javascriptCanOpenWindows: false
             settings.focusOnNavigationEnabled: false
             // Local pages (also linked ones) stay here; the web goes to the

@@ -870,6 +870,17 @@ Item {
                 const v = editor.activeTab.viewerItem
                 if (waitFor(() => v.webItem && v.webItem.title === "Neu geladen")) return
                 check("HTML lädt beim Speichern neu", v.webItem.title === "Neu geladen", v.webItem.title)
+                check("Eigene Seite ohne Netz-Hinweis", !v.usesRemote)
+                // A page loading from the web: blocked, with the choice.
+                fileActions.renderHtml(path("docs/web.html"))
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Seite mit Web-Inhalten: Hinweis", v.usesRemote && !v.allowRemote, v.usesRemote + " " + v.allowRemote)
+                v.allowRemote = true
+                check("„Trotzdem laden“ gilt für die Datei", editor.activeTab.viewState().remote === true, JSON.stringify(editor.activeTab.viewState()))
+                // Thumbnails only for formats Qt reads here.
+                check("Bildformate von Qt", app.imageFormats.indexOf("png") >= 0 && app.imageFormats.indexOf("jpg") >= 0, app.imageFormats.join(","))
             },
         ]
         timer.start()

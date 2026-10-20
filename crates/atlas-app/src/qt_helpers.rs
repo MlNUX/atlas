@@ -46,6 +46,8 @@ pub mod ffi {
         unsafe fn send_wheel(window: *mut QObject, x: f64, y: f64, delta: i32, flags: i32);
         #[cxx_name = "setOwner"]
         unsafe fn set_owner(object: *mut QObject, owner: *mut QObject);
+        #[cxx_name = "imageFormats"]
+        fn image_formats() -> QStringList;
         #[cxx_name = "postMouse"]
         unsafe fn post_mouse(window: *mut QObject, kind: i32, x: f64, y: f64, delay_ms: i32);
     }

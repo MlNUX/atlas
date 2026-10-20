@@ -591,3 +591,12 @@ Skripte ausführen und Dateien neben sich laden (CSS, Bilder), aber nicht
 ins Netz; Links auf Webseiten öffnen den System-Browser, lokale Links
 bleiben in der Ansicht. Rauchtest: Rendern mit Skript und CSS, Umschalten
 im selben Tab, Session, Neuladen nach Änderung.
+
+- Nachtrag: Lädt eine Seite Skripte, Stylesheets oder Bilder aus dem
+  Internet (z. B. sql.js von einem CDN), zeigt die Ansicht einen Hinweis
+  mit „Trotzdem laden“ (Netzzugriff nur für diese Datei, in der Session
+  gemerkt) und „Im Browser öffnen“ – vorher fehlte das stillschweigend
+  („initSqlJs is not defined“).
+- WebP, TIFF & Co.: `qtimageformats` gehört jetzt zu den Qt-Paketen; die
+  Dateiansicht zeigt Vorschaubilder nur für Formate, die Qt lesen kann
+  (`imageFormats`), statt „Error decoding … .webp“ zu melden.
