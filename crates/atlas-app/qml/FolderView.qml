@@ -176,7 +176,12 @@ Rectangle {
     readonly property int kindWidth: width < 600 ? 0 : 150
 
     /// Icon of an entry: images show themselves (like Dolphin's previews).
-    function isImage(name) { return /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(name) }
+    /// Only formats Qt can read here get a preview (e.g. WebP needs the
+    /// qtimageformats plugin); others keep their icon.
+    function isImage(name) {
+        const dot = name.lastIndexOf(".")
+        return dot > 0 && !!root.app && root.app.imageFormats.indexOf(name.slice(dot + 1).toLowerCase()) >= 0
+    }
 
     ColumnLayout {
         anchors.fill: parent

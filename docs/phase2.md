@@ -397,7 +397,7 @@ Oberfläche an das dunkle „Navy“-Mockup angeglichen (Screenshot:
   „3 Tabs · 2 Splits“, aktive Session markiert („Automatisch gespeichert“),
   sonst Zeit der letzten Speicherung; ⋮ je Session zum Umbenennen und
   Löschen; unten „Neue Session“ (mit ⋮: Umbenennen, Session speichern,
-  Löschen) und „Aktuelle duplizieren“.
+  Löschen).
 - Arbeitsleiste mit Suchsymbol und farbigen Dateisymbolen.
 - `--screenshot-dialog NAME` öffnet einen Dialog für Design-Screenshots.
 
@@ -536,3 +536,110 @@ Pixel-Deltas aus. Gefunden mit echten Wayland-Ereignissen (sway headless,
 virtuelle Maus über das wlroots-Protokoll, Strg über eine virtuelle
 Tastatur); der Rauchtest schickt jetzt auch Rad-Ereignisse eines solchen
 „Touchpad“-Geräts und Rasten in Scroll-Phasen.
+
+### Nachtrag – Kalender-Knopf, Menüs, Zitate im Projekt
+
+- **Kalender-Knopf** schaltet: Ist der Kalender der aktive Tab, schließt
+  ein Klick ihn; sonst öffnet bzw. zeigt er ihn.
+- **Menüs** messen Breite und Höhe an ihren Einträgen: Texte wurden
+  abgeschnitten („Projektordner öffne…“), und die geschätzte Höhe ließ
+  einen Eintrag („Einstellungen …“) wegfallen. Kürzel und gesperrte
+  Einträge sind besser lesbar.
+- **Verknüpfungen: „Zitate im Projekt“** neben „Dieses Dokument“: alle
+  markierten Textstellen aller PDFs des Projekts (nach PDF und Seite, mit
+  Farbe und Kommentar) und wo Notizen sie zitieren („zitiert in …, Z. 10“
+  bzw. „noch in keiner Notiz zitiert“); eine gelöschte Markierung
+  verschwindet, auch wenn eine Notiz sie noch zitiert. Klick springt zur Markierung in der PDF, „Notiz ↗“
+  zur zitierenden Notiz; Textfilter. Die Liste folgt dem Anmerkungsspeicher
+  (Dateiüberwachung, `annotationsRevision`), eine neue Markierung erscheint
+  also gleich – auch nach dem Schließen der PDF. Zitate in der
+  Dokument-Ansicht zeigen jetzt den Zitattext.
+- Behoben: Ohne Tags und Art-Filter nahm die leere Filterzeile der Liste
+  den Platz weg (Layouts dehnen sich standardmäßig) – die Zitate waren
+  vorhanden, aber nicht zu sehen.
+- Behoben: Wurde das App-Passwort kurz hintereinander zweimal gemerkt,
+  schrieben zwei Threads dieselbe temporäre Datei („cannot replace …“),
+  oder ein älteres Passwort gewann. Speichern und Vergessen laufen jetzt
+  nacheinander, ein neuerer Auftrag verdrängt einen wartenden älteren.
+- Selbsttest: Schritte mit Hintergrundarbeit warten jetzt bis zu acht
+  Takte auf ihr Ergebnis (`waitFor`), statt nach festen 1,5 s zu prüfen.
+- Rauchtest: Zeitlimit des Skripts auf 300 s (bei 120 s brach der
+  gewachsene Selbsttest kurz vor dem Ende ab).
+
+### Nachtrag – aufgeräumtes Kontextmenü
+
+Das Rechtsklick-Menü für Dateien und Ordner zeigt nur noch, was passt:
+keine ausgegrauten Einträge mehr (Ausschneiden/Kopieren/Umbenennen/
+Papierkorb nur mit Auswahl, Einfügen nur bei Dateien in der Zwischenablage,
+„Anzeigen mit“/„Exportieren als“/„Aktionen“ nur mit Einträgen), „Im
+Editor öffnen“ nur bei Text und Markdown. Entfernt: „Terminal als Tab
+öffnen“ (doppelt zu „Terminal hier öffnen“), „Externen Editor festlegen
+…“ sowie „Projekt-/Globale Aktionen bearbeiten …“ und „Erweiterungen …“
+aus dem Aktionen-Untermenü – diese stehen jetzt im Dialog Einstellungen.
+Rauchtest prüft die Einträge für PDF, Notiz und leere Fläche.
+
+### Nachtrag – HTML als Webseite anzeigen
+
+Eingebaute Aktion **„Als Webseite anzeigen“** für `.html`/`.htm`/`.xhtml`:
+im Rechtsklick-Menü, unter „Aktionen“ in der Kontextleiste und in der
+Befehlspalette. Die Datei erscheint gerendert (QtWebEngine, `HtmlView`) –
+im selben Tab, wenn ihr Quelltext schon offen ist; „Quelltext anzeigen“
+schaltet zurück. Leiste mit Zoom, Neu laden (F5), Quelltext und „Im
+Browser öffnen“; gespeicherte Änderungen (auch aus anderen Editoren)
+laden die Seite neu. Die Ansicht steht in der Session. Seiten dürfen
+Skripte ausführen und Dateien neben sich laden (CSS, Bilder), aber nicht
+ins Netz; Links auf Webseiten öffnen den System-Browser, lokale Links
+bleiben in der Ansicht. Rauchtest: Rendern mit Skript und CSS, Umschalten
+im selben Tab, Session, Neuladen nach Änderung.
+
+- Nachtrag: Lädt eine Seite Skripte, Stylesheets oder Bilder aus dem
+  Internet (z. B. sql.js von einem CDN), zeigt die Ansicht einen Hinweis
+  mit „Trotzdem laden“ (Netzzugriff nur für diese Datei, in der Session
+  gemerkt) und „Im Browser öffnen“ – vorher fehlte das stillschweigend
+  („initSqlJs is not defined“).
+- WebP, TIFF & Co.: `qtimageformats` gehört jetzt zu den Qt-Paketen; die
+  Dateiansicht zeigt Vorschaubilder nur für Formate, die Qt lesen kann
+  (`imageFormats`), statt „Error decoding … .webp“ zu melden.
+- Seitenfehler (auch aus eingebetteten Rahmen wie `iframe srcdoc`) stehen
+  in der Ansicht statt als `js:`-Zeilen im Terminal; der Netz-Hinweis nennt
+  den Fehler, der durch die Blockade entsteht („initSqlJs is not defined“).
+  Erkannt werden auch per Skript nachgeladene Inhalte (`.src = "https://…"`,
+  `fetch`, `import`). Geprüft mit einem lokalen HTTP-Server: Nach „Trotzdem
+  laden“ laden auch eingebettete Werkzeuge ihre Skripte.
+
+### Nachtrag – Hinweis „PDF verändert“
+
+Atlas merkt sich zu den Anmerkungen einer PDF deren Prüfsumme (BLAKE3 des
+Inhalts). Weicht sie beim Öffnen ab, wurde die PDF inzwischen verändert
+(neu erzeugt, überschrieben, bearbeitet) und Markierungen könnten nicht
+mehr auf dem richtigen Text liegen. Der Hinweis nennt jetzt die Zahl der
+Anmerkungen und erscheint nur, wenn es welche gibt; „Verstanden“ übernimmt
+die neue Fassung.
+
+### Nachtrag – Projektordner nicht einklappbar
+
+Die Zeile des Projektordners im Baum klappt nichts mehr ein (kein Pfeil,
+Rechtsklick-Menü bleibt): eingeklappt rutschte sie ans untere Ende der
+Seitenleiste und ließ eine große Lücke. Unterordner klappen wie bisher.
+
+### Nachtrag – Reiter der Kontextleiste
+
+Die Reiter (Anmerkungen, Verknüpfungen, Lokaler Graph, Aktionen) werden
+nicht mehr gekürzt („Anmerkung…“): Sie bleiben ausgeschrieben; reicht der
+Platz nicht, scrollt die Leiste seitwärts (schmale Scrollleiste, Mausrad),
+und der gewählte Reiter rückt ins Bild.
+
+### Nachtrag – Skripte ausführen
+
+Eingebaute Aktion **„Ausführen“** (Rechtsklick-Menü, Aktionen der
+Kontextleiste, Befehlspalette) für `.sh`/`.bash` – mit bash, auch ohne
+Ausführrecht – und für ausführbare Dateien mit `#!`-Zeile (z. B. ein
+Python-Skript mit `chmod +x`). Das Skript läuft sichtbar im Terminal-Panel,
+im Ordner des Skripts; Ausgabe und „✓ beendet“ bzw. „✗ Code n“ bleiben
+stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).
+
+- Der Knopf „Projektordner öffnen“ unten links ist entfernt; Projekte
+  öffnen weiter über das Menü oben rechts, die Befehlspalette, Strg+O und
+  „Neue Session“ im Sessionmenü.
+
+- Im Sessionmenü ist „Aktuelle duplizieren“ entfernt.

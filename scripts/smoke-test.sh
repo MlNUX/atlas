@@ -80,6 +80,7 @@ endstream")
   printf '%s' "$body" > "$out"
 }
 pdf "$project/docs/quelle.pdf"
+pdf "$project/docs/zweite.pdf"
 
 mkdir -p "$project/.atlas"
 cat > "$project/.atlas/actions.yaml" <<'YAML'
@@ -123,6 +124,21 @@ actions:
 YAML
 printf 'hallo\000welt\n' > "$project/daten.dat"
 
+cat > "$project/docs/seite.html" <<'HTML'
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Testseite</title><link rel="stylesheet" href="seite.css"></head>
+<body><h1 id="kopf">Hallo HTML</h1><p id="js">ohne Skript</p>
+<script>document.getElementById("js").textContent = "mit Skript"</script></body></html>
+HTML
+printf 'h1 { color: rgb(1, 2, 3); }\n' > "$project/docs/seite.css"
+printf '<!doctype html><title>Web</title><script src="https://cdn.example.invalid/sql-wasm.js"></script><p>x</p>\n' > "$project/docs/web.html"
+cat > "$project/docs/dyn.html" <<'HTML'
+<!doctype html><title>Dyn</title><script>
+const s = document.createElement("script"); s.src = "https://cdn.example.invalid/lib.js"; document.head.appendChild(s)
+fetch("https://cdn.example.invalid/data.json").catch(e => console.error("fetch: " + e))
+</script><script src="fehlt.js"></script><script>initSqlJs()</script>
+HTML
+printf 'echo "lief in $(basename "$PWD")" > gelaufen.txt\n' > "$project/src/hallo.sh"
 echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"
@@ -148,7 +164,8 @@ export QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1
 export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu"
 
 status=0
-timeout 120 "$bin" "$project" --self-test 2> "$work/log" || status=$?
+# One step every 1.5 s; generous for slow machines.
+timeout 300 "$bin" "$project" --self-test 2> "$work/log" || status=$?
 grep -E "selftest:" "$work/log" | sed 's/^qml: //' || true
 if [ "$status" -ne 0 ]; then
   echo "--- Fehler (Exit $status); letzte Ausgabe:" >&2

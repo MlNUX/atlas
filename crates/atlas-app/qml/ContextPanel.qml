@@ -20,6 +20,12 @@ Rectangle {
     /// Graph only, without depth switch and legend (overview cards).
     property bool compact: false
     property int depth: 1
+    /// Backlinks: "file" (links to `path`) or "project" (all marked text of
+    /// the project's PDFs and where notes quote it, by PDF).
+    property string scope: "file"
+    readonly property bool projectScope: scope === "project"
+    /// The list of backlinks (for tests).
+    readonly property alias backlinkView: backList
     property var backlinkList: []
     property var graph: ({ nodes: [], edges: [], truncated: 0 })
     readonly property int count: backlinkList.length
@@ -30,6 +36,8 @@ Rectangle {
     color: Theme.sidebar
 
     function refresh() {
+        // (`scope`, not `projectScope`: this also runs from onScopeChanged.)
+        if (scope === "project" && tab === 0) { backlinkList = JSON.parse(app.projectQuotes()); return }
         if (!path) { backlinkList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
         backlinkList = JSON.parse(app.backlinks(path))
         if (visible && tab === 1) graph = JSON.parse(app.contextGraph(path, depth))
@@ -37,11 +45,14 @@ Rectangle {
     onPathChanged: refresh()
     onTabChanged: refresh()
     onDepthChanged: refresh()
+    onScopeChanged: refresh()
     onVisibleChanged: if (visible) refresh()
     Component.onCompleted: refresh()
     Connections {
         target: panel.app
         function onNotesRevisionChanged() { refreshTimer.restart() }
+        // New or changed marks in any PDF of the project.
+        function onAnnotationsRevisionChanged() { if (panel.scope === "project") refreshTimer.restart() }
     }
     Timer { id: refreshTimer; interval: 200; onTriggered: panel.refresh() }
 
@@ -68,7 +79,7 @@ Rectangle {
     }
 
     function matches(b) {
-        const k = filterKind
+        const k = projectScope ? "" : filterKind
         if (k === "wiki" && b.kind !== "wiki") return false
         if (k === "link" && (b.kind === "wiki" || b.kind === "image")) return false
         if (k === "image" && b.kind !== "image") return false
@@ -83,27 +94,30 @@ Rectangle {
         }
         if (filterText) {
             const q = filterText.toLowerCase()
-            const hay = (b.relative + " " + (b.title || "") + " " + b.context).toLowerCase()
+            const hay = (b.relative + " " + (b.title || "") + " " + b.context + " " + (b.quote || "") + " " + (b.targetRelative || "")).toLowerCase()
             if (q.split(/\s+/).some(w => w && hay.indexOf(w) < 0)) return false
         }
         return true
     }
-    /// Header row per source note, then its links.
+    /// Header row per source note (project quotes: per PDF), then its links.
     readonly property var rows: {
         const out = []
         let last = ""
-        let shown = 0
         for (const b of backlinkList) {
             if (!matches(b)) continue
-            shown++
-            if (b.source !== last) {
-                out.push({ header: true, source: b.source, relative: b.relative, title: b.title || "", tags: b.tags || [] })
-                last = b.source
+            const key = projectScope ? b.target : b.source
+            if (key !== last) {
+                out.push(projectScope
+                    ? { header: true, source: b.target, relative: b.targetRelative, title: app.fileName(b.target), tags: [], pdf: true }
+                    : { header: true, source: b.source, relative: b.relative, title: b.title || "", tags: b.tags || [] })
+                last = key
             }
             out.push(Object.assign({ header: false }, b))
         }
         return out
     }
+    /// PDFs among the project quotes (for the summary).
+    readonly property int quotedPdfs: projectScope ? new Set(backlinkList.map(b => b.target)).size : 0
     readonly property int shownCount: rows.filter(r => !r.header).length
 
     // ------------------------------------------------------------- graph
@@ -172,6 +186,34 @@ Rectangle {
             // ---- backlinks with filters
             ColumnLayout {
                 spacing: 4
+                Row {
+                    id: scopeSwitch
+                    Layout.leftMargin: 6
+                    Layout.topMargin: 6
+                    spacing: 4
+                    Repeater {
+                        model: [{ scope: "file", text: qsTr("Dieses Dokument") }, { scope: "project", text: qsTr("Zitate im Projekt") }]
+                        Rectangle {
+                            id: scopeButton
+                            required property var modelData
+                            readonly property bool current: panel.scope === modelData.scope
+                            width: scopeLabel.implicitWidth + 18
+                            height: 24
+                            radius: 6
+                            color: current ? Theme.accentSoft : scopeHover.hovered ? Theme.hover : "transparent"
+                            border.color: current ? Qt.rgba(0.24, 0.55, 0.99, 0.5) : Theme.border
+                            Text {
+                                id: scopeLabel
+                                anchors.centerIn: parent
+                                text: scopeButton.modelData.text
+                                color: scopeButton.current ? Theme.textStrong : Theme.textMuted
+                                font.pixelSize: Theme.smallFontSize
+                            }
+                            HoverHandler { id: scopeHover }
+                            MouseArea { anchors.fill: parent; onClicked: panel.scope = scopeButton.modelData.scope }
+                        }
+                    }
+                }
                 TextField {
                     Layout.fillWidth: true
                     Layout.leftMargin: 6
@@ -182,13 +224,18 @@ Rectangle {
                     placeholderText: qsTr("Filtern …")
                     onTextChanged: panel.filterText = text.trim()
                 }
+                // (Layouts fill the height by default: with every filter hidden
+                // this row took the list's space.)
                 RowLayout {
+                    visible: !panel.projectScope || panel.tagChoices.length > 0 || panel.folderChoices.length > 1
                     Layout.fillWidth: true
+                    Layout.fillHeight: false
                     Layout.leftMargin: 6
                     Layout.rightMargin: 6
                     spacing: 4
                     ComboBox {
                         Layout.fillWidth: true
+                        visible: !panel.projectScope
                         implicitHeight: 24
                         font.pixelSize: Theme.smallFontSize
                         textRole: "text"
@@ -263,6 +310,7 @@ Rectangle {
                                 Layout.fillWidth: true
                                 spacing: 6
                                 Label {
+                                    visible: !panel.projectScope
                                     text: qsTr("Z. %1").arg(row.modelData.line || 0)
                                     color: Theme.textFaint
                                     font.pixelSize: Theme.smallFontSize
@@ -279,23 +327,83 @@ Rectangle {
                                     color: Theme.textMuted
                                     font.pixelSize: Theme.smallFontSize
                                 }
+                                Item { Layout.fillWidth: true }
                             }
-                            Label {
+                            // Quotes show the quoted text (gold bar), other links
+                            // their line.
+                            Item {
                                 visible: !row.modelData.header
                                 Layout.fillWidth: true
-                                text: row.modelData.context || ""
+                                implicitHeight: contextLabel.implicitHeight + (row.modelData.quote ? 4 : 0)
+                                Rectangle {
+                                    visible: !!row.modelData.quote
+                                    width: 2
+                                    height: parent.height
+                                    radius: 1
+                                    color: row.modelData.color || "#ffd400"
+                                }
+                                Label {
+                                    id: contextLabel
+                                    x: row.modelData.quote ? 8 : 0
+                                    y: row.modelData.quote ? 2 : 0
+                                    width: parent.width - x
+                                    text: row.modelData.quote ? "„" + row.modelData.quote + "“" : (row.modelData.context || "")
+                                    color: row.modelData.quote ? Theme.textStrong : Theme.text
+                                    font.pixelSize: Theme.smallFontSize
+                                    font.italic: !!row.modelData.quote
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: row.modelData.quote ? 4 : 3
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            // Project quotes: comment and where notes quote the mark.
+                            Label {
+                                visible: panel.projectScope && !row.modelData.header && !!row.modelData.comment
+                                Layout.fillWidth: true
+                                text: "💬 " + (row.modelData.comment || "")
                                 color: Theme.text
                                 font.pixelSize: Theme.smallFontSize
                                 wrapMode: Text.Wrap
-                                maximumLineCount: 3
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                visible: panel.projectScope && !row.modelData.header
+                                Layout.fillWidth: true
+                                readonly property var cited: row.modelData.cited || []
+                                text: cited.length
+                                    ? qsTr("zitiert in %1").arg(cited.map(c => c.relative + " (Z. " + c.line + ")").join(", "))
+                                    : qsTr("noch in keiner Notiz zitiert")
+                                color: cited.length ? Theme.textMuted : Theme.textFaint
+                                font.pixelSize: Theme.smallFontSize
                                 elide: Text.ElideRight
                             }
                         }
                         MouseArea {
                             anchors.fill: parent
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                            onClicked: (mouse) => panel.openRequested(row.modelData.source, row.modelData.header ? 0 : row.modelData.line,
-                                mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier), {})
+                            onClicked: (mouse) => {
+                                const newPane = mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier)
+                                const d = row.modelData
+                                // Project quotes: to the marked passage in the PDF.
+                                if (panel.projectScope && !d.header) panel.openRequested(d.target, d.page, newPane, { annot: d.annot })
+                                else panel.openRequested(d.source, d.header ? 0 : d.line, newPane, {})
+                            }
+                        }
+                        // Project quotes: the note quoting the mark.
+                        IconButton {
+                            visible: panel.projectScope && !row.modelData.header && (row.modelData.cited || []).length > 0
+                                && (rowHover.hovered || hovered)
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6
+                            y: 2
+                            implicitHeight: 22
+                            glyph: qsTr("Notiz ↗")
+                            tip: qsTr("%1 an der Stelle des Zitats öffnen").arg(((row.modelData.cited || [])[0] || {}).relative || "")
+                            onClicked: {
+                                const c = row.modelData.cited[0]
+                                panel.openRequested(c.source, c.line, false, {})
+                            }
                         }
                     }
                     Label {
@@ -306,14 +414,19 @@ Rectangle {
                         horizontalAlignment: Text.AlignHCenter
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
-                        text: panel.count === 0 ? qsTr("Keine Notiz verweist auf diese Datei.") : qsTr("Kein Rückverweis passt zum Filter.")
+                        text: panel.projectScope
+                            ? (panel.count === 0 ? qsTr("Noch keine Zitate im Projekt.\nMarkiere Text in einer PDF – die Markierung erscheint hier.")
+                                                 : qsTr("Kein Zitat passt zum Filter."))
+                            : panel.count === 0 ? qsTr("Keine Notiz verweist auf diese Datei.") : qsTr("Kein Rückverweis passt zum Filter.")
                     }
                 }
                 Label {
                     Layout.fillWidth: true
                     Layout.margins: 6
-                    visible: panel.count > 0 && panel.shownCount !== panel.count
-                    text: qsTr("%1 von %2 angezeigt").arg(panel.shownCount).arg(panel.count)
+                    visible: panel.count > 0 && (panel.shownCount !== panel.count || panel.projectScope)
+                    text: (panel.projectScope ? qsTr("%1 Zitate aus %2 PDFs · %3 in Notizen").arg(panel.count).arg(panel.quotedPdfs)
+                                                  .arg(panel.backlinkList.filter(b => (b.cited || []).length).length) + (panel.shownCount !== panel.count ? " · " : "") : "")
+                        + (panel.shownCount !== panel.count ? qsTr("%1 von %2 angezeigt").arg(panel.shownCount).arg(panel.count) : "")
                     color: Theme.textFaint
                     font.pixelSize: Theme.smallFontSize
                 }

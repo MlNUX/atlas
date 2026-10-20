@@ -545,6 +545,39 @@ pub fn looks_destructive(command: &Command) -> bool {
 /// passed through unchanged (`"$@"`).
 const HOLD: &str = r#"name=$1; shift; "$@"; code=$?; if [ "$code" -eq 0 ]; then printf '\033]0;✓ %s\007\n\033[32m✓ %s beendet\033[0m' "$name" "$name"; else printf '\033]0;✗ %s\007\n\033[31m✗ %s beendet mit Code %s\033[0m' "$name" "$name" "$code"; fi; printf ' – Enter schließt\n'; read -r _"#;
 
+/// How a script file is run (built-in action „Ausführen“): shell scripts
+/// with bash (no execute bit needed), other executable files with a
+/// `#!` line directly. `None`: not a runnable script.
+pub fn script_command(path: &Path) -> Option<Vec<String>> {
+    use std::io::Read;
+    use std::os::unix::fs::PermissionsExt;
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let file = path.to_string_lossy().into_owned();
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if matches!(ext.as_str(), "sh" | "bash") {
+        return Some(vec!["bash".into(), file]);
+    }
+    let mut head = [0u8; 2];
+    let has_shebang = std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_ok() && &head == b"#!";
+    (has_shebang && meta.permissions().mode() & 0o111 != 0).then(|| vec![file])
+}
+
+/// The script at `path` run visibly in the terminal (in its folder); its
+/// output and exit status stay until Enter is pressed.
+/// Also returns the script's file name.
+pub fn prepare_script(path: &Path) -> Result<(Prepared, String)> {
+    let Some(command) = script_command(path) else { bail!("{} ist kein ausführbares Skript", path.display()) };
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let cwd = path.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("/"));
+    let display = command.iter().map(|a| shell_quote(a)).collect::<Vec<_>>().join(" ");
+    let mut argv = vec!["sh".into(), "-c".into(), HOLD.into(), "atlas-run".into(), name.clone()];
+    argv.extend(command);
+    Ok((Prepared { argv, display, cwd, confirm: false, destructive: false, placement: Placement::Panel }, name))
+}
+
 /// A command with its placeholders filled in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Built {
@@ -616,6 +649,33 @@ impl Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scripts_run_with_bash_or_their_shebang() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let sh = tmp.path().join("bau.sh");
+        std::fs::write(&sh, "echo hallo\n").unwrap();
+        assert_eq!(script_command(&sh), Some(vec!["bash".into(), sh.to_string_lossy().into_owned()]));
+        let py = tmp.path().join("werkzeug.py");
+        std::fs::write(&py, "#!/usr/bin/env python3\nprint(1)\n").unwrap();
+        // Not executable: not run (Python only with its execute bit).
+        assert_eq!(script_command(&py), None);
+        std::fs::set_permissions(&py, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(script_command(&py), Some(vec![py.to_string_lossy().into_owned()]));
+        let txt = tmp.path().join("notiz.md");
+        std::fs::write(&txt, "# x").unwrap();
+        std::fs::set_permissions(&txt, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(script_command(&txt), None, "no #! line");
+        assert_eq!(script_command(tmp.path()), None);
+
+        let (p, name) = prepare_script(&sh).unwrap();
+        assert_eq!(name, "bau.sh");
+        assert_eq!(p.cwd, tmp.path());
+        assert_eq!(&p.argv[..2], &["sh".to_string(), "-c".to_string()]);
+        assert_eq!(p.argv[p.argv.len() - 2..], ["bash".to_string(), sh.to_string_lossy().into_owned()]);
+        assert!(prepare_script(&txt).is_err());
+    }
 
     fn parse(yaml: &str) -> (Vec<Action>, Vec<LoadError>) {
         let dir = tempfile::tempdir().unwrap();

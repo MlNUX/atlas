@@ -71,6 +71,17 @@ ApplicationWindow {
     readonly property var calendar: fileActions.calendar
     /// The calendar tab (`state`: {mode, date, selected}).
     function openCalendar(state) { return editor.open("calendar:", 0, "tab", state || {}) }
+    /// The calendar button: closes the calendar when it is the active tab,
+    /// opens (or shows) it otherwise.
+    function toggleCalendar() {
+        const tab = editor.activeTab
+        if (tab && tab.kind === "calendar" && tab.ownerGroup) {
+            tab.ownerGroup.closeTab(tab.ownerGroup.tabs.indexOf(tab))
+            return
+        }
+        openCalendar({})
+    }
+    readonly property alias calendarButton: calendarButton
     function newCalendarEntry(kind) {
         const tab = openCalendar({})
         Qt.callLater(() => { if (tab && tab.viewerItem && tab.viewerItem.newEntry) tab.viewerItem.newEntry({ kind: kind, allDay: kind === "deadline" }) })
@@ -183,6 +194,10 @@ ApplicationWindow {
             list.push({ name: qsTr("Im Editor öffnen"), hint: app.fileName(current), run: () => fileActions.openInEditor(current, 0) })
             list.push({ name: qsTr("Pfad kopieren"), hint: app.fileName(current), run: () => fileActions.copyPaths([current]) })
             list.push({ name: qsTr("Im Explorer zeigen"), hint: app.fileName(current), run: () => window.revealInTree(current) })
+            if (app.isRunnable(current))
+                list.push({ name: qsTr("Ausführen"), hint: app.fileName(current), run: () => fileActions.runScript(current) })
+            if (fileActions.isHtml(current))
+                list.push({ name: qsTr("Als Webseite anzeigen"), hint: app.fileName(current), run: () => fileActions.renderHtml(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
             if (app.fileKind(current) === "markdown")
                 list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
@@ -502,6 +517,9 @@ ApplicationWindow {
                 "sessions": () => sessionMenu.clicked(),
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "settings": () => settingsDialog.open(),
+                "html": () => fileActions.renderHtml(file),
+                "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
+                "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },
                 "new-session": () => sessionMenu.askNew(),
                 "quick-look": () => fileActions.quickLook(file),
                 "calendar-settings": () => fileActions.calendarSync.openSettings(),
@@ -553,7 +571,7 @@ ApplicationWindow {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
                 sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, settingsDialog: settingsDialog,
-                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel,
+                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector,
             })
             item.start()
         }
@@ -669,7 +687,7 @@ ApplicationWindow {
                     implicitHeight: 34
                     implicitWidth: calendarRow.implicitWidth + 28
                     hoverEnabled: true
-                    onClicked: window.openCalendar({})
+                    onClicked: window.toggleCalendar()
                     background: Rectangle {
                         radius: 8
                         color: calendarButton.active ? Theme.accentSoft : calendarButton.hovered ? Theme.hover : Theme.header
@@ -896,6 +914,7 @@ ApplicationWindow {
                     Layout.leftMargin: 18
                     Layout.rightMargin: 18
                     Layout.topMargin: 8
+                    Layout.bottomMargin: 14
                     spacing: 6
                     property var usage: ({})
                     function refresh() { try { usage = JSON.parse(app.diskUsage(app.projectRoot || app.placePaths[0] || "/") || "{}") } catch (e) { usage = {} } }
@@ -921,27 +940,6 @@ ApplicationWindow {
                         color: Theme.textMuted
                         font.pixelSize: Theme.smallFontSize
                     }
-                }
-                Rectangle { Layout.fillWidth: true; Layout.topMargin: 12; Layout.preferredHeight: 1; color: Theme.border }
-                AbstractButton {
-                    id: openProject
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 46
-                    hoverEnabled: true
-                    onClicked: folderDialog.askProject()
-                    background: Rectangle { color: openProject.hovered ? Theme.hover : "transparent" }
-                    contentItem: Item {
-                        Row {
-                            x: 18
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 12
-                            Icon { name: "folder-open"; size: 18; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
-                            Label { text: qsTr("Projektordner öffnen"); color: Theme.text; font.pixelSize: Theme.fontSize; anchors.verticalCenter: parent.verticalCenter }
-                        }
-                    }
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 600
-                    ToolTip.text: app.projectRoot || qsTr("Strg+O")
                 }
             }
         }

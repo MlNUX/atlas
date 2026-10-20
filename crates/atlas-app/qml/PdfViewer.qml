@@ -178,6 +178,7 @@ Rectangle {
         onAnnotationsJsonChanged: root.parseAnnotations()
         onStatusChanged: {
             if (status === "moved") root.message(qsTr("Annotationen nach dem Verschieben der PDF wiedergefunden"))
+            if (status === "changed" && count === 0) Qt.callLater(acknowledgeChange)
             root.tryFocus()
         }
         onExportFinished: (ok, message) => {
@@ -186,6 +187,7 @@ Rectangle {
         }
     }
     readonly property alias annotationStore: notes
+    readonly property bool changeNotice: notes.status === "changed" && notes.count > 0
 
     function message(text) { if (root.actions) root.actions.showMessage(text) }
 
@@ -568,11 +570,12 @@ Rectangle {
             }
         }
 
-        // The PDF changed since the annotations were made.
+        // The PDF changed since the annotations were made (only matters if
+        // there are any; without, the new version is taken silently).
         Banner {
             Layout.fillWidth: true
-            visible: notes.status === "changed"
-            message: qsTr("Diese PDF wurde seit dem Anlegen der Annotationen verändert – Markierungen können verschoben sein.")
+            visible: root.changeNotice
+            message: qsTr("Diese PDF wurde seit dem Anlegen der %n Anmerkung(en) verändert – Markierungen können verschoben sein.", "", notes.count)
             actions: [ { text: qsTr("Verstanden"), run: () => notes.acknowledgeChange() } ]
         }
 

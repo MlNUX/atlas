@@ -108,6 +108,7 @@ Item {
             : view.kind === "dir" ? folderComponent
             : view.kind === "terminal" ? terminalComponent
             : view.kind === "calendar" ? calendarComponent
+            : view.processor === "atlas:html" && view.kind !== "missing" ? htmlComponent
             : view.processed && view.kind !== "missing" ? processedComponent
             : view.kind === "pdf" ? pdfComponent
             : view.kind === "markdown" ? markdownComponent
@@ -176,6 +177,20 @@ Item {
                 if (newPane) view.openRequested(path, line, "split", state)
                 else view.navigate(path, line, state)
             }
+        }
+    }
+    Component {
+        id: htmlComponent
+        // An HTML file rendered ("Als Webseite anzeigen").
+        HtmlView {
+            source: view.path
+            app: view.app
+            actions: view.actions
+            // (Later: this item is replaced by the switch.)
+            onShowSourceRequested: Qt.callLater(() => {
+                view.pendingState = Object.assign({}, view.pendingState, { processor: "" })
+                view.processor = ""
+            })
         }
     }
     Component {

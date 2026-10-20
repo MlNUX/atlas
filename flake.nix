@@ -22,6 +22,7 @@
           qtdeclarative
           qtwayland
           qtsvg
+          qtimageformats
           qtwebengine
           qtwebchannel
           qtpositioning

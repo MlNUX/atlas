@@ -17,6 +17,9 @@ Rectangle {
     property string selectedPath
 
     signal openRequested(string path, bool newPane)
+    /// For the smoke test.
+    readonly property alias rootRow: rootRow
+    readonly property alias treeList: list
 
     /// The row item showing `path` (null if not visible); for the smoke test.
     function itemFor(path) {
@@ -38,7 +41,6 @@ Rectangle {
     /// Double click on a file: open as permanent tab.
     signal pinRequested(string path)
     /// The project row collapses the whole tree.
-    property bool rootExpanded: true
 
     color: Theme.sidebar
 
@@ -96,8 +98,10 @@ Rectangle {
             }
         }
 
-        // The project folder itself.
+        // The project folder itself (always open; its contents follow).
         Rectangle {
+            id: rootRow
+            readonly property bool hasChevron: false
             Layout.fillWidth: true
             Layout.leftMargin: 8
             Layout.rightMargin: 8
@@ -110,7 +114,6 @@ Rectangle {
                 anchors.leftMargin: 6
                 anchors.rightMargin: 6
                 spacing: 6
-                Icon { name: root.rootExpanded ? "chevron-down" : "chevron-right"; size: 14; color: Theme.textMuted }
                 Icon { name: "folder-fill"; size: 16; color: "#5aa2ff" }
                 Label {
                     Layout.fillWidth: true
@@ -122,11 +125,8 @@ Rectangle {
             }
             MouseArea {
                 anchors.fill: parent
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                onClicked: (mouse) => {
-                    if (mouse.button === Qt.RightButton) root.actions.showMenu([], root.model.root)
-                    else root.rootExpanded = !root.rootExpanded
-                }
+                acceptedButtons: Qt.RightButton
+                onClicked: root.actions.showMenu([], root.model.root)
             }
         }
 
@@ -135,7 +135,6 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.topMargin: 2
-            visible: root.rootExpanded || !root.projectName
             clip: true
             model: root.model
             boundsBehavior: Flickable.StopAtBounds

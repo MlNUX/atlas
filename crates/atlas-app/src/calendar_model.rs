@@ -338,6 +338,18 @@ fn secret_store() -> SecretStore {
     SecretStore::default_for("nextcloud")
 }
 
+/// Storing and forgetting the remembered password happen one after another;
+/// a newer request makes a still waiting older store obsolete (so the latest
+/// password wins).
+static SECRET_LOCK: Mutex<()> = Mutex::new(());
+static SECRET_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn forget_secret() -> anyhow::Result<()> {
+    SECRET_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let _guard = SECRET_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    secret_store().forget()
+}
+
 fn reset_command() {
     if let Ok(mut c) = COMMAND.lock() {
         c.tried.clear();
@@ -1351,7 +1363,7 @@ impl qobject::CalendarModel {
         }
         if changed_account {
             let _ = self.sync_store().clear();
-            let _ = secret_store().forget();
+            let _ = forget_secret();
         }
         let password = password.to_string();
         if !password.is_empty()
@@ -1377,7 +1389,7 @@ impl qobject::CalendarModel {
             self.as_mut().rust_mut().config.remember_password = remember;
         }
         if !remember {
-            if let Err(err) = secret_store().forget() {
+            if let Err(err) = forget_secret() {
                 self.as_mut().set_error(format!("Gemerktes Passwort kann nicht gelöscht werden: {err:#}"));
             }
             self.as_mut().update_sync_state();
@@ -1388,9 +1400,16 @@ impl qobject::CalendarModel {
 
     /// Stores the password on this machine in the background.
     fn keep_password(self: Pin<&mut Self>, password: String) {
+        let seq = SECRET_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
         let thread = self.qt_thread();
         std::thread::spawn(move || {
-            let result = secret_store().store(&password);
+            let _guard = SECRET_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            // A newer store or a forget came after this one.
+            let result = if SECRET_SEQ.load(std::sync::atomic::Ordering::SeqCst) == seq {
+                secret_store().store(&password).map(|_| ())
+            } else {
+                Ok(())
+            };
             let _ = thread.queue(move |mut this| {
                 if let Err(err) = result {
                     this.as_mut().set_error(format!("Passwort kann nicht gemerkt werden: {err:#}"));
@@ -1641,7 +1660,7 @@ impl qobject::CalendarModel {
             *p = None;
         }
         reset_command();
-        let _ = secret_store().forget();
+        let _ = forget_secret();
         if let Err(err) = Config::save_calendar(&CalendarConfig::default()) {
             self.as_mut().set_error(format!("Einstellungen können nicht gespeichert werden: {err:#}"));
         }

@@ -26,6 +26,7 @@ Item {
     property var projectTree
     property var quickLook
     property var treeModel
+    property var inspector
 
     property int failures: 0
     property int step: 0
@@ -40,6 +41,7 @@ Item {
     property string layoutBefore
     property real zoomBefore
     property int tabsBefore
+    property string htmlProbe
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -67,6 +69,17 @@ Item {
     }
     function dragTab(group, index, target, x, y) { dragTabTo(group, index, target, x, y) }
 
+    /// Background work (autosave, storing a password, watched files): a
+    /// step starting with `if (waitFor(cond)) return` runs again on the next
+    /// tick until `cond()` holds, at most 8 times; then it checks anyway.
+    property bool retry: false
+    property int attempts: 0
+    function waitFor(cond) {
+        if (cond() || attempts >= 8) return false
+        retry = true
+        return true
+    }
+
     function check(name, ok, detail) {
         if (!ok) failures++
         console.log("selftest:", ok ? "ok  " : "FAIL", name, ok ? "" : "– " + (detail === undefined ? "" : detail))
@@ -89,6 +102,7 @@ Item {
                 check("Bearbeitung erkannt", md.editorItem.modified)
             },
             () => {
+                if (waitFor(() => app.readTextFile(note).indexOf("Autosave-Test") >= 0)) return
                 check("Autosave geschrieben", app.readTextFile(note).indexOf("Autosave-Test") >= 0)
                 check("keine Recovery nach Speichern", !editor.activeTab.viewerItem.editorItem.document.hasRecovery)
                 const back = JSON.parse(app.backlinks(path("notes/plan.md")))
@@ -657,9 +671,10 @@ Item {
                 cal.rememberPassword(true)
                 cal.saveAccount("http://127.0.0.1:9", "selbsttest", "einmal-42", "", "[]", "")
             },
-            () => {},  // (storing runs in the background, systemd-creds may be slow)
             () => {
                 const cal = window.calendar
+                // (Storing runs in the background; systemd-creds may be slow.)
+                if (waitFor(() => cal.remembered !== "")) return
                 check("Passwort gemerkt", cal.remembered === "encrypted" || cal.remembered === "file", cal.remembered + " " + cal.error)
                 check("Gemerktes Passwort nicht in den Einstellungen", cal.account().indexOf("einmal-42") < 0 && JSON.parse(cal.account()).rememberPassword)
                 // As after a restart: nothing in memory, the remembered one loads.
@@ -669,6 +684,7 @@ Item {
             },
             () => {
                 const cal = window.calendar
+                if (waitFor(() => cal.unlocked)) return
                 check("Nach Neustart ohne Eingabe entsperrt", cal.unlocked && cal.passwordError === "", cal.syncStatus + " " + cal.passwordError)
                 cal.rememberPassword(false)
                 check("Nicht mehr merken: gelöscht", cal.remembered === "", cal.remembered)
@@ -676,6 +692,7 @@ Item {
             },
             () => {
                 const cal = window.calendar
+                if (waitFor(() => cal.remembered !== "")) return
                 check("Wieder merken mit bekanntem Passwort", cal.remembered !== "", cal.remembered)
                 cal.disconnectAccount()
                 check("Konto getrennt: Passwort vergessen", !cal.connected && !cal.unlocked && cal.remembered === "")
@@ -719,6 +736,234 @@ Item {
                 check("Wieder an: Dolphins Orte", app.placeNames.join(",") === "Belege" && app.fixedPlaceCount === 0)
                 settingsDialog.close()
             },
+            () => {
+                // All quotes of the project: the marks of all PDFs and where
+                // notes quote them.
+                const quotes = JSON.parse(app.projectQuotes())
+                const q = quotes.find(x => x.annot === test.annotId)
+                check("Zitate im Projekt: Markierung mit Notiz", !!q && q.target === path("docs/umbenannt.pdf") && q.page === 1
+                      && q.quote.indexOf("Zitat aus der Quelle") === 0 && q.comment === "Wichtig"
+                      && q.cited.length === 1 && q.cited[0].source === path("notes/zitate.md"), JSON.stringify(quotes))
+                const panel = inspector.linksPanel
+                window.inspectorVisible = true
+                inspector.tab = 1
+                panel.scope = "project"
+                const header = panel.rows.find(r => r.header && r.source === path("docs/umbenannt.pdf"))
+                check("Verknüpfungen: Zitate nach PDF gruppiert", !!header && header.pdf
+                      && panel.rows.some(r => !r.header && r.annot === test.annotId), JSON.stringify(panel.rows.slice(0, 3)))
+                // As reported: mark text in a PDF, close it – the mark shows up.
+                editor.open(path("docs/umbenannt.pdf"), 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                v.annotationStore.add(JSON.stringify({ kind: "highlight", page: 2, text: "Nur markiert, nicht zitiert",
+                    rects: [[40, 40, 200, 12]], color: "#7bd88f" }))
+                editor.activeGroup.closeTab(editor.activeGroup.tabs.indexOf(editor.activeTab))
+            },
+            () => {
+                const panel = inspector.linksPanel
+                // (The store is written and watched in the background.)
+                if (waitFor(() => panel.rows.some(r => r.quote === "Nur markiert, nicht zitiert"))) return
+                const row = panel.rows.find(r => !r.header && r.quote === "Nur markiert, nicht zitiert")
+                check("Neue Markierung erscheint nach dem Schließen", !!row && row.page === 2 && row.cited.length === 0,
+                      JSON.stringify(panel.rows.map(r => r.quote || r.relative)))
+                // … and is really visible: the list keeps its height without
+                // tag/kind filters (they took the space before).
+                check("Zitatliste hat Platz", panel.backlinkView.height > panel.height / 2
+                      && panel.backlinkView.contentHeight > 0, panel.backlinkView.height + " von " + panel.height)
+                // Opening a quote at its place in the PDF.
+                const mine = panel.rows.find(r => !r.header && r.annot === test.annotId)
+                panel.openRequested(mine.target, mine.page, false, { annot: mine.annot })
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Zitat öffnet die PDF-Stelle", editor.activeTab.path === path("docs/umbenannt.pdf") && v.focusedAnnot === test.annotId,
+                      editor.activeTab.path + " " + (v ? v.focusedAnnot : ""))
+                // Deleting marks takes them out of the list – also one a note
+                // still quotes.
+                const panel = inspector.linksPanel
+                const loose = panel.rows.find(r => !r.header && r.quote === "Nur markiert, nicht zitiert")
+                v.annotationStore.remove(loose.annot)
+                v.annotationStore.remove(test.annotId)
+            },
+            () => {
+                const panel = inspector.linksPanel
+                const gone = () => !panel.rows.some(r => !r.header && (r.annot === test.annotId || r.quote === "Nur markiert, nicht zitiert"))
+                if (waitFor(gone)) return
+                check("Gelöschte Markierungen verschwinden", gone() && !JSON.parse(app.projectQuotes()).some(q => q.annot === test.annotId),
+                      JSON.stringify(panel.rows.map(r => r.quote || r.relative)))
+                inspector.linksPanel.scope = "file"
+                // The calendar button opens the calendar and closes it again.
+                const b = window.calendarButton
+                const p = b.mapToItem(null, b.width / 2, b.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                check("Kalender-Knopf öffnet", editor.activeTab && editor.activeTab.kind === "calendar")
+                const b = window.calendarButton
+                const p = b.mapToItem(null, b.width / 2, b.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+            },
+            () => {
+                const open = editor.groups.some(g => g.tabs.some(t => t.kind === "calendar"))
+                check("Kalender-Knopf schließt", !open && (!editor.activeTab || editor.activeTab.kind !== "calendar"), names())
+            },
+            () => {
+                // Context menu: only what applies, no settings, no duplicates.
+                const m = fileActions.contextMenu
+                fileActions.showMenu([path("docs/umbenannt.pdf")], path("docs"))
+                const pdf = m.shownEntries()
+                m.close()
+                check("Kontextmenü PDF: nur Passendes", pdf.indexOf("Öffnen") >= 0 && pdf.indexOf("Umbenennen …") >= 0
+                      && pdf.indexOf("In den Papierkorb") >= 0 && pdf.indexOf("Im Editor öffnen") < 0
+                      && pdf.indexOf("Terminal als Tab öffnen") < 0 && pdf.indexOf("Externen Editor festlegen …") < 0, pdf.join(" | "))
+                fileActions.showMenu([path("notes/idee.md")], path("notes"))
+                const md = m.shownEntries()
+                m.close()
+                check("Kontextmenü Notiz: externer Editor", md.indexOf("Im Editor öffnen") >= 0 && md.indexOf("Checkliste als Aufgaben übernehmen …") >= 0, md.join(" | "))
+                fileActions.showMenu([], path("notes"))
+                const empty = m.shownEntries()
+                m.close()
+                check("Kontextmenü leere Fläche: keine Datei-Befehle", empty.indexOf("Neue Datei …") >= 0 && empty.indexOf("Terminal hier öffnen") >= 0
+                      && ["Öffnen", "Umbenennen …", "Kopieren", "Ausschneiden", "In den Papierkorb", "Pfad kopieren"].every(t => empty.indexOf(t) < 0),
+                      empty.join(" | "))
+            },
+            () => {
+                // HTML rendered as a web page (built-in action).
+                check("HTML-Aktion im Kontextmenü", (() => {
+                    fileActions.showMenu([path("docs/seite.html")], path("docs"))
+                    const e = fileActions.contextMenu.shownEntries()
+                    fileActions.contextMenu.close()
+                    return e.indexOf("Als Webseite anzeigen") >= 0
+                })())
+                fileActions.renderHtml(path("docs/seite.html"))
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v && v.webItem && !v.webItem.loading && v.webItem.title === "Testseite")) return
+                check("HTML gerendert", !!v.webItem && v.webItem.title === "Testseite", v.webItem ? v.webItem.title : "kein Web")
+                v.webItem.runJavaScript("document.getElementById('js').textContent + '|' + getComputedStyle(document.getElementById('kopf')).color",
+                                        (r) => test.htmlProbe = r)
+                test.tabsBefore = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+            },
+            () => {
+                if (waitFor(() => test.htmlProbe !== "")) return
+                check("HTML: Skript und CSS wirken", test.htmlProbe === "mit Skript|rgb(1, 2, 3)", test.htmlProbe)
+                editor.activeTab.viewerItem.showSourceRequested()
+            },
+            () => {
+                const tab = editor.activeTab
+                check("HTML: Quelltext im selben Tab", tab.path === path("docs/seite.html") && !!tab.viewerItem.editorItem === false
+                      && tab.viewerItem.text !== undefined && tab.viewerItem.text.indexOf("<h1 id=\"kopf\">") >= 0, tab.kind)
+                fileActions.renderHtml(path("docs/seite.html"))
+            },
+            () => {
+                const tabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                check("HTML: wieder gerendert, kein zweiter Tab", !!editor.activeTab.viewerItem.webItem && tabs === test.tabsBefore, tabs + " / " + test.tabsBefore)
+                check("HTML: Ansicht in der Sitzung", editor.activeTab.viewState().processor === "atlas:html", JSON.stringify(editor.activeTab.viewState()))
+                // Saved elsewhere: the page reloads by itself.
+                check("HTML geändert", app.appendToNote(path("docs/seite.html"), "<script>document.title = 'Neu geladen'</script>") === "")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.webItem && v.webItem.title === "Neu geladen")) return
+                check("HTML lädt beim Speichern neu", v.webItem.title === "Neu geladen", v.webItem.title)
+                check("Eigene Seite ohne Netz-Hinweis", !v.usesRemote)
+                // A page loading from the web: blocked, with the choice.
+                fileActions.renderHtml(path("docs/web.html"))
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Seite mit Web-Inhalten: Hinweis", v.usesRemote && !v.allowRemote, v.usesRemote + " " + v.allowRemote)
+                v.allowRemote = true
+                check("„Trotzdem laden“ gilt für die Datei", editor.activeTab.viewState().remote === true, JSON.stringify(editor.activeTab.viewState()))
+                // Errors of the page show in the view.
+                fileActions.renderHtml(path("docs/dyn.html"))
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.pageErrors && v.pageErrors.some(e => e.indexOf("initSqlJs is not defined") >= 0))) return
+                check("Seitenfehler in der Ansicht", v.pageErrors.some(e => e.indexOf("initSqlJs is not defined") >= 0)
+                      && v.usesRemote, JSON.stringify(v.pageErrors))
+                // Thumbnails only for formats Qt reads here.
+                check("Bildformate von Qt", app.imageFormats.indexOf("png") >= 0 && app.imageFormats.indexOf("jpg") >= 0, app.imageFormats.join(","))
+            },
+            () => {
+                // A PDF changed since its annotations: notice only if there are any.
+                editor.open(path("docs/zweite.pdf"), 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.annotationStore.status === "new")) return
+                test.annotId = v.annotationStore.add(JSON.stringify({ kind: "bookmark", page: 1, title: "Merk" }))
+                editor.activeGroup.closeTab(editor.activeGroup.tabs.indexOf(editor.activeTab))
+                check("PDF verändert", app.appendToNote(path("docs/zweite.pdf"), "% geändert") === "")
+            },
+            () => {
+                editor.open(path("docs/zweite.pdf"), 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.annotationStore.status === "changed")) return
+                check("Geänderte PDF mit Anmerkung: Hinweis", v.changeNotice && v.annotationStore.count === 1, v.annotationStore.status)
+                v.annotationStore.remove(test.annotId)
+                editor.activeGroup.closeTab(editor.activeGroup.tabs.indexOf(editor.activeTab))
+                app.appendToNote(path("docs/zweite.pdf"), "% nochmal")
+            },
+            () => {
+                editor.open(path("docs/zweite.pdf"), 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                // (Without annotations the store forgets the PDF: "new".)
+                if (waitFor(() => ["exact", "new"].indexOf(v.annotationStore.status) >= 0)) return
+                check("Geänderte PDF ohne Anmerkungen: kein Hinweis", !v.changeNotice && v.annotationStore.count === 0, v.annotationStore.status)
+            },
+            () => {
+                // The project folder cannot be collapsed: a click on it keeps the tree.
+                const rows = treeModel.rowOf(path("docs")) >= 0
+                const header = projectTree.rootRow
+                const p = header.mapToItem(null, header.width / 2, header.height / 2)
+                app.postMouse(window, 0, p.x, p.y, 20)
+                app.postMouse(window, 2, p.x, p.y, 60)
+                check("Projektordner-Zeile ohne Pfeil", !header.hasChevron && rows)
+            },
+            () => {
+                check("Projektordner bleibt offen", projectTree.treeList.visible && projectTree.treeList.count > 0
+                      && treeModel.rowOf(path("docs")) >= 0, projectTree.treeList.count)
+            },
+            () => {
+                // Context bar tabs: written out, scrollable when narrow.
+                window.inspectorVisible = true
+            },
+            () => {
+                const bar = inspector.tabBar
+                check("Kontextleiste schmal: Reiter scrollbar", bar.contentWidth > bar.width, bar.contentWidth + " / " + bar.width)
+                inspector.tab = 3
+            },
+            () => {
+                const bar = inspector.tabBar
+                check("Aktiver Reiter ins Bild gerückt", bar.contentX > 0 && bar.contentX + bar.width >= bar.contentWidth - 1, bar.contentX)
+                inspector.tab = 0
+            },
+            () => {
+                // Built-in action „Ausführen“ for scripts.
+                fileActions.showMenu([path("src/hallo.sh")], path("src"))
+                const sh = fileActions.contextMenu.shownEntries()
+                fileActions.contextMenu.close()
+                fileActions.showMenu([path("notes/idee.md")], path("notes"))
+                const md = fileActions.contextMenu.shownEntries()
+                fileActions.contextMenu.close()
+                check("„Ausführen“ nur bei Skripten", sh.indexOf("Ausführen") >= 0 && md.indexOf("Ausführen") < 0, sh.join(" | "))
+                fileActions.runScript(path("src/hallo.sh"))
+            },
+            () => {
+                const done = () => app.readTextFile(path("src/gelaufen.txt")).indexOf("lief in src") === 0
+                if (waitFor(done)) return
+                check("Skript lief im Terminal, im eigenen Ordner", done() && terminalPanel.visible, app.readTextFile(path("src/gelaufen.txt")))
+            },
         ]
         timer.start()
     }
@@ -729,12 +974,18 @@ Item {
         repeat: true
         onTriggered: {
             if (test.step < test.steps.length) {
+                test.retry = false
                 try {
                     test.steps[test.step]()
                 } catch (e) {
                     test.check("Schritt " + (test.step + 1), false, e + (e.lineNumber ? " (Zeile " + e.lineNumber + ")" : "") + (e.stack ? " " + e.stack.split("\n")[0] : ""))
                 }
-                test.step++
+                if (test.retry) {
+                    test.attempts++
+                } else {
+                    test.attempts = 0
+                    test.step++
+                }
                 return
             }
             stop()

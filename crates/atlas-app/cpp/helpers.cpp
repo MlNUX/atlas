@@ -9,6 +9,7 @@
 #include <QtGui/QFontMetricsF>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QImage>
+#include <QtGui/QImageReader>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPointingDevice>
 #include <QtGui/QWindow>
@@ -84,6 +85,14 @@ void sendWheel(QObject* window, double x, double y, int delta, int flags)
                       Qt::NoButton, (flags & 1) ? Qt::ControlModifier : Qt::NoModifier, phase, false,
                       Qt::MouseEventNotSynthesized, (flags & 16) ? &touchpad : QPointingDevice::primaryPointingDevice());
     QCoreApplication::sendEvent(w, &event);
+}
+
+QStringList imageFormats()
+{
+    QStringList out;
+    for (const QByteArray& format : QImageReader::supportedImageFormats())
+        out << QString::fromLatin1(format).toLower();
+    return out;
 }
 
 void setOwner(QObject* object, QObject* owner)

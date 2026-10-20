@@ -27,7 +27,7 @@ T.MenuItem {
             anchors.verticalCenter: parent.verticalCenter
             text: control.parts[0]
             font: control.font
-            color: !control.enabled ? Colors.textFaint : control.highlighted ? Colors.textStrong : Colors.text
+            color: !control.enabled ? Colors.textMuted : control.highlighted ? Colors.textStrong : Colors.text
             elide: Text.ElideRight
         }
         Text {
@@ -37,7 +37,7 @@ T.MenuItem {
             anchors.verticalCenter: parent.verticalCenter
             text: control.parts.slice(1).join(" ")
             font.pixelSize: Colors.fontSize - 1
-            color: Colors.textFaint
+            color: control.highlighted ? Colors.text : Colors.textMuted
         }
     }
 

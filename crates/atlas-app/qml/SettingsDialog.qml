@@ -58,6 +58,8 @@ Dialog {
             Button { text: qsTr("Externer Editor …"); onClicked: { dialog.close(); dialog.actions.configureEditor() } }
             Button { text: qsTr("Kalender und Nextcloud …"); onClicked: { dialog.close(); dialog.actions.calendarSync.openSettings() } }
             Button { text: qsTr("Erweiterungen …"); onClicked: { dialog.close(); dialog.extensionsRequested() } }
+            Button { text: qsTr("Projektaktionen bearbeiten …"); enabled: !!dialog.app.projectRoot; onClicked: { dialog.close(); dialog.actions.editActions(false) } }
+            Button { text: qsTr("Globale Aktionen bearbeiten …"); onClicked: { dialog.close(); dialog.actions.editActions(true) } }
         }
     }
 }

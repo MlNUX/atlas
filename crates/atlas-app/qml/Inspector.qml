@@ -17,6 +17,8 @@ Rectangle {
     /// 0 = Anmerkungen (overview), 1 = Verknüpfungen, 2 = Lokaler Graph,
     /// 3 = Aktionen.
     property int tab: 0
+    readonly property alias linksPanel: linksPanel
+    readonly property alias tabBar: tabFlick
 
     signal openRequested(string path, int line, string where, var state)
 
@@ -78,6 +80,12 @@ Rectangle {
             out.push({ icon: "export", name: qsTr("PDF-Kopie exportieren"), enabled: true,
                        tip: qsTr("Kopie mit Anmerkungen; das Original bleibt unverändert"), run: () => pdfViewer.exportCopy() })
         }
+        if (document && app.isRunnable(document))
+            out.push({ icon: "play", name: qsTr("Ausführen"), enabled: true, tip: qsTr("Skript im Terminal starten (im Ordner des Skripts)"),
+                       run: () => actions.runScript(document) })
+        if (document && actions.isHtml(document))
+            out.push({ icon: "eye", name: qsTr("Als Webseite anzeigen"), enabled: true, tip: qsTr("HTML gerendert anzeigen (lädt beim Speichern neu)"),
+                       run: () => actions.renderHtml(document) })
         if (kind === "markdown")
             out.push({ icon: "check-square", name: qsTr("Checkliste als Aufgaben"), enabled: true, tip: qsTr("Punkte in den Kalender übernehmen"),
                        run: () => actions.calendarSync.importChecklist(document) })
@@ -94,49 +102,78 @@ Rectangle {
         anchors.margins: 1
         spacing: 0
 
-        // Tabs with an accent underline.
+        // Tabs with an accent underline, always written out; a narrow panel
+        // scrolls them sideways (thin scroll bar, mouse wheel).
         Item {
             Layout.fillWidth: true
-            Layout.preferredHeight: 42
-            Row {
-                id: tabRow
-                anchors.left: parent.left
+            Layout.preferredHeight: 42 + (tabFlick.contentWidth > tabFlick.width ? 6 : 0)
+            Flickable {
+                id: tabFlick
+                anchors.fill: parent
                 anchors.leftMargin: 10
-                anchors.bottom: parent.bottom
-                spacing: 2
-                // Tabs shrink (and elide) only when the bar is too narrow.
-                TextMetrics { id: tabMetrics; font.pixelSize: Theme.fontSize; text: tabRow.tabNames.join("") }
-                readonly property var tabNames: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Lokaler Graph"), qsTr("Aktionen")]
-                readonly property real shrink: Math.min(1, (inspector.width - 28) / (tabMetrics.advanceWidth + 16 * tabNames.length + 2 * 3))
-                Repeater {
-                    model: parent.tabNames
-                    Item {
-                        required property string modelData
-                        required property int index
-                        width: (tabLabel.implicitWidth + 16) * parent.shrink
-                        height: 40
-                        Text {
-                            id: tabLabel
-                            anchors.centerIn: parent
-                            width: Math.min(implicitWidth, parent.width - 8)
-                            elide: Text.ElideRight
-                            horizontalAlignment: Text.AlignHCenter
-                            text: parent.modelData
-                            color: inspector.tab === parent.index ? Theme.accent : tabHover.hovered ? Theme.textStrong : Theme.text
-                            font.pixelSize: Theme.fontSize
-                        }
-                        Rectangle {
-                            anchors.bottom: parent.bottom
-                            width: parent.width
-                            height: 2
-                            radius: 1
-                            color: Theme.accent
-                            visible: inspector.tab === parent.index
-                        }
-                        HoverHandler { id: tabHover }
-                        MouseArea { anchors.fill: parent; onClicked: inspector.tab = parent.index }
+                anchors.rightMargin: 4
+                contentWidth: tabRow.width
+                contentHeight: height
+                flickableDirection: Flickable.HorizontalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+                ScrollBar.horizontal: ScrollBar {
+                    policy: tabFlick.contentWidth > tabFlick.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                    height: 5
+                }
+                // The wheel scrolls sideways (all devices: Wayland reports
+                // wheels as a touchpad).
+                WheelHandler {
+                    acceptedDevices: PointerDevice.AllDevices
+                    acceptedPointerTypes: PointerDevice.AllPointerTypes
+                    onWheel: (event) => {
+                        const d = (event.angleDelta.y || event.angleDelta.x) / 2 || event.pixelDelta.y || event.pixelDelta.x
+                        tabFlick.contentX = Math.max(0, Math.min(tabFlick.contentWidth - tabFlick.width, tabFlick.contentX - d))
                     }
                 }
+                /// Scrolls the tab at `index` into view.
+                function reveal(index) {
+                    const item = tabRepeater.itemAt(index)
+                    if (!item) return
+                    if (item.x < contentX) contentX = item.x
+                    else if (item.x + item.width > contentX + width) contentX = Math.min(contentWidth - width, item.x + item.width - width)
+                }
+                Row {
+                    id: tabRow
+                    y: 2
+                    spacing: 2
+                    Repeater {
+                        id: tabRepeater
+                        model: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Lokaler Graph"), qsTr("Aktionen")]
+                        Item {
+                            required property string modelData
+                            required property int index
+                            width: tabLabel.implicitWidth + 16
+                            height: 40
+                            Text {
+                                id: tabLabel
+                                anchors.centerIn: parent
+                                text: parent.modelData
+                                color: inspector.tab === parent.index ? Theme.accent : tabHover.hovered ? Theme.textStrong : Theme.text
+                                font.pixelSize: Theme.fontSize
+                            }
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                width: parent.width
+                                height: 2
+                                radius: 1
+                                color: Theme.accent
+                                visible: inspector.tab === parent.index
+                            }
+                            HoverHandler { id: tabHover }
+                            MouseArea { anchors.fill: parent; onClicked: inspector.tab = parent.index }
+                        }
+                    }
+                }
+            }
+            Connections {
+                target: inspector
+                function onTabChanged() { Qt.callLater(tabFlick.reveal, inspector.tab) }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
         }
@@ -213,6 +250,7 @@ Rectangle {
 
             // ---- links
             ContextPanel {
+                id: linksPanel
                 app: inspector.app
                 path: inspector.document
                 tab: 0
