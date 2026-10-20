@@ -637,3 +637,7 @@ Ausführrecht – und für ausführbare Dateien mit `#!`-Zeile (z. B. ein
 Python-Skript mit `chmod +x`). Das Skript läuft sichtbar im Terminal-Panel,
 im Ordner des Skripts; Ausgabe und „✓ beendet“ bzw. „✗ Code n“ bleiben
 stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).
+
+- Der Knopf „Projektordner öffnen“ unten links ist entfernt; Projekte
+  öffnen weiter über das Menü oben rechts, die Befehlspalette, Strg+O und
+  „Neue Session“ im Sessionmenü.

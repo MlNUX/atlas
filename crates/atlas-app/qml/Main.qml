@@ -914,6 +914,7 @@ ApplicationWindow {
                     Layout.leftMargin: 18
                     Layout.rightMargin: 18
                     Layout.topMargin: 8
+                    Layout.bottomMargin: 14
                     spacing: 6
                     property var usage: ({})
                     function refresh() { try { usage = JSON.parse(app.diskUsage(app.projectRoot || app.placePaths[0] || "/") || "{}") } catch (e) { usage = {} } }
@@ -939,27 +940,6 @@ ApplicationWindow {
                         color: Theme.textMuted
                         font.pixelSize: Theme.smallFontSize
                     }
-                }
-                Rectangle { Layout.fillWidth: true; Layout.topMargin: 12; Layout.preferredHeight: 1; color: Theme.border }
-                AbstractButton {
-                    id: openProject
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 46
-                    hoverEnabled: true
-                    onClicked: folderDialog.askProject()
-                    background: Rectangle { color: openProject.hovered ? Theme.hover : "transparent" }
-                    contentItem: Item {
-                        Row {
-                            x: 18
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 12
-                            Icon { name: "folder-open"; size: 18; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
-                            Label { text: qsTr("Projektordner öffnen"); color: Theme.text; font.pixelSize: Theme.fontSize; anchors.verticalCenter: parent.verticalCenter }
-                        }
-                    }
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 600
-                    ToolTip.text: app.projectRoot || qsTr("Strg+O")
                 }
             }
         }
