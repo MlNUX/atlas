@@ -80,6 +80,7 @@ endstream")
   printf '%s' "$body" > "$out"
 }
 pdf "$project/docs/quelle.pdf"
+pdf "$project/docs/zweite.pdf"
 
 mkdir -p "$project/.atlas"
 cat > "$project/.atlas/actions.yaml" <<'YAML'

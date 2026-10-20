@@ -606,3 +606,12 @@ im selben Tab, Session, Neuladen nach Änderung.
   Erkannt werden auch per Skript nachgeladene Inhalte (`.src = "https://…"`,
   `fetch`, `import`). Geprüft mit einem lokalen HTTP-Server: Nach „Trotzdem
   laden“ laden auch eingebettete Werkzeuge ihre Skripte.
+
+### Nachtrag – Hinweis „PDF verändert“
+
+Atlas merkt sich zu den Anmerkungen einer PDF deren Prüfsumme (BLAKE3 des
+Inhalts). Weicht sie beim Öffnen ab, wurde die PDF inzwischen verändert
+(neu erzeugt, überschrieben, bearbeitet) und Markierungen könnten nicht
+mehr auf dem richtigen Text liegen. Der Hinweis nennt jetzt die Zahl der
+Anmerkungen und erscheint nur, wenn es welche gibt; „Verstanden“ übernimmt
+die neue Fassung.

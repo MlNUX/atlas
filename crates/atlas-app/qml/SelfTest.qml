@@ -890,6 +890,37 @@ Item {
                 // Thumbnails only for formats Qt reads here.
                 check("Bildformate von Qt", app.imageFormats.indexOf("png") >= 0 && app.imageFormats.indexOf("jpg") >= 0, app.imageFormats.join(","))
             },
+            () => {
+                // A PDF changed since its annotations: notice only if there are any.
+                editor.open(path("docs/zweite.pdf"), 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.annotationStore.status === "new")) return
+                test.annotId = v.annotationStore.add(JSON.stringify({ kind: "bookmark", page: 1, title: "Merk" }))
+                editor.activeGroup.closeTab(editor.activeGroup.tabs.indexOf(editor.activeTab))
+                check("PDF verändert", app.appendToNote(path("docs/zweite.pdf"), "% geändert") === "")
+            },
+            () => {
+                editor.open(path("docs/zweite.pdf"), 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.annotationStore.status === "changed")) return
+                check("Geänderte PDF mit Anmerkung: Hinweis", v.changeNotice && v.annotationStore.count === 1, v.annotationStore.status)
+                v.annotationStore.remove(test.annotId)
+                editor.activeGroup.closeTab(editor.activeGroup.tabs.indexOf(editor.activeTab))
+                app.appendToNote(path("docs/zweite.pdf"), "% nochmal")
+            },
+            () => {
+                editor.open(path("docs/zweite.pdf"), 0, "tab")
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                // (Without annotations the store forgets the PDF: "new".)
+                if (waitFor(() => ["exact", "new"].indexOf(v.annotationStore.status) >= 0)) return
+                check("Geänderte PDF ohne Anmerkungen: kein Hinweis", !v.changeNotice && v.annotationStore.count === 0, v.annotationStore.status)
+            },
         ]
         timer.start()
     }
