@@ -636,6 +636,8 @@ ApplicationWindow {
     Connections { target: app; function onProjectRootChanged() { window.extensionNoticeHidden = false } }
     /// Right context bar (annotations, links, graph, actions).
     property bool inspectorVisible: true
+    /// Preferred width of the context bar.
+    property real inspectorWidth: 400
     header: Column {
         Rectangle {
             width: parent.width
@@ -991,7 +993,7 @@ ApplicationWindow {
         Inspector {
             id: inspector
             visible: window.inspectorVisible
-            SplitView.preferredWidth: 400
+            SplitView.preferredWidth: window.inspectorWidth
             SplitView.minimumWidth: 260
             app: app
             editor: editor

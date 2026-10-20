@@ -213,8 +213,12 @@ Item {
                 const graph = JSON.parse(app.contextGraph(path("docs/umbenannt.pdf"), 1))
                 const zitate = graph.nodes.findIndex(n => n.relative === "notes/zitate.md")
                 check("Graph der PDF zeigt zitierende Notiz", zitate > 0 && graph.edges.some(e => e.from === zitate && e.to === 0 && e.quotes === 1), JSON.stringify(graph))
-                const graph2 = JSON.parse(app.contextGraph(wiki, 2))
-                check("Graph mit Tiefe 2", graph2.nodes.some(n => n.depth === 2), JSON.stringify(graph2.nodes.map(n => n.relative + ":" + n.depth)))
+                // The graph shows the whole project, this note first.
+                const all = JSON.parse(app.contextGraph(wiki, 0))
+                const depthOf = (rel) => { const n = all.nodes.find(n => n.relative === rel); return n ? n.depth : -1 }
+                check("Graph zeigt das ganze Projekt", all.nodes[0].relative === "notes/wiki.md" && depthOf("notes/plan.md") === 1
+                      && depthOf("notes/zitate.md") >= 1 && depthOf("docs/umbenannt.pdf") >= 1 && depthOf("notes/aufgaben.md") >= 1,
+                      JSON.stringify(all.nodes.map(n => n.relative + ":" + n.depth)))
                 editor.open(wiki, 0, "tab", { backlinks: true, contextTab: 1 })
                 fileActions.ops.rename(path("notes/plan.md"), "plan-neu.md")
             },
@@ -939,6 +943,7 @@ Item {
             () => {
                 // Context bar tabs: written out, scrollable when narrow.
                 window.inspectorVisible = true
+                window.inspectorWidth = 270
             },
             () => {
                 const bar = inspector.tabBar
@@ -949,6 +954,7 @@ Item {
                 const bar = inspector.tabBar
                 check("Aktiver Reiter ins Bild gerückt", bar.contentX > 0 && bar.contentX + bar.width >= bar.contentWidth - 1, bar.contentX)
                 inspector.tab = 0
+                window.inspectorWidth = 400
             },
             () => {
                 // Built-in action „Ausführen“ for scripts.

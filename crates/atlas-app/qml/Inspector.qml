@@ -7,14 +7,14 @@ import QtQuick.Layouts
 import Atlas
 
 // Right context bar for the active document: annotations of the PDF in
-// use, links (backlinks with filters), the local graph and user actions.
+// use, links (backlinks with filters), the project graph and user actions.
 // The first tab is an overview with all three as cards.
 Rectangle {
     id: inspector
     required property AppController app
     required property var editor
     required property var actions
-    /// 0 = Anmerkungen (overview), 1 = Verknüpfungen, 2 = Lokaler Graph,
+    /// 0 = Anmerkungen (overview), 1 = Verknüpfungen, 2 = Graph,
     /// 3 = Aktionen.
     property int tab: 0
     readonly property alias linksPanel: linksPanel
@@ -144,7 +144,7 @@ Rectangle {
                     spacing: 2
                     Repeater {
                         id: tabRepeater
-                        model: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Lokaler Graph"), qsTr("Aktionen")]
+                        model: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Graph"), qsTr("Aktionen")]
                         Item {
                             required property string modelData
                             required property int index
@@ -220,7 +220,7 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 8
-                        Label { Layout.fillWidth: true; text: qsTr("Lokaler Graph"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
+                        Label { Layout.fillWidth: true; text: qsTr("Graph"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
                         IconButton { iconName: "maximize"; iconSize: 14; tip: qsTr("Groß anzeigen"); onClicked: inspector.tab = 2 }
                     }
                     ContextPanel {

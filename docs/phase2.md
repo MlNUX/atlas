@@ -669,3 +669,14 @@ Atlas-Sessions bekommen dabei kein `.atlas/`.
 
 Rauchtest: Session im Projekt, neue Session in einem zweiten Ordner, beide
 in der Liste, Rückkehr zur ersten mit unverändertem Layout.
+
+### Nachtrag – Graph des ganzen Projekts
+
+„Lokaler Graph“ heißt jetzt **Graph** und hat nur noch eine Ansicht statt
+der Tiefen 1 und 2: alle Notizen des Projekts und alle Dateien, auf die sie
+verlinken (`NoteIndex::project_graph`, höchstens 300 Knoten). Die aktuelle
+Datei steht groß in der Mitte, verknüpfte Dateien liegen nach einem
+Kräfte-Layout um sie herum, Dateien ohne Verbindung zu ihr blass auf einem
+Ring außen. Namen weit entfernter Knoten erscheinen bei vielen Knoten erst
+beim Darüberfahren oder Vergrößern. Mausrad zoomt, Ziehen verschiebt,
+„Ganzen Graphen zeigen“ passt ein.

@@ -56,6 +56,7 @@ Item {
         "sidebar-right": "<rect x='3' y='4' width='18' height='16' rx='2'/><path d='M15 4v16'/>",
         "sidebar-left": "<rect x='3' y='4' width='18' height='16' rx='2'/><path d='M9 4v16'/>",
         "link": "<path d='M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1'/><path d='M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'/>",
+        "focus": "<circle cx='12' cy='12' r='3'/><path d='M12 2v4M12 18v4M2 12h4M18 12h4'/>",
         "graph": "<circle cx='12' cy='12' r='2.5'/><circle cx='5' cy='6' r='2'/><circle cx='19' cy='6' r='2'/><circle cx='6' cy='19' r='2'/><circle cx='18' cy='18' r='2'/><path d='m6.5 7.5 3.6 3M17.5 7.5l-3.6 3M7.5 17.5l2.8-3.6M16.5 16.5l-2.6-2.7'/>",
         "quote": "<path fill='COLOR' stroke='none' d='M5 17.5c2.8 0 4.5-2 4.5-4.8V7H4v5.5h3c0 1.6-.8 2.7-2 2.9zM14 17.5c2.8 0 4.5-2 4.5-4.8V7H13v5.5h3c0 1.6-.8 2.7-2 2.9z'/>",
         "play": "<path d='M7 5v14l11-7z'/>",

@@ -331,7 +331,9 @@ pub mod qobject {
         #[cxx_name = "noteDeadlines"]
         fn note_deadlines(self: &AppController) -> QString;
 
-        /// Local context graph around `path` (`depth` 1 or 2): JSON
+        /// Context graph around `path` (`depth` 1 or 2), or of the whole
+        /// project with `path` first (`depth` 0; unlinked parts have depth
+        /// 255): JSON
         /// {nodes: [{path, relative, label, kind, depth, missing}],
         /// edges: [{from, to, count, quotes}], truncated}.
         #[qinvokable]
@@ -1494,9 +1496,14 @@ impl qobject::AppController {
 
     pub fn context_graph(&self, path: &QString, depth: i32) -> QString {
         const LIMIT: usize = 60;
+        const PROJECT_LIMIT: usize = 300;
         let center = path_of(path);
         let Some(json) = self.with_notes(|n| {
-            let graph = n.graph(&center, depth.clamp(1, 2) as u8, LIMIT);
+            let graph = if depth <= 0 {
+                n.project_graph(&center, PROJECT_LIMIT)
+            } else {
+                n.graph(&center, depth.min(2) as u8, LIMIT)
+            };
             let nodes: Vec<_> = graph
                 .nodes
                 .iter()

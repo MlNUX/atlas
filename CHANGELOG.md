@@ -10,6 +10,11 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Geändert
+- „Lokaler Graph“ heißt jetzt „Graph“ und zeigt in einer Ansicht das ganze
+  Projekt: die aktuelle Datei in der Mitte, verknüpfte Dateien um sie
+  herum, den Rest außen; mit Zoom und Verschieben.
+
 ### Behoben
 - Sessions in anderen Projektordnern: Das Sessionfenster zeigt jetzt die
   Sessions aller geöffneten Projekte, nach Ordner gruppiert; ein Klick

@@ -88,7 +88,7 @@ Rectangle {
     function viewState() {
         return {
             zoom: root.zoom, page: currentPage, sidebar: sidebarVisible, sidebarTab: sidebarTab,
-            context: showContext, contextTab: contextPanel.tab, graphDepth: contextPanel.depth,
+            context: showContext, contextTab: contextPanel.tab,
         }
     }
     function applyState(state) {
@@ -106,7 +106,6 @@ Rectangle {
         if (s.sidebarTab !== undefined) root.sidebarTab = s.sidebarTab
         if (s.context !== undefined) root.showContext = s.context
         if (s.contextTab !== undefined) contextPanel.tab = s.contextTab
-        if (s.graphDepth !== undefined) contextPanel.depth = s.graphDepth
         restorePage = s.page || 0
         if (doc.status === "ready") Qt.callLater(root.restore)
     }
@@ -562,7 +561,7 @@ Rectangle {
                 }
                 IconButton {
                     iconName: "graph"
-                    tip: qsTr("Lokaler Graph: verknüpfte Notizen und Dateien")
+                    tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
                     checkable: true
                     checked: root.showContext && contextPanel.tab === 1
                     onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 1); contextPanel.tab = 1 }

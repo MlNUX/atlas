@@ -7,8 +7,9 @@ import QtQuick.Layouts
 import Atlas
 
 // Context of a Markdown file or PDF: notes linking to it (filterable by
-// text, kind of link, tag and folder) and a local graph of its neighbours –
-// notes, PDFs and other files – with quotes of PDF annotations highlighted.
+// text, kind of link, tag and folder) and the graph of the project – notes,
+// PDFs and other files, this file highlighted in the middle – with quotes
+// of PDF annotations highlighted.
 Rectangle {
     id: panel
     required property AppController app
@@ -17,9 +18,8 @@ Rectangle {
     property int tab: 0
     /// Own tab bar (off when a surrounding panel switches the tab).
     property bool showTabs: true
-    /// Graph only, without depth switch and legend (overview cards).
+    /// Graph only, without tool bar and legend (overview cards).
     property bool compact: false
-    property int depth: 1
     /// Backlinks: "file" (links to `path`) or "project" (all marked text of
     /// the project's PDFs and where notes quote it, by PDF).
     property string scope: "file"
@@ -40,11 +40,10 @@ Rectangle {
         if (scope === "project" && tab === 0) { backlinkList = JSON.parse(app.projectQuotes()); return }
         if (!path) { backlinkList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
         backlinkList = JSON.parse(app.backlinks(path))
-        if (visible && tab === 1) graph = JSON.parse(app.contextGraph(path, depth))
+        if (visible && tab === 1) graph = JSON.parse(app.contextGraph(path, 0))
     }
     onPathChanged: refresh()
     onTabChanged: refresh()
-    onDepthChanged: refresh()
     onScopeChanged: refresh()
     onVisibleChanged: if (visible) refresh()
     Component.onCompleted: refresh()
@@ -124,43 +123,96 @@ Rectangle {
 
     readonly property var kindColors: Theme.kindColors
 
-    /// Radial layout: the file in the middle, direct neighbours on a ring,
-    /// second-degree neighbours outside, near the neighbour they hang on.
-    function layout(w, h) {
-        const nodes = graph.nodes
-        const pos = new Array(nodes.length)
-        if (!nodes.length) return pos
-        const cx = w / 2, cy = h / 2
-        const r1 = Math.max(60, Math.min(w, h) * 0.30)
-        const r2 = Math.min(Math.min(w, h) * 0.47, r1 * 1.65)
-        pos[0] = { x: cx, y: cy, angle: 0 }
-        const ring1 = []
-        for (let i = 1; i < nodes.length; ++i) if (nodes[i].depth === 1) ring1.push(i)
-        ring1.forEach((n, k) => {
-            const a = -Math.PI / 2 + 2 * Math.PI * k / ring1.length
-            pos[n] = { x: cx + r1 * Math.cos(a), y: cy + r1 * Math.sin(a), angle: a }
-        })
-        // Children of each ring-1 node.
-        const children = {}
-        for (let i = 1; i < nodes.length; ++i) {
-            if (nodes[i].depth !== 2) continue
-            const e = graph.edges.find(e => (e.from === i && nodes[e.to].depth === 1) || (e.to === i && nodes[e.from].depth === 1))
-            const parent = e ? (e.from === i ? e.to : e.from) : ring1[0]
-            ;(children[parent] = children[parent] || []).push(i)
-        }
-        const spread = ring1.length > 0 ? Math.min(Math.PI / 3, 2 * Math.PI / ring1.length) : Math.PI
-        for (const p in children) {
-            const list = children[p]
-            const base = pos[p] ? pos[p].angle : 0
-            list.forEach((n, k) => {
-                const a = base + (list.length === 1 ? 0 : spread * (k / (list.length - 1) - 0.5))
-                pos[n] = { x: cx + r2 * Math.cos(a), y: cy + r2 * Math.sin(a), angle: a }
+    /// Depth of nodes not linked with this file.
+    readonly property int unconnected: 255
+
+    /// Force layout in graph coordinates (the file at 0,0): linked files
+    /// pull together, all nodes push apart. Files not linked with this one
+    /// go on a ring around them. Starts from rings by distance, so the same
+    /// graph always gets the same picture.
+    function layout() {
+        const nodes = graph.nodes, n = nodes.length
+        const pos = []
+        if (!n) return pos
+        const linked = [], loose = []
+        for (let i = 1; i < n; ++i) (nodes[i].depth === unconnected ? loose : linked).push(i)
+        pos[0] = { x: 0, y: 0 }
+        const rings = {}
+        for (const i of linked) (rings[nodes[i].depth] = rings[nodes[i].depth] || []).push(i)
+        Object.keys(rings).map(Number).sort((a, b) => a - b).forEach((d, ring) => {
+            rings[d].forEach((node, k) => {
+                const a = -Math.PI / 2 + 2 * Math.PI * k / rings[d].length + ring * 0.4
+                pos[node] = { x: 90 * (ring + 1) * Math.cos(a), y: 90 * (ring + 1) * Math.sin(a) }
             })
+        })
+        const ideal = 80
+        const edges = graph.edges.filter(e => nodes[e.from].depth !== unconnected && nodes[e.to].depth !== unconnected)
+        const moving = [0].concat(linked)
+        const steps = moving.length > 150 ? 60 : moving.length > 60 ? 120 : 200
+        let heat = 40
+        for (let step = 0; step < steps; ++step) {
+            const disp = {}
+            for (const i of moving) disp[i] = { x: 0, y: 0 }
+            for (let a = 0; a < moving.length; ++a) {
+                for (let b = a + 1; b < moving.length; ++b) {
+                    const i = moving[a], j = moving[b]
+                    let dx = pos[i].x - pos[j].x, dy = pos[i].y - pos[j].y
+                    let d2 = dx * dx + dy * dy
+                    if (d2 < 0.01) { dx = 0.1 * (i - j); dy = 0.1; d2 = dx * dx + dy * dy }
+                    const f = ideal * ideal / d2
+                    disp[i].x += dx * f; disp[i].y += dy * f
+                    disp[j].x -= dx * f; disp[j].y -= dy * f
+                }
+            }
+            for (const e of edges) {
+                const dx = pos[e.from].x - pos[e.to].x, dy = pos[e.from].y - pos[e.to].y
+                const f = Math.sqrt(dx * dx + dy * dy) / ideal
+                disp[e.from].x -= dx * f; disp[e.from].y -= dy * f
+                disp[e.to].x += dx * f; disp[e.to].y += dy * f
+            }
+            for (const i of linked) {
+                const len = Math.sqrt(disp[i].x * disp[i].x + disp[i].y * disp[i].y) || 1
+                const move = Math.min(len, heat)
+                pos[i] = { x: pos[i].x + disp[i].x / len * move, y: pos[i].y + disp[i].y / len * move }
+            }
+            heat = Math.max(2, heat * 0.96)
         }
+        // The rest of the project on a ring around the linked part.
+        let radius = 0
+        for (const i of linked) radius = Math.max(radius, Math.sqrt(pos[i].x * pos[i].x + pos[i].y * pos[i].y))
+        const r = Math.max(radius + ideal, loose.length * 55 / (2 * Math.PI))
+        loose.forEach((node, k) => {
+            const a = -Math.PI / 2 + 2 * Math.PI * (k + 0.5) / loose.length
+            pos[node] = { x: r * Math.cos(a), y: r * Math.sin(a) }
+        })
         return pos
     }
-    property var positions: []
-    function relayout() { positions = layout(graphArea.width, graphArea.height); edgeCanvas.requestPaint() }
+    /// Graph coordinates of the nodes, and the view: scale and offset of
+    /// the graph's 0,0 in the area (changed by zooming and dragging).
+    property var world: []
+    property real zoom: 1
+    property real panX: 0
+    property real panY: 0
+    /// Fits the whole graph into the area.
+    function fit() {
+        const w = graphArea.width, h = graphArea.height
+        if (!world.length || w <= 0 || h <= 0) return
+        let x0 = 0, x1 = 0, y0 = 0, y1 = 0
+        for (const p of world) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y) }
+        // Room for the labels below and beside the nodes.
+        zoom = Math.min(1.6, (w - 130) / Math.max(1, x1 - x0), (h - 60) / Math.max(1, y1 - y0))
+        panX = w / 2 - (x0 + x1) / 2 * zoom
+        panY = h / 2 - (y0 + y1) / 2 * zoom
+    }
+    function zoomAt(factor, x, y) {
+        const z = Math.max(0.1, Math.min(6, zoom * factor))
+        panX = x - (x - panX) * z / zoom
+        panY = y - (y - panY) * z / zoom
+        zoom = z
+    }
+    readonly property var positions: world.map(p => ({ x: panX + p.x * zoom, y: panY + p.y * zoom }))
+    onPositionsChanged: edgeCanvas.requestPaint()
+    function relayout() { world = layout(); fit() }
     onGraphChanged: relayout()
 
     // ---------------------------------------------------------------- view
@@ -440,23 +492,46 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.margins: 6
                     spacing: 4
-                    IconButton { glyph: "1"; tip: qsTr("Direkte Nachbarn"); checkable: true; checked: panel.depth === 1; onClicked: panel.depth = 1 }
-                    IconButton { glyph: "2"; tip: qsTr("Auch Nachbarn der Nachbarn"); checkable: true; checked: panel.depth === 2; onClicked: panel.depth = 2 }
-                    Item { Layout.fillWidth: true }
                     Label {
-                        text: qsTr("%n Datei(en)", "", Math.max(0, panel.graph.nodes.length - 1))
+                        Layout.fillWidth: true
+                        leftPadding: 4
+                        text: qsTr("%n Datei(en)", "", panel.graph.nodes.length)
                             + (panel.graph.truncated ? qsTr(" · %1 ausgelassen").arg(panel.graph.truncated) : "")
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
+                        elide: Text.ElideRight
                     }
+                    IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Mausrad)"); onClicked: panel.zoomAt(1 / 1.25, graphArea.width / 2, graphArea.height / 2) }
+                    IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Mausrad)"); onClicked: panel.zoomAt(1.25, graphArea.width / 2, graphArea.height / 2) }
+                    IconButton { iconName: "focus"; tip: qsTr("Ganzen Graphen zeigen"); onClicked: panel.fit() }
                 }
                 Item {
                     id: graphArea
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    onWidthChanged: panel.relayout()
-                    onHeightChanged: panel.relayout()
+                    onWidthChanged: panel.fit()
+                    onHeightChanged: panel.fit()
+
+                    // Drag the empty area to move, wheel to zoom.
+                    DragHandler {
+                        id: panDrag
+                        target: null
+                        property real startX
+                        property real startY
+                        onActiveChanged: if (active) { startX = panel.panX; startY = panel.panY }
+                        onTranslationChanged: if (active) { panel.panX = startX + translation.x; panel.panY = startY + translation.y }
+                    }
+                    WheelHandler {
+                        // (Overview cards scroll with the wheel.)
+                        enabled: !panel.compact
+                        acceptedDevices: PointerDevice.AllDevices
+                        acceptedPointerTypes: PointerDevice.AllPointerTypes
+                        onWheel: (event) => {
+                            const steps = event.angleDelta.y !== 0 ? event.angleDelta.y / 120 : event.pixelDelta.y / 50
+                            panel.zoomAt(Math.pow(1.2, steps), point.position.x, point.position.y)
+                        }
+                    }
 
                     Canvas {
                         id: edgeCanvas
@@ -496,7 +571,13 @@ Rectangle {
                             required property var modelData
                             required property int index
                             readonly property var p: panel.positions[index] || { x: 0, y: 0 }
-                            readonly property real radius: index === 0 ? 17 : modelData.depth === 1 ? 10 : 6
+                            readonly property bool far: modelData.depth === panel.unconnected
+                            readonly property real radius: index === 0 ? 17 : modelData.depth === 1 ? 10 : 7
+                            // Names of distant nodes only when there is room
+                            // or on hover.
+                            readonly property bool labelled: index === 0 || modelData.depth === 1 || nodeHover.hovered
+                                || panel.graph.nodes.length <= 30 || panel.zoom >= 1.3
+                            z: nodeHover.hovered ? 2 : index === 0 ? 1 : 0
                             x: p.x - width / 2
                             y: p.y - radius
                             width: 110
@@ -509,7 +590,7 @@ Rectangle {
                                 color: node.modelData.missing ? "transparent" : (panel.kindColors[node.modelData.kind] || "#9da5b4")
                                 border.width: node.index === 0 ? 3 : node.modelData.missing ? 1 : 0
                                 border.color: node.modelData.missing ? Theme.textFaint : Qt.rgba(0.24, 0.55, 0.99, 0.35)
-                                opacity: node.modelData.depth === 2 ? 0.75 : 1
+                                opacity: node.far ? 0.55 : node.modelData.depth >= 2 ? 0.8 : 1
                                 Icon {
                                     anchors.centerIn: parent
                                     visible: node.radius >= 10 && !node.modelData.missing
@@ -522,10 +603,12 @@ Rectangle {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 y: node.radius * 2 + 1
                                 width: parent.width
+                                visible: node.labelled
                                 horizontalAlignment: Text.AlignHCenter
                                 text: node.modelData.label
                                 color: node.index === 0 ? Theme.textStrong : node.modelData.missing ? Theme.textFaint : Theme.text
-                                font.pixelSize: node.modelData.depth === 2 ? 10 : Theme.smallFontSize
+                                font.pixelSize: node.index === 0 || node.modelData.depth === 1 ? Theme.smallFontSize : 10
+                                opacity: node.far && !nodeHover.hovered ? 0.7 : 1
                                 font.bold: node.index === 0
                                 font.strikeout: node.modelData.missing
                                 elide: Text.ElideMiddle
