@@ -309,10 +309,9 @@ pub mod qobject {
         #[qinvokable]
         fn backlinks(self: &AppController, path: &QString) -> QString;
 
-        /// All quotes of the project: the marked text of all its PDFs (and
-        /// quotes in notes whose mark is gone), by PDF and page. JSON list of
-        /// {target, targetRelative, page, annot, quote, comment, color,
-        /// missing, cited: [{source, relative, line, title}], source,
+        /// All quotes of the project: the marked text of all its PDFs, by PDF
+        /// and page. JSON list of {target, targetRelative, page, annot, quote,
+        /// comment, color, cited: [{source, relative, line, title}], source,
         /// relative, line, title (first citing note, else the PDF), …}.
         #[qinvokable]
         #[cxx_name = "projectQuotes"]
@@ -1342,14 +1341,12 @@ impl qobject::AppController {
         use serde_json::{Value, json};
         crate::annotations_model::flush_io();
         let Some(root) = self.root.clone() else { return qs("[]") };
-        let mut texts = NoteTexts::default();
-        // Where notes quote annotations: annotation id → citations; plus the
-        // quotes themselves (for marks that no longer exist).
+        // Where notes quote annotations: annotation id → citations. A deleted
+        // mark is gone from the list, even if a note still quotes it.
         let mut cited: std::collections::HashMap<String, Vec<Value>> = std::collections::HashMap::new();
-        let mut note_quotes: Vec<(PathBuf, u32, String, Value, Option<String>)> = Vec::new();
         self.with_notes(|n| {
-            for (target, q) in n.quotes() {
-                let LinkAnchor::Annotation(page, id) = &q.anchor else { continue };
+            for (_, q) in n.quotes() {
+                let LinkAnchor::Annotation(_, id) = &q.anchor else { continue };
                 let note = n.note(&q.source);
                 let citation = json!({
                     "source": q.source.to_string_lossy(),
@@ -1357,11 +1354,10 @@ impl qobject::AppController {
                     "line": q.line,
                     "title": note.and_then(|n| n.title.clone()),
                 });
-                cited.entry(id.clone()).or_default().push(citation.clone());
-                note_quotes.push((target, *page, id.clone(), citation, texts.quote(&q.source, q.line)));
+                cited.entry(id.clone()).or_default().push(citation);
             }
         });
-        let entry = |target: &Path, page: u32, id: &str, quote: String, comment: &str, color: &str, missing: bool| {
+        let entry = |target: &Path, page: u32, id: &str, quote: String, comment: &str, color: &str| {
             let citations = cited.get(id).cloned().unwrap_or_default();
             let first = citations.first();
             json!({
@@ -1372,7 +1368,6 @@ impl qobject::AppController {
                 "quote": quote,
                 "comment": comment,
                 "color": color,
-                "missing": missing,
                 "cited": citations,
                 // For the filters: the citing note, else the PDF.
                 "source": first.and_then(|c| c["source"].as_str()).map(str::to_owned).unwrap_or_else(|| target.to_string_lossy().into_owned()),
@@ -1389,7 +1384,6 @@ impl qobject::AppController {
         // Marked text of all the project's PDFs.
         let store = atlas_core::annotations::Store::new(self.annotations_dir.to_string());
         let mut list: Vec<(String, u32, usize, Value)> = Vec::new();
-        let mut marks = std::collections::HashSet::new();
         for (_, file) in store.all() {
             let key = &file.document.path;
             let path =
@@ -1401,7 +1395,6 @@ impl qobject::AppController {
             // A mark over several pages: one entry, its text joined.
             let mut groups: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
             for a in file.annotations.iter().filter(|a| a.kind.is_text_markup() && !a.text.trim().is_empty()) {
-                marks.insert(a.id.clone());
                 if !a.group.is_empty()
                     && let Some(&i) = groups.get(&a.group)
                 {
@@ -1417,19 +1410,9 @@ impl qobject::AppController {
                     sort_key.clone(),
                     a.page,
                     order,
-                    entry(&path, a.page, &a.id, a.text.trim().to_owned(), &a.comment, &a.color, false),
+                    entry(&path, a.page, &a.id, a.text.trim().to_owned(), &a.comment, &a.color),
                 ));
             }
-        }
-        // Quotes in notes whose mark is gone: still listed (from the note).
-        for (target, page, id, _, quote) in note_quotes {
-            if marks.contains(&id) {
-                continue;
-            }
-            marks.insert(id.clone());
-            let order = list.len();
-            let sort_key = self.relative(&target).to_string_lossy().into_owned();
-            list.push((sort_key, page, order, entry(&target, page, &id, quote.unwrap_or_default(), "", "", true)));
         }
         list.sort_by(|a, b| (&a.0, a.1, a.2).cmp(&(&b.0, b.1, b.2)));
         qs(Value::from(list.into_iter().map(|e| e.3).collect::<Vec<_>>()).to_string())

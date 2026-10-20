@@ -548,9 +548,8 @@ Tastatur); der Rauchtest schickt jetzt auch Rad-Ereignisse eines solchen
 - **Verknüpfungen: „Zitate im Projekt“** neben „Dieses Dokument“: alle
   markierten Textstellen aller PDFs des Projekts (nach PDF und Seite, mit
   Farbe und Kommentar) und wo Notizen sie zitieren („zitiert in …, Z. 10“
-  bzw. „noch in keiner Notiz zitiert“); Zitate in Notizen, deren Markierung
-  gelöscht ist, bleiben sichtbar (Zitattext aus dem Blockzitat,
-  `notes::quote_text`). Klick springt zur Markierung in der PDF, „Notiz ↗“
+  bzw. „noch in keiner Notiz zitiert“); eine gelöschte Markierung
+  verschwindet, auch wenn eine Notiz sie noch zitiert. Klick springt zur Markierung in der PDF, „Notiz ↗“
   zur zitierenden Notiz; Textfilter. Die Liste folgt dem Anmerkungsspeicher
   (Dateiüberwachung, `annotationsRevision`), eine neue Markierung erscheint
   also gleich – auch nach dem Schließen der PDF. Zitate in der

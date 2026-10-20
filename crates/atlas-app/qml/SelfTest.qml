@@ -778,6 +778,19 @@ Item {
                 const v = editor.activeTab.viewerItem
                 check("Zitat öffnet die PDF-Stelle", editor.activeTab.path === path("docs/umbenannt.pdf") && v.focusedAnnot === test.annotId,
                       editor.activeTab.path + " " + (v ? v.focusedAnnot : ""))
+                // Deleting marks takes them out of the list – also one a note
+                // still quotes.
+                const panel = inspector.linksPanel
+                const loose = panel.rows.find(r => !r.header && r.quote === "Nur markiert, nicht zitiert")
+                v.annotationStore.remove(loose.annot)
+                v.annotationStore.remove(test.annotId)
+            },
+            () => {
+                const panel = inspector.linksPanel
+                const gone = () => !panel.rows.some(r => !r.header && (r.annot === test.annotId || r.quote === "Nur markiert, nicht zitiert"))
+                if (waitFor(gone)) return
+                check("Gelöschte Markierungen verschwinden", gone() && !JSON.parse(app.projectQuotes()).some(q => q.annot === test.annotId),
+                      JSON.stringify(panel.rows.map(r => r.quote || r.relative)))
                 inspector.linksPanel.scope = "file"
                 // The calendar button opens the calendar and closes it again.
                 const b = window.calendarButton

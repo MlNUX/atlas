@@ -371,9 +371,7 @@ Rectangle {
                                 visible: panel.projectScope && !row.modelData.header
                                 Layout.fillWidth: true
                                 readonly property var cited: row.modelData.cited || []
-                                text: row.modelData.missing
-                                    ? qsTr("Markierung gelöscht · zitiert in %1").arg(cited.map(c => c.relative).join(", "))
-                                    : cited.length
+                                text: cited.length
                                     ? qsTr("zitiert in %1").arg(cited.map(c => c.relative + " (Z. " + c.line + ")").join(", "))
                                     : qsTr("noch in keiner Notiz zitiert")
                                 color: cited.length ? Theme.textMuted : Theme.textFaint
@@ -388,14 +386,14 @@ Rectangle {
                                 const newPane = mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier)
                                 const d = row.modelData
                                 // Project quotes: to the marked passage in the PDF.
-                                if (panel.projectScope && !d.header && !d.missing) panel.openRequested(d.target, d.page, newPane, { annot: d.annot })
+                                if (panel.projectScope && !d.header) panel.openRequested(d.target, d.page, newPane, { annot: d.annot })
                                 else panel.openRequested(d.source, d.header ? 0 : d.line, newPane, {})
                             }
                         }
                         // Project quotes: the note quoting the mark.
                         IconButton {
                             visible: panel.projectScope && !row.modelData.header && (row.modelData.cited || []).length > 0
-                                && !row.modelData.missing && (rowHover.hovered || hovered)
+                                && (rowHover.hovered || hovered)
                             anchors.right: parent.right
                             anchors.rightMargin: 6
                             y: 2
