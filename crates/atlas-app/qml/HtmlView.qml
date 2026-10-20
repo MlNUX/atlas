@@ -21,6 +21,8 @@ Rectangle {
     property bool allowRemote: false
     /// The page refers to scripts, styles or images on the web.
     property bool usesRemote: false
+    /// Error messages of the page (and its frames) since the last load.
+    property var pageErrors: []
 
     /// Back to the source in this tab.
     signal showSourceRequested()
@@ -40,6 +42,8 @@ Rectangle {
         const text = root.app.readTextFile(root.source) || ""
         usesRemote = /<(script|link|img|iframe|source|video|audio)\b[^>]*\b(src|href)\s*=\s*["']?(https?:)?\/\//i.test(text)
             || /@import\s+(url\()?["']?https?:/i.test(text)
+            // Loaded from scripts: `x.src = "https://…"`, fetch(), import().
+            || /\.src\s*=\s*["'`]https?:|\bfetch\(\s*["'`]https?:|\bimport\s*\(?\s*["'`]https?:/i.test(text)
     }
     onAllowRemoteChanged: web.reload()
     function reload() { web.reload() }
@@ -103,12 +107,24 @@ Rectangle {
         // Web resources are blocked unless allowed for this file.
         Banner {
             Layout.fillWidth: true
-            Layout.preferredHeight: visible ? 36 : 0
             visible: root.usesRemote && !root.allowRemote
             tone: Theme.warn
-            message: qsTr("Die Seite lädt Inhalte aus dem Internet (Skripte, Stylesheets, Bilder) – blockiert, sie kann unvollständig sein.")
+            message: qsTr("Inhalte aus dem Internet blockiert – die Seite ist evtl. unvollständig.")
+                + (root.pageErrors.length ? qsTr(" Fehler: „%1“").arg(root.pageErrors[0]) : "")
             actions: [
                 { text: qsTr("Trotzdem laden"), run: () => root.allowRemote = true },
+                { text: qsTr("Im Browser öffnen"), run: () => Qt.openUrlExternally(root.fileUrl) },
+            ]
+        }
+
+        Banner {
+            Layout.fillWidth: true
+            visible: root.pageErrors.length > 0 && !(root.usesRemote && !root.allowRemote)
+            tone: Theme.warn
+            message: root.pageErrors.length === 1 ? qsTr("Die Seite meldet einen Fehler: „%1“").arg(root.pageErrors[0])
+                : qsTr("Die Seite meldet %1 Fehler, zuerst: „%2“").arg(root.pageErrors.length).arg(root.pageErrors[0])
+            actions: [
+                { text: qsTr("Neu laden"), run: () => web.reload() },
                 { text: qsTr("Im Browser öffnen"), run: () => Qt.openUrlExternally(root.fileUrl) },
             ]
         }
@@ -134,6 +150,12 @@ Rectangle {
                 if (request.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) Qt.openUrlExternally(request.url)
             }
             onNewWindowRequested: (request) => Qt.openUrlExternally(request.requestedUrl)
+            // Page errors show in the view (not on the terminal).
+            onJavaScriptConsoleMessage: (level, message, line, sourceId) => {
+                if (level !== WebEngineView.ErrorMessageLevel || root.pageErrors.length >= 20) return
+                root.pageErrors = root.pageErrors.concat([message.replace(/^Uncaught /, "")])
+            }
+            onLoadingChanged: (request) => { if (request.status === WebEngineLoadingInfo.LoadStartedStatus) root.pageErrors = [] }
             Keys.onPressed: (event) => {
                 if (event.key === Qt.Key_F5) { web.reload(); event.accepted = true }
             }

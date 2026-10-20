@@ -879,6 +879,14 @@ Item {
                 check("Seite mit Web-Inhalten: Hinweis", v.usesRemote && !v.allowRemote, v.usesRemote + " " + v.allowRemote)
                 v.allowRemote = true
                 check("„Trotzdem laden“ gilt für die Datei", editor.activeTab.viewState().remote === true, JSON.stringify(editor.activeTab.viewState()))
+                // Errors of the page show in the view.
+                fileActions.renderHtml(path("docs/dyn.html"))
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.pageErrors && v.pageErrors.some(e => e.indexOf("initSqlJs is not defined") >= 0))) return
+                check("Seitenfehler in der Ansicht", v.pageErrors.some(e => e.indexOf("initSqlJs is not defined") >= 0)
+                      && v.usesRemote, JSON.stringify(v.pageErrors))
                 // Thumbnails only for formats Qt reads here.
                 check("Bildformate von Qt", app.imageFormats.indexOf("png") >= 0 && app.imageFormats.indexOf("jpg") >= 0, app.imageFormats.join(","))
             },

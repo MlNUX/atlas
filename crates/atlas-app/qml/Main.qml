@@ -516,6 +516,7 @@ ApplicationWindow {
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "settings": () => settingsDialog.open(),
                 "html": () => fileActions.renderHtml(file),
+                "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
                 "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },
                 "new-session": () => sessionMenu.askNew(),
                 "quick-look": () => fileActions.quickLook(file),

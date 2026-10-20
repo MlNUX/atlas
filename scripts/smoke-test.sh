@@ -131,6 +131,12 @@ cat > "$project/docs/seite.html" <<'HTML'
 HTML
 printf 'h1 { color: rgb(1, 2, 3); }\n' > "$project/docs/seite.css"
 printf '<!doctype html><title>Web</title><script src="https://cdn.example.invalid/sql-wasm.js"></script><p>x</p>\n' > "$project/docs/web.html"
+cat > "$project/docs/dyn.html" <<'HTML'
+<!doctype html><title>Dyn</title><script>
+const s = document.createElement("script"); s.src = "https://cdn.example.invalid/lib.js"; document.head.appendChild(s)
+fetch("https://cdn.example.invalid/data.json").catch(e => console.error("fetch: " + e))
+</script><script src="fehlt.js"></script><script>initSqlJs()</script>
+HTML
 echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"

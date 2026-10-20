@@ -600,3 +600,9 @@ im selben Tab, Session, Neuladen nach Änderung.
 - WebP, TIFF & Co.: `qtimageformats` gehört jetzt zu den Qt-Paketen; die
   Dateiansicht zeigt Vorschaubilder nur für Formate, die Qt lesen kann
   (`imageFormats`), statt „Error decoding … .webp“ zu melden.
+- Seitenfehler (auch aus eingebetteten Rahmen wie `iframe srcdoc`) stehen
+  in der Ansicht statt als `js:`-Zeilen im Terminal; der Netz-Hinweis nennt
+  den Fehler, der durch die Blockade entsteht („initSqlJs is not defined“).
+  Erkannt werden auch per Skript nachgeladene Inhalte (`.src = "https://…"`,
+  `fetch`, `import`). Geprüft mit einem lokalen HTTP-Server: Nach „Trotzdem
+  laden“ laden auch eingebettete Werkzeuge ihre Skripte.
