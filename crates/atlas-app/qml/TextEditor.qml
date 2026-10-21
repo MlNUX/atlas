@@ -39,6 +39,12 @@ Rectangle {
 
     /// Shows file suggestions while the cursor is inside an unfinished
     /// `[[…` (no `|`, `#` or `]]` typed yet).
+    // The suggestions live here, not on the Popup: `var` properties of a
+    // Popup were lost when the JavaScript garbage collector ran.
+    property var completionResults: []
+    property int completionCurrent: 0
+    /// Start of the typed path (after `[[`).
+    property int completionStart: -1
     function updateCompletion() {
         const pos = area.cursorPosition
         const before = area.getText(Math.max(0, pos - 200), pos)
@@ -51,9 +57,9 @@ Rectangle {
         const results = JSON.parse(root.app.quickOpen(query.replace(/^\//, ""), 12))
             .filter(r => r.kind !== "dir" && root.app.exists(r.path)).slice(0, 8)
         if (!results.length) { completion.close(); return }
-        completion.results = results
-        completion.current = 0
-        completion.start = pos - query.length
+        root.completionResults = results
+        root.completionCurrent = 0
+        root.completionStart = pos - query.length
         completion.open()
     }
     property bool showSymbols: false
@@ -185,7 +191,20 @@ Rectangle {
     function currentLine() { return area.getText(0, area.cursorPosition).split("\n").length }
     /// Wiki link suggestions are shown (see `updateCompletion`).
     readonly property bool completing: completion.visible
-    function acceptCompletion() { completion.accept() }
+    /// Inserts the chosen suggestion.
+    function acceptCompletion() {
+        const r = root.completionResults[root.completionCurrent]
+        if (!r || root.completionStart < 0) { completion.close(); return }
+        const end = area.cursorPosition
+        const closing = area.text.slice(end, end + 2) === "]]" ? "" : "]]"
+        area.remove(root.completionStart, end)
+        area.insert(root.completionStart, "/" + r.relative + closing)
+        area.cursorPosition = root.completionStart + r.relative.length + 1 + 2
+        completion.close()
+    }
+    function moveCompletion(step) {
+        root.completionCurrent = (root.completionCurrent + step + root.completionResults.length) % root.completionResults.length
+    }
 
     function applyState(state) {
         if (state.cursor !== undefined) area.cursorPosition = Math.min(state.cursor, area.length)
@@ -390,10 +409,10 @@ Rectangle {
                     Keys.onPressed: (event) => {
                         const ctrl = event.modifiers & Qt.ControlModifier
                         if (completion.visible) {
-                            if (event.key === Qt.Key_Down) { completion.move(1); event.accepted = true; return }
-                            if (event.key === Qt.Key_Up) { completion.move(-1); event.accepted = true; return }
+                            if (event.key === Qt.Key_Down) { root.moveCompletion(1); event.accepted = true; return }
+                            if (event.key === Qt.Key_Up) { root.moveCompletion(-1); event.accepted = true; return }
                             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Tab) {
-                                completion.accept(); event.accepted = true; return
+                                root.acceptCompletion(); event.accepted = true; return
                             }
                             if (event.key === Qt.Key_Escape) { completion.close(); event.accepted = true; return }
                         }
@@ -407,10 +426,6 @@ Rectangle {
                     // Completion of wiki links: `[[` suggests project files.
                     Popup {
                         id: completion
-                        property var results: []
-                        property int current: 0
-                        /// Start of the typed path (after `[[`).
-                        property int start: -1
                         x: area.cursorRectangle.x
                         y: area.cursorRectangle.y + area.cursorRectangle.height + 2
                         width: 420
@@ -419,21 +434,10 @@ Rectangle {
                         focus: false
                         closePolicy: Popup.CloseOnPressOutside
                         background: Rectangle { color: Theme.header; border.color: Theme.border; radius: 4 }
-                        function move(step) { current = (current + step + results.length) % results.length }
-                        function accept() {
-                            const r = results[current]
-                            if (!r || start < 0) { close(); return }
-                            const end = area.cursorPosition
-                            const closing = area.text.slice(end, end + 2) === "]]" ? "" : "]]"
-                            area.remove(start, end)
-                            area.insert(start, "/" + r.relative + closing)
-                            area.cursorPosition = start + r.relative.length + 1 + 2
-                            close()
-                        }
                         ListView {
                             anchors.fill: parent
-                            model: completion.results
-                            currentIndex: completion.current
+                            model: root.completionResults
+                            currentIndex: root.completionCurrent
                             clip: true
                             delegate: Rectangle {
                                 required property var modelData
@@ -441,7 +445,7 @@ Rectangle {
                                 width: ListView.view.width
                                 height: 26
                                 radius: 3
-                                color: index === completion.current ? Theme.activeSelection : "transparent"
+                                color: index === root.completionCurrent ? Theme.activeSelection : "transparent"
                                 Row {
                                     anchors.verticalCenter: parent.verticalCenter
                                     x: 6
@@ -457,7 +461,7 @@ Rectangle {
                                 }
                                 MouseArea {
                                     anchors.fill: parent
-                                    onClicked: { completion.current = parent.index; completion.accept() }
+                                    onClicked: { root.completionCurrent = parent.index; root.acceptCompletion() }
                                 }
                             }
                         }

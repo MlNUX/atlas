@@ -361,6 +361,15 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "unrelateFiles"]
         fn unrelate_files(self: Pin<&mut AppController>, a: &QString, b: &QString) -> bool;
+        /// `path` is a folder node (its files are linked with it).
+        #[qinvokable]
+        #[cxx_name = "isFolderNode"]
+        fn is_folder_node(self: &AppController, path: &QString) -> bool;
+        /// Makes a folder a folder node ("Als Ordner-Knoten verknüpfen") or
+        /// dissolves it.
+        #[qinvokable]
+        #[cxx_name = "setFolderNode"]
+        fn set_folder_node(self: Pin<&mut AppController>, path: &QString, on: bool) -> bool;
         /// Files moved to the trash in Atlas: their relations go.
         #[qinvokable]
         #[cxx_name = "filesTrashed"]
@@ -1372,7 +1381,13 @@ impl qobject::AppController {
             let files = Arc::new(finder::list(&root));
             let _ = thread.queue(move |mut app| {
                 if app.generation == generation {
+                    // The graph shows all files (and folder nodes their
+                    // current members): redraw on changes.
+                    let changed = app.files.as_deref() != Some(&*files);
                     app.as_mut().rust_mut().files = Some(files);
+                    if changed {
+                        app.as_mut().bump_notes();
+                    }
                 }
             });
         });
@@ -1574,10 +1589,56 @@ impl qobject::AppController {
         self.project.as_ref().map(|p| Relations::new(&p.atlas_dir()))
     }
 
-    /// The relations as pairs of absolute paths.
+    /// The relations as pairs of absolute paths, folder nodes included:
+    /// each folder node with the files directly in it (not hidden ones) and
+    /// with the closest folder node above it.
     fn relation_pairs(&self) -> Vec<(PathBuf, PathBuf)> {
         let (Some(root), Some(relations)) = (self.root.as_ref(), self.relations()) else { return Vec::new() };
-        relations.list().into_iter().map(|r| (root.join(r.a), root.join(r.b))).collect()
+        let mut pairs: Vec<_> = relations.list().into_iter().map(|r| (root.join(r.a), root.join(r.b))).collect();
+        let folders = relations.folders();
+        for folder in &folders {
+            if let Some(above) = folder.ancestors().skip(1).find(|a| folders.iter().any(|f| f == a)) {
+                pairs.push((root.join(above), root.join(folder)));
+            }
+        }
+        if let Some(files) = self.files.as_ref() {
+            for entry in files.iter().filter(|e| !e.is_dir && !e.relative.split('/').any(|p| p.starts_with('.'))) {
+                let parent = Path::new(&entry.relative).parent().unwrap_or(Path::new(""));
+                if folders.iter().any(|f| f == parent) {
+                    pairs.push((root.join(parent), finder::absolute(root, entry)));
+                }
+            }
+        }
+        pairs
+    }
+
+    pub fn is_folder_node(&self, path: &QString) -> bool {
+        let Some(relations) = self.relations() else { return false };
+        let folder = self.relative(&path_of(path));
+        relations.folders().contains(&folder)
+    }
+
+    pub fn set_folder_node(mut self: Pin<&mut Self>, path: &QString, on: bool) -> bool {
+        let Some(relations) = self.relations() else { return false };
+        let folder = self.relative(&path_of(path));
+        match relations.set_folder(&folder, on) {
+            Ok(changed) => {
+                let name = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let message = if on {
+                    let members = self.relation_pairs().iter().filter(|(a, _)| *a == path_of(path)).count();
+                    format!("Ordner-Knoten „{name}“: {members} Einträge verknüpft")
+                } else {
+                    format!("Ordner-Knoten „{name}“ aufgelöst")
+                };
+                self.as_mut().bump_notes();
+                self.notes_message(qs(message));
+                changed
+            }
+            Err(err) => {
+                self.notes_message(qs(format!("{err:#}")));
+                false
+            }
+        }
     }
 
     pub fn request_relate(self: Pin<&mut Self>, path: &QString) {
@@ -1586,8 +1647,15 @@ impl qobject::AppController {
 
     pub fn related_files(&self, path: &QString) -> QString {
         let (Some(root), Some(relations)) = (self.root.as_ref(), self.relations()) else { return qs("[]") };
-        let list: Vec<_> = relations
-            .of(&self.relative(&path_of(path)))
+        let relative = self.relative(&path_of(path));
+        let mut others = relations.of(&relative);
+        // The folder node the file belongs to.
+        if let Some(parent) = relative.parent()
+            && relations.folders().iter().any(|f| f == parent)
+        {
+            others.insert(0, parent.to_path_buf());
+        }
+        let list: Vec<_> = others
             .into_iter()
             .map(|rel| {
                 let path = root.join(&rel);

@@ -360,6 +360,15 @@ Item {
             onTriggered: actions.runScript(menu.paths[0])
         }
         MenuItem {
+            // A folder node: all files of the folder linked with it (graph).
+            // (notesRevision: re-read after a change, also for the same folder.)
+            readonly property bool node: app.notesRevision >= 0 && menu.single && ops.isDir(menu.paths[0]) && app.isFolderNode(menu.paths[0])
+            text: node ? qsTr("Ordner-Knoten auflösen") : qsTr("Als Ordner-Knoten verknüpfen")
+            visible: menu.single && !!app.atlasDir && ops.isDir(menu.paths[0]) && menu.paths[0] !== app.projectRoot
+            height: visible ? implicitHeight : 0
+            onTriggered: app.setFolderNode(menu.paths[0], !node)
+        }
+        MenuItem {
             text: qsTr("Verknüpfen mit …")
             visible: menu.single && !!app.atlasDir && !ops.isDir(menu.paths[0])
             height: visible ? implicitHeight : 0

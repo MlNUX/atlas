@@ -708,3 +708,26 @@ Pfade an, Löschen entfernt die Verknüpfung.
 
 Rauchtest: Dialog (nur Dateien), zwei PDFs verknüpfen, Kante im Graph,
 Umbenennen, Lösen.
+
+### Nachtrag – Ordner-Knoten
+
+Rechtsklick auf einen Ordner → **„Als Ordner-Knoten verknüpfen“**: Im
+Graph entsteht ein Knoten mit dem Namen des Ordners, an dem alle Dateien
+hängen, die direkt in ihm liegen (ohne versteckte). Die Mitglieder werden
+nicht gespeichert, nur der Ordner (`folders` in `.atlas/relations.json`):
+später hinzugefügte Dateien gehören dazu, hinaus verschobene nicht mehr.
+Ein Unterordner, der selbst Ordner-Knoten ist, hängt am nächsten
+Ordner-Knoten darüber. Umbenennen und Verschieben in Atlas passen den
+Ordner an, „Ordner-Knoten auflösen“ im selben Menü entfernt ihn. Dateien
+zeigen ihren Ordner-Knoten unter „Verknüpft mit“.
+
+Gefunden und behoben: Die schrittweise Speicherbereinigung von QML
+(Qt 6.8+) verlor Werte von `var`-Eigenschaften, die während einer laufenden
+Sammlung gesetzt wurden – die Wiki-Link-Vorschläge waren plötzlich
+`undefined`, als der Graph nach Änderungen der Dateiliste neu rechnete.
+Atlas setzt deshalb `QV4_GC_TIMELIMIT=0` (Sammlung in einem Zug), außer die
+Variable ist schon gesetzt; die Vorschläge liegen zusätzlich nicht mehr auf
+dem Popup.
+
+Rauchtest: Menüeintrag, Ordner-Knoten im Graph mit allen Dateien des
+Ordners (auch einer neu angelegten), Datei kennt ihren Knoten, Auflösen.

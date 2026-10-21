@@ -33,6 +33,12 @@ fn main() {
         if std::env::var_os("QT_QUICK_CONTROLS_STYLE").is_none() {
             std::env::set_var("QT_QUICK_CONTROLS_STYLE", "AtlasStyle");
         }
+        // The incremental QML garbage collector (Qt 6.8+) lost values of
+        // `var` properties set while a collection was running (seen with
+        // the graph layout's allocations): collect in one go instead.
+        if std::env::var_os("QV4_GC_TIMELIMIT").is_none() {
+            std::env::set_var("QV4_GC_TIMELIMIT", "0");
+        }
     }
 
     // The Markdown preview uses QtWebEngine, which must be set up first.

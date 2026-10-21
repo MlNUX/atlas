@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Links between two files made by hand ("Verknüpfen mit …"), e.g. two
-//! PDFs. Kept in `.atlas/relations.json` with paths relative to the project
-//! root; the files themselves stay unchanged. A relation has no direction.
+//! PDFs, and folder nodes: folders whose files are all linked with the
+//! folder ("Als Ordner-Knoten verknüpfen"; the members are not stored, so
+//! files added later belong to it too). Kept in `.atlas/relations.json`
+//! with paths relative to the project root; the files themselves stay
+//! unchanged. A relation has no direction.
 //!
 //! ```json
-//! {"version": 1, "relations": [{"a": "docs/a.pdf", "b": "docs/b.pdf"}]}
+//! {"version": 1, "relations": [{"a": "docs/a.pdf", "b": "docs/b.pdf"}],
+//!  "folders": ["literatur"]}
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -48,6 +52,9 @@ struct Data {
     version: u32,
     #[serde(default)]
     relations: Vec<Relation>,
+    /// Folder nodes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    folders: Vec<PathBuf>,
 }
 
 /// The relations of one project (paths relative to its root).
@@ -84,6 +91,28 @@ impl Relations {
     /// All relations (none if the file is missing or unreadable).
     pub fn list(&self) -> Vec<Relation> {
         self.read().map(|d| d.relations).unwrap_or_default()
+    }
+
+    /// The folder nodes.
+    pub fn folders(&self) -> Vec<PathBuf> {
+        self.read().map(|d| d.folders).unwrap_or_default()
+    }
+
+    /// Makes `folder` a folder node (or not); `false` if nothing changed.
+    pub fn set_folder(&self, folder: &Path, on: bool) -> Result<bool> {
+        let mut data = self.read()?;
+        let known = data.folders.iter().any(|f| f == folder);
+        if known == on {
+            return Ok(false);
+        }
+        if on {
+            data.folders.push(folder.to_path_buf());
+            data.folders.sort();
+        } else {
+            data.folders.retain(|f| f != folder);
+        }
+        self.write(data)?;
+        Ok(true)
     }
 
     /// The files related to `path`.
@@ -129,6 +158,12 @@ impl Relations {
                 }
             }
         }
+        for folder in &mut data.folders {
+            if let Ok(rest) = folder.strip_prefix(old) {
+                *folder = if rest.as_os_str().is_empty() { new.to_path_buf() } else { new.join(rest) };
+                count += 1;
+            }
+        }
         // Moving one end onto the other leaves nothing to relate.
         data.relations.retain(|r| r.a != r.b);
         if count > 0 {
@@ -140,9 +175,10 @@ impl Relations {
     /// `path` (a file or folder) was deleted: its relations go.
     pub fn removed(&self, path: &Path) -> Result<usize> {
         let mut data = self.read()?;
-        let before = data.relations.len();
+        let before = data.relations.len() + data.folders.len();
         data.relations.retain(|r| !r.a.starts_with(path) && !r.b.starts_with(path));
-        let count = before - data.relations.len();
+        data.folders.retain(|f| !f.starts_with(path));
+        let count = before - data.relations.len() - data.folders.len();
         if count > 0 {
             self.write(data)?;
         }
@@ -178,5 +214,22 @@ mod tests {
         assert!(!rel.remove(Path::new("literatur/b2.pdf"), Path::new("literatur/a.pdf")).unwrap());
         assert_eq!(rel.removed(Path::new("notes")).unwrap(), 1);
         assert!(rel.list().is_empty());
+    }
+
+    #[test]
+    fn folder_nodes_follow_moves() {
+        let dir = tempfile::tempdir().unwrap();
+        let rel = Relations::new(dir.path());
+        assert!(rel.set_folder(Path::new("literatur/web"), true).unwrap());
+        assert!(rel.set_folder(Path::new("literatur"), true).unwrap());
+        assert!(!rel.set_folder(Path::new("literatur"), true).unwrap());
+        assert_eq!(rel.folders(), vec![PathBuf::from("literatur"), PathBuf::from("literatur/web")]);
+        assert_eq!(rel.moved(Path::new("literatur"), Path::new("quellen")).unwrap(), 2);
+        assert_eq!(rel.folders(), vec![PathBuf::from("quellen"), PathBuf::from("quellen/web")]);
+        assert!(rel.set_folder(Path::new("quellen"), false).unwrap());
+        assert_eq!(rel.removed(Path::new("quellen/web")).unwrap(), 1);
+        assert!(rel.folders().is_empty());
+        let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        assert!(!text.contains("folders"), "{text}");
     }
 }

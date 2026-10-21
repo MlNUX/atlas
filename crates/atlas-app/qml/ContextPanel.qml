@@ -680,11 +680,13 @@ Rectangle {
                             readonly property var p: panel.positions[index] || { x: 0, y: 0 }
                             readonly property bool far: modelData.depth === panel.unconnected
                             // Smaller when zoomed out, so dense parts stay apart.
-                            readonly property real radius: (index === 0 ? 17 : modelData.depth === 1 ? 10 : far ? 6 : 7)
+                            // Folder nodes are bigger: files hang on them.
+                            readonly property bool folder: modelData.kind === "dir"
+                            readonly property real radius: (index === 0 ? 17 : folder ? 13 : modelData.depth === 1 ? 10 : far ? 6 : 7)
                                 * Math.max(index === 0 ? 0.7 : 0.35, Math.min(1, panel.zoom * 1.2))
                             // Names of distant nodes only when there is room
                             // or on hover.
-                            readonly property bool labelled: index === 0 || nodeHover.hovered || panel.zoom >= 1.3
+                            readonly property bool labelled: index === 0 || folder || nodeHover.hovered || panel.zoom >= 1.3
                                 || (panel.graph.nodes.length <= 30 && panel.zoom >= 0.5) || (modelData.depth === 1 && panel.zoom >= 0.6)
                             z: nodeHover.hovered ? 2 : index === 0 ? 1 : 0
                             x: p.x - width / 2
@@ -718,7 +720,7 @@ Rectangle {
                                 color: node.index === 0 ? Theme.textStrong : node.modelData.missing ? Theme.textFaint : Theme.text
                                 font.pixelSize: node.index === 0 || node.modelData.depth === 1 ? Theme.smallFontSize : 10
                                 opacity: node.far && !nodeHover.hovered ? 0.7 : 1
-                                font.bold: node.index === 0
+                                font.bold: node.index === 0 || node.folder
                                 font.strikeout: node.modelData.missing
                                 elide: Text.ElideMiddle
                             }

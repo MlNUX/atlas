@@ -1020,6 +1020,34 @@ Item {
                 fileActions.ops.rename(path("docs/zweite-neu.pdf"), "zweite.pdf")
             },
             () => {
+                // Folder node: all files of docs/ hang on a node "docs".
+                fileActions.showMenu([path("docs")], app.projectRoot)
+                const entries = fileActions.contextMenu.shownEntries()
+                fileActions.contextMenu.close()
+                check("Ordner: „Als Ordner-Knoten verknüpfen“ im Menü", entries.indexOf("Als Ordner-Knoten verknüpfen") >= 0, entries.join(" | "))
+                check("Ordner-Knoten angelegt", app.setFolderNode(path("docs"), true) && app.isFolderNode(path("docs")))
+                // A file added later belongs to it too.
+                fileActions.ops.newFile(path("docs"), "neu.txt")
+                app.refreshFileList()
+            },
+            () => {
+                const graph = JSON.parse(app.contextGraph(path("docs/zweite.pdf"), 0))
+                const node = graph.nodes.findIndex(n => n.relative === "docs" && n.kind === "dir")
+                const members = graph.edges.filter(e => e.related && (e.from === node || e.to === node))
+                    .map(e => graph.nodes[e.from === node ? e.to : e.from].relative)
+                const done = () => members.indexOf("docs/neu.txt") >= 0
+                if (waitFor(done)) return
+                check("Ordner-Knoten im Graph, mit allen Dateien des Ordners", node > 0 && done() && members.indexOf("docs/zweite.pdf") >= 0
+                      && members.indexOf("docs/umbenannt.pdf") >= 0 && !members.some(m => m.indexOf("notes/") === 0), JSON.stringify(members))
+                const related = JSON.parse(app.relatedFiles(path("docs/zweite.pdf")))
+                check("Datei kennt ihren Ordner-Knoten", related.length > 0 && related[0].relative === "docs", JSON.stringify(related))
+                fileActions.showMenu([path("docs")], app.projectRoot)
+                const entries = fileActions.contextMenu.shownEntries()
+                fileActions.contextMenu.close()
+                check("Ordner-Knoten auflösen", entries.indexOf("Ordner-Knoten auflösen") >= 0 && app.setFolderNode(path("docs"), false)
+                      && !app.isFolderNode(path("docs")), entries.join(" | "))
+            },
+            () => {
                 // A session in another folder must not touch this one.
                 editor.open(path("notes/idee.md"), 0, "tab")
                 window.saveSession()
