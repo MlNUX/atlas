@@ -360,6 +360,12 @@ Item {
             onTriggered: actions.runScript(menu.paths[0])
         }
         MenuItem {
+            text: qsTr("Verknüpfen mit …")
+            visible: menu.single && !!app.atlasDir && !ops.isDir(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: app.requestRelate(menu.paths[0])
+        }
+        MenuItem {
             text: qsTr("Als Webseite anzeigen")
             visible: menu.single && actions.isHtml(menu.paths[0])
             height: visible ? implicitHeight : 0

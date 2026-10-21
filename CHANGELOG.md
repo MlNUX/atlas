@@ -10,6 +10,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Neu
+- „Verknüpfen mit …“ verbindet zwei Dateien direkt, z. B. zwei PDFs – im
+  Kontextmenü, in der Arbeitsleiste und in der Kontextleiste. Im Graph als
+  grüne gestrichelte Linie, unter „Verknüpfungen“ mit Liste zum Öffnen und
+  Lösen; folgt Umbenennungen.
+
 ### Geändert
 - „Lokaler Graph“ heißt jetzt „Graph“ und zeigt in einer Ansicht das ganze
   Projekt – alle Dateien des Projektordners außer versteckten: die aktuelle

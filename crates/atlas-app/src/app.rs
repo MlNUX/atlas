@@ -16,6 +16,7 @@ use atlas_core::project::Project;
 use atlas_core::project::index::{FileIndex, Previous, Report};
 use atlas_core::project::metadata::Metadata;
 use atlas_core::project::writer::SessionWriter;
+use atlas_core::relations::Relations;
 use atlas_core::session::{AppState, ProjectSession};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
@@ -347,6 +348,24 @@ pub mod qobject {
         /// 255): JSON
         /// {nodes: [{path, relative, label, kind, depth, missing}],
         /// edges: [{from, to, count, quotes}], truncated}.
+        /// Files related to `path` by hand: JSON list of {path, relative,
+        /// kind, missing}.
+        #[qinvokable]
+        #[cxx_name = "relatedFiles"]
+        fn related_files(self: &AppController, path: &QString) -> QString;
+        /// Relates two files ("Verknüpfen mit …"); false if they already
+        /// were (a message tells) or on errors.
+        #[qinvokable]
+        #[cxx_name = "relateFiles"]
+        fn relate_files(self: Pin<&mut AppController>, a: &QString, b: &QString) -> bool;
+        #[qinvokable]
+        #[cxx_name = "unrelateFiles"]
+        fn unrelate_files(self: Pin<&mut AppController>, a: &QString, b: &QString) -> bool;
+        /// Files moved to the trash in Atlas: their relations go.
+        #[qinvokable]
+        #[cxx_name = "filesTrashed"]
+        fn files_trashed(self: Pin<&mut AppController>, paths: &QStringList);
+
         #[qinvokable]
         #[cxx_name = "contextGraph"]
         fn context_graph(self: &AppController, path: &QString, depth: i32) -> QString;
@@ -392,6 +411,15 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "notesMessage"]
         fn notes_message(self: Pin<&mut AppController>, message: QString);
+
+        /// "Verknüpfen mit …" for `path`, from anywhere (Main shows the
+        /// dialog).
+        #[qsignal]
+        #[cxx_name = "relateRequested"]
+        fn relate_requested(self: Pin<&mut AppController>, path: QString);
+        #[qinvokable]
+        #[cxx_name = "requestRelate"]
+        fn request_relate(self: Pin<&mut AppController>, path: &QString);
 
         /// PDF annotations of the project matching `query` (fuzzy over text,
         /// comment, bookmark title and file name; all if empty). JSON list
@@ -1541,6 +1569,84 @@ impl qobject::AppController {
         qs(serde_json::Value::from(list).to_string())
     }
 
+    /// Files related by hand in this project (none without `.atlas/`).
+    fn relations(&self) -> Option<Relations> {
+        self.project.as_ref().map(|p| Relations::new(&p.atlas_dir()))
+    }
+
+    /// The relations as pairs of absolute paths.
+    fn relation_pairs(&self) -> Vec<(PathBuf, PathBuf)> {
+        let (Some(root), Some(relations)) = (self.root.as_ref(), self.relations()) else { return Vec::new() };
+        relations.list().into_iter().map(|r| (root.join(r.a), root.join(r.b))).collect()
+    }
+
+    pub fn request_relate(self: Pin<&mut Self>, path: &QString) {
+        self.relate_requested(path.clone());
+    }
+
+    pub fn related_files(&self, path: &QString) -> QString {
+        let (Some(root), Some(relations)) = (self.root.as_ref(), self.relations()) else { return qs("[]") };
+        let list: Vec<_> = relations
+            .of(&self.relative(&path_of(path)))
+            .into_iter()
+            .map(|rel| {
+                let path = root.join(&rel);
+                serde_json::json!({
+                    "path": path.to_string_lossy(), "relative": rel.to_string_lossy(),
+                    "kind": file_kind(&path), "missing": path.symlink_metadata().is_err(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn relate_files(mut self: Pin<&mut Self>, a: &QString, b: &QString) -> bool {
+        let Some(relations) = self.relations() else { return false };
+        let (a, b) = (self.relative(&path_of(a)), self.relative(&path_of(b)));
+        match relations.add(&a, &b) {
+            Ok(added) => {
+                let text = if added { "Verknüpft: {a} ↔ {b}" } else { "{a} und {b} sind schon verknüpft" };
+                let text = text.replace("{a}", &a.to_string_lossy()).replace("{b}", &b.to_string_lossy());
+                self.as_mut().bump_notes();
+                self.notes_message(qs(text));
+                added
+            }
+            Err(err) => {
+                self.notes_message(qs(format!("{err:#}")));
+                false
+            }
+        }
+    }
+
+    pub fn unrelate_files(mut self: Pin<&mut Self>, a: &QString, b: &QString) -> bool {
+        let Some(relations) = self.relations() else { return false };
+        let (a, b) = (self.relative(&path_of(a)), self.relative(&path_of(b)));
+        match relations.remove(&a, &b) {
+            Ok(removed) => {
+                self.as_mut().bump_notes();
+                removed
+            }
+            Err(err) => {
+                self.notes_message(qs(format!("{err:#}")));
+                false
+            }
+        }
+    }
+
+    pub fn files_trashed(mut self: Pin<&mut Self>, paths: &QStringList) {
+        let Some(relations) = self.relations() else { return };
+        let mut count = 0;
+        for path in paths.iter() {
+            match relations.removed(&self.relative(&path_of(path))) {
+                Ok(n) => count += n,
+                Err(err) => log::warn!("cannot update relations: {err:#}"),
+            }
+        }
+        if count > 0 {
+            self.as_mut().bump_notes();
+        }
+    }
+
     /// The files of the project for the graph (without hidden ones and
     /// folders): PDFs, then other documents and images, then the rest.
     fn graph_files(&self) -> Vec<PathBuf> {
@@ -1566,7 +1672,7 @@ impl qobject::AppController {
         let center = path_of(path);
         let Some(json) = self.with_notes(|n| {
             let graph = if depth <= 0 {
-                n.project_graph(&center, &self.graph_files(), PROJECT_LIMIT)
+                n.project_graph(&center, &self.graph_files(), &self.relation_pairs(), PROJECT_LIMIT)
             } else {
                 n.graph(&center, depth.min(2) as u8, LIMIT)
             };
@@ -1590,7 +1696,9 @@ impl qobject::AppController {
             let edges: Vec<_> = graph
                 .edges
                 .iter()
-                .map(|e| serde_json::json!({ "from": e.from, "to": e.to, "count": e.count, "quotes": e.quotes }))
+                .map(|e| {
+                    serde_json::json!({ "from": e.from, "to": e.to, "count": e.count, "quotes": e.quotes, "related": e.related })
+                })
                 .collect();
             serde_json::json!({ "nodes": nodes, "edges": edges, "truncated": graph.truncated })
         }) else {
@@ -1631,6 +1739,12 @@ impl qobject::AppController {
             if let Err(err) = store.moved(&old.to_string_lossy(), &new.to_string_lossy()) {
                 log::warn!("cannot update annotation paths: {err:#}");
             }
+        }
+        // So do files related by hand.
+        if let Some(relations) = self.relations()
+            && let Err(err) = relations.moved(&self.relative(&moves[0].0), &self.relative(&moves[0].1))
+        {
+            log::warn!("cannot update relations: {err:#}");
         }
         let Some(done) = self.with_notes(|n| {
             let plan = n.plan_relink(&moves);

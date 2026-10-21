@@ -135,6 +135,8 @@ pub struct GraphEdge {
     pub count: usize,
     /// Some links are quotes of PDF annotations.
     pub quotes: usize,
+    /// The two files are related by hand ([`crate::relations`]).
+    pub related: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -154,23 +156,38 @@ struct GraphBuilder<'a> {
     notes: &'a NoteIndex,
     /// Links to each file: target → (source note, link).
     incoming: BTreeMap<&'a Path, Vec<(&'a Path, &'a NoteLink)>>,
+    /// Files related by hand, both ways: file → (other, stored first).
+    related: BTreeMap<PathBuf, Vec<(PathBuf, bool)>>,
     nodes: Vec<GraphNode>,
     index: BTreeMap<PathBuf, usize>,
-    /// (from, to) → (count, quotes)
-    edges: BTreeMap<(usize, usize), (usize, usize)>,
+    /// (from, to) → (count, quotes, related)
+    edges: BTreeMap<(usize, usize), (usize, usize, bool)>,
     truncated: usize,
 }
 
 impl<'a> GraphBuilder<'a> {
-    fn new(notes: &'a NoteIndex, center: &Path) -> Self {
+    /// `relations`: pairs of files related by hand (absolute paths).
+    fn new(notes: &'a NoteIndex, center: &Path, relations: &[(PathBuf, PathBuf)]) -> Self {
         let mut incoming: BTreeMap<&'a Path, Vec<(&'a Path, &'a NoteLink)>> = BTreeMap::new();
         for (source, note) in &notes.notes {
             for link in note.links.iter().filter(|l| &l.target != source) {
                 incoming.entry(link.target.as_path()).or_default().push((source.as_path(), link));
             }
         }
-        let mut builder =
-            Self { notes, incoming, nodes: Vec::new(), index: BTreeMap::new(), edges: BTreeMap::new(), truncated: 0 };
+        let mut related: BTreeMap<PathBuf, Vec<(PathBuf, bool)>> = BTreeMap::new();
+        for (a, b) in relations.iter().filter(|(a, b)| a != b) {
+            related.entry(a.clone()).or_default().push((b.clone(), true));
+            related.entry(b.clone()).or_default().push((a.clone(), false));
+        }
+        let mut builder = Self {
+            notes,
+            incoming,
+            related,
+            nodes: Vec::new(),
+            index: BTreeMap::new(),
+            edges: BTreeMap::new(),
+            truncated: 0,
+        };
         builder.nodes.push(GraphNode { path: center.to_path_buf(), depth: 0, missing: false });
         builder.index.insert(center.to_path_buf(), 0);
         builder
@@ -195,15 +212,20 @@ impl<'a> GraphBuilder<'a> {
             let mut next = Vec::new();
             for path in &frontier {
                 let from = self.index[path];
-                // Links from `path` (if it is a note) and links to it.
-                let mut neighbours: Vec<(&'a Path, bool, &'a NoteLink)> = Vec::new();
+                // Links from `path` (if it is a note), links to it and files
+                // related to it by hand (no link).
+                let mut neighbours: Vec<(PathBuf, bool, Option<&'a NoteLink>)> = Vec::new();
                 if let Some(note) = notes.notes.get(path) {
-                    neighbours.extend(note.links.iter().map(|l| (l.target.as_path(), true, l)));
+                    neighbours.extend(note.links.iter().map(|l| (l.target.clone(), true, Some(l))));
                 }
                 if let Some(list) = self.incoming.get(path.as_path()) {
-                    neighbours.extend(list.iter().map(|&(source, link)| (source, false, link)));
+                    neighbours.extend(list.iter().map(|&(source, link)| (source.to_path_buf(), false, Some(link))));
+                }
+                if let Some(list) = self.related.get(path) {
+                    neighbours.extend(list.iter().map(|(other, first)| (other.clone(), *first, None)));
                 }
                 for (other, outgoing, link) in neighbours {
+                    let other = other.as_path();
                     // Hidden files (and files in hidden folders) stay out.
                     if other == path || notes.is_hidden(other) {
                         continue;
@@ -221,9 +243,14 @@ impl<'a> GraphBuilder<'a> {
                     };
                     let key = if outgoing { (from, to) } else { (to, from) };
                     let entry = self.edges.entry(key).or_default();
-                    entry.0 += 1;
-                    if matches!(link.anchor, LinkAnchor::Annotation(..)) {
-                        entry.1 += 1;
+                    match link {
+                        Some(link) => {
+                            entry.0 += 1;
+                            if matches!(link.anchor, LinkAnchor::Annotation(..)) {
+                                entry.1 += 1;
+                            }
+                        }
+                        None => entry.2 = true,
                     }
                 }
             }
@@ -232,8 +259,11 @@ impl<'a> GraphBuilder<'a> {
     }
 
     fn finish(self) -> Graph {
-        let edges =
-            self.edges.into_iter().map(|((from, to), (count, quotes))| GraphEdge { from, to, count, quotes }).collect();
+        let edges = self
+            .edges
+            .into_iter()
+            .map(|((from, to), (count, quotes, related))| GraphEdge { from, to, count, quotes, related })
+            .collect();
         Graph { nodes: self.nodes, edges, truncated: self.truncated }
     }
 }
@@ -426,18 +456,25 @@ impl NoteIndex {
     /// to it, files it links to (if it is a note) and – with `depth` 2 –
     /// their neighbours. At most `limit` nodes; closer ones first.
     pub fn graph(&self, center: &Path, depth: u8, limit: usize) -> Graph {
-        let mut builder = GraphBuilder::new(self, center);
+        let mut builder = GraphBuilder::new(self, center, &[]);
         builder.grow(center, depth.max(1), None, limit);
         builder.finish()
     }
 
-    /// The whole project: every note, every file a note links to and the
-    /// `others` (further files of the project, in this order). `center`
+    /// The whole project: every note, every file a note links to, files
+    /// related by hand (`relations`) and the `others` (further files of the
+    /// project, in this order). `center`
     /// comes first; the depth of a node is its distance from it,
     /// [`UNCONNECTED`] for the parts not linked with it. At most `limit`
     /// nodes: the part around `center` first, then the other notes.
-    pub fn project_graph(&self, center: &Path, others: &[PathBuf], limit: usize) -> Graph {
-        let mut builder = GraphBuilder::new(self, center);
+    pub fn project_graph(
+        &self,
+        center: &Path,
+        others: &[PathBuf],
+        relations: &[(PathBuf, PathBuf)],
+        limit: usize,
+    ) -> Graph {
+        let mut builder = GraphBuilder::new(self, center, relations);
         builder.grow(center, UNCONNECTED - 1, None, limit);
         for path in self.notes.keys() {
             if builder.index.contains_key(path) || self.is_hidden(path) {
@@ -459,6 +496,8 @@ impl NoteIndex {
                 continue;
             }
             builder.add(path, UNCONNECTED);
+            // Related by hand to something outside the part around `center`.
+            builder.grow(path, UNCONNECTED - 1, Some(UNCONNECTED), limit);
         }
         builder.finish()
     }
@@ -758,7 +797,9 @@ mod graph_tests {
         write(root, ".github/notes.md", "[[/notes/c]]\n");
         let index = NoteIndex::build(root);
         let other = write(root, "daten/tabelle.csv", "a,b\n");
-        let g = index.project_graph(&c, &[other.clone(), pdf.clone()], 50);
+        let other2 = write(root, "daten/b.pdf", "%PDF");
+        let related = [(pdf.clone(), other2.clone()), (other.clone(), other2.clone())];
+        let g = index.project_graph(&c, &[other.clone(), pdf.clone(), other2.clone()], &related, 50);
         let find = |p: &Path| g.nodes.iter().find(|n| n.path == p).cloned();
         assert_eq!(g.nodes[0].path, c);
         assert_eq!(find(&b).unwrap().depth, 1);
@@ -766,11 +807,15 @@ mod graph_tests {
         assert_eq!(find(&pdf).unwrap().depth, 3);
         assert_eq!(find(&d).unwrap().depth, 4);
         assert_eq!(find(&e).unwrap().depth, UNCONNECTED);
-        assert_eq!(find(&other).unwrap().depth, UNCONNECTED, "files without links too");
+        assert_eq!(find(&other2).unwrap().depth, 4, "related by hand to the PDF");
+        assert_eq!(find(&other).unwrap().depth, 5, "and on to the table");
+        let idx = |p: &Path| g.nodes.iter().position(|n| n.path == p).unwrap();
+        let edge = g.edges.iter().find(|e| e.from == idx(&pdf) && e.to == idx(&other2)).unwrap();
+        assert!(edge.related && edge.count == 0);
         assert_eq!(g.nodes.iter().filter(|n| n.path == pdf).count(), 1);
         assert!(g.nodes.iter().all(|n| n.path != root.join(".github/notes.md")), "no hidden files");
-        assert_eq!(g.edges.len(), index.graph(&c, 9, 50).edges.len(), "e.md has no links");
-        assert_eq!(index.project_graph(&c, &[other], 3).nodes.len(), 3, "limited");
+        assert_eq!(g.edges.len(), index.graph(&c, 9, 50).edges.len() + 2, "e.md has no links");
+        assert_eq!(index.project_graph(&c, &[other], &[], 3).nodes.len(), 3, "limited");
 
         // Backlinks know the kind of link and the line.
         let back = index.backlinks(&pdf);

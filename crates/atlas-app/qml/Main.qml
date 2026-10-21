@@ -126,6 +126,11 @@ ApplicationWindow {
     }
     property bool calendarPasswordLater: false
     Connections { target: app; function onProjectRootChanged() { window.calendarPasswordLater = false } }
+    RelateDialog {
+        id: relateDialog
+        app: app
+    }
+
     SendToNoteDialog {
         id: sendToNote
         app: app
@@ -196,6 +201,8 @@ ApplicationWindow {
                 list.push({ name: qsTr("Ausführen"), hint: app.fileName(current), run: () => fileActions.runScript(current) })
             if (fileActions.isHtml(current))
                 list.push({ name: qsTr("Als Webseite anzeigen"), hint: app.fileName(current), run: () => fileActions.renderHtml(current) })
+            if (app.atlasDir && app.exists(current))
+                list.push({ name: qsTr("Verknüpfen mit …"), hint: app.fileName(current), run: () => app.requestRelate(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
             if (app.fileKind(current) === "markdown")
                 list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
@@ -273,7 +280,7 @@ ApplicationWindow {
             app.filesMoved(from, to)
             fileListTimer.restart()
         }
-        function onTrashed(paths) { editor.pathsRemoved(paths); fileListTimer.restart() }
+        function onTrashed(paths) { editor.pathsRemoved(paths); app.filesTrashed(paths); fileListTimer.restart() }
     }
     Connections {
         target: fileActions
@@ -442,6 +449,7 @@ ApplicationWindow {
     Connections {
         target: app
         function onNotesMessage(message) { fileActions.showMessage(message) }
+        function onRelateRequested(path) { relateDialog.ask(path) }
     }
     Connections {
         target: Qt.application
@@ -499,6 +507,7 @@ ApplicationWindow {
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "settings": () => settingsDialog.open(),
                 "html": () => fileActions.renderHtml(file),
+                "relate": () => app.requestRelate(file),
                 "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
                 "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },
                 "new-session": () => sessionMenu.askNew(),
@@ -551,7 +560,7 @@ ApplicationWindow {
             Object.assign(item, {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
-                sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, settingsDialog: settingsDialog,
+                sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, relateDialog: relateDialog, settingsDialog: settingsDialog,
                 projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector,
             })
             item.start()

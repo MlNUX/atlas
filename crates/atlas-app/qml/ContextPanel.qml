@@ -28,6 +28,8 @@ Rectangle {
     readonly property alias backlinkView: backList
     readonly property alias graphView: graphArea
     property var backlinkList: []
+    /// Files related to `path` by hand ("Verknüpfen mit …").
+    property var relatedList: []
     property var graph: ({ nodes: [], edges: [], truncated: 0 })
     readonly property int count: backlinkList.length
 
@@ -39,8 +41,9 @@ Rectangle {
     function refresh() {
         // (`scope`, not `projectScope`: this also runs from onScopeChanged.)
         if (scope === "project" && tab === 0) { backlinkList = JSON.parse(app.projectQuotes()); return }
-        if (!path) { backlinkList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
+        if (!path) { backlinkList = []; relatedList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
         backlinkList = JSON.parse(app.backlinks(path))
+        relatedList = JSON.parse(app.relatedFiles(path))
         if (visible && tab === 1) graph = JSON.parse(app.contextGraph(path, 0))
     }
     onPathChanged: refresh()
@@ -277,6 +280,83 @@ Rectangle {
                             }
                             HoverHandler { id: scopeHover }
                             MouseArea { anchors.fill: parent; onClicked: panel.scope = scopeButton.modelData.scope }
+                        }
+                    }
+                }
+                // Files related by hand, with "+" to add one.
+                ColumnLayout {
+                    visible: !panel.projectScope && !!panel.path && !!panel.app.atlasDir
+                    Layout.fillWidth: true
+                    Layout.fillHeight: false
+                    Layout.leftMargin: 6
+                    Layout.rightMargin: 6
+                    Layout.topMargin: 6
+                    spacing: 0
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: panel.relatedList.length ? qsTr("Verknüpft mit (%1)").arg(panel.relatedList.length) : qsTr("Mit keiner Datei verknüpft")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.smallFontSize
+                            font.weight: Font.DemiBold
+                        }
+                        IconButton {
+                            iconName: "plus"
+                            iconSize: 14
+                            implicitWidth: 24
+                            implicitHeight: 24
+                            tip: qsTr("Verknüpfen mit … (z. B. eine andere PDF)")
+                            onClicked: panel.app.requestRelate(panel.path)
+                        }
+                    }
+                    Repeater {
+                        model: panel.relatedList
+                        Rectangle {
+                            id: relatedRow
+                            required property var modelData
+                            Layout.fillWidth: true
+                            implicitHeight: 26
+                            radius: 5
+                            color: relatedHover.hovered ? Theme.hover : "transparent"
+                            HoverHandler { id: relatedHover }
+                            MouseArea {
+                                anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                cursorShape: relatedRow.modelData.missing ? Qt.ArrowCursor : Qt.PointingHandCursor
+                                onClicked: (mouse) => {
+                                    if (!relatedRow.modelData.missing)
+                                        panel.openRequested(relatedRow.modelData.path, 0, mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier), {})
+                                }
+                            }
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 4
+                                spacing: 6
+                                Icon {
+                                    readonly property var look: Theme.fileIcon(relatedRow.modelData.relative, relatedRow.modelData.kind === "dir")
+                                    name: look[0]
+                                    color: look[1]
+                                    size: 14
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: relatedRow.modelData.relative + (relatedRow.modelData.missing ? qsTr(" (fehlt)") : "")
+                                    color: relatedRow.modelData.missing ? Theme.textFaint : Theme.text
+                                    font.pixelSize: Theme.smallFontSize
+                                    font.strikeout: relatedRow.modelData.missing
+                                    elide: Text.ElideMiddle
+                                }
+                                IconButton {
+                                    visible: relatedHover.hovered
+                                    iconName: "close"
+                                    iconSize: 12
+                                    implicitWidth: 22
+                                    implicitHeight: 22
+                                    tip: qsTr("Verknüpfung lösen")
+                                    onClicked: panel.app.unrelateFiles(panel.path, relatedRow.modelData.path)
+                                }
+                            }
                         }
                     }
                 }
@@ -557,9 +637,21 @@ Rectangle {
                             for (const e of panel.graph.edges) {
                                 const a = pos[e.from], b = pos[e.to]
                                 if (!a || !b) continue
+                                const scale = Math.max(0.4, Math.min(1, panel.zoom * 1.2))
+                                // Related by hand only: dashed, green, no direction.
+                                if (e.related && e.count === 0) {
+                                    ctx.beginPath()
+                                    ctx.strokeStyle = "rgba(52, 194, 122, 0.85)"
+                                    ctx.lineWidth = Math.max(1.6, 2.5 * scale)
+                                    ctx.setLineDash([5, 3])
+                                    ctx.moveTo(a.x, a.y)
+                                    ctx.lineTo(b.x, b.y)
+                                    ctx.stroke()
+                                    ctx.setLineDash([])
+                                    continue
+                                }
                                 ctx.beginPath()
                                 ctx.strokeStyle = e.quotes > 0 ? "rgba(255, 212, 0, 0.75)" : "rgba(120, 140, 175, 0.45)"
-                                const scale = Math.max(0.4, Math.min(1, panel.zoom * 1.2))
                                 ctx.lineWidth = (Math.min(4, 1 + (e.count - 1) * 0.6) + (e.quotes > 0 ? 0.5 : 0)) * scale
                                 ctx.moveTo(a.x, a.y)
                                 ctx.lineTo(b.x, b.y)
@@ -669,16 +761,18 @@ Rectangle {
                             { kind: "pdf", text: qsTr("PDF") },
                             { kind: "text", text: qsTr("Datei") },
                             { kind: "quote", text: qsTr("Zitat") },
+                            { kind: "related", text: qsTr("Verknüpfung") },
                         ]
                         Row {
                             required property var modelData
                             spacing: 4
                             Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: modelData.kind === "quote" ? 14 : 8
-                                height: modelData.kind === "quote" ? 2 : 8
-                                radius: modelData.kind === "quote" ? 0 : 4
-                                color: modelData.kind === "quote" ? "#ffd400" : panel.kindColors[modelData.kind]
+                                readonly property bool line: modelData.kind === "quote" || modelData.kind === "related"
+                                width: line ? 14 : 8
+                                height: line ? 2 : 8
+                                radius: line ? 0 : 4
+                                color: modelData.kind === "quote" ? "#ffd400" : modelData.kind === "related" ? "#34c27a" : panel.kindColors[modelData.kind]
                             }
                             Label { text: modelData.text; color: Theme.textFaint; font.pixelSize: 10 }
                         }

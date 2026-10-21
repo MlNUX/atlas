@@ -86,6 +86,9 @@ Rectangle {
         if (document && actions.isHtml(document))
             out.push({ icon: "eye", name: qsTr("Als Webseite anzeigen"), enabled: true, tip: qsTr("HTML gerendert anzeigen (lädt beim Speichern neu)"),
                        run: () => actions.renderHtml(document) })
+        if (document && app.atlasDir && app.exists(document))
+            out.push({ icon: "link", name: qsTr("Verknüpfen mit …"), enabled: true, tip: qsTr("Mit einer anderen Datei verbinden, z. B. zwei PDFs (im Graph sichtbar)"),
+                       run: () => app.requestRelate(document) })
         if (kind === "markdown")
             out.push({ icon: "check-square", name: qsTr("Checkliste als Aufgaben"), enabled: true, tip: qsTr("Punkte in den Kalender übernehmen"),
                        run: () => actions.calendarSync.importChecklist(document) })

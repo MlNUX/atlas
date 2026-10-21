@@ -692,3 +692,19 @@ und für direkte Nachbarn, sobald Platz ist. Strg+Mausrad zoomt (auch unter
 Wayland, wo Mausräder als „Touchpad“ gemeldet werden); das Mausrad allein
 scrollt die umgebende Leiste. Ziehen verschiebt,
 „Ganzen Graphen zeigen“ passt ein.
+
+### Nachtrag – Dateien verknüpfen
+
+„Verknüpfen mit …“ verbindet zwei beliebige Dateien ohne Notiz dazwischen,
+etwa zwei PDFs: im Kontextmenü einer Datei, in der Arbeitsleiste, unter
+„Aktionen“ der Kontextleiste und mit „+“ in „Verknüpfungen“. Ein Dialog
+sucht die zweite Datei (unscharf wie Strg+P, ohne Ordner und versteckte
+Dateien). Gespeichert wird in `.atlas/relations.json`
+(`atlas_core::relations`), die Dateien bleiben unverändert. Im Graph ist
+eine Verknüpfung eine grüne, gestrichelte Linie ohne Pfeil; unter
+„Verknüpfungen“ → „Dieses Dokument“ steht „Verknüpft mit“ mit den Dateien
+(Klick öffnet, × löst). Umbenennen und Verschieben in Atlas passen die
+Pfade an, Löschen entfernt die Verknüpfung.
+
+Rauchtest: Dialog (nur Dateien), zwei PDFs verknüpfen, Kante im Graph,
+Umbenennen, Lösen.

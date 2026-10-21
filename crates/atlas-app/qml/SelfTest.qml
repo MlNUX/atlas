@@ -22,6 +22,7 @@ Item {
     property var sendToNote
     property var sessionMenu
     property var folderDialog
+    property var relateDialog
     property var settingsDialog
     property var projectTree
     property var quickLook
@@ -990,6 +991,33 @@ Item {
                 const done = () => app.readTextFile(path("src/gelaufen.txt")).indexOf("lief in src") === 0
                 if (waitFor(done)) return
                 check("Skript lief im Terminal, im eigenen Ordner", done() && terminalPanel.visible, app.readTextFile(path("src/gelaufen.txt")))
+            },
+            () => {
+                // "Verknüpfen mit …": two PDFs without a note.
+                app.requestRelate(path("docs/zweite.pdf"))
+            },
+            () => {
+                const target = relateDialog.results.find(r => r.relative === "docs/umbenannt.pdf")
+                check("Verknüpfen: Dialog mit Dateien, ohne Ordner und versteckte", relateDialog.visible && !!target
+                      && !relateDialog.results.some(r => r.kind === "dir" || r.relative.startsWith(".") || r.path === path("docs/zweite.pdf")),
+                      relateDialog.results.length)
+                relateDialog.pick(target)
+            },
+            () => {
+                const related = JSON.parse(app.relatedFiles(path("docs/umbenannt.pdf")))
+                const graph = JSON.parse(app.contextGraph(path("docs/zweite.pdf"), 0))
+                const other = graph.nodes.findIndex(n => n.relative === "docs/umbenannt.pdf")
+                check("Zwei PDFs verknüpft, im Graph", !relateDialog.visible && related.length === 1 && related[0].relative === "docs/zweite.pdf"
+                      && graph.edges.some(e => e.related && ((e.from === 0 && e.to === other) || (e.to === 0 && e.from === other))),
+                      JSON.stringify(related) + " " + JSON.stringify(graph.edges))
+                fileActions.ops.rename(path("docs/zweite.pdf"), "zweite-neu.pdf")
+            },
+            () => {
+                const related = JSON.parse(app.relatedFiles(path("docs/umbenannt.pdf")))
+                check("Verknüpfung folgt Umbenennung", related.length === 1 && related[0].relative === "docs/zweite-neu.pdf", JSON.stringify(related))
+                check("Verknüpfung gelöst", app.unrelateFiles(path("docs/umbenannt.pdf"), path("docs/zweite-neu.pdf"))
+                      && app.relatedFiles(path("docs/umbenannt.pdf")) === "[]")
+                fileActions.ops.rename(path("docs/zweite-neu.pdf"), "zweite.pdf")
             },
             () => {
                 // A session in another folder must not touch this one.

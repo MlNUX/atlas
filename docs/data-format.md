@@ -21,6 +21,7 @@ Projektdaten sind immer **relativ zur Projektwurzel** und verwenden `/`.
 | `index.sqlite` | Dateiliste mit Gerät/Inode | ja, wird bei jedem Start neu aufgebaut |
 | `recovery/<hash>.json` | ungespeicherte Bearbeitungen | nein, bis gespeichert oder verworfen |
 | `annotations/<name>-<8 hex>.json` | PDF-Annotationen, eine Datei je PDF | nein (Nutzerdaten) |
+| `relations.json` | von Hand verknüpfte Dateien („Verknüpfen mit …“): `{"version": 1, "relations": [{"a": "docs/a.pdf", "b": "docs/b.pdf"}]}`, ohne Richtung; folgt Umbenennen/Verschieben in Atlas, Einträge gelöschter Dateien entfallen | nein (Nutzerdaten) |
 | `actions.yaml` | eigene Aktionen des Projekts ([actions.md](actions.md)) | nein (Nutzerdaten) |
 | `extensions/<name>/extension.yaml` | Erweiterungen des Projekts ([extensions.md](extensions.md)) | nein (Nutzerdaten) |
 | `cache/processed/` | Ergebnisse der Dateiverarbeitung durch Erweiterungen | ja |
