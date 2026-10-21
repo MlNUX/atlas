@@ -217,7 +217,8 @@ Item {
                 const all = JSON.parse(app.contextGraph(wiki, 0))
                 const depthOf = (rel) => { const n = all.nodes.find(n => n.relative === rel); return n ? n.depth : -1 }
                 check("Graph zeigt das ganze Projekt", all.nodes[0].relative === "notes/wiki.md" && depthOf("notes/plan.md") === 1
-                      && depthOf("notes/zitate.md") >= 1 && depthOf("docs/umbenannt.pdf") >= 1 && depthOf("notes/aufgaben.md") >= 1,
+                      && depthOf("notes/zitate.md") >= 1 && depthOf("docs/umbenannt.pdf") >= 1 && depthOf("notes/aufgaben.md") >= 1
+                      && depthOf("src/hallo.sh") === 255 && depthOf("docs/seite.css") === 255 && !all.nodes.some(n => /(^|\/)\./.test(n.relative)),
                       JSON.stringify(all.nodes.map(n => n.relative + ":" + n.depth)))
                 editor.open(wiki, 0, "tab", { backlinks: true, contextTab: 1 })
                 fileActions.ops.rename(path("notes/plan.md"), "plan-neu.md")
@@ -227,6 +228,23 @@ Item {
                 check("Wiki-Link folgt Umbenennung", text.indexOf("[[/notes/plan-neu|Plan]]") > 0, text)
                 const md = editor.activeTab.viewerItem
                 check("Kontextpanel mit Graph", !!md && md.showBacklinks && md.viewState().contextTab === 1, JSON.stringify(md ? md.viewState() : {}))
+                // Plain wheel: no zoom.
+                const area = md.contextPanelItem.graphView
+                const p = area.mapToItem(null, area.width / 2, area.height / 2)
+                test.zoomBefore = md.contextPanelItem.zoom
+                app.sendWheel(window, p.x, p.y, 120, 0)
+            },
+            () => {
+                const panel = editor.activeTab.viewerItem.contextPanelItem
+                check("Graph: Mausrad ohne Strg zoomt nicht", panel.zoom === test.zoomBefore, panel.zoom)
+                // Ctrl+wheel, as Wayland reports a mouse wheel ("touchpad").
+                const area = panel.graphView
+                const p = area.mapToItem(null, area.width / 2, area.height / 2)
+                app.sendWheel(window, p.x, p.y, 120, 17)
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Graph: Strg+Mausrad zoomt", md.contextPanelItem.zoom > test.zoomBefore * 1.1, test.zoomBefore + " → " + md.contextPanelItem.zoom)
                 md.mode = "split"
             },
             () => {

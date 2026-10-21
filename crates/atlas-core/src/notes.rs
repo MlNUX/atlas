@@ -204,7 +204,8 @@ impl<'a> GraphBuilder<'a> {
                     neighbours.extend(list.iter().map(|&(source, link)| (source, false, link)));
                 }
                 for (other, outgoing, link) in neighbours {
-                    if other == path {
+                    // Hidden files (and files in hidden folders) stay out.
+                    if other == path || notes.is_hidden(other) {
                         continue;
                     }
                     let to = match self.index.get(other) {
@@ -316,6 +317,14 @@ impl NoteIndex {
         self.notes.len()
     }
 
+    /// `path` is hidden or inside a hidden folder of the project.
+    fn is_hidden(&self, path: &Path) -> bool {
+        path.strip_prefix(&self.root)
+            .unwrap_or(path)
+            .components()
+            .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+    }
+
     pub fn is_empty(&self) -> bool {
         self.notes.is_empty()
     }
@@ -422,15 +431,16 @@ impl NoteIndex {
         builder.finish()
     }
 
-    /// The whole project: every note and every file a note links to.
-    /// `center` comes first; the depth of a node is its distance from it,
+    /// The whole project: every note, every file a note links to and the
+    /// `others` (further files of the project, in this order). `center`
+    /// comes first; the depth of a node is its distance from it,
     /// [`UNCONNECTED`] for the parts not linked with it. At most `limit`
-    /// nodes; the part around `center` first.
-    pub fn project_graph(&self, center: &Path, limit: usize) -> Graph {
+    /// nodes: the part around `center` first, then the other notes.
+    pub fn project_graph(&self, center: &Path, others: &[PathBuf], limit: usize) -> Graph {
         let mut builder = GraphBuilder::new(self, center);
         builder.grow(center, UNCONNECTED - 1, None, limit);
         for path in self.notes.keys() {
-            if builder.index.contains_key(path) {
+            if builder.index.contains_key(path) || self.is_hidden(path) {
                 continue;
             }
             if builder.nodes.len() >= limit {
@@ -439,6 +449,16 @@ impl NoteIndex {
             }
             builder.add(path, UNCONNECTED);
             builder.grow(path, UNCONNECTED - 1, Some(UNCONNECTED), limit);
+        }
+        for path in others {
+            if builder.index.contains_key(path) || self.is_hidden(path) {
+                continue;
+            }
+            if builder.nodes.len() >= limit {
+                builder.truncated += 1;
+                continue;
+            }
+            builder.add(path, UNCONNECTED);
         }
         builder.finish()
     }
@@ -735,8 +755,10 @@ mod graph_tests {
         // The whole project around c.md: everything linked with it by
         // distance, an unlinked note marked as such.
         let e = write(root, "notes/e.md", "allein\n");
+        write(root, ".github/notes.md", "[[/notes/c]]\n");
         let index = NoteIndex::build(root);
-        let g = index.project_graph(&c, 50);
+        let other = write(root, "daten/tabelle.csv", "a,b\n");
+        let g = index.project_graph(&c, &[other.clone(), pdf.clone()], 50);
         let find = |p: &Path| g.nodes.iter().find(|n| n.path == p).cloned();
         assert_eq!(g.nodes[0].path, c);
         assert_eq!(find(&b).unwrap().depth, 1);
@@ -744,8 +766,11 @@ mod graph_tests {
         assert_eq!(find(&pdf).unwrap().depth, 3);
         assert_eq!(find(&d).unwrap().depth, 4);
         assert_eq!(find(&e).unwrap().depth, UNCONNECTED);
+        assert_eq!(find(&other).unwrap().depth, UNCONNECTED, "files without links too");
+        assert_eq!(g.nodes.iter().filter(|n| n.path == pdf).count(), 1);
+        assert!(g.nodes.iter().all(|n| n.path != root.join(".github/notes.md")), "no hidden files");
         assert_eq!(g.edges.len(), index.graph(&c, 9, 50).edges.len(), "e.md has no links");
-        assert_eq!(index.project_graph(&c, 3).nodes.len(), 3, "limited");
+        assert_eq!(index.project_graph(&c, &[other], 3).nodes.len(), 3, "limited");
 
         // Backlinks know the kind of link and the line.
         let back = index.backlinks(&pdf);

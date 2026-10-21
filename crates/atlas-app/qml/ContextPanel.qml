@@ -26,6 +26,7 @@ Rectangle {
     readonly property bool projectScope: scope === "project"
     /// The list of backlinks (for tests).
     readonly property alias backlinkView: backList
+    readonly property alias graphView: graphArea
     property var backlinkList: []
     property var graph: ({ nodes: [], edges: [], truncated: 0 })
     readonly property int count: backlinkList.length
@@ -514,8 +515,8 @@ Rectangle {
                         font.pixelSize: Theme.smallFontSize
                         elide: Text.ElideRight
                     }
-                    IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Mausrad)"); onClicked: panel.zoomAt(1 / 1.25, graphArea.width / 2, graphArea.height / 2) }
-                    IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Mausrad)"); onClicked: panel.zoomAt(1.25, graphArea.width / 2, graphArea.height / 2) }
+                    IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Strg+Mausrad)"); onClicked: panel.zoomAt(1 / 1.25, graphArea.width / 2, graphArea.height / 2) }
+                    IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg+Mausrad)"); onClicked: panel.zoomAt(1.25, graphArea.width / 2, graphArea.height / 2) }
                     IconButton { iconName: "focus"; tip: qsTr("Ganzen Graphen zeigen"); onClicked: panel.fit() }
                 }
                 Item {
@@ -526,7 +527,8 @@ Rectangle {
                     onWidthChanged: panel.fit()
                     onHeightChanged: panel.fit()
 
-                    // Drag the empty area to move, wheel to zoom.
+                    // Drag the empty area to move, Ctrl+wheel to zoom (the
+                    // plain wheel scrolls the surrounding panel).
                     DragHandler {
                         id: panDrag
                         target: null
@@ -536,8 +538,7 @@ Rectangle {
                         onTranslationChanged: if (active) { panel.panX = startX + translation.x; panel.panY = startY + translation.y }
                     }
                     WheelHandler {
-                        // (Overview cards scroll with the wheel.)
-                        enabled: !panel.compact
+                        acceptedModifiers: Qt.ControlModifier
                         acceptedDevices: PointerDevice.AllDevices
                         acceptedPointerTypes: PointerDevice.AllPointerTypes
                         onWheel: (event) => {

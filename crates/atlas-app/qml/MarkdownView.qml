@@ -33,6 +33,7 @@ Rectangle {
 
     readonly property alias editorItem: editor
     readonly property alias previewItem: web
+    readonly property alias contextPanelItem: contextPanel
 
     color: Theme.editor
 

@@ -1541,13 +1541,32 @@ impl qobject::AppController {
         qs(serde_json::Value::from(list).to_string())
     }
 
+    /// The files of the project for the graph (without hidden ones and
+    /// folders): PDFs, then other documents and images, then the rest.
+    fn graph_files(&self) -> Vec<PathBuf> {
+        let (Some(root), Some(files)) = (self.root.as_ref(), self.files.as_ref()) else { return Vec::new() };
+        let rank = |relative: &str| {
+            let ext = relative.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+            match ext.as_str() {
+                "pdf" => 0,
+                "md" | "txt" | "rst" | "html" | "htm" | "docx" | "odt" | "doc" | "rtf" | "tex" | "epub" => 1,
+                "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "csv" | "xlsx" | "ods" | "pptx" | "odp" => 2,
+                _ => 3,
+            }
+        };
+        let mut list: Vec<&finder::Entry> =
+            files.iter().filter(|e| !e.is_dir && !e.relative.split('/').any(|part| part.starts_with('.'))).collect();
+        list.sort_by_key(|e| rank(&e.relative));
+        list.into_iter().map(|e| finder::absolute(root, e)).collect()
+    }
+
     pub fn context_graph(&self, path: &QString, depth: i32) -> QString {
         const LIMIT: usize = 60;
-        const PROJECT_LIMIT: usize = 300;
+        const PROJECT_LIMIT: usize = 500;
         let center = path_of(path);
         let Some(json) = self.with_notes(|n| {
             let graph = if depth <= 0 {
-                n.project_graph(&center, PROJECT_LIMIT)
+                n.project_graph(&center, &self.graph_files(), PROJECT_LIMIT)
             } else {
                 n.graph(&center, depth.min(2) as u8, LIMIT)
             };
