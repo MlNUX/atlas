@@ -25,6 +25,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   jetzt in einem Zug.
 
 ### Geändert
+- Kontextmenü und Hauptmenü gestrafft (ohne Standardprogramm, Dateimanager,
+  „Editor teilen“, „Splits untereinander“; „Neu …“ nur auf Ordnern),
+  Einstellungsfenster neu gestaltet.
 - „Lokaler Graph“ heißt jetzt „Graph“ und zeigt in einer Ansicht das ganze
   Projekt – alle Dateien des Projektordners außer versteckten: die aktuelle
   Datei in der Mitte, verknüpfte Dateien um sie herum, den Rest gleichmäßig

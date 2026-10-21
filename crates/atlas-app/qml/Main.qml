@@ -740,11 +740,6 @@ ApplicationWindow {
                         MenuItem { text: qsTr("Projektordner öffnen …\tStrg+O"); onTriggered: folderDialog.askProject() }
                         MenuItem { text: qsTr("Alle Befehle …\tStrg+Umschalt+P"); onTriggered: commandPalette.show(">") }
                         MenuSeparator {}
-                        MenuItem { text: qsTr("Editor teilen\tStrg+\\"); onTriggered: if (editor.activeGroup) editor.splitGroup(editor.activeGroup) }
-                        MenuItem {
-                            text: editor.orientation === Qt.Horizontal ? qsTr("Splits untereinander") : qsTr("Splits nebeneinander")
-                            onTriggered: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
-                        }
                         MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: window.toggleSidebar() }
                         MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
                         MenuSeparator {}

@@ -731,3 +731,15 @@ dem Popup.
 
 Rauchtest: Menüeintrag, Ordner-Knoten im Graph mit allen Dateien des
 Ordners (auch einer neu angelegten), Datei kennt ihren Knoten, Auflösen.
+
+### Nachtrag – Menüs gestrafft, Einstellungen neu
+
+- Kontextmenü: „Mit Standardprogramm öffnen“ und „Im Dateimanager zeigen“
+  entfallen; „Neue Datei …“ und „Neuer Ordner …“ gibt es nur noch auf
+  Ordnern und der leeren Fläche, nicht auf Dateien.
+- Menü oben rechts: „Editor teilen“ und „Splits untereinander/nebeneinander“
+  entfallen (Strg+\\ und die Arbeitsleiste bleiben).
+- Einstellungen im Stil der neuen Dialoge: Kopf mit Speicherort, Schalter
+  „Orte wie in Dolphin“ mit Herkunft der Orte, darunter eine Liste zu
+  Externem Editor, Kalender und Nextcloud, Erweiterungen, Projekt- und
+  globalen Aktionen – jeweils mit dem aktuellen Stand; unten die Version.

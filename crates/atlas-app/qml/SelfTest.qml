@@ -855,6 +855,16 @@ Item {
                 check("Kontextmenü leere Fläche: keine Datei-Befehle", empty.indexOf("Neue Datei …") >= 0 && empty.indexOf("Terminal hier öffnen") >= 0
                       && ["Öffnen", "Umbenennen …", "Kopieren", "Ausschneiden", "In den Papierkorb", "Pfad kopieren"].every(t => empty.indexOf(t) < 0),
                       empty.join(" | "))
+                // No system program or file manager entries; new files and
+                // folders only on folders.
+                const gone = ["Mit Standardprogramm öffnen", "Im Dateimanager zeigen"]
+                check("Kontextmenü Datei: ohne Startprogramm, Dateimanager, Neu", gone.concat(["Neue Datei …", "Neuer Ordner …"]).every(t => pdf.indexOf(t) < 0 && md.indexOf(t) < 0),
+                      pdf.join(" | "))
+                fileActions.showMenu([path("docs")], app.projectRoot)
+                const folder = m.shownEntries()
+                m.close()
+                check("Kontextmenü Ordner: Neu, ohne Startprogramm und Dateimanager", folder.indexOf("Neue Datei …") >= 0
+                      && folder.indexOf("Neuer Ordner …") >= 0 && gone.every(t => folder.indexOf(t) < 0), folder.join(" | "))
             },
             () => {
                 // HTML rendered as a web page (built-in action).
