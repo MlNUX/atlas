@@ -679,8 +679,11 @@ unverändertem Layout, Wechsel über den Kalender, Entfernen.
 „Lokaler Graph“ heißt jetzt **Graph** und hat nur noch eine Ansicht statt
 der Tiefen 1 und 2: alle Notizen des Projekts und alle Dateien, auf die sie
 verlinken (`NoteIndex::project_graph`, höchstens 300 Knoten). Die aktuelle
-Datei steht groß in der Mitte, verknüpfte Dateien liegen nach einem
-Kräfte-Layout um sie herum, Dateien ohne Verbindung zu ihr blass auf einem
-Ring außen. Namen weit entfernter Knoten erscheinen bei vielen Knoten erst
-beim Darüberfahren oder Vergrößern. Mausrad zoomt, Ziehen verschiebt,
+Datei steht groß in der Mitte. Alle Dateien mit Links liegen nach einem
+Kräfte-Layout (Gruppen, die nicht mit ihr verbunden sind, nahe daneben);
+Dateien ganz ohne Links füllen den Raum darum gleichmäßig als
+Sonnenblumen-Spirale – ein Ring wurde bei vielen Dateien riesig, und alles
+verschmolz zu einem Fleck. Knoten, Linien und Pfeile werden beim
+Herauszoomen kleiner; Namen erscheinen beim Darüberfahren, beim Vergrößern
+und für direkte Nachbarn, sobald Platz ist. Mausrad zoomt, Ziehen verschiebt,
 „Ganzen Graphen zeigen“ passt ein.

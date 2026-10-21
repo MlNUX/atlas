@@ -126,30 +126,35 @@ Rectangle {
     /// Depth of nodes not linked with this file.
     readonly property int unconnected: 255
 
-    /// Force layout in graph coordinates (the file at 0,0): linked files
-    /// pull together, all nodes push apart. Files not linked with this one
-    /// go on a ring around them. Starts from rings by distance, so the same
-    /// graph always gets the same picture.
+    /// Layout in graph coordinates (the file at 0,0). Files with links are
+    /// placed by a force layout: linked files pull together, all push
+    /// apart, a weak pull to the middle keeps separate groups close. Files
+    /// without any link fill the space around them evenly (a sunflower
+    /// spiral), so many of them neither overlap nor push the rest away.
+    /// Deterministic: the same graph always gets the same picture.
     function layout() {
         const nodes = graph.nodes, n = nodes.length
         const pos = []
         if (!n) return pos
+        const degree = new Array(n).fill(0)
+        for (const e of graph.edges) { degree[e.from]++; degree[e.to]++ }
         const linked = [], loose = []
-        for (let i = 1; i < n; ++i) (nodes[i].depth === unconnected ? loose : linked).push(i)
+        for (let i = 1; i < n; ++i) (degree[i] > 0 ? linked : loose).push(i)
+        const ideal = 80
+        // Start: rings by distance from the file, other groups outside.
         pos[0] = { x: 0, y: 0 }
         const rings = {}
         for (const i of linked) (rings[nodes[i].depth] = rings[nodes[i].depth] || []).push(i)
         Object.keys(rings).map(Number).sort((a, b) => a - b).forEach((d, ring) => {
             rings[d].forEach((node, k) => {
                 const a = -Math.PI / 2 + 2 * Math.PI * k / rings[d].length + ring * 0.4
-                pos[node] = { x: 90 * (ring + 1) * Math.cos(a), y: 90 * (ring + 1) * Math.sin(a) }
+                const r = ideal * (ring + 1)
+                pos[node] = { x: r * Math.cos(a), y: r * Math.sin(a) }
             })
         })
-        const ideal = 80
-        const edges = graph.edges.filter(e => nodes[e.from].depth !== unconnected && nodes[e.to].depth !== unconnected)
         const moving = [0].concat(linked)
-        const steps = moving.length > 150 ? 60 : moving.length > 60 ? 120 : 200
-        let heat = 40
+        const steps = moving.length > 150 ? 80 : moving.length > 60 ? 150 : 250
+        let heat = ideal / 2
         for (let step = 0; step < steps; ++step) {
             const disp = {}
             for (const i of moving) disp[i] = { x: 0, y: 0 }
@@ -164,25 +169,33 @@ Rectangle {
                     disp[j].x -= dx * f; disp[j].y -= dy * f
                 }
             }
-            for (const e of edges) {
+            for (const e of graph.edges) {
                 const dx = pos[e.from].x - pos[e.to].x, dy = pos[e.from].y - pos[e.to].y
                 const f = Math.sqrt(dx * dx + dy * dy) / ideal
                 disp[e.from].x -= dx * f; disp[e.from].y -= dy * f
                 disp[e.to].x += dx * f; disp[e.to].y += dy * f
             }
             for (const i of linked) {
+                // Pull to the middle, growing with the distance.
+                const r = Math.sqrt(pos[i].x * pos[i].x + pos[i].y * pos[i].y)
+                disp[i].x -= pos[i].x * r / (ideal * 12)
+                disp[i].y -= pos[i].y * r / (ideal * 12)
                 const len = Math.sqrt(disp[i].x * disp[i].x + disp[i].y * disp[i].y) || 1
                 const move = Math.min(len, heat)
                 pos[i] = { x: pos[i].x + disp[i].x / len * move, y: pos[i].y + disp[i].y / len * move }
             }
-            heat = Math.max(2, heat * 0.96)
+            heat = Math.max(1, heat * 0.97)
         }
-        // The rest of the project on a ring around the linked part.
-        let radius = 0
-        for (const i of linked) radius = Math.max(radius, Math.sqrt(pos[i].x * pos[i].x + pos[i].y * pos[i].y))
-        const r = Math.max(radius + ideal, loose.length * 55 / (2 * Math.PI))
+        // Files without links: a sunflower spiral around the linked part.
+        let inner = 0
+        for (const i of linked) inner = Math.max(inner, Math.sqrt(pos[i].x * pos[i].x + pos[i].y * pos[i].y))
+        inner += linked.length ? ideal * 0.8 : ideal * 0.6
+        const spacing = ideal * 0.6
+        const golden = Math.PI * (3 - Math.sqrt(5))
         loose.forEach((node, k) => {
-            const a = -Math.PI / 2 + 2 * Math.PI * (k + 0.5) / loose.length
+            // Equal area per node: r² grows by spacing² per node.
+            const r = Math.sqrt(inner * inner + (k + 0.5) * spacing * spacing * 1.1)
+            const a = k * golden
             pos[node] = { x: r * Math.cos(a), y: r * Math.sin(a) }
         })
         return pos
@@ -545,18 +558,19 @@ Rectangle {
                                 if (!a || !b) continue
                                 ctx.beginPath()
                                 ctx.strokeStyle = e.quotes > 0 ? "rgba(255, 212, 0, 0.75)" : "rgba(120, 140, 175, 0.45)"
-                                ctx.lineWidth = Math.min(4, 1 + (e.count - 1) * 0.6) + (e.quotes > 0 ? 0.5 : 0)
+                                const scale = Math.max(0.4, Math.min(1, panel.zoom * 1.2))
+                                ctx.lineWidth = (Math.min(4, 1 + (e.count - 1) * 0.6) + (e.quotes > 0 ? 0.5 : 0)) * scale
                                 ctx.moveTo(a.x, a.y)
                                 ctx.lineTo(b.x, b.y)
                                 ctx.stroke()
                                 // Arrow head at the target (links go from notes).
                                 const ang = Math.atan2(b.y - a.y, b.x - a.x)
-                                const tip = { x: b.x - Math.cos(ang) * 11, y: b.y - Math.sin(ang) * 11 }
+                                const tip = { x: b.x - Math.cos(ang) * 11 * scale, y: b.y - Math.sin(ang) * 11 * scale }
                                 ctx.beginPath()
                                 ctx.fillStyle = ctx.strokeStyle
                                 ctx.moveTo(tip.x, tip.y)
-                                ctx.lineTo(tip.x - Math.cos(ang - 0.4) * 7, tip.y - Math.sin(ang - 0.4) * 7)
-                                ctx.lineTo(tip.x - Math.cos(ang + 0.4) * 7, tip.y - Math.sin(ang + 0.4) * 7)
+                                ctx.lineTo(tip.x - Math.cos(ang - 0.4) * 7 * scale, tip.y - Math.sin(ang - 0.4) * 7 * scale)
+                                ctx.lineTo(tip.x - Math.cos(ang + 0.4) * 7 * scale, tip.y - Math.sin(ang + 0.4) * 7 * scale)
                                 ctx.closePath()
                                 ctx.fill()
                             }
@@ -572,11 +586,13 @@ Rectangle {
                             required property int index
                             readonly property var p: panel.positions[index] || { x: 0, y: 0 }
                             readonly property bool far: modelData.depth === panel.unconnected
-                            readonly property real radius: index === 0 ? 17 : modelData.depth === 1 ? 10 : 7
+                            // Smaller when zoomed out, so dense parts stay apart.
+                            readonly property real radius: (index === 0 ? 17 : modelData.depth === 1 ? 10 : far ? 6 : 7)
+                                * Math.max(index === 0 ? 0.7 : 0.35, Math.min(1, panel.zoom * 1.2))
                             // Names of distant nodes only when there is room
                             // or on hover.
-                            readonly property bool labelled: index === 0 || modelData.depth === 1 || nodeHover.hovered
-                                || panel.graph.nodes.length <= 30 || panel.zoom >= 1.3
+                            readonly property bool labelled: index === 0 || nodeHover.hovered || panel.zoom >= 1.3
+                                || (panel.graph.nodes.length <= 30 && panel.zoom >= 0.5) || (modelData.depth === 1 && panel.zoom >= 0.6)
                             z: nodeHover.hovered ? 2 : index === 0 ? 1 : 0
                             x: p.x - width / 2
                             y: p.y - radius
@@ -593,10 +609,10 @@ Rectangle {
                                 opacity: node.far ? 0.55 : node.modelData.depth >= 2 ? 0.8 : 1
                                 Icon {
                                     anchors.centerIn: parent
-                                    visible: node.radius >= 10 && !node.modelData.missing
+                                    visible: node.radius >= 8 && !node.modelData.missing
                                     name: Theme.fileIcon(node.modelData.label + (node.modelData.kind === "pdf" ? ".pdf" : node.modelData.kind === "markdown" ? ".md" : ""), node.modelData.kind === "dir")[0]
                                     color: "white"
-                                    size: node.index === 0 ? 18 : 12
+                                    size: Math.round(node.radius * (node.index === 0 ? 1.05 : 1.2))
                                 }
                             }
                             Label {
