@@ -251,6 +251,7 @@ Dialog {
                 Text { text: row.title; color: Theme.textStrong; font.pixelSize: Theme.fontSize }
                 Text {
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText
                     text: row.detail
                     color: Theme.textMuted
                     font.pixelSize: Theme.smallFontSize

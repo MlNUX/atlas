@@ -20,6 +20,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   alle Dateien des Ordners hängen – auch später hinzugefügte.
 
 ### Behoben
+- Nextcloud-Kalender: Fehlerseiten des Servers erscheinen als kurzer Text mit
+  Anfrage und Adresse statt als großes HTML; aus dem Browser kopierte
+  Server-Adressen und Nextcloud in Unterordnern werden gefunden.
 - Wiki-Link-Vorschläge konnten nach dem Neuberechnen des Graphen leer sein:
   Qt verlor bei der schrittweisen Speicherbereinigung Werte; Atlas sammelt
   jetzt in einem Zug.

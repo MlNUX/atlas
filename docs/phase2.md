@@ -743,3 +743,16 @@ Ordners (auch einer neu angelegten), Datei kennt ihren Knoten, Auflösen.
   „Orte wie in Dolphin“ mit Herkunft der Orte, darunter eine Liste zu
   Externem Editor, Kalender und Nextcloud, Erweiterungen, Projekt- und
   globalen Aktionen – jeweils mit dem aktuellen Stand; unten die Version.
+
+### Nachtrag – Nextcloud: 405 und HTML-Fehlerseiten
+
+Ein Server antwortete mit „405 Not Allowed“ – die HTML-Fehlerseite von
+nginx stand dann als großes Bild im Einstellungsfenster. Jetzt:
+
+- Fehlermeldungen nennen Anfrage und Adresse
+  („PROPFIND https://… – 405 Not Allowed“); aus HTML-Seiten wird nur der
+  Titel übernommen, alles erscheint als reiner Text (auch in Tooltips).
+- Die Suche nach der CalDAV-Adresse probiert nacheinander die Adresse unter
+  der Server-Angabe (aus dem Browser kopierte Adressen werden vor `/apps/`
+  bzw. `/index.php` abgeschnitten), `/remote.php/dav/` an der Wurzel und
+  `/.well-known/caldav`; 400, 403, 404, 405 und 501 führen zur nächsten.

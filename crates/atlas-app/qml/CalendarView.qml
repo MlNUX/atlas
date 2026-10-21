@@ -254,6 +254,7 @@ Rectangle {
                 }
                 Label {
                     visible: cal.model && cal.model.error !== ""
+                    textFormat: Text.PlainText
                     text: cal.model ? "⚠ " + cal.model.error : ""
                     color: Theme.error
                     font.pixelSize: Theme.smallFontSize

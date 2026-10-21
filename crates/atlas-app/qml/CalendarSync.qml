@@ -61,6 +61,7 @@ Item {
                 wrapMode: Text.Wrap
                 color: Theme.error
                 font.pixelSize: Theme.smallFontSize
+                textFormat: Text.PlainText
                 text: qsTr("Passwort-Befehl fehlgeschlagen: %1").arg(sync.model.passwordError)
             }
             TextField {
@@ -227,7 +228,7 @@ Item {
                     CheckBox { text: qsTr("Erweitert"); checked: settings.advanced; onToggled: settings.advanced = checked }
                 }
                 Label { visible: settings.status !== ""; text: "✓ " + settings.status; color: Theme.ok; Layout.fillWidth: true; wrapMode: Text.Wrap }
-                Label { visible: settings.problem !== ""; text: "⚠ " + settings.problem; color: Theme.error; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Label { visible: settings.problem !== ""; textFormat: Text.PlainText; text: "⚠ " + settings.problem; color: Theme.error; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 Repeater {
                     model: settings.found
                     Label {
@@ -305,6 +306,8 @@ Item {
                     visible: sync.model.connected
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
+                    // Server messages are plain text (error pages are HTML).
+                    textFormat: Text.PlainText
                     text: sync.model.syncStatus + (sync.model.pending ? qsTr(" · %n Änderung(en) warten", "", sync.model.pending) : "")
                         + (sync.model.conflictCount ? qsTr(" · %n Konflikt(e)", "", sync.model.conflictCount) : "")
                     color: sync.model.syncFailed ? Theme.warn : Theme.textMuted

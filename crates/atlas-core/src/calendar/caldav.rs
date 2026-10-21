@@ -113,12 +113,35 @@ pub struct Account {
 impl Account {
     /// Where discovery starts.
     pub fn start_url(&self) -> String {
+        self.start_urls().remove(0)
+    }
+
+    /// Addresses discovery tries, in this order: the CalDAV URL entered by
+    /// hand only; else the Nextcloud DAV root below the server address (an
+    /// address copied from the browser is cut before `/apps/` or
+    /// `/index.php`), at the host's root, and the well-known URL.
+    pub fn start_urls(&self) -> Vec<String> {
         if !self.dav_url.trim().is_empty() {
-            return with_scheme(self.dav_url.trim());
+            return vec![with_scheme(self.dav_url.trim())];
         }
         let server = with_scheme(self.server.trim());
-        let server = server.trim_end_matches('/');
-        if server.contains("/remote.php/") { format!("{server}/") } else { format!("{server}/remote.php/dav/") }
+        let mut base = server.trim_end_matches('/').to_owned();
+        for cut in ["/index.php", "/apps/"] {
+            if let Some(i) = base.find(cut) {
+                base.truncate(i);
+            }
+        }
+        let first = match base.find("/remote.php/") {
+            Some(i) => format!("{}/remote.php/dav/", &base[..i]),
+            None => format!("{base}/remote.php/dav/"),
+        };
+        let mut urls = vec![first];
+        for url in [format!("{}/remote.php/dav/", origin(&base)), format!("{}/.well-known/caldav", origin(&base))] {
+            if !urls.contains(&url) {
+                urls.push(url);
+            }
+        }
+        urls
     }
 }
 
@@ -382,34 +405,78 @@ impl Client {
         match status {
             207 => Ok(Some(parse_multistatus(&text)?)),
             404 | 410 => Ok(None),
-            s => Err(DavError::Http(s, short(&text))),
+            s => Err(failed("PROPFIND", url, s, &text)),
         }
     }
 }
 
+/// An HTTP error with the request (method and address) and the reason.
+fn failed(method: &str, url: &str, status: u16, body: &str) -> DavError {
+    let reason = short(body);
+    DavError::Http(
+        status,
+        if reason.is_empty() { format!("{method} {url}") } else { format!("{method} {url} – {reason}") },
+    )
+}
+
+/// The reason in an error body, as one short line of plain text.
 fn short(body: &str) -> String {
-    // Sabre puts the reason into <s:message>.
-    if let Some(start) = body.find("<s:message>")
-        && let Some(end) = body[start..].find("</s:message>")
-    {
-        return body[start + 11..start + end].trim().to_owned();
+    let between = |open: &str, close: &str| {
+        let start = body.find(open)? + open.len();
+        let end = body[start..].find(close)?;
+        Some(body[start..start + end].to_owned())
+    };
+    // Sabre puts the reason into <s:message>, web servers send an HTML page.
+    let text = between("<s:message>", "</s:message>")
+        .or_else(|| between("<title>", "</title>"))
+        .or_else(|| between("<h1>", "</h1>"))
+        .unwrap_or_else(|| body.to_owned());
+    let mut plain = String::new();
+    let mut in_tag = false;
+    for c in text.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                plain.push(' ');
+            }
+            c if !in_tag => plain.push(c),
+            _ => {}
+        }
     }
-    body.chars().take(200).collect::<String>().trim().to_owned()
+    let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    plain.chars().take(160).collect()
 }
 
 impl Remote for Client {
     fn discover(&self) -> DavResult<Discovery> {
-        let start = self.account.start_url();
         let mut home: Option<String> = None;
         let mut principal: Option<String> = None;
-        let mut first = self.propfind(&start, "0", PROPFIND_HOME)?;
-        if first.is_none() && self.account.dav_url.trim().is_empty() {
-            // Not a Nextcloud path: try the well-known URL (RFC 6764).
-            let wk = format!("{}/.well-known/caldav", origin(&start));
-            first = self.propfind(&wk, "0", PROPFIND_HOME)?;
+        // The first address that answers as CalDAV: the given one, then the
+        // usual Nextcloud and well-known (RFC 6764) addresses. Web servers
+        // answer PROPFIND on other paths with 405 or 404.
+        let mut found = None;
+        let mut last_error = None;
+        for url in self.account.start_urls() {
+            match self.propfind(&url, "0", PROPFIND_HOME) {
+                Ok(Some(list)) => {
+                    found = Some((url, list));
+                    break;
+                }
+                Ok(None) => last_error = Some(DavError::Http(404, format!("PROPFIND {url}"))),
+                Err(DavError::Http(code, reason)) if [400, 403, 404, 405, 501].contains(&code) => {
+                    last_error = Some(DavError::Http(code, reason))
+                }
+                Err(err) => return Err(err),
+            }
         }
-        let Some(first) = first else {
-            return Err(DavError::Http(404, format!("kein CalDAV unter {start}")));
+        let Some((start, first)) = found else {
+            let hint =
+                "kein CalDAV gefunden – als Server die Adresse der Nextcloud angeben, z. B. https://cloud.example.com";
+            return Err(match last_error {
+                Some(DavError::Http(code, reason)) => DavError::Http(code, format!("{reason}; {hint}")),
+                _ => DavError::Invalid(hint.into()),
+            });
         };
         for r in &first {
             if let Some(h) = r.hrefs.get(&k(CALDAV, "calendar-home-set")) {
@@ -479,7 +546,7 @@ impl Remote for Client {
                 Some(&body),
             )?;
             if status != 207 {
-                return Err(DavError::Http(status, short(&text)));
+                return Err(failed("REPORT", calendar, status, &text));
             }
             for r in parse_multistatus(&text)? {
                 let (Some(etag), Some(data)) =
@@ -507,7 +574,7 @@ impl Remote for Client {
             200..=299 => Ok(Write::Done(new_etag)),
             412 => Ok(Write::Changed),
             404 | 410 if etag.is_some() => Ok(Write::Gone),
-            s => Err(DavError::Http(s, short(&text))),
+            s => Err(failed("PUT", href, s, &text)),
         }
     }
 
@@ -516,7 +583,7 @@ impl Remote for Client {
         match status {
             200..=299 | 404 | 410 => Ok(Write::Done(None)),
             412 => Ok(Write::Changed),
-            s => Err(DavError::Http(s, short(&text))),
+            s => Err(failed("DELETE", href, s, &text)),
         }
     }
 
@@ -567,7 +634,7 @@ impl Remote for Client {
                     });
                 }
                 405 | 409 => continue, // exists
-                s => return Err(DavError::Http(s, short(&text))),
+                s => return Err(failed("MKCALENDAR", &url, s, &text)),
             }
         }
         Err(DavError::Invalid("kein freier Name für den neuen Kalender".into()))
@@ -610,6 +677,33 @@ pub(crate) mod tests {
         assert_eq!(
             Account { server: "cloud.example.com/".into(), ..Default::default() }.start_url(),
             "https://cloud.example.com/remote.php/dav/"
+        );
+        // An address copied from the browser, Nextcloud in a subfolder.
+        let urls = |server: &str| Account { server: server.into(), ..Default::default() }.start_urls();
+        assert_eq!(
+            urls("https://cloud.example.com/nextcloud/apps/calendar/dayGridMonth/now"),
+            [
+                "https://cloud.example.com/nextcloud/remote.php/dav/",
+                "https://cloud.example.com/remote.php/dav/",
+                "https://cloud.example.com/.well-known/caldav"
+            ]
+        );
+        assert_eq!(urls("cloud.example.com/index.php/apps/files/")[0], "https://cloud.example.com/remote.php/dav/");
+        assert_eq!(urls("https://c.de/remote.php/dav/calendars/u/")[0], "https://c.de/remote.php/dav/");
+        assert_eq!(urls("https://c.de").len(), 2);
+        let manual = Account { dav_url: "c.de/dav/".into(), server: "x".into(), ..Default::default() };
+        assert_eq!(manual.start_urls(), ["https://c.de/dav/"]);
+        // Error pages as one line of plain text.
+        assert_eq!(
+            short(
+                "<html>\r\n<head><title>405 Not Allowed</title></head>\r\n<body>\r\n<center><h1>405 Not Allowed</h1></center>\r\n<hr><center>nginx</center></body></html>"
+            ),
+            "405 Not Allowed"
+        );
+        assert_eq!(short("<d:error><s:message>Kalender <b>fehlt</b></s:message></d:error>"), "Kalender fehlt");
+        assert_eq!(
+            failed("PROPFIND", "https://c.de/x/", 405, "<h1>Nope</h1>").to_string(),
+            "Server antwortet mit 405: PROPFIND https://c.de/x/ – Nope"
         );
         assert_eq!(object_name("0a1b@atlas"), "0a1b-atlas.ics");
         assert!(same_href("https://h/c/a%40b.ics", "https://h/c/a@b.ics"));
@@ -846,6 +940,11 @@ pub(crate) mod tests {
         let account = Account { server: server.base.clone(), user: "minux".into(), dav_url: String::new() };
         let wrong = Client::new(account.clone(), "falsch", false);
         assert_eq!(wrong.discover(), Err(DavError::Auth));
+
+        // An address copied from the browser: the DAV root is found anyway.
+        let copied = Account { server: format!("{}/sub/apps/calendar/now", server.base), ..account.clone() };
+        let d = Client::new(copied, "geheim", false).discover().unwrap();
+        assert_eq!(d.home.as_deref(), Some(format!("{}/remote.php/dav/calendars/minux/", server.base).as_str()));
 
         let client = Client::new(account, "geheim", false);
         let d = client.discover().unwrap();
