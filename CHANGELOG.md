@@ -44,6 +44,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   jetzt in einem Zug.
 
 ### Geändert
+- Aktionen in der Kontextleiste als aufgeräumte Liste („Für diese Datei“,
+  „Eigene Aktionen“); nicht verfügbare sagen, warum; nichts ragt mehr über
+  den Rand.
 - Neues Desktop-Symbol (das „A“ der Titelleiste); Hauptmenü ohne Einträge,
   die es in den Einstellungen gibt.
 - Kontextmenü und Hauptmenü gestrafft (ohne Standardprogramm, Dateimanager,

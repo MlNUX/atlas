@@ -507,6 +507,7 @@ ApplicationWindow {
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "settings": () => settingsDialog.open(),
                 "graph": () => inspector.graphWindow.show(file),
+                "actions": () => { window.inspectorWidth = 300; inspector.tab = 3 },
                 "md-edit": () => { if (editor.activeTab && editor.activeTab.viewerItem) editor.activeTab.viewerItem.mode = "split" },
                 "html": () => fileActions.renderHtml(file),
                 "relate": () => app.requestRelate(file),
