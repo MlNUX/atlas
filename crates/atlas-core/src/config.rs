@@ -153,6 +153,30 @@ impl Default for PlacesConfig {
     }
 }
 
+/// `[files]`: file views.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FilesConfig {
+    /// Numbers in names by value: `2.pdf` before `10.pdf`.
+    #[serde(default = "enabled")]
+    pub natural_sort: bool,
+    /// Last chosen order, used by new folder views: name, size, modified
+    /// or kind.
+    #[serde(default = "sort_by_name")]
+    pub sort_key: String,
+    #[serde(default = "enabled")]
+    pub sort_ascending: bool,
+}
+
+fn sort_by_name() -> String {
+    "name".into()
+}
+
+impl Default for FilesConfig {
+    fn default() -> Self {
+        Self { natural_sort: true, sort_key: sort_by_name(), sort_ascending: true }
+    }
+}
+
 /// `[context]`: optional modules of the context bar.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextConfig {
@@ -221,6 +245,8 @@ pub struct Config {
     pub pdf: PdfConfig,
     #[serde(default)]
     pub context: ContextConfig,
+    #[serde(default)]
+    pub files: FilesConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -264,6 +290,11 @@ impl Config {
     /// Updates only the `[places]` table.
     pub fn save_places(places: &PlacesConfig) -> Result<()> {
         save_table(&config_file(), "places", places)
+    }
+
+    /// Updates only the `[files]` table.
+    pub fn save_files(files: &FilesConfig) -> Result<()> {
+        save_table(&config_file(), "files", files)
     }
 
     /// Updates only the `[context]` table.

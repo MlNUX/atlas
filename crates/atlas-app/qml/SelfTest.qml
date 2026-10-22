@@ -50,6 +50,7 @@ Item {
     property string modTask
     property string modTomorrow
     property bool inspectorWasVisible
+    property int repaints
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -603,8 +604,20 @@ Item {
             () => {
                 const md = editor.activeTab.viewerItem
                 check("… und wieder ab", md.editorItem.text.indexOf("- [ ] Gliederung") >= 0, md.editorItem.text)
+                // Shown again (here: back from the editor), the preview asks
+                // for a fresh frame instead of staying black (#2).
+                test.repaints = md.previewRepaint.count
+                md.mode = "edit"
+                md.mode = "preview"
+                // Headings without "#" markers (#3).
+                md.previewItem.runJavaScript("(() => { const h = document.querySelector('h1, h2'); return h ? getComputedStyle(h, '::before').content + '|' + h.textContent : 'keine' })()",
+                    (r) => check("Überschriften in der Vorschau ohne #", typeof r === "string" && r.startsWith("none|") && r.indexOf("#") < 0, r))
                 md.editorItem.save()
                 check("Abhaken gespeichert", app.readTextFile(path("notes/todo.md")).indexOf("- [x] Literatur sichten") >= 0)
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Vorschau zeichnet nach dem Wiederzeigen neu", md.previewRepaint.count > test.repaints, test.repaints + " → " + md.previewRepaint.count)
             },
             () => {
                 // An empty window has no close button and never stays as a split.
@@ -1053,6 +1066,23 @@ Item {
                 check("Pfeil rechts blättert weiter", v.currentPage === 1, v.currentPage)
                 app.sendKey(window, Qt.Key_Left, 0)
                 check("Pfeil links blättert zurück", v.currentPage === 0, v.currentPage)
+                // Undo and redo of annotations (#6).
+                const store = v.annotationStore
+                const n0 = store.count
+                const id = v.addAnnot(JSON.stringify({ kind: "ink", page: 1, ink: [[[10, 10], [40, 40]]], color: "#ff6b6b", width: 2 }))
+                check("Strich gezeichnet", store.count === n0 + 1)
+                app.sendKey(window, Qt.Key_Z, Qt.ControlModifier)
+                check("Strg+Z nimmt den Strich zurück", store.count === n0 && !store.annotation(id), store.count)
+                app.sendKey(window, Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier)
+                check("Strg+Umschalt+Z stellt ihn wieder her (gleiche ID)", store.count === n0 + 1 && !!store.annotation(id), store.count)
+                v.updateAnnot(id, JSON.stringify({ color: "#5ac8fa" }))
+                v.undo()
+                check("Rückgängig: Farbe wieder wie vorher", JSON.parse(store.annotation(id)).color === "#ff6b6b", store.annotation(id))
+                v.removeAnnot(id)
+                v.undo()
+                check("Rückgängig: Löschen zurückgenommen", !!store.annotation(id) && v.canRedo)
+                v.redo()
+                check("Wiederholen: wieder gelöscht", !store.annotation(id) && store.count === n0)
                 // Markdown → PDF with the preview (no pandoc).
                 test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
                 check("Markdown-PDF-Export startet", fileActions.markdownPdf.exportPdf(path("notes/idee.md"), test.mdPdf))
@@ -1106,6 +1136,25 @@ Item {
                       p.phase + " " + p.rounds + " " + p.remaining)
                 fileActions.calendar.remove(test.modTomorrow)
                 window.inspectorVisible = test.inspectorWasVisible
+                // Natural sorting (#5).
+                editor.open(app.projectRoot.replace(/\/[^/]+$/, "") + "/nummern", 0, "tab")
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                if (waitFor(() => f.folderModel && f.folderModel.count === 3)) return
+                const names = () => [0, 1, 2].map(i => f.folderModel.pathAt(i).replace(/.*\//, "")).join(" ")
+                check("Natürliche Sortierung: 2 vor 10", names() === "1.data.pdf 2.data.pdf 10.data.pdf", names())
+                app.naturalSort = false
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                const names = () => [0, 1, 2].map(i => f.folderModel.pathAt(i).replace(/.*\//, "")).join(" ")
+                if (waitFor(() => names() === "1.data.pdf 10.data.pdf 2.data.pdf")) return
+                check("Ohne natürliche Sortierung: nach Zeichen", names() === "1.data.pdf 10.data.pdf 2.data.pdf", names())
+                app.naturalSort = true
+                f.sortBy("size")
+                check("Gewählte Sortierung gemerkt", JSON.parse(app.folderSort).key === "size", app.folderSort)
+                f.sortBy("name")
                 fileActions.calendar.remove(test.modEvent)
             },
             () => {

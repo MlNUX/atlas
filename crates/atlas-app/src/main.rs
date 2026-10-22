@@ -42,6 +42,7 @@ fn main() {
     }
 
     rename_legacy_extensions();
+    atlas_core::listing::set_natural_sort(atlas_core::config::Config::load().files.natural_sort);
 
     // The Markdown preview uses QtWebEngine, which must be set up first.
     qt_helpers::init_web_engine();

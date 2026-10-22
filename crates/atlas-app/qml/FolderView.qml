@@ -43,6 +43,22 @@ Rectangle {
     FolderModel {
         id: folder
         path: root.source
+        // New views start with the order chosen last (a tab's own state
+        // from the session wins, see applyState).
+        Component.onCompleted: {
+            if (!root.app) return
+            try {
+                const last = JSON.parse(root.app.folderSort)
+                sortKey = last.key || "name"
+                sortAscending = last.ascending !== false
+            } catch (e) {}
+        }
+    }
+    // Natural sorting switched in the settings: list again.
+    Connections {
+        target: root.app
+        ignoreUnknownSignals: true
+        function onNaturalSortChanged() { folder.reload() }
     }
 
     function parentOf(path) {
@@ -53,6 +69,7 @@ Rectangle {
     function sortBy(key) {
         if (folder.sortKey === key) folder.sortAscending = !folder.sortAscending
         else { folder.sortKey = key; folder.sortAscending = true }
+        if (root.app) root.app.rememberFolderSort(folder.sortKey, folder.sortAscending)
     }
 
     // Selection is keyed by path, so it survives external changes that

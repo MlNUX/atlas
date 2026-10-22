@@ -4,8 +4,10 @@
 //! Folder contents with metadata for the file list, and the fixed system
 //! places shown above the project tree.
 
+use std::cmp::Ordering;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Place {
@@ -137,9 +139,66 @@ pub fn list(dir: &Path, show_hidden: bool) -> std::io::Result<Vec<FileInfo>> {
     Ok(out)
 }
 
+/// Natural sort order for names (on by default, `[files] natural_sort`):
+/// `2.pdf` before `10.pdf`. Process wide, set from the configuration.
+static NATURAL: AtomicBool = AtomicBool::new(true);
+
+pub fn set_natural_sort(on: bool) {
+    NATURAL.store(on, AtomicOrdering::Relaxed);
+}
+
+pub fn natural_sort() -> bool {
+    NATURAL.load(AtomicOrdering::Relaxed)
+}
+
+/// Compares two file names as the file views do: case-insensitive, with
+/// numbers by value when natural sorting is on; exact spelling breaks ties.
+pub fn compare_names(a: &str, b: &str) -> Ordering {
+    let (la, lb) = (a.to_lowercase(), b.to_lowercase());
+    let primary = if natural_sort() { natural_cmp(&la, &lb) } else { la.cmp(&lb) };
+    primary.then_with(|| a.cmp(b))
+}
+
+/// Natural order: runs of digits compare by their value (`9` < `10`,
+/// `007` = `7`, then fewer leading zeros first), everything else by
+/// character.
+pub fn natural_cmp(a: &str, b: &str) -> Ordering {
+    let (mut x, mut y) = (a.chars().peekable(), b.chars().peekable());
+    loop {
+        match (x.peek().copied(), y.peek().copied()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(c), Some(d)) if c.is_ascii_digit() && d.is_ascii_digit() => {
+                let take = |it: &mut std::iter::Peekable<std::str::Chars>| {
+                    let mut digits = String::new();
+                    while let Some(c) = it.peek().copied().filter(char::is_ascii_digit) {
+                        digits.push(c);
+                        it.next();
+                    }
+                    digits
+                };
+                let (m, n) = (take(&mut x), take(&mut y));
+                let (mt, nt) = (m.trim_start_matches('0'), n.trim_start_matches('0'));
+                let order = mt.len().cmp(&nt.len()).then_with(|| mt.cmp(nt)).then_with(|| m.len().cmp(&n.len()));
+                if order != Ordering::Equal {
+                    return order;
+                }
+            }
+            (Some(c), Some(d)) => {
+                if c != d {
+                    return c.cmp(&d);
+                }
+                x.next();
+                y.next();
+            }
+        }
+    }
+}
+
 /// Folders first, then by `key`; ties are broken by name.
-pub fn compare(a: &FileInfo, b: &FileInfo, key: SortKey, ascending: bool) -> std::cmp::Ordering {
-    let by_name = || a.name.to_lowercase().cmp(&b.name.to_lowercase()).then_with(|| a.name.cmp(&b.name));
+pub fn compare(a: &FileInfo, b: &FileInfo, key: SortKey, ascending: bool) -> Ordering {
+    let by_name = || compare_names(&a.name, &b.name);
     let primary = match key {
         SortKey::Name => by_name(),
         SortKey::Size => a.size.cmp(&b.size).then_with(by_name),
@@ -234,6 +293,33 @@ pub fn format_size(bytes: u64) -> String {
     }
     let text = if value < 10.0 { format!("{value:.1}") } else { format!("{value:.0}") };
     format!("{} {}", text.replace('.', ","), UNITS[unit])
+}
+
+#[cfg(test)]
+mod natural_tests {
+    use super::*;
+
+    #[test]
+    fn numbers_sort_by_value() {
+        let mut names = vec![
+            "10.data.pdf",
+            "2.data.pdf",
+            "1.data.pdf",
+            "3.data.pdf",
+            "Kapitel 10",
+            "kapitel 9",
+            "a007",
+            "a7",
+            "a06",
+        ];
+        names.sort_by(|a, b| compare_names(a, b));
+        assert_eq!(
+            names,
+            ["1.data.pdf", "2.data.pdf", "3.data.pdf", "10.data.pdf", "a06", "a7", "a007", "kapitel 9", "Kapitel 10"]
+        );
+        assert_eq!(natural_cmp("x", "x1"), Ordering::Less);
+        assert_eq!(natural_cmp("99999999999999999999999", "100000000000000000000000"), Ordering::Less);
+    }
 }
 
 #[cfg(test)]

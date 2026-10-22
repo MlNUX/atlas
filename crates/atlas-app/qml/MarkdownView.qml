@@ -33,6 +33,7 @@ Rectangle {
 
     readonly property alias editorItem: editor
     readonly property alias previewItem: web
+    readonly property alias previewRepaint: webRepaint
     readonly property alias contextPanelItem: contextPanel
 
     color: Theme.editor
@@ -244,6 +245,8 @@ Rectangle {
                         root.previewY = s.y
                     } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
                 }
+                // Never stays black after a workspace switch (#2).
+                WebRepaint { id: webRepaint }
             }
 
             // ---- backlinks and local graph

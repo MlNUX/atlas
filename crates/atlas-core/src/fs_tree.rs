@@ -30,12 +30,10 @@ impl Entry {
     }
 }
 
-/// Explorer order: directories first, then case-insensitive by name.
+/// Explorer order: directories first, then by name (case-insensitive,
+/// natural if switched on; see [`crate::listing::compare_names`]).
 pub fn compare_entries(a: &Entry, b: &Entry) -> Ordering {
-    b.is_dir
-        .cmp(&a.is_dir)
-        .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        .then_with(|| a.name.cmp(&b.name))
+    b.is_dir.cmp(&a.is_dir).then_with(|| crate::listing::compare_names(&a.name, &b.name))
 }
 
 /// Lists one directory, sorted in explorer order. Unreadable entries are

@@ -61,6 +61,8 @@ Item {
         "quote": "<path fill='COLOR' stroke='none' d='M5 17.5c2.8 0 4.5-2 4.5-4.8V7H4v5.5h3c0 1.6-.8 2.7-2 2.9zM14 17.5c2.8 0 4.5-2 4.5-4.8V7H13v5.5h3c0 1.6-.8 2.7-2 2.9z'/>",
         "play": "<path d='M7 5v14l11-7z'/>",
         "pause": "<path d='M8 5v14M16 5v14'/>",
+        "undo": "<path d='M9 14 4 9l5-5'/><path d='M4 9h10.5a5.5 5.5 0 0 1 0 11H11'/>",
+        "redo": "<path d='m15 14 5-5-5-5'/><path d='M20 9H9.5a5.5 5.5 0 0 0 0 11H13'/>",
         "skip": "<path d='M6 5v14l9-7z'/><path d='M18 5v14'/>",
         "coffee": "<path d='M5 9h11v5a5 5 0 0 1-5 5H10a5 5 0 0 1-5-5z'/><path d='M16 11h1.5a2.5 2.5 0 0 1 0 5H16'/><path d='M9 3v3M12 3v3'/>",
         "bookmark": "<path d='M6 4h12v17l-6-4-6 4z'/>",

@@ -18,6 +18,9 @@ project="$work/projekt"
 mkdir -p "$project"/{notes,src,docs,target,node_modules/x}
 # A hidden note: not part of the graph.
 printf '# Versteckt\n' > "$project/.versteckt.md"
+# Numbered files for natural sorting (outside the project).
+mkdir -p "$work/nummern"
+touch "$work/nummern/1.data.pdf" "$work/nummern/2.data.pdf" "$work/nummern/10.data.pdf"
 # A second project for sessions in another folder.
 mkdir -p "$work/zweites/texte"
 printf '# Zweites Projekt\n' > "$work/zweites/texte/start.md"

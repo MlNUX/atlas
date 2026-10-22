@@ -290,6 +290,11 @@ ApplicationWindow {
     // operations in Atlas (bundled, it is re-read in the background).
     Timer { id: fileListTimer; interval: 300; onTriggered: app.refreshFileList() }
 
+    // Natural sorting switched in the settings: the tree sorts again.
+    Connections {
+        target: app
+        function onNaturalSortChanged() { treeModel.refresh() }
+    }
     ProjectTreeModel {
         id: treeModel
         root: app.projectRoot

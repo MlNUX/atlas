@@ -12,9 +12,7 @@ main { max-width: 860px; margin: 0 auto; padding: 24px 32px 50vh; }
 h1, h2, h3, h4, h5, h6 { color: var(--strong); line-height: 1.25; margin: 1.5em 0 0.6em; font-weight: 600; }
 h1 { font-size: 1.75em; }
 h2 { font-size: 1.35em; }
-h1::before, h2::before { color: var(--accent); font-weight: 500; margin-right: 0.45em; }
-h1::before { content: "#"; }
-h2::before { content: "##"; }
+h1 { padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
 main > h1:first-child, .atlas-tags + h1 { margin-top: 0.4em; }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -100,7 +98,6 @@ table.print-frame > * > tr > td { padding: 0; border: 0; background: none; }
     --muted: #5b6474; --accent: #2a6fd6; --link: #1f5fbf;
   }
   main { max-width: none; padding: 0 18mm; }
-  h1::before, h2::before { content: none; }
   h1, h2, h3 { break-after: avoid; }
   pre, blockquote, table:not(.print-frame), img, pre.mermaid { break-inside: avoid; }
   a.broken::after { content: none; }

@@ -264,13 +264,85 @@ Rectangle {
 
     function newGroup() { return Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36) }
 
+    // ------------------------------------------------------------ undo
+    // Every change of annotations goes through addAnnot, updateAnnot and
+    // removeAnnot and is remembered as {type, before, after} with
+    // snapshots (JSON lists of the annotation and its group): undo puts the
+    // old state back, redo the new one (#6).
+
+    property var undoStack: []
+    property var redoStack: []
+    readonly property bool canUndo: undoStack.length > 0
+    readonly property bool canRedo: redoStack.length > 0
+    /// Changes of the same annotation within this time count as one step
+    /// (e.g. typing a comment).
+    readonly property int mergeMs: 1500
+
+    function record(step) {
+        const last = undoStack[undoStack.length - 1]
+        if (step.type === "update" && last && last.type === "update" && last.id === step.id && step.time - last.time < mergeMs) {
+            last.after = step.after
+            last.time = step.time
+            undoStack = undoStack.slice()
+        } else if (step.type === "add" && step.group && last && last.type === "add" && last.group === step.group) {
+            // Markup over several pages: one step.
+            last.after = step.after
+            undoStack = undoStack.slice()
+        } else {
+            undoStack = undoStack.concat([step]).slice(-200)
+        }
+        redoStack = []
+    }
+    function addAnnot(json) {
+        const id = notes.add(json)
+        if (id) record({ type: "add", id: id, group: JSON.parse(json).group || "", before: "[]", after: notes.snapshot(id), time: Date.now() })
+        return id
+    }
+    function updateAnnot(id, patch) {
+        const before = notes.snapshot(id)
+        const ok = notes.update(id, patch)
+        if (ok) record({ type: "update", id: id, before: before, after: notes.snapshot(id), time: Date.now() })
+        return ok
+    }
+    function removeAnnot(id) {
+        const before = notes.snapshot(id)
+        const ok = notes.remove(id)
+        if (ok) record({ type: "remove", id: id, before: before, after: "[]", time: Date.now() })
+        return ok
+    }
+    /// Brings the state `snapshot` back; "[]" means the annotation is gone.
+    function applySnapshot(id, snapshot, other) {
+        if (snapshot === "[]") notes.remove(id)
+        else {
+            // Parts of a group that exist only in the other state go first.
+            const keep = JSON.parse(snapshot).map(a => a.id)
+            for (const a of JSON.parse(other)) if (keep.indexOf(a.id) < 0) notes.remove(a.id)
+            notes.restore(snapshot)
+        }
+    }
+    function undo() {
+        if (!canUndo) return
+        const step = undoStack[undoStack.length - 1]
+        undoStack = undoStack.slice(0, -1)
+        applySnapshot(step.id, step.before, step.after)
+        redoStack = redoStack.concat([step])
+        message(step.type === "add" ? qsTr("Rückgängig: hinzugefügt") : step.type === "remove" ? qsTr("Rückgängig: gelöscht") : qsTr("Rückgängig: geändert"))
+    }
+    function redo() {
+        if (!canRedo) return
+        const step = redoStack[redoStack.length - 1]
+        redoStack = redoStack.slice(0, -1)
+        applySnapshot(step.id, step.after, step.before)
+        undoStack = undoStack.concat([step])
+    }
+
     /// Turns the current selection into text markup; returns the first ID.
     function markSelection(kind, color) {
         if (!selection.length) return ""
         const group = selection.length > 1 ? newGroup() : ""
         let first = ""
         for (const part of selection) {
-            const id = notes.add(JSON.stringify({
+            const id = addAnnot(JSON.stringify({
                 kind: kind, page: part.page + 1, rects: part.rects, text: part.text, color: color || markColor, group: group
             }))
             if (!first) first = id
@@ -303,10 +375,10 @@ Rectangle {
         const page = currentPage + 1
         const existing = (annotsByPage[page] || []).find(a => a.kind === "bookmark")
         if (existing) {
-            notes.remove(existing.id)
+            removeAnnot(existing.id)
             message(qsTr("Lesezeichen auf Seite %1 entfernt").arg(page))
         } else {
-            notes.add(JSON.stringify({ kind: "bookmark", page: page, title: qsTr("Seite %1").arg(page), color: "#ff6b6b" }))
+            addAnnot(JSON.stringify({ kind: "bookmark", page: page, title: qsTr("Seite %1").arg(page), color: "#ff6b6b" }))
             message(qsTr("Lesezeichen auf Seite %1").arg(page))
         }
     }
@@ -449,6 +521,9 @@ Rectangle {
 
     Keys.onPressed: (event) => {
         const ctrl = event.modifiers & Qt.ControlModifier
+        // Undo and redo of annotation changes.
+        if (ctrl && event.key === Qt.Key_Z && !(event.modifiers & Qt.ShiftModifier)) { undo(); event.accepted = true; return }
+        if (ctrl && (event.key === Qt.Key_Y || (event.key === Qt.Key_Z && (event.modifiers & Qt.ShiftModifier)))) { redo(); event.accepted = true; return }
         // Arrows: up/down scroll, left/right turn pages (like other viewers).
         if (!ctrl && event.key === Qt.Key_Down) { scrollBy(0, arrowStep); event.accepted = true; return }
         if (!ctrl && event.key === Qt.Key_Up) { scrollBy(0, -arrowStep); event.accepted = true; return }
@@ -579,6 +654,18 @@ Rectangle {
                     checkable: true
                     checked: root.tool === "note"
                     onClicked: { root.tool = root.tool === "note" ? "select" : "note"; root.clearSelection() }
+                }
+                IconButton {
+                    iconName: "undo"
+                    tip: qsTr("Rückgängig (Strg+Z)")
+                    enabled: root.canUndo
+                    onClicked: root.undo()
+                }
+                IconButton {
+                    iconName: "redo"
+                    tip: qsTr("Wiederholen (Strg+Umschalt+Z)")
+                    enabled: root.canRedo
+                    onClicked: root.redo()
                 }
                 IconButton {
                     iconName: "bookmark"
@@ -825,7 +912,7 @@ Rectangle {
                                         visible: annotHover.hovered
                                         iconName: "close"
                                         tip: qsTr("Löschen")
-                                        onClicked: notes.remove(annotRow.modelData.id)
+                                        onClicked: root.removeAnnot(annotRow.modelData.id)
                                     }
                                 }
                                 Label {
@@ -1158,13 +1245,13 @@ Rectangle {
                                 }
                                 if (root.tool === "ink") {
                                     if (root.stroke.length > 1)
-                                        notes.add(JSON.stringify({ kind: "ink", page: root.strokePage + 1, ink: [root.stroke], color: root.inkColor, width: root.inkWidth }))
+                                        root.addAnnot(JSON.stringify({ kind: "ink", page: root.strokePage + 1, ink: [root.stroke], color: root.inkColor, width: root.inkWidth }))
                                     root.stroke = []
                                     root.strokePage = -1
                                     return
                                 }
                                 if (root.tool === "note") {
-                                    const id = notes.add(JSON.stringify({ kind: "note", page: p.page + 1, rects: [[p.x - 9, p.y - 9, 18, 18]], color: "#ffd400" }))
+                                    const id = root.addAnnot(JSON.stringify({ kind: "note", page: p.page + 1, rects: [[p.x - 9, p.y - 9, 18, 18]], color: "#ffd400" }))
                                     if (id) annotPopup.show(id, mapToItem(root, mouse.x, mouse.y), true)
                                     root.tool = "select"
                                     return
@@ -1323,12 +1410,12 @@ Rectangle {
             if (!info || !root.annotation(annotId)) return
             const text = commentField.text.trim()
             if (info.kind === "bookmark") {
-                if (text !== (info.title || "")) notes.update(annotId, JSON.stringify({ title: text }))
+                if (text !== (info.title || "")) root.updateAnnot(annotId, JSON.stringify({ title: text }))
             } else if (text !== (info.comment || "")) {
-                notes.update(annotId, JSON.stringify({ comment: text }))
+                root.updateAnnot(annotId, JSON.stringify({ comment: text }))
             }
             // A pinned note without text is dropped.
-            if (info.kind === "note" && !text) notes.remove(annotId)
+            if (info.kind === "note" && !text) root.removeAnnot(annotId)
         }
         onClosed: { commit(); root.forceActiveFocus() }
 
@@ -1359,7 +1446,7 @@ Rectangle {
                             border.color: annotPopup.info && annotPopup.info.color === parent.modelData ? "white" : "transparent"
                         }
                         onClicked: {
-                            notes.update(annotPopup.annotId, JSON.stringify({ color: modelData }))
+                            root.updateAnnot(annotPopup.annotId, JSON.stringify({ color: modelData }))
                             annotPopup.info = root.annotation(annotPopup.annotId)
                         }
                     }
@@ -1409,7 +1496,7 @@ Rectangle {
                 Button {
                     text: qsTr("Löschen")
                     font.pixelSize: Theme.smallFontSize
-                    onClicked: { const id = annotPopup.annotId; annotPopup.info = null; notes.remove(id); annotPopup.close() }
+                    onClicked: { const id = annotPopup.annotId; annotPopup.info = null; root.removeAnnot(id); annotPopup.close() }
                 }
             }
         }

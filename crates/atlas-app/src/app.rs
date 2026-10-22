@@ -63,6 +63,11 @@ pub mod qobject {
         /// {calendar, tasks, pomodoro, pomodoro_work, pomodoro_break,
         /// pomodoro_long_break}; change with `setContextModule`.
         #[qproperty(QString, context_modules, cxx_name = "contextModules", READ, NOTIFY)]
+        /// Numbers in file names by value (`[files] natural_sort`).
+        #[qproperty(bool, natural_sort, cxx_name = "naturalSort", READ, WRITE = set_natural_sort, NOTIFY)]
+        /// Last chosen order of folder views as JSON {key, ascending}
+        /// (`[files]`), the start for new views.
+        #[qproperty(QString, folder_sort, cxx_name = "folderSort", READ, NOTIFY)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
@@ -100,6 +105,12 @@ pub mod qobject {
         #[cxx_name = "setFileManagerPlaces"]
         fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
+        fn set_natural_sort(self: Pin<&mut AppController>, on: bool);
+
+        /// Remembers the order chosen in a folder view for new views.
+        #[qinvokable]
+        #[cxx_name = "rememberFolderSort"]
+        fn remember_folder_sort(self: Pin<&mut AppController>, key: &QString, ascending: bool);
 
         /// Switches a module of the context bar on or off (`calendar`,
         /// `tasks`, `pomodoro`) or sets a pomodoro length in minutes.
@@ -607,6 +618,8 @@ pub struct AppControllerRust {
     file_manager_places: bool,
     pdf_dark: bool,
     context_modules: QString,
+    natural_sort: bool,
+    folder_sort: QString,
     /// Watches the file managers' places files.
     places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
@@ -674,6 +687,8 @@ impl Default for AppControllerRust {
             file_manager_places: Config::load().places.file_manager,
             pdf_dark: Config::load().pdf.dark,
             context_modules: context_json(&Config::load().context),
+            natural_sort: Config::load().files.natural_sort,
+            folder_sort: folder_sort_json(&Config::load().files),
             places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
@@ -790,6 +805,36 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().pdf_dark = on;
         self.as_mut().pdf_dark_changed();
+    }
+
+    pub fn set_natural_sort(mut self: Pin<&mut Self>, on: bool) {
+        if self.natural_sort == on {
+            return;
+        }
+        let mut config = Config::load().files;
+        config.natural_sort = on;
+        if let Err(err) = Config::save_files(&config) {
+            log::warn!("cannot save [files]: {err:#}");
+        }
+        atlas_core::listing::set_natural_sort(on);
+        self.as_mut().rust_mut().natural_sort = on;
+        // Views sort again when they see the change.
+        self.as_mut().natural_sort_changed();
+    }
+
+    pub fn remember_folder_sort(mut self: Pin<&mut Self>, key: &QString, ascending: bool) {
+        let mut config = Config::load().files;
+        let key = key.to_string();
+        if config.sort_key == key && config.sort_ascending == ascending {
+            return;
+        }
+        config.sort_key = key;
+        config.sort_ascending = ascending;
+        if let Err(err) = Config::save_files(&config) {
+            log::warn!("cannot save [files]: {err:#}");
+        }
+        self.as_mut().rust_mut().folder_sort = folder_sort_json(&config);
+        self.as_mut().folder_sort_changed();
     }
 
     pub fn set_context_module(mut self: Pin<&mut Self>, key: &QString, value: i32) {
@@ -2422,6 +2467,11 @@ fn percent_decode(s: &str) -> String {
         }
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Order of new folder views for QML.
+fn folder_sort_json(f: &atlas_core::config::FilesConfig) -> QString {
+    QString::from(serde_json::json!({ "key": f.sort_key, "ascending": f.sort_ascending }).to_string().as_str())
 }
 
 /// `[context]` for QML.

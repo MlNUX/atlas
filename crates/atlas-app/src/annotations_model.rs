@@ -57,6 +57,16 @@ pub mod qobject {
         #[qinvokable]
         fn annotation(self: &PdfAnnotations, id: &QString) -> QString;
 
+        /// The annotation and the other parts of its group as a JSON list
+        /// (for undo; "[]" if unknown).
+        #[qinvokable]
+        fn snapshot(self: &PdfAnnotations, id: &QString) -> QString;
+
+        /// Puts annotations from `snapshot` back exactly as they were (same
+        /// IDs, replacing those still there); for undo and redo.
+        #[qinvokable]
+        fn restore(self: Pin<&mut PdfAnnotations>, snapshot: &QString) -> bool;
+
         /// Markdown quote of a text markup with source link, for the note at
         /// `note_path` (the link is root-relative or relative to the note).
         #[qinvokable]
@@ -337,6 +347,28 @@ impl qobject::PdfAnnotations {
             return false;
         };
         self.as_mut().rust_mut().data.annotations.retain(|a| a.id != id && (group.is_empty() || a.group != group));
+        self.save();
+        true
+    }
+
+    pub fn snapshot(&self, id: &QString) -> QString {
+        qs(serde_json::to_string(&self.parts(&id.to_string())).unwrap_or_else(|_| "[]".into()))
+    }
+
+    pub fn restore(mut self: Pin<&mut Self>, snapshot: &QString) -> bool {
+        let Ok(list) = serde_json::from_str::<Vec<Annotation>>(&snapshot.to_string()) else { return false };
+        if list.is_empty() || self.file.is_none() {
+            return false;
+        }
+        {
+            let mut this = self.as_mut().rust_mut();
+            for a in list {
+                match this.data.annotations.iter().position(|b| b.id == a.id) {
+                    Some(i) => this.data.annotations[i] = a,
+                    None => this.data.annotations.push(a),
+                }
+            }
+        }
         self.save();
         true
     }

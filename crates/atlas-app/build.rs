@@ -49,6 +49,7 @@ const QML_FILES: &[&str] = &[
     "qml/TerminalPanel.qml",
     "qml/TextEditor.qml",
     "qml/TrashView.qml",
+    "qml/WebRepaint.qml",
 ];
 
 const RUST_BRIDGES: &[&str] = &[

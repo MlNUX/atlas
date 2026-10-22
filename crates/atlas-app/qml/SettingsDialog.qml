@@ -139,6 +139,36 @@ Dialog {
                     }
                 }
 
+                SectionLabel { text: qsTr("Dateien"); Layout.topMargin: 10 }
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: sortRow.implicitHeight + 24
+                    RowLayout {
+                        id: sortRow
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+                        Icon { Layout.alignment: Qt.AlignTop; name: "list"; size: 18; color: Theme.accent }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Text { text: qsTr("Natürliche Sortierung"); color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.smallFontSize
+                                text: qsTr("Zahlen nach ihrem Wert: „2.pdf“ vor „10.pdf“. Gilt für Dateiansicht und Projektbaum; die zuletzt gewählte Sortierung merkt sich Atlas für neue Ansichten.")
+                            }
+                        }
+                        Toggle {
+                            Layout.alignment: Qt.AlignVCenter
+                            checked: dialog.app.naturalSort
+                            onToggled: dialog.app.naturalSort = !dialog.app.naturalSort
+                        }
+                    }
+                }
+
                 SectionLabel { text: qsTr("Kontextleiste"); Layout.topMargin: 10 }
                 Card {
                     Layout.fillWidth: true
