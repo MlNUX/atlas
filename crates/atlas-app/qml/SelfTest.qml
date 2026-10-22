@@ -258,6 +258,16 @@ Item {
                 check("Wiki-Link-Vorschläge", ed.completing)
                 ed.acceptCompletion()
                 check("Wiki-Link vervollständigt", ed.text.indexOf("Neu: [[/notes/plan-neu.md]]") > 0, ed.text.slice(-60))
+                // Markdown: line numbers also for wrapped text, Tab indents a list item.
+                check("Markdown mit Zeilennummern", ed.showLineNumbers && ed.wrappedNumbers.length > 0 && ed.wrappedNumbers[0].n >= 1,
+                      JSON.stringify(ed.wrappedNumbers.slice(0, 3)))
+                ed.insertText("\n- Punkt", true)
+                ed.applyState({ cursor: ed.text.length })
+                const indented = ed.indentListItems(false) && ed.text.endsWith("\n  - Punkt")
+                const outdented = ed.indentListItems(true) && ed.text.endsWith("\n- Punkt")
+                ed.insertText("\nText", true)
+                ed.applyState({ cursor: ed.text.length })
+                check("Tab rückt Listenpunkte ein und aus, nicht normalen Text", indented && outdented && !ed.indentListItems(false), ed.text.slice(-30))
                 // ---- Phase 2: user defined actions
                 check("Aktionsdatei fehlerfrei", app.actionErrors() === "[]", app.actionErrors())
                 const names = (paths) => fileActions.actionsFor(paths).map(a => a.name).join(",")
@@ -795,6 +805,9 @@ Item {
                 // instead of the fixed ones (GTK bookmarks are not added).
                 check("Orte wie in Dolphin", app.fileManagerPlaces && app.fixedPlaceCount === 0
                       && app.placeNames.join(",") === "Belege" && app.placePaths[0] === path("docs"), app.placeNames.join(","))
+                inspector.graphWindow.show(path("notes/wiki.md"))
+                check("Graph im eigenen Fenster", inspector.graphWindow.visible && inspector.graphWindow.width > 600)
+                inspector.graphWindow.close()
                 settingsDialog.open()
                 check("Einstellungen öffnen", settingsDialog.visible)
                 app.fileManagerPlaces = false

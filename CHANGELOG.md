@@ -19,7 +19,17 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   verknüpfen“. Im Graph entsteht ein Knoten mit dem Ordnernamen, an dem
   alle Dateien des Ordners hängen – auch später hinzugefügte.
 
+- Graph in eigenem großen Fenster („Groß anzeigen“).
+- Markdown-Editor mit Zeilennummern; Tab/Umschalt+Tab rücken Listenpunkte
+  ein und aus; Zeilenumbrüche erscheinen in der Vorschau.
+- Ordner lassen sich verknüpfen, auch Ordner-Knoten untereinander.
+
 ### Behoben
+- Terminal: horizontal und vertikal teilen teilen das aktive Terminal.
+- PDF springt beim Zoomen mit Strg+Mausrad nicht mehr zur Seite;
+  „PDF-Kopie exportieren“ nur mit Anmerkungen.
+- Doppelte Aktionen aus neu angelegten Erweiterungen; neue Erweiterungen
+  bekommen einen eigenen Namen.
 - Nextcloud-Kalender: Fehlerseiten des Servers erscheinen als kurzer Text mit
   Anfrage und Adresse statt als großes HTML; aus dem Browser kopierte
   Server-Adressen und Nextcloud in Unterordnern werden gefunden.
@@ -28,6 +38,8 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   jetzt in einem Zug.
 
 ### Geändert
+- Neues Desktop-Symbol (das „A“ der Titelleiste); Hauptmenü ohne Einträge,
+  die es in den Einstellungen gibt.
 - Kontextmenü und Hauptmenü gestrafft (ohne Standardprogramm, Dateimanager,
   „Editor teilen“, „Splits untereinander“; „Neu …“ nur auf Ordnern),
   Einstellungsfenster neu gestaltet.

@@ -227,7 +227,7 @@ Rectangle {
                         Layout.leftMargin: 14
                         Layout.rightMargin: 8
                         Label { Layout.fillWidth: true; text: qsTr("Graph"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
-                        IconButton { iconName: "maximize"; iconSize: 14; tip: qsTr("Groß anzeigen"); onClicked: inspector.tab = 2 }
+                        IconButton { iconName: "maximize"; iconSize: 14; tip: qsTr("Groß anzeigen (eigenes Fenster)"); onClicked: graphDialog.show(inspector.document) }
                     }
                     ContextPanel {
                         Layout.fillWidth: true
@@ -308,6 +308,14 @@ Rectangle {
             }
         }
     }
+
+    GraphDialog {
+        id: graphDialog
+        parent: Overlay.overlay
+        app: inspector.app
+        onOpenRequested: (path, line, newPane, state) => inspector.openRequested(path, line, newPane ? "split" : "tab", state)
+    }
+    readonly property alias graphWindow: graphDialog
 
     component AnnotationCard: Rectangle {
         required property var modelData

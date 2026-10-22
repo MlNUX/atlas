@@ -756,3 +756,27 @@ nginx stand dann als großes Bild im Einstellungsfenster. Jetzt:
   der Server-Angabe (aus dem Browser kopierte Adressen werden vor `/apps/`
   bzw. `/index.php` abgeschnitten), `/remote.php/dav/` an der Wurzel und
   `/.well-known/caldav`; 400, 403, 404, 405 und 501 führen zur nächsten.
+
+### Nachtrag – Rückmeldungen vom 22.10.
+
+- Menü oben rechts ohne „Kalender-Einstellungen“, „Erweiterungen
+  verwalten“ und „Externen Editor festlegen“ (alles in den Einstellungen).
+  Sessionfenster ohne ⋮ bei „Neue Session“; „Umbenennen“ im ⋮ jeder Zeile.
+  Text im Session-Knopf mittig.
+- „Wörter zählen“ doppelt: Jede mit „Neue Erweiterung“ angelegte
+  Erweiterung hieß „Beispiel-Erweiterung“ und brachte dieselben Aktionen
+  mit. Jetzt fragt Atlas nach dem Namen und legt die Beispiele nur als
+  Kommentare an; gleich benannte Aktionen zeigen ihre Quelle in Klammern.
+- „Verknüpfen mit …“ auch für Ordner – Ordner-Knoten lassen sich
+  untereinander verbinden.
+- PDF: Strg+Mausrad hält die Stelle unter der Maus in Seitenkoordinaten
+  fest; eine Seite schmaler als die Ansicht sprang vorher zur Seite und
+  glitt zurück. „PDF-Kopie exportieren“ nur, wenn es Anmerkungen gibt.
+- Terminal: Teilen teilt das aktive Terminal neben oder unter sich
+  (verschachtelt, die Teile gleich groß), statt den ganzen Tab umzustellen;
+  die Session speichert die Aufteilung als Baum.
+- „Groß anzeigen“ beim Graph öffnet ein eigenes großes Fenster.
+- Desktop-Symbol: das „A“ der Titelleiste.
+- Markdown: Zeilenumbrüche im Text sind auch in der Vorschau Umbrüche;
+  der Editor nummeriert die Zeilen (auch umbrochene, je am Zeilenanfang);
+  Tab rückt Listenpunkte ein, Umschalt+Tab aus (auch mehrere markierte).
