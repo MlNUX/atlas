@@ -82,6 +82,7 @@ Item {
         "logo": "<path fill='COLOR' stroke='none' d='M12 2.5 22 21h-4.4L12 10.6 6.4 21H2z'/><path fill='COLOR' stroke='none' opacity='.55' d='M12 13.6 15.4 21H8.6z'/>",
         "warning": "<path d='M12 4 2.5 20h19z'/><path d='M12 10v4.5M12 17.5v.5'/>",
         "key": "<circle cx='8' cy='15' r='4'/><path d='m11 12 9-9M17 6l3 3M15 8l2 2'/>",
+        "moon": "<path d='M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z'/>",
     })
 
     readonly property string svg: shapes[name]

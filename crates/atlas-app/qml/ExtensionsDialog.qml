@@ -21,8 +21,9 @@ Dialog {
     width: Math.min(760, Overlay.overlay ? Overlay.overlay.width - 60 : 760)
     height: Math.min(620, Overlay.overlay ? Overlay.overlay.height - 60 : 620)
     modal: true
-    title: qsTr("Erweiterungen")
-    standardButtons: Dialog.Close
+    padding: 0
+    topPadding: 0
+    title: ""
 
     function reload() {
         list = JSON.parse(app.extensions())
@@ -42,19 +43,50 @@ Dialog {
             .concat(e.exporters.map(x => "⇪ " + x.name + " (→ ." + x.target + "):  " + x.command))
     }
 
-    ColumnLayout {
-        anchors.fill: parent
-        spacing: 8
-        Label {
+    contentItem: ColumnLayout {
+        spacing: 0
+
+        // ---- header (like the settings)
+        RowLayout {
             Layout.fillWidth: true
-            wrapMode: Text.Wrap
-            color: Theme.textMuted
-            text: qsTr("Erweiterungen sind Ordner mit einer extension.yaml – global in ~/.config/atlas/extensions/, für ein Projekt in .atlas/extensions/. Sie fügen Aktionen, Anzeigen für weitere Dateitypen und Exporter hinzu (docs/extensions.md).")
+            Layout.margins: 18
+            Layout.bottomMargin: 14
+            spacing: 12
+            Rectangle {
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                Layout.alignment: Qt.AlignTop
+                radius: 10
+                color: Theme.accentSoft
+                Icon { anchors.centerIn: parent; name: "grid"; size: 20; color: Theme.accent }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                Text {
+                    text: qsTr("Erweiterungen")
+                    color: Theme.textStrong
+                    font.pixelSize: 16
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                    text: qsTr("Ordner mit einer extension.yaml – global in ~/.config/atlas/extensions/, für ein Projekt in .atlas/extensions/. Sie fügen Aktionen, Anzeigen für weitere Dateitypen und Exporter hinzu.")
+                }
+            }
+            IconButton { Layout.alignment: Qt.AlignTop; iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
         }
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+
         ListView {
             id: extList
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.margins: 12
+            Layout.rightMargin: 6
             clip: true
             spacing: 6
             model: dialog.list
@@ -63,16 +95,16 @@ Dialog {
                 id: card
                 required property var modelData
                 property bool expanded: false
-                width: ListView.view.width - 12
-                height: cardColumn.implicitHeight + 16
-                radius: 6
-                color: Theme.sidebar
+                width: ListView.view.width - 6
+                height: cardColumn.implicitHeight + 20
+                radius: 10
+                color: Theme.header
                 border.color: Theme.border
                 ColumnLayout {
                     id: cardColumn
-                    x: 10
-                    y: 8
-                    width: parent.width - 20
+                    x: 12
+                    y: 10
+                    width: parent.width - 24
                     spacing: 4
                     RowLayout {
                         Layout.fillWidth: true
@@ -131,7 +163,9 @@ Dialog {
                         }
                     }
                     RowLayout {
-                        spacing: 4
+                        Layout.fillWidth: true
+                        Layout.topMargin: 2
+                        spacing: 2
                         Button {
                             visible: card.modelData.status === "untrusted"
                             text: qsTr("Prüfen und freigeben …")
@@ -140,12 +174,14 @@ Dialog {
                         Button {
                             visible: card.modelData.status === "active" || card.modelData.status === "disabled"
                             text: card.modelData.status === "active" ? qsTr("Ausschalten") : qsTr("Einschalten")
+                            flat: card.modelData.status === "active"
                             onClicked: {
                                 const error = dialog.app.setExtensionEnabled(card.modelData.name, card.modelData.status !== "active")
                                 if (error && dialog.actions) dialog.actions.showMessage(error)
                                 dialog.reload()
                             }
                         }
+                        Item { Layout.fillWidth: true }
                         Button {
                             text: card.expanded ? qsTr("Befehle ausblenden") : qsTr("Befehle zeigen")
                             flat: true
@@ -174,13 +210,23 @@ Dialog {
                 text: qsTr("Keine Erweiterungen installiert.")
             }
         }
+
+        // ---- footer: count and reload on the left, actions on the right
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
         RowLayout {
             Layout.fillWidth: true
-            Button {
-                text: qsTr("Neue Erweiterung …")
-                onClicked: dialog.askNew()
+            Layout.margins: 14
+            Layout.leftMargin: 18
+            spacing: 8
+            Text {
+                text: extList.count === 0 ? qsTr("Keine installiert") : qsTr("%n installiert", "", extList.count)
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
             }
-            Button { text: qsTr("Neu laden"); flat: true; onClicked: dialog.reload() }
+            IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: dialog.reload() }
+            Item { Layout.fillWidth: true }
+            Button { text: qsTr("Neue Erweiterung …"); onClicked: dialog.askNew() }
+            Button { text: qsTr("Schließen"); highlighted: true; onClicked: dialog.close() }
         }
     }
 

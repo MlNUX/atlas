@@ -813,3 +813,27 @@ Kalenderliste (mit Leserechten), Termine über CalDAV mit Bearer-Token,
 abgelaufenes Zugriffs-Token, widerrufenes Refresh-Token, neuer Kalender;
 dazu Rückleitung auf dem lokalen Port und Token-Antworten. Gegen Googles
 echte Dienste konnte nicht getestet werden.
+
+### Nachtrag – PDF-Dunkelmodus, Scrollen, Erweiterungen
+
+- **Dunkelmodus für PDFs** (Mond in der PDF-Leiste, `[pdf] dark`): Die
+  gerenderten Seiten werden auf dem Render-Thread umgekehrt – die
+  HSL-Helligkeit wird gespiegelt (`c + 255 − max − min`), Farbton und
+  Sättigung bleiben. Weißes Papier wird dunkelgrau (`#262626`), nicht
+  schwarz; durchsichtige Stellen zählen als Papier. Miniaturen ebenso.
+- **Vorschaubilder:** Qts PDF-Bildmodul rendert Seiten durchsichtig; in der
+  Dateiansicht liegt jetzt ein weißes Blatt darunter.
+- **Mausrad:** 160 px pro Raste statt der wenigen Zeilen der Liste;
+  Touchpads (Pixel-Deltas, keine ganze Raste) behalten ihre Bewegung, um
+  die Hälfte verstärkt.
+- **Erweiterungen „Core“:** Erweiterungen aus der Vorlage von 1.0
+  (`beispiel*/`, Titel „Beispiel-Erweiterung“) werden beim Start zu
+  `core/` „Core“, `core-2/` „Core 2“ …; eigene Titel bleiben unberührt,
+  `[extensions] disabled` wird mitgezogen.
+- **Erweiterungsfenster** mit Kopf wie die Einstellungen, Karten mit
+  Aktionen rechts und einer Fußzeile: Anzahl und Neu laden links, „Neue
+  Erweiterung …“ und „Schließen“ rechts.
+
+Selbsttest: Mausrad scrollt eine volle Stufe, Dunkelmodus an/aus, alte
+Beispiel-Erweiterung heißt nach dem Start „Core“. Kern-Tests für die
+Umkehrung (Weiß, Schwarz, Durchsichtig, Rot) und die Umbenennung.

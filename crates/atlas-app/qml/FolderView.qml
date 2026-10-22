@@ -506,6 +506,16 @@ Rectangle {
                             color: cell.isHidden ? Theme.textFaint : cell.icon[1]
                             opacity: cell.isHidden ? 0.7 : 1
                         }
+                        // Qt's PDF image plugin renders pages transparent:
+                        // give them their paper back, like a sheet.
+                        Rectangle {
+                            visible: thumb.visible && /\.pdf$/i.test(cell.name)
+                            anchors.centerIn: parent
+                            width: thumb.paintedWidth + 2
+                            height: thumb.paintedHeight + 2
+                            color: "white"
+                            border.color: Theme.border
+                        }
                         Image {
                             id: thumb
                             anchors.fill: parent

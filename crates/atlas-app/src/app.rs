@@ -57,6 +57,8 @@ pub mod qobject {
         #[qproperty(i32, fixed_place_count, cxx_name = "fixedPlaceCount", READ, NOTIFY = places_changed)]
         /// Setting `[places] file_manager` (saved when changed).
         #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
+        /// PDFs in dark mode (inverted brightness); `[pdf] dark` in config.toml.
+        #[qproperty(bool, pdf_dark, cxx_name = "pdfDark", READ, WRITE = set_pdf_dark, NOTIFY)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
@@ -93,6 +95,7 @@ pub mod qobject {
 
         #[cxx_name = "setFileManagerPlaces"]
         fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
+        fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
 
         /// Reads the places again (also done when the file managers' files
         /// change).
@@ -586,6 +589,7 @@ pub struct AppControllerRust {
     image_formats: QStringList,
     fixed_place_count: i32,
     file_manager_places: bool,
+    pdf_dark: bool,
     /// Watches the file managers' places files.
     places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
@@ -651,6 +655,7 @@ impl Default for AppControllerRust {
             image_formats: crate::qt_helpers::image_formats(),
             fixed_place_count: 0,
             file_manager_places: Config::load().places.file_manager,
+            pdf_dark: Config::load().pdf.dark,
             places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
@@ -754,6 +759,19 @@ impl qobject::AppController {
         self.as_mut().rust_mut().file_manager_places = on;
         self.as_mut().places_changed();
         self.refresh_places();
+    }
+
+    pub fn set_pdf_dark(mut self: Pin<&mut Self>, on: bool) {
+        if self.pdf_dark == on {
+            return;
+        }
+        let mut config = Config::load().pdf;
+        config.dark = on;
+        if let Err(err) = Config::save_pdf(&config) {
+            log::warn!("cannot save [pdf]: {err:#}");
+        }
+        self.as_mut().rust_mut().pdf_dark = on;
+        self.as_mut().pdf_dark_changed();
     }
 
     /// Dolphin or a GTK file manager changed its places: read them again.

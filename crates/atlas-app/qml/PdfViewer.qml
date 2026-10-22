@@ -32,6 +32,9 @@ Rectangle {
         if (index < 0 || index >= doc.pageCount) return null
         return { w: Math.round(doc.pageWidth(index) * 25.4 / 72), h: Math.round(doc.pageHeight(index) * 25.4 / 72) }
     }
+    /// Dark mode for all PDFs (setting of the app): inverted brightness.
+    readonly property bool dark: !!root.app && root.app.pdfDark
+    readonly property color paperColor: dark ? "#262626" : "white"
     /// 0 = thumbnails, 1 = outline, 2 = annotations.
     property int sidebarTab: 0
     /// Notes citing or linking to this PDF, and the local graph.
@@ -402,6 +405,8 @@ Rectangle {
         const p = event.pixelDelta.y || event.pixelDelta.x
         return p / 50
     }
+    /// Pixels per wheel notch.
+    readonly property int wheelStep: 160
     function zoomBy(factor) { zoom = Math.max(0.2, Math.min(6, zoomScale * factor)) }
 
     Keys.onPressed: (event) => {
@@ -471,6 +476,14 @@ Rectangle {
                 IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg++)"); onClicked: root.zoomBy(1.2) }
                 IconButton { glyph: "↔"; tip: qsTr("Seitenbreite (Strg+0)"); checkable: true; checked: root.zoom === 0; onClicked: root.zoom = 0 }
                 IconButton { glyph: "▯"; tip: qsTr("Ganze Seite"); checkable: true; checked: root.zoom < 0; onClicked: root.zoom = -1 }
+                IconButton {
+                    iconName: "moon"
+                    tip: root.dark ? qsTr("Dunkelmodus aus: Originalfarben") : qsTr("Dunkelmodus: Farben umkehren (für alle PDFs)")
+                    checkable: true
+                    checked: root.dark
+                    enabled: !!root.app
+                    onClicked: root.app.pdfDark = !root.app.pdfDark
+                }
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
                 IconButton {
                     glyph: "I"
@@ -624,7 +637,7 @@ Rectangle {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     width: 110
                                     height: parent.height - 22
-                                    color: "white"
+                                    color: root.paperColor
                                     border.width: thumb.index === root.currentPage ? 2 : 0
                                     border.color: Theme.accent
                                     PdfPage {
@@ -632,6 +645,7 @@ Rectangle {
                                         anchors.margins: parent.border.width
                                         source: doc.source
                                         page: thumb.index
+                                        inverted: root.dark
                                         renderWidth: Math.round(110 * Screen.devicePixelRatio)
                                     }
                                     Text {
@@ -848,6 +862,26 @@ Rectangle {
                         event.accepted = true
                     }
                 }
+                // Plain wheel: scroll faster than the list would (a few lines
+                // per notch felt sluggish on long documents). Touchpads keep
+                // their own pixel deltas, a bit amplified.
+                WheelHandler {
+                    acceptedDevices: PointerDevice.AllDevices
+                    acceptedPointerTypes: PointerDevice.AllPointerTypes
+                    acceptedModifiers: Qt.NoModifier
+                    onWheel: (event) => {
+                        const delta = (angle, pixel) => pixel !== 0 && angle % 120 !== 0
+                            ? pixel * 1.5 : angle / 120 * root.wheelStep
+                        pages.cancelFlick()
+                        const minY = pages.originY - pages.topMargin
+                        const maxY = Math.max(minY, pages.originY + pages.contentHeight + pages.bottomMargin - pages.height)
+                        pages.contentY = Math.max(minY, Math.min(maxY, pages.contentY - delta(event.angleDelta.y, event.pixelDelta.y)))
+                        const maxX = Math.max(0, pages.contentWidth - pages.width)
+                        const dx = delta(event.angleDelta.x, event.pixelDelta.x)
+                        if (dx) pages.contentX = Math.max(0, Math.min(maxX, pages.contentX - pages.originX - dx)) + pages.originX
+                        event.accepted = true
+                    }
+                }
 
                 delegate: Item {
                     id: pageDelegate
@@ -861,13 +895,14 @@ Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: doc.pageWidth(pageDelegate.index) * root.zoomScale
                         height: parent.height
-                        color: "white"
+                        color: root.paperColor
 
                         PdfPage {
                             id: page
                             anchors.fill: parent
                             source: doc.source
                             page: pageDelegate.index
+                            inverted: root.dark
                             renderWidth: Math.round(doc.pageWidth(pageDelegate.index) * root.renderScale * Screen.devicePixelRatio)
                             onRenderMsChanged: root.lastRenderMs = renderMs
                         }

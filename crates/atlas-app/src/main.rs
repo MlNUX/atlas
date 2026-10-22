@@ -41,6 +41,8 @@ fn main() {
         }
     }
 
+    rename_legacy_extensions();
+
     // The Markdown preview uses QtWebEngine, which must be set up first.
     qt_helpers::init_web_engine();
     let mut app = QGuiApplication::new();
@@ -59,5 +61,26 @@ fn main() {
     }
     if let Some(app) = app.as_mut() {
         std::process::exit(app.exec());
+    }
+}
+
+/// Extensions from the template of Atlas 1.0 were all called
+/// „Beispiel-Erweiterung“: rename them to „Core“, „Core 2“ … and keep
+/// switched-off ones switched off.
+fn rename_legacy_extensions() {
+    use atlas_core::config::Config;
+    let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
+    let renamed = atlas_core::extensions::migrate_legacy(&root);
+    let mut config = Config::load().extensions;
+    let mut changed = false;
+    for (old, new) in &renamed {
+        log::info!("extension {old} renamed to {new}");
+        for name in config.disabled.iter_mut().filter(|n| *n == old) {
+            *name = new.clone();
+            changed = true;
+        }
+    }
+    if changed && let Err(err) = Config::save_extensions(&config) {
+        log::warn!("cannot save [extensions]: {err:#}");
     }
 }

@@ -26,8 +26,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - Markdown-Editor mit Zeilennummern; Tab/Umschalt+Tab rücken Listenpunkte
   ein und aus; Zeilenumbrüche erscheinen in der Vorschau.
 - Ordner lassen sich verknüpfen, auch Ordner-Knoten untereinander.
+- PDF-Dunkelmodus (Mond in der PDF-Leiste): Seiten mit umgekehrter
+  Helligkeit auf dunkelgrauem Papier, Farbtöne bleiben – rote Überschriften
+  bleiben rot. Gilt für alle PDFs und wird in `config.toml` gemerkt.
 
 ### Behoben
+- PDF-Vorschaubilder in der Dateiansicht haben wieder weißes Papier statt
+  eines durchsichtigen Hintergrunds.
 - Kalender-Abgleich scheiterte manchmal mit „Interrupted system call“, wenn
   gleichzeitig ein Programm im Terminal endete; solche Anfragen werden jetzt
   wiederholt.
@@ -44,6 +49,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   jetzt in einem Zug.
 
 ### Geändert
+- Mausrad in PDFs scrollt deutlich weiter pro Raste (Touchpads etwas
+  schneller als bisher).
+- Erweiterungen aus der alten Vorlage hießen alle „Beispiel-Erweiterung“;
+  sie heißen jetzt „Core“, „Core 2“ … (Ordner und Name werden beim Start
+  umbenannt, ausgeschaltete bleiben aus). Das Erweiterungsfenster ist neu
+  gestaltet wie die Einstellungen.
 - Aktionen in der Kontextleiste als aufgeräumte Liste („Für diese Datei“,
   „Eigene Aktionen“); nicht verfügbare sagen, warum; nichts ragt mehr über
   den Rand.

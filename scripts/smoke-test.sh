@@ -121,6 +121,10 @@ processors:
 exporters:
   - {name: Kopie als Text, applies_to: "*.md", target: txt, command: [cp, "{file}", "{output}"]}
 YAML
+# Made from the template of Atlas 1.0: becomes „Core“ on start.
+mkdir -p "$work/config/extensions/beispiel"
+printf 'atlas_extension: 1\nname: beispiel\ntitle: Beispiel-Erweiterung\nversion: 0.1.0\n' \
+    > "$work/config/extensions/beispiel/extension.yaml"
 cat > "$project/.atlas/extensions/proj/extension.yaml" <<'YAML'
 atlas_extension: 1
 name: proj

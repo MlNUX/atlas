@@ -289,6 +289,9 @@ Item {
                 const exts = JSON.parse(app.extensions())
                 const status = (n) => (exts.find(e => e.name === n) || {}).status
                 check("Erweiterungen gefunden", status("demo") === "active" && status("proj") === "untrusted", JSON.stringify(exts.map(e => e.name + ":" + e.status)))
+                const core = exts.find(e => e.name === "core")
+                check("Alte Beispiel-Erweiterung heißt jetzt Core", !!core && core.title === "Core" && !exts.some(e => e.name === "beispiel"),
+                      JSON.stringify(exts.map(e => e.name + ":" + e.title)))
                 check("Projekt-Erweiterung wartet auf Freigabe", app.untrustedExtensions.length === 1 && app.untrustedExtensions[0] === "proj")
                 const projectActions = () => fileActions.actionsFor([]).map(a => a.name)
                 check("Nicht freigegeben: keine Aktionen", projectActions().indexOf("Hallo") >= 0 && projectActions().indexOf("Projekt-Hallo") < 0, projectActions())
@@ -535,8 +538,16 @@ Item {
                 app.sendWheel(window, p.x, p.y, -240, true)
                 check("Strg+Mausrad zurück verkleinert", v.zoomScale < zoomed, zoomed + " → " + v.zoomScale)
                 const plain = v.zoomScale
+                const y0 = v.pagesView.contentY
                 app.sendWheel(window, p.x, p.y, -120, false)
                 check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
+                check("Mausrad scrollt eine große Stufe", v.pagesView.contentY - y0 >= v.wheelStep - 1, y0 + " → " + v.pagesView.contentY)
+                app.sendWheel(window, p.x, p.y, 120, false)
+                // Dark mode: one switch for all PDFs, stored in config.toml.
+                app.pdfDark = true
+                check("PDF-Dunkelmodus: Seiten invertiert, Papier dunkel", v.dark && Qt.colorEqual(v.paperColor, "#262626"), v.paperColor)
+                app.pdfDark = false
+                check("PDF-Dunkelmodus aus", !v.dark && Qt.colorEqual(v.paperColor, "white"))
                 // A page narrower than the view stays centred while zooming
                 // (no jump to the side).
                 v.zoom = 0.4

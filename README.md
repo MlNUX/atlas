@@ -23,7 +23,8 @@ verändert weder PDFs noch Notizen ungefragt.
   Sessionmenü wechselt zwischen deinen Ordnern.
 - **Schnellansicht** mit der Leertaste für PDFs, Bilder, Markdown und Code.
 - **PDFs** markieren, kommentieren, mit Lesezeichen versehen und zitieren –
-  die PDF selbst bleibt unverändert; Export als Kopie mit Anmerkungen.
+  die PDF selbst bleibt unverändert; Export als Kopie mit Anmerkungen,
+  Dunkelmodus mit umgekehrten Farben.
 - **Markdown** mit Live-Vorschau, Formeln (KaTeX), Diagrammen (Mermaid),
   Checklisten, Tags, Wiki-Links, Backlinks und lokalem Graph. Zitate springen
   direkt zur Stelle in der PDF.

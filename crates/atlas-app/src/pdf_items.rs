@@ -100,6 +100,8 @@ pub mod qobject {
         #[qproperty(QString, source, READ, WRITE, NOTIFY)]
         #[qproperty(i32, page, READ, WRITE, NOTIFY)]
         #[qproperty(i32, render_width, cxx_name = "renderWidth", READ, WRITE, NOTIFY)]
+        /// Dark mode: brightness inverted, hues kept.
+        #[qproperty(bool, inverted, READ, WRITE, NOTIFY)]
         #[qproperty(bool, rendered, READ, NOTIFY)]
         #[qproperty(i32, render_ms, cxx_name = "renderMs", READ, NOTIFY)]
         #[qproperty(QString, error, READ, NOTIFY)]
@@ -329,6 +331,7 @@ pub struct PdfPageRust {
     source: QString,
     page: i32,
     render_width: i32,
+    inverted: bool,
     rendered: bool,
     render_ms: i32,
     error: QString,
@@ -349,6 +352,7 @@ impl cxx_qt::Initialize for qobject::PdfPage {
         self.as_mut().on_source_changed(|p| p.schedule_render()).release();
         self.as_mut().on_page_changed(|p| p.schedule_render()).release();
         self.as_mut().on_render_width_changed(|p| p.schedule_render()).release();
+        self.as_mut().on_inverted_changed(|p| p.schedule_render()).release();
     }
 }
 
@@ -368,7 +372,14 @@ impl qobject::PdfPage {
         }
         let generation = self.generation;
         let thread = self.qt_thread();
-        PdfService::get().render(path, self.page as usize, width as u32, token, move |result| {
+        let inverted = self.inverted;
+        PdfService::get().render(path, self.page as usize, width as u32, token, move |mut result| {
+            if inverted {
+                // Still on the render thread, not the UI thread.
+                if let Ok(page) = result.as_mut() {
+                    page.invert();
+                }
+            }
             let _ = thread.queue(move |page| page.apply_render(generation, result));
         });
     }

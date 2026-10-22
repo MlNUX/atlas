@@ -153,6 +153,14 @@ impl Default for PlacesConfig {
     }
 }
 
+/// `[pdf]`: how PDFs are shown.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PdfConfig {
+    /// Dark mode: pages with inverted brightness (hues are kept).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dark: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -165,6 +173,8 @@ pub struct Config {
     pub calendar: CalendarConfig,
     #[serde(default)]
     pub places: PlacesConfig,
+    #[serde(default)]
+    pub pdf: PdfConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -208,6 +218,11 @@ impl Config {
     /// Updates only the `[places]` table.
     pub fn save_places(places: &PlacesConfig) -> Result<()> {
         save_table(&config_file(), "places", places)
+    }
+
+    /// Updates only the `[pdf]` table.
+    pub fn save_pdf(pdf: &PdfConfig) -> Result<()> {
+        save_table(&config_file(), "pdf", pdf)
     }
 
     /// Updates only the `[extensions]` table.
