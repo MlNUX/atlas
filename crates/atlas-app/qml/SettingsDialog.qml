@@ -143,9 +143,9 @@ Dialog {
                     }
                     LinkRow {
                         icon: "calendar"
-                        title: qsTr("Kalender und Nextcloud")
+                        title: qsTr("Kalender: Nextcloud oder Google")
                         detail: !dialog.calendar || !dialog.calendar.connected ? qsTr("Nicht verbunden – nur der lokale Projektkalender")
-                            : dialog.calendar.syncStatus || qsTr("Verbunden")
+                            : (dialog.calendar.google ? qsTr("Google · ") : qsTr("Nextcloud · ")) + (dialog.calendar.syncStatus || qsTr("Verbunden"))
                         onClicked: dialog.run(() => dialog.actions.calendarSync.openSettings())
                     }
                     LinkRow {

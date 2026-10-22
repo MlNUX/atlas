@@ -190,7 +190,7 @@ ApplicationWindow {
         if (calendar.connected) {
             list.push({ name: qsTr("Kalender synchronisieren"), hint: calendar.syncStatus,
                         run: () => calendar.unlocked ? calendar.syncNow() : fileActions.calendarSync.askPassword() })
-            list.push({ name: qsTr("App-Passwort für Nextcloud eingeben …"), run: () => fileActions.calendarSync.askPassword() })
+            list.push({ name: calendar.google ? qsTr("Bei Google anmelden …") : qsTr("App-Passwort für Nextcloud eingeben …"), run: () => fileActions.calendarSync.askPassword() })
         }
         if (calendar.conflictCount > 0) list.push({ name: qsTr("Kalenderkonflikte lösen …"), hint: String(calendar.conflictCount), run: () => fileActions.calendarSync.showConflicts() })
         if (current) {
@@ -771,13 +771,14 @@ ApplicationWindow {
             visible: window.calendar.connected && !window.calendar.unlocked && !window.calendar.fetchingPassword
                 && !window.calendarPasswordLater
             tone: window.calendar.passwordError ? Theme.warn : Theme.accent
-            message: (window.calendar.passwordError
+            message: (window.calendar.google ? qsTr("Google-Kalender: Bitte neu anmelden, um Termine abzugleichen.")
+                    : window.calendar.passwordError
                     ? qsTr("Nextcloud-Kalender: Passwort-Befehl fehlgeschlagen – %1").arg(window.calendar.passwordError)
                     : qsTr("Nextcloud-Kalender: App-Passwort für diese Atlas-Sitzung eingeben, um Termine abzugleichen."))
                 + (window.calendar.pending ? qsTr(" %n Änderung(en) warten auf Übertragung.", "", window.calendar.pending) : "")
             actions: (window.calendar.passwordError ? [{ text: qsTr("Erneut versuchen"), run: () => window.calendar.retryPasswordCommand() }] : [])
                 .concat([
-                    { text: qsTr("Eingeben …"), run: () => fileActions.calendarSync.askPassword() },
+                    { text: window.calendar.google ? qsTr("Anmelden …") : qsTr("Eingeben …"), run: () => fileActions.calendarSync.askPassword() },
                     { text: qsTr("Später"), run: () => window.calendarPasswordLater = true },
                 ])
         }

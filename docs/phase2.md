@@ -780,3 +780,36 @@ nginx stand dann als großes Bild im Einstellungsfenster. Jetzt:
 - Markdown: Zeilenumbrüche im Text sind auch in der Vorschau Umbrüche;
   der Editor nummeriert die Zeilen (auch umbrochene, je am Zeilenanfang);
   Tab rückt Listenpunkte ein, Umschalt+Tab aus (auch mehrere markierte).
+
+### Nachtrag – Google-Kalender
+
+Alternativ zu Nextcloud lässt sich ein Google-Konto verbinden
+(`provider = "google"`; Einrichtung: [google-kalender.md](google-kalender.md)).
+
+- **Anmeldung** mit OAuth 2.0 für installierte Apps
+  (`atlas_core::calendar::google`): der Browser öffnet Googles Anmeldeseite,
+  Atlas wartet auf `127.0.0.1:<Port>` auf die Rückleitung (PKCE, `state`),
+  tauscht den Code gegen Tokens und liest die E-Mail-Adresse aus dem
+  ID-Token. Der Nutzer bringt einen eigenen OAuth-Client („Desktop-App“)
+  mit; Client-ID und -Secret stehen in `config.toml`, das Refresh-Token
+  liegt wie das Nextcloud-App-Passwort verschlüsselt im Geheimnisspeicher
+  (eigener Name `google`).
+- **Kalenderliste** über die Calendar API (`users/me/calendarList`, Name,
+  Farbe, Schreibrecht); **Termine** über Googles CalDAV
+  (`apidata.googleusercontent.com/caldav/v2/<id>/events/`) mit demselben
+  Abgleich wie bei Nextcloud (Cache, Warteschlange, Konflikte). Der Client
+  holt Zugriffs-Tokens selbst und versucht es bei 401 einmal mit einem
+  frischen; ein abgelaufenes Refresh-Token führt zu „Bei Google neu
+  anmelden“. „Atlas – Projektarbeit“ legt die Calendar API an.
+- **Nur Termine:** Aufgaben bleiben bei Google im Projektkalender.
+- Der Wechsel zwischen Nextcloud und Google vergisst Anmeldung, Auswahl und
+  Cache des anderen Kontos.
+- Gefunden dabei: Das eingebaute Terminal behandelt SIGCHLD; endete ein
+  Programm, brachen Lesevorgänge des Kalenders mit „Interrupted system
+  call“ ab. Unterbrochene Anfragen werden wiederholt.
+
+Kern-Tests gegen einen nachgebildeten Google-Dienst: Token-Endpunkt,
+Kalenderliste (mit Leserechten), Termine über CalDAV mit Bearer-Token,
+abgelaufenes Zugriffs-Token, widerrufenes Refresh-Token, neuer Kalender;
+dazu Rückleitung auf dem lokalen Port und Token-Antworten. Gegen Googles
+echte Dienste konnte nicht getestet werden.

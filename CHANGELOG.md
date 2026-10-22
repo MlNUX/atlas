@@ -11,6 +11,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Neu
+- Google-Kalender als Alternative zu Nextcloud: Anmeldung im Browser
+  (eigener OAuth-Client, Anleitung in docs/google-kalender.md), Termine
+  lesen und schreiben, offline wie bei Nextcloud.
 - „Verknüpfen mit …“ verbindet zwei Dateien direkt, z. B. zwei PDFs – im
   Kontextmenü, in der Arbeitsleiste und in der Kontextleiste. Im Graph als
   grüne gestrichelte Linie, unter „Verknüpfungen“ mit Liste zum Öffnen und

@@ -32,7 +32,8 @@ verändert weder PDFs noch Notizen ungefragt.
 - **Terminal** im Fenster, **eigene Aktionen** und Skripte, kleine
   **Erweiterungen**.
 - **Projektkalender** mit Fristen aus Notizen und optionaler
-  Nextcloud-Synchronisierung (CalDAV).
+  Synchronisierung mit Nextcloud (CalDAV) oder Google-Kalender
+  ([Einrichtung](docs/google-kalender.md)).
 - HTML-Dateien als Webseite anzeigen, Code mit Syntaxhervorhebung, Übergabe
   an deinen Editor.
 
@@ -132,7 +133,8 @@ Alle Kürzel: [docs/shortcuts.md](docs/shortcuts.md).
 - Das Nextcloud-App-Passwort steht nie in Konfiguration oder Projekt. Atlas
   fragt es einmal ab und speichert es verschlüsselt mit `systemd-creds`
   (sonst als Datei nur für dich lesbar) oder holt es von einem
-  Passwort-Befehl wie `pass`.
+  Passwort-Befehl wie `pass`. Für Google merkt sich Atlas nach der Anmeldung
+  im Browser ebenso nur ein Zugriffs-Token.
 
 ## Entwicklung
 

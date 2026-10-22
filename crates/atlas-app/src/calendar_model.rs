@@ -16,6 +16,7 @@ use std::pin::Pin;
 use std::sync::Mutex;
 
 use atlas_core::calendar::caldav::{Account, Client, Remote};
+use atlas_core::calendar::google;
 use atlas_core::calendar::sync::{self, Choice, SyncStore};
 use atlas_core::calendar::{self, Entry, Kind, LOCAL, Status, Store, ical::Time, recur};
 use atlas_core::config::{CalendarChoice, CalendarConfig, Config};
@@ -47,6 +48,8 @@ pub mod qobject {
         #[qproperty(QString, zone, READ, CONSTANT)]
         /// A Nextcloud account is set up.
         #[qproperty(bool, connected, READ, NOTIFY = sync_changed)]
+        /// The account is a Google account (else Nextcloud/CalDAV).
+        #[qproperty(bool, google, READ, NOTIFY = sync_changed)]
         /// The app password for this Atlas start is known.
         #[qproperty(bool, unlocked, READ, NOTIFY = sync_changed)]
         /// The password command is running.
@@ -74,6 +77,15 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "connectionTested"]
         fn connection_tested(self: Pin<&mut CalendarModel>, ok: bool, message: QString, calendars: QString);
+        /// Google sign-in: the address to open in the browser.
+        #[qsignal]
+        #[cxx_name = "googleSignInUrl"]
+        fn google_sign_in_url(self: Pin<&mut CalendarModel>, url: QString);
+        /// Google sign-in finished (the calendars come with
+        /// `connectionTested`).
+        #[qsignal]
+        #[cxx_name = "googleSignedIn"]
+        fn google_signed_in(self: Pin<&mut CalendarModel>, ok: bool, message: QString);
 
         #[qsignal]
         #[cxx_name = "calendarCreated"]
@@ -241,6 +253,19 @@ pub mod qobject {
             password_command: &QString,
         );
 
+        /// Signs in with Google in the browser (OAuth for installed apps,
+        /// with the user's own client): `googleSignInUrl`, then
+        /// `googleSignedIn` and the calendars with `connectionTested`.
+        #[qinvokable]
+        #[cxx_name = "googleSignIn"]
+        fn google_sign_in(self: Pin<&mut CalendarModel>, client_id: &QString, client_secret: &QString);
+
+        /// Switches between "" (Nextcloud/CalDAV) and "google"; a change
+        /// forgets the other account's sign-in, calendars and cache.
+        #[qinvokable]
+        #[cxx_name = "setProvider"]
+        fn set_provider(self: Pin<&mut CalendarModel>, provider: &QString);
+
         /// The app password for this Atlas start (only in memory).
         #[qinvokable]
         #[cxx_name = "setPassword"]
@@ -334,8 +359,10 @@ static COMMAND: Mutex<CommandState> =
 /// Time for the command, including typing a passphrase into pinentry.
 const COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
 
+/// Where the remembered secret lives: the Nextcloud app password, or for
+/// Google the refresh token of the sign-in.
 fn secret_store() -> SecretStore {
-    SecretStore::default_for("nextcloud")
+    SecretStore::default_for(if Config::load().calendar.is_google() { "google" } else { "nextcloud" })
 }
 
 /// Storing and forgetting the remembered password happen one after another;
@@ -364,6 +391,7 @@ pub struct CalendarModelRust {
     error: QString,
     zone: QString,
     connected: bool,
+    google: bool,
     unlocked: bool,
     fetching_password: bool,
     password_error: QString,
@@ -397,6 +425,7 @@ impl Default for CalendarModelRust {
             error: QString::default(),
             zone: QString::from(tz.name()),
             connected: false,
+            google: false,
             unlocked: false,
             fetching_password: false,
             password_error: QString::default(),
@@ -434,8 +463,17 @@ fn account_of(c: &CalendarConfig) -> Account {
     Account { server: c.server.clone(), user: c.user.clone(), dav_url: c.dav_url.clone() }
 }
 
+/// The client for the configured account; for Google `password` is the
+/// refresh token.
 fn client(c: &CalendarConfig, password: &str) -> Client {
+    if c.is_google() {
+        return Client::google(&c.user, oauth_client(c), password, google::Endpoints::default(), true);
+    }
     Client::new(account_of(c), password, true)
+}
+
+fn oauth_client(c: &CalendarConfig) -> google::OAuthClient {
+    google::OAuthClient { id: c.google_client_id.clone(), secret: c.google_client_secret.clone() }
 }
 
 fn describe_time(t: i64) -> String {
@@ -559,6 +597,8 @@ impl qobject::CalendarModel {
             state.error.clone()
         } else if !unlocked && fetching {
             "Hole App-Passwort …".to_owned()
+        } else if !unlocked && self.config.is_google() {
+            "Bei Google neu anmelden".to_owned()
         } else if !unlocked && !command_error.is_empty() {
             format!("Passwort-Befehl: {command_error}")
         } else if !unlocked {
@@ -585,6 +625,7 @@ impl qobject::CalendarModel {
         r.meta = meta;
         r.waiting = waiting;
         r.connected = connected;
+        r.google = r.config.is_google();
         r.unlocked = unlocked;
         r.fetching_password = fetching && !unlocked;
         r.password_error = qs(if unlocked { "" } else { &command_error });
@@ -804,6 +845,10 @@ impl qobject::CalendarModel {
             return QString::default();
         }
         entry.kind = kind;
+        // Google's calendars hold events only: tasks stay in the project.
+        if kind == Kind::Task && self.config.is_google() && entry.calendar != LOCAL {
+            entry.calendar = LOCAL.to_owned();
+        }
         entry.title = v["title"].as_str().unwrap_or_default().trim().to_owned();
         if entry.title.is_empty() {
             entry.title = "Ohne Titel".into();
@@ -1270,6 +1315,8 @@ impl qobject::CalendarModel {
     pub fn account(&self) -> QString {
         let state = self.sync_store().load();
         qs(json!({
+            "provider": self.config.provider, "googleClientId": self.config.google_client_id,
+            "googleClientSecret": self.config.google_client_secret,
             "server": self.config.server, "user": self.config.user, "davUrl": self.config.dav_url,
             "passwordCommand": self.config.password_command, "rememberPassword": self.config.remember_password,
             "lastSync": state.last_sync.map(describe_time), "error": state.error, "home": state.home,
@@ -1618,8 +1665,10 @@ impl qobject::CalendarModel {
         let thread = self.qt_thread();
         std::thread::spawn(move || {
             let remote = client(&config, &password);
+            // (Google needs no home: the Calendar API creates calendars.)
             let result = match home {
                 Some(h) => Ok(h),
+                None if config.is_google() => Ok(String::new()),
                 None => remote.discover().and_then(|d| {
                     d.home.ok_or_else(|| {
                         atlas_core::calendar::caldav::DavError::Invalid("kein Kalenderverzeichnis".into())
@@ -1653,6 +1702,121 @@ impl qobject::CalendarModel {
         }
         self.as_mut().reload();
         self.sync_now();
+    }
+
+    pub fn google_sign_in(mut self: Pin<&mut Self>, client_id: &QString, client_secret: &QString) {
+        let oauth = google::OAuthClient {
+            id: client_id.to_string().trim().to_owned(),
+            secret: client_secret.to_string().trim().to_owned(),
+        };
+        if oauth.id.is_empty() || oauth.secret.is_empty() {
+            self.google_signed_in(false, qs("Client-ID und Client-Secret eintragen"));
+            return;
+        }
+        // The browser comes back to this port (loopback redirect).
+        let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
+            Ok(l) => l,
+            Err(err) => {
+                self.google_signed_in(false, qs(format!("Kein lokaler Port frei: {err}")));
+                return;
+            }
+        };
+        let redirect = match listener.local_addr() {
+            Ok(a) => format!("http://127.0.0.1:{}", a.port()),
+            Err(err) => {
+                self.google_signed_in(false, qs(err.to_string()));
+                return;
+            }
+        };
+        let (state, verifier) = (google::random_token(), google::random_token());
+        let endpoints = google::Endpoints::default();
+        self.as_mut().google_sign_in_url(qs(google::auth_url(&endpoints, &oauth, &redirect, &state, &verifier)));
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = (|| -> anyhow::Result<(google::Tokens, Vec<Value>)> {
+                let code = google::wait_for_code(&listener, &state, std::time::Duration::from_secs(300))?;
+                let http = Client::new(Account::default(), "", true);
+                let tokens = google::exchange_code(
+                    |body| http.post_form(&endpoints.token, body).map_err(|e| anyhow::anyhow!("{e}")),
+                    &oauth,
+                    &code,
+                    &redirect,
+                    &verifier,
+                )?;
+                anyhow::ensure!(!tokens.email.is_empty(), "Google hat keine E-Mail-Adresse geschickt");
+                let remote = Client::google(&tokens.email, oauth.clone(), &tokens.refresh, endpoints, true);
+                let found = remote.discover().map_err(|e| anyhow::anyhow!("{e}"))?;
+                let list = found
+                    .calendars
+                    .iter()
+                    .map(|c| json!({ "url": c.url, "name": c.name, "color": c.color, "writable": c.writable }))
+                    .collect();
+                Ok((tokens, list))
+            })();
+            let _ = thread.queue(move |mut this| match result {
+                Ok((tokens, list)) => {
+                    this.as_mut().use_google_account(&oauth, &tokens.email, &tokens.refresh);
+                    let message = format!("Angemeldet als {} – {} Kalender gefunden", tokens.email, list.len());
+                    this.as_mut().connection_tested(true, qs(&message), qs(Value::from(list).to_string()));
+                    this.google_signed_in(true, qs(message));
+                }
+                Err(err) => this.google_signed_in(false, qs(format!("{err:#}"))),
+            });
+        });
+    }
+
+    /// After the sign-in: the Google account in `config.toml`, the refresh
+    /// token remembered (encrypted if possible) and for this Atlas start.
+    fn use_google_account(mut self: Pin<&mut Self>, oauth: &google::OAuthClient, email: &str, refresh: &str) {
+        let mut config = Config::load().calendar;
+        if !(config.is_google() && config.user == email) {
+            // Another account: its sign-in, calendars and cache go.
+            let _ = forget_secret();
+            let _ = self.sync_store().clear();
+            config = CalendarConfig::default();
+        }
+        config.provider = "google".into();
+        config.user = email.to_owned();
+        config.google_client_id = oauth.id.clone();
+        config.google_client_secret = oauth.secret.clone();
+        // Without it every start would need the browser again.
+        config.remember_password = true;
+        if let Err(err) = Config::save_calendar(&config) {
+            self.as_mut().set_error(format!("Einstellungen können nicht gespeichert werden: {err:#}"));
+            return;
+        }
+        reset_command();
+        if let Ok(mut p) = PASSWORD.lock() {
+            *p = Some(refresh.to_owned());
+        }
+        self.as_mut().keep_password(refresh.to_owned());
+        self.as_mut().reload();
+        self.update_sync_state();
+    }
+
+    pub fn set_provider(mut self: Pin<&mut Self>, provider: &QString) {
+        let provider = provider.to_string();
+        let old = Config::load().calendar;
+        if old.provider == provider {
+            return;
+        }
+        if let Ok(mut p) = PASSWORD.lock() {
+            *p = None;
+        }
+        reset_command();
+        // (The store of the old provider, before the switch.)
+        let _ = forget_secret();
+        let config = CalendarConfig {
+            provider,
+            google_client_id: old.google_client_id,
+            google_client_secret: old.google_client_secret,
+            ..Default::default()
+        };
+        if let Err(err) = Config::save_calendar(&config) {
+            self.as_mut().set_error(format!("Einstellungen können nicht gespeichert werden: {err:#}"));
+        }
+        let _ = self.sync_store().clear();
+        self.reload();
     }
 
     pub fn disconnect_account(mut self: Pin<&mut Self>) {

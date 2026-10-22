@@ -12,6 +12,7 @@
 //! Unknown properties and components of an entry are kept unchanged.
 
 pub mod caldav;
+pub mod google;
 pub mod ical;
 pub mod recur;
 pub mod sync;

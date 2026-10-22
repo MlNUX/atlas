@@ -244,7 +244,10 @@ disabled = ["beispiel"]                          # ausgeschaltete Erweiterungen
 [places]
 file_manager = true                              # Orte wie in Dolphin (ohne KDE: feste + GTK-Lesezeichen); Standard
 
-[calendar]                                       # Nextcloud/CalDAV – ohne Passwort
+[calendar]                                       # Nextcloud/CalDAV oder Google – ohne Passwort
+provider = ""                                    # "" = Nextcloud/CalDAV, "google" = Google (siehe google-kalender.md)
+google_client_id = ""                            # Google: eigener OAuth-Client (Desktop-App)
+google_client_secret = ""                        # für Desktop-Apps nicht geheim; das Token steht nie hier
 server = "https://cloud.example.com"
 user = "minux"
 dav_url = ""                                     # optional: CalDAV-URL von Hand
