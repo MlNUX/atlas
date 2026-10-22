@@ -33,6 +33,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Webadressen öffnen sich im Browser (Adresse als Tooltip).
 
 ### Behoben
+- Markdown-Vorschau: Formeln, die KaTeX anders als LaTeX noch annimmt (z. B.
+  `array` mit weniger Spalten als angegeben), schreiben keine Warnung
+  „LaTeX-incompatible input“ mehr ins Terminal – bei jeder Aktualisierung.
 - PDF-Vorschaubilder in der Dateiansicht haben wieder weißes Papier statt
   eines durchsichtigen Hintergrunds.
 - Kalender-Abgleich scheiterte manchmal mit „Interrupted system call“, wenn

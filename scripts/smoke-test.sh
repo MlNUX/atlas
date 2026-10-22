@@ -33,6 +33,8 @@ Siehe [main](/src/main.rs#L2) und [kaputt](/fehlt.pdf#page=3).
 
 $E = mc^2$
 
+$$\begin{array}{c} a & b \end{array}$$
+
 ```rust
 fn main() {}
 ```
@@ -182,6 +184,11 @@ status=0
 # One step every 1.5 s; generous for slow machines.
 timeout 300 "$bin" "$project" --self-test 2> "$work/log" || status=$?
 grep -E "selftest:" "$work/log" | sed 's/^qml: //' || true
+# KaTeX accepts what LaTeX would reject; that must not flood the log.
+if grep -q "LaTeX-incompatible" "$work/log"; then
+  echo "selftest: FEHLER KaTeX-Warnungen im Log" >&2
+  status=1
+fi
 if [ "$status" -ne 0 ]; then
   echo "--- Fehler (Exit $status); letzte Ausgabe:" >&2
   grep -vE "selftest:" "$work/log" | tail -20 >&2
