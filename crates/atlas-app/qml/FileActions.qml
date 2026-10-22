@@ -77,6 +77,37 @@ Item {
     /// Shows an HTML file rendered (in its tab if it is open).
     function renderHtml(path) { actions.openWithState(path, { processor: "atlas:html" }) }
 
+    // ------------------------------------------------------------ to PDF
+
+    function isMarkdown(path) { return /\.(md|markdown|mdown)$/i.test(path || "") }
+    function isTex(path) { return /\.tex$/i.test(path || "") }
+
+    /// Markdown → PDF next to the note, rendered like the preview
+    /// (formulas, diagrams); no pandoc or LaTeX needed.
+    function markdownToPdf(path) {
+        if (!markdownPdf.exportPdf(path)) { showMessage(qsTr("Es läuft schon ein PDF-Export")); return }
+        showMessage(qsTr("„%1“ wird als PDF exportiert …").arg(baseName(path)))
+    }
+    MarkdownPdfExport {
+        id: markdownPdf
+        app: actions.app
+        onFinished: (source, output, ok) => {
+            if (ok) showMessage(qsTr("PDF erstellt: %1").arg(baseName(output)))
+            else { errorDialog.text = qsTr("„%1“ konnte nicht als PDF exportiert werden.").arg(baseName(source)); errorDialog.open() }
+        }
+    }
+    readonly property alias markdownPdf: markdownPdf
+
+    /// TeX → PDF in the terminal (errors stay visible): latexmk if
+    /// installed (runs BibTeX/Biber and repeats as needed), else pdflatex.
+    function texToPdf(path) {
+        const script = 'if command -v latexmk >/dev/null 2>&1; then exec latexmk -pdf -interaction=nonstopmode -file-line-error "$1"; '
+                     + 'elif command -v pdflatex >/dev/null 2>&1; then exec pdflatex -interaction=nonstopmode -file-line-error "$1"; '
+                     + 'else echo "Weder latexmk noch pdflatex gefunden – bitte TeX Live installieren (z. B. texlive-full / texliveFull)." >&2; exit 127; fi'
+        actions.runInTerminal(["sh", "-c", script, "sh", baseName(path)], path.slice(0, path.lastIndexOf("/")) || "/")
+        showMessage(qsTr("„%1“ wird im Terminal übersetzt").arg(baseName(path)))
+    }
+
     function planAsTask(path) {
         const uid = calendarModel.taskForFile(path)
         if (uid) showMessage(qsTr("Aufgabe „%1“ angelegt – im Kalender unter „Noch nicht eingeplant“").arg(baseName(path)))
@@ -376,6 +407,18 @@ Item {
             visible: menu.single && !!app.atlasDir && menu.paths[0] !== app.projectRoot
             height: visible ? implicitHeight : 0
             onTriggered: app.requestRelate(menu.paths[0])
+        }
+        MenuItem {
+            text: qsTr("Als PDF exportieren")
+            visible: menu.single && actions.isMarkdown(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.markdownToPdf(menu.paths[0])
+        }
+        MenuItem {
+            text: qsTr("Zu PDF übersetzen (LaTeX)")
+            visible: menu.single && actions.isTex(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.texToPdf(menu.paths[0])
         }
         MenuItem {
             text: qsTr("Als Webseite anzeigen")

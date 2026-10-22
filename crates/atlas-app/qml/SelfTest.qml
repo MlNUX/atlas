@@ -45,6 +45,9 @@ Item {
     property real zoomBefore
     property int tabsBefore
     property string htmlProbe
+    property string mdPdf
+    property string modEvent
+    property string modTask
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -1035,6 +1038,54 @@ Item {
                 v.goToPage(0)
                 v.followLink(jump)
                 check("Link springt zur Zielseite", v.currentPage === 1, v.currentPage)
+            },
+            () => {
+                // Arrow keys: down scrolls, right/left turn pages.
+                const v = editor.activeTab.viewerItem
+                v.goToPage(0)
+                v.forceActiveFocus()
+                const y0 = v.pagesView.contentY
+                app.sendKey(window, Qt.Key_Down, 0)
+                check("Pfeil runter scrollt die PDF", v.pagesView.contentY > y0, y0 + " → " + v.pagesView.contentY)
+                app.sendKey(window, Qt.Key_Right, 0)
+                check("Pfeil rechts blättert weiter", v.currentPage === 1, v.currentPage)
+                app.sendKey(window, Qt.Key_Left, 0)
+                check("Pfeil links blättert zurück", v.currentPage === 0, v.currentPage)
+                // Markdown → PDF with the preview (no pandoc).
+                test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
+                check("Markdown-PDF-Export startet", fileActions.markdownPdf.exportPdf(path("notes/idee.md"), test.mdPdf))
+            },
+            () => { if (waitFor(() => !fileActions.markdownPdf.busy)) return },
+            () => { if (waitFor(() => !fileActions.markdownPdf.busy)) return },
+            () => {
+                if (waitFor(() => !fileActions.markdownPdf.busy)) return
+                check("Markdown als PDF exportiert", app.exists(test.mdPdf) && app.readTextFile(test.mdPdf).startsWith("%PDF"),
+                      fileActions.markdownPdf.busy ? "läuft noch" : app.readTextFile(test.mdPdf).slice(0, 8))
+                // Context bar modules: pomodoro, upcoming entries, tasks.
+                const m = inspector.modules
+                check("Module der Kontextleiste eingeschaltet", m.showPomodoro && m.showCalendar && m.showTasks)
+                const cal = fileActions.calendar
+                const t = new Date(Date.now() + 86400000)
+                const day = m.isoDate(t)
+                test.modEvent = cal.save(JSON.stringify({ kind: "event", title: "Modul-Termin", start: day + "T10:00", end: day + "T11:00" }))
+                test.modTask = cal.save(JSON.stringify({ kind: "task", title: "Modul-Aufgabe" }))
+                check("Demnächst zeigt den Termin von morgen", m.upcoming.some(o => o.title === "Modul-Termin"), JSON.stringify(m.upcoming.map(o => o.title)))
+                check("Aufgaben zeigen die neue Aufgabe", m.openTasks.some(o => o.title === "Modul-Aufgabe"))
+                cal.setStatus(test.modTask, "done")
+                check("Erledigte Aufgabe verschwindet", !m.openTasks.some(o => o.title === "Modul-Aufgabe"))
+                app.setContextModule("calendar", 0)
+                check("Kalendermodul abschaltbar", !m.showCalendar && JSON.parse(app.contextModules).calendar === false)
+                app.setContextModule("calendar", 1)
+                // Pomodoro: start, let the phase end, a break follows.
+                m.startPause()
+                check("Pomodoro läuft", m.running && m.phase === "work")
+                m.endsAt = Date.now()
+            },
+            () => {
+                const m = inspector.modules
+                check("Pomodoro: nach dem Lernen kommt die Pause", !m.running && m.phase === "break" && m.rounds === 1 && m.remaining === 5 * 60,
+                      m.phase + " " + m.rounds + " " + m.remaining)
+                fileActions.calendar.remove(test.modEvent)
             },
             () => {
                 // The project folder cannot be collapsed: a click on it keeps the tree.

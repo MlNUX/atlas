@@ -18,6 +18,7 @@ Dialog {
 
     anchors.centerIn: Overlay.overlay
     width: Math.min(parent ? parent.width - 60 : 600, 600)
+    height: Math.min(implicitHeight, parent ? parent.height - 40 : implicitHeight)
     modal: true
     padding: 0
     topPadding: 0
@@ -40,6 +41,7 @@ Dialog {
         : qsTr("Keine Dolphin-Orte gefunden – feste Orte von Atlas")
 
     function run(f) { dialog.close(); f() }
+    readonly property var context: { try { return JSON.parse(dialog.app.contextModules || "{}") } catch (e) { return {} } }
 
     contentItem: ColumnLayout {
         spacing: 0
@@ -78,95 +80,158 @@ Dialog {
         }
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
-        ColumnLayout {
+        // Scrolls on small screens (the dialog never grows past the window).
+        ScrollView {
+            id: body
             Layout.fillWidth: true
-            Layout.margins: 18
-            spacing: 8
+            Layout.fillHeight: true
+            Layout.preferredHeight: bodyColumn.implicitHeight + 36
+            contentWidth: availableWidth
+            contentHeight: bodyColumn.implicitHeight + 36
+            clip: true
+            ColumnLayout {
+                id: bodyColumn
+                x: 18
+                y: 18
+                width: body.availableWidth - 36
+                spacing: 8
 
-            SectionLabel { text: qsTr("Seitenleiste") }
-            Card {
-                Layout.fillWidth: true
-                implicitHeight: placesRow.implicitHeight + 24
-                RowLayout {
-                    id: placesRow
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 12
-                    Icon { Layout.alignment: Qt.AlignTop; name: "home"; size: 18; color: Theme.accent }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 3
-                        Text {
-                            text: qsTr("Orte wie in Dolphin")
-                            color: Theme.textStrong
-                            font.pixelSize: Theme.fontSize
-                        }
-                        Text {
+                SectionLabel { text: qsTr("Seitenleiste") }
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: placesRow.implicitHeight + 24
+                    RowLayout {
+                        id: placesRow
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+                        Icon { Layout.alignment: Qt.AlignTop; name: "home"; size: 18; color: Theme.accent }
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            wrapMode: Text.Wrap
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.smallFontSize
-                            text: qsTr("Dieselben Orte in derselben Reihenfolge wie in Dolphin; was du dort entfernst, fehlt auch hier. Netzwerk-Orte und Laufwerke nicht.")
+                            spacing: 3
+                            Text {
+                                text: qsTr("Orte wie in Dolphin")
+                                color: Theme.textStrong
+                                font.pixelSize: Theme.fontSize
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.smallFontSize
+                                text: qsTr("Dieselben Orte in derselben Reihenfolge wie in Dolphin; was du dort entfernst, fehlt auch hier. Netzwerk-Orte und Laufwerke nicht.")
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 2
+                                text: dialog.placesText
+                                color: Theme.text
+                                font.pixelSize: Theme.smallFontSize
+                                elide: Text.ElideRight
+                            }
                         }
-                        Text {
-                            Layout.fillWidth: true
-                            Layout.topMargin: 2
-                            text: dialog.placesText
-                            color: Theme.text
-                            font.pixelSize: Theme.smallFontSize
-                            elide: Text.ElideRight
+                        Toggle {
+                            id: fileManagerToggle
+                            Layout.alignment: Qt.AlignVCenter
+                            checked: dialog.app.fileManagerPlaces
+                            onToggled: dialog.app.fileManagerPlaces = !dialog.app.fileManagerPlaces
                         }
-                    }
-                    Toggle {
-                        id: fileManagerToggle
-                        Layout.alignment: Qt.AlignVCenter
-                        checked: dialog.app.fileManagerPlaces
-                        onToggled: dialog.app.fileManagerPlaces = !dialog.app.fileManagerPlaces
                     }
                 }
-            }
 
-            SectionLabel { text: qsTr("Programme und Daten"); Layout.topMargin: 10 }
-            Card {
-                Layout.fillWidth: true
-                implicitHeight: links.implicitHeight
-                ColumnLayout {
-                    id: links
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    spacing: 0
-                    LinkRow {
-                        icon: "file-code"
-                        title: qsTr("Externer Editor")
-                        detail: dialog.editorText
-                        onClicked: dialog.run(() => dialog.actions.configureEditor())
+                SectionLabel { text: qsTr("Kontextleiste"); Layout.topMargin: 10 }
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: moduleRows.implicitHeight
+                    ColumnLayout {
+                        id: moduleRows
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        spacing: 0
+                        ModuleRow {
+                            key: "pomodoro"
+                            icon: "focus"
+                            title: qsTr("Lernzeit (Pomodoro)")
+                            detail: qsTr("%1 Min. lernen, %2 Min. Pause, nach vier Runden %3 Min.")
+                                .arg(dialog.context.pomodoro_work || 25).arg(dialog.context.pomodoro_break || 5).arg(dialog.context.pomodoro_long_break || 15)
+                            // Lengths of the phases.
+                            Row {
+                                visible: dialog.context.pomodoro !== false
+                                spacing: 4
+                                Repeater {
+                                    model: [["pomodoro_work", qsTr("Lernen")], ["pomodoro_break", qsTr("Pause")], ["pomodoro_long_break", qsTr("Lange Pause")]]
+                                    SpinBox {
+                                        required property var modelData
+                                        from: 1
+                                        to: 180
+                                        editable: true
+                                        implicitWidth: 92
+                                        value: dialog.context[modelData[0]] || 1
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: qsTr("%1 (Minuten)").arg(modelData[1])
+                                        onValueModified: dialog.app.setContextModule(modelData[0], value)
+                                    }
+                                }
+                            }
+                        }
+                        ModuleRow {
+                            key: "calendar"
+                            icon: "calendar"
+                            title: qsTr("Demnächst im Kalender")
+                            detail: qsTr("Termine, Arbeitsblöcke und Fristen der nächsten sieben Tage")
+                        }
+                        ModuleRow {
+                            key: "tasks"
+                            icon: "check-square"
+                            title: qsTr("Aufgaben")
+                            detail: qsTr("Offene Aufgaben abhaken und neue anlegen")
+                            last: true
+                        }
                     }
-                    LinkRow {
-                        icon: "calendar"
-                        title: qsTr("Kalender: Nextcloud oder Google")
-                        detail: !dialog.calendar || !dialog.calendar.connected ? qsTr("Nicht verbunden – nur der lokale Projektkalender")
-                            : (dialog.calendar.google ? qsTr("Google · ") : qsTr("Nextcloud · ")) + (dialog.calendar.syncStatus || qsTr("Verbunden"))
-                        onClicked: dialog.run(() => dialog.actions.calendarSync.openSettings())
-                    }
-                    LinkRow {
-                        icon: "grid"
-                        title: qsTr("Erweiterungen")
-                        detail: dialog.extensionCount === 0 ? qsTr("Keine installiert") : qsTr("%n installiert", "", dialog.extensionCount)
-                        onClicked: dialog.run(() => dialog.extensionsRequested())
-                    }
-                    LinkRow {
-                        icon: "play"
-                        title: qsTr("Projektaktionen")
-                        detail: dialog.app.projectRoot ? qsTr("Nur für %1 (.atlas/actions.yaml)").arg(dialog.app.projectName) : qsTr("Kein Projekt geöffnet")
-                        enabled: !!dialog.app.projectRoot
-                        onClicked: dialog.run(() => dialog.actions.editActions(false))
-                    }
-                    LinkRow {
-                        icon: "play"
-                        title: qsTr("Globale Aktionen")
-                        detail: qsTr("Für alle Projekte (~/.config/atlas/actions.yaml)")
-                        last: true
-                        onClicked: dialog.run(() => dialog.actions.editActions(true))
+                }
+
+                SectionLabel { text: qsTr("Programme und Daten"); Layout.topMargin: 10 }
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: links.implicitHeight
+                    ColumnLayout {
+                        id: links
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        spacing: 0
+                        LinkRow {
+                            icon: "file-code"
+                            title: qsTr("Externer Editor")
+                            detail: dialog.editorText
+                            onClicked: dialog.run(() => dialog.actions.configureEditor())
+                        }
+                        LinkRow {
+                            icon: "calendar"
+                            title: qsTr("Kalender: Nextcloud oder Google")
+                            detail: !dialog.calendar || !dialog.calendar.connected ? qsTr("Nicht verbunden – nur der lokale Projektkalender")
+                                : (dialog.calendar.google ? qsTr("Google · ") : qsTr("Nextcloud · ")) + (dialog.calendar.syncStatus || qsTr("Verbunden"))
+                            onClicked: dialog.run(() => dialog.actions.calendarSync.openSettings())
+                        }
+                        LinkRow {
+                            icon: "grid"
+                            title: qsTr("Erweiterungen")
+                            detail: dialog.extensionCount === 0 ? qsTr("Keine installiert") : qsTr("%n installiert", "", dialog.extensionCount)
+                            onClicked: dialog.run(() => dialog.extensionsRequested())
+                        }
+                        LinkRow {
+                            icon: "play"
+                            title: qsTr("Projektaktionen")
+                            detail: dialog.app.projectRoot ? qsTr("Nur für %1 (.atlas/actions.yaml)").arg(dialog.app.projectName) : qsTr("Kein Projekt geöffnet")
+                            enabled: !!dialog.app.projectRoot
+                            onClicked: dialog.run(() => dialog.actions.editActions(false))
+                        }
+                        LinkRow {
+                            icon: "play"
+                            title: qsTr("Globale Aktionen")
+                            detail: qsTr("Für alle Projekte (~/.config/atlas/actions.yaml)")
+                            last: true
+                            onClicked: dialog.run(() => dialog.actions.editActions(true))
+                        }
                     }
                 }
             }
@@ -222,6 +287,63 @@ Dialog {
             Behavior on x { NumberAnimation { duration: 120 } }
         }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: toggle.toggled() }
+    }
+
+    /// A module of the context bar with its switch (and extra controls).
+    component ModuleRow: Rectangle {
+        id: moduleRow
+        property string key
+        property string icon
+        property string title
+        property string detail
+        property bool last: false
+        default property alias extra: extraArea.data
+        readonly property bool on: dialog.context[key] !== false
+        Layout.fillWidth: true
+        implicitHeight: moduleLayout.implicitHeight + 20
+        color: "transparent"
+        RowLayout {
+            id: moduleLayout
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            spacing: 12
+            Icon { Layout.alignment: Qt.AlignTop; name: moduleRow.icon; size: 18; color: Theme.accent }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                Text { text: moduleRow.title; color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                Text {
+                    Layout.fillWidth: true
+                    text: moduleRow.detail
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                }
+                Item {
+                    id: extraArea
+                    Layout.topMargin: children.length && childrenRect.height ? 4 : 0
+                    implicitWidth: childrenRect.width
+                    implicitHeight: childrenRect.height
+                }
+            }
+            Toggle {
+                Layout.alignment: Qt.AlignVCenter
+                checked: moduleRow.on
+                onToggled: dialog.app.setContextModule(moduleRow.key, moduleRow.on ? 0 : 1)
+            }
+        }
+        Rectangle {
+            visible: !moduleRow.last
+            anchors.bottom: parent.bottom
+            x: 42
+            width: parent.width - 54
+            height: 1
+            color: Theme.border
+        }
     }
 
     /// A row leading to another dialog: icon, title, current state, chevron.

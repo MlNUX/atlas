@@ -10,6 +10,7 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QImage>
 #include <QtGui/QImageReader>
+#include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPointingDevice>
 #include <QtGui/QWindow>
@@ -85,6 +86,18 @@ void sendWheel(QObject* window, double x, double y, int delta, int flags)
                       Qt::NoButton, (flags & 1) ? Qt::ControlModifier : Qt::NoModifier, phase, false,
                       Qt::MouseEventNotSynthesized, (flags & 16) ? &touchpad : QPointingDevice::primaryPointingDevice());
     QCoreApplication::sendEvent(w, &event);
+}
+
+void sendKey(QObject* window, int key, int modifiers)
+{
+    auto* w = qobject_cast<QWindow*>(window);
+    if (!w)
+        return;
+    const auto mods = Qt::KeyboardModifiers(modifiers);
+    QKeyEvent press(QEvent::KeyPress, key, mods);
+    QCoreApplication::sendEvent(w, &press);
+    QKeyEvent release(QEvent::KeyRelease, key, mods);
+    QCoreApplication::sendEvent(w, &release);
 }
 
 QStringList imageFormats()

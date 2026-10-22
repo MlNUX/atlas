@@ -37,6 +37,23 @@ pub struct RenderedPage {
     pub elapsed: Duration,
 }
 
+/// Darkest shade of a page in dark mode: paper becomes dark grey, not black.
+pub const DARK_PAPER: u8 = 0x26;
+
+impl RenderedPage {
+    /// Dark mode: inverts the colours, white paper becomes [`DARK_PAPER`]
+    /// (per channel `max(255 − v, DARK_PAPER)`, the same as the viewer's
+    /// painter fallback). Rendered pages are opaque, alpha stays.
+    pub fn darken(&mut self) {
+        let lut: [u8; 256] = std::array::from_fn(|v| (255 - v as u8).max(DARK_PAPER));
+        for px in self.bgra.as_chunks_mut::<4>().0 {
+            px[0] = lut[px[0] as usize];
+            px[1] = lut[px[1] as usize];
+            px[2] = lut[px[2] as usize];
+        }
+    }
+}
+
 /// A link on a page: its area in points (origin top left) and its target.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PageLink {
@@ -399,6 +416,20 @@ pub(crate) mod tests {
             format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objects.len() + 1).as_bytes(),
         );
         out
+    }
+
+    #[test]
+    fn dark_mode_inverts_onto_dark_paper() {
+        // White, black, red (BGRA).
+        let mut page = RenderedPage {
+            width: 3,
+            height: 1,
+            bgra: vec![255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 255, 255],
+            elapsed: Duration::ZERO,
+        };
+        page.darken();
+        let d = DARK_PAPER;
+        assert_eq!(page.bgra, [d, d, d, 255, 255, 255, 255, 255, 255, 255, d, 255]);
     }
 
     #[test]

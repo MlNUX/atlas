@@ -510,6 +510,7 @@ ApplicationWindow {
                 "actions": () => { window.inspectorWidth = 300; inspector.tab = 3 },
                 "md-edit": () => { if (editor.activeTab && editor.activeTab.viewerItem) editor.activeTab.viewerItem.mode = "split" },
                 "html": () => fileActions.renderHtml(file),
+                "md-pdf": () => fileActions.markdownToPdf(file),
                 "relate": () => app.requestRelate(file),
                 "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
                 "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },

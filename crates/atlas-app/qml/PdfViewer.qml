@@ -429,12 +429,37 @@ Rectangle {
         const p = event.pixelDelta.y || event.pixelDelta.x
         return p / 50
     }
-    /// Pixels per wheel notch.
+    /// Pixels per wheel notch and per arrow key.
     readonly property int wheelStep: 160
+    readonly property int arrowStep: 80
+    /// Scrolls the pages by (dx, dy) pixels, within bounds.
+    function scrollBy(dx, dy) {
+        pages.cancelFlick()
+        if (dy) {
+            const minY = pages.originY - pages.topMargin
+            const maxY = Math.max(minY, pages.originY + pages.contentHeight + pages.bottomMargin - pages.height)
+            pages.contentY = Math.max(minY, Math.min(maxY, pages.contentY + dy))
+        }
+        if (dx) {
+            const maxX = Math.max(0, pages.contentWidth - pages.width)
+            pages.contentX = Math.max(0, Math.min(maxX, pages.contentX - pages.originX + dx)) + pages.originX
+        }
+    }
     function zoomBy(factor) { zoom = Math.max(0.2, Math.min(6, zoomScale * factor)) }
 
     Keys.onPressed: (event) => {
         const ctrl = event.modifiers & Qt.ControlModifier
+        // Arrows: up/down scroll, left/right turn pages (like other viewers).
+        if (!ctrl && event.key === Qt.Key_Down) { scrollBy(0, arrowStep); event.accepted = true; return }
+        if (!ctrl && event.key === Qt.Key_Up) { scrollBy(0, -arrowStep); event.accepted = true; return }
+        if (!ctrl && event.key === Qt.Key_Right) {
+            if (pages.contentWidth > pages.width + 1) scrollBy(arrowStep, 0); else goToPage(currentPage + 1)
+            event.accepted = true; return
+        }
+        if (!ctrl && event.key === Qt.Key_Left) {
+            if (pages.contentWidth > pages.width + 1) scrollBy(-arrowStep, 0); else goToPage(currentPage - 1)
+            event.accepted = true; return
+        }
         if (event.key === Qt.Key_PageDown) goToPage(currentPage + 1)
         else if (event.key === Qt.Key_PageUp) goToPage(currentPage - 1)
         else if (event.key === Qt.Key_Home && ctrl) goToPage(0)
@@ -838,6 +863,8 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
+                // Arrow keys are handled by the viewer (scroll, turn pages).
+                keyNavigationEnabled: false
                 model: doc.status === "ready" ? doc.pageCount : 0
                 spacing: 12
                 topMargin: 12
@@ -896,13 +923,7 @@ Rectangle {
                     onWheel: (event) => {
                         const delta = (angle, pixel) => pixel !== 0 && angle % 120 !== 0
                             ? pixel * 1.5 : angle / 120 * root.wheelStep
-                        pages.cancelFlick()
-                        const minY = pages.originY - pages.topMargin
-                        const maxY = Math.max(minY, pages.originY + pages.contentHeight + pages.bottomMargin - pages.height)
-                        pages.contentY = Math.max(minY, Math.min(maxY, pages.contentY - delta(event.angleDelta.y, event.pixelDelta.y)))
-                        const maxX = Math.max(0, pages.contentWidth - pages.width)
-                        const dx = delta(event.angleDelta.x, event.pixelDelta.x)
-                        if (dx) pages.contentX = Math.max(0, Math.min(maxX, pages.contentX - pages.originX - dx)) + pages.originX
+                        root.scrollBy(-delta(event.angleDelta.x, event.pixelDelta.x), -delta(event.angleDelta.y, event.pixelDelta.y))
                         event.accepted = true
                     }
                 }

@@ -10,6 +10,28 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Neu
+- Kontextleiste: neue Module **Lernzeit** (Pomodoro-Timer: 25 Min. lernen,
+  5 Min. Pause, nach vier Runden 15 Min.; Längen einstellbar),
+  **Demnächst** (Termine, Arbeitsblöcke und Fristen der nächsten sieben
+  Tage) und **Aufgaben** (abhaken, neue anlegen). Jedes lässt sich in den
+  Einstellungen ein- und ausschalten. Der erste Reiter heißt jetzt
+  „Übersicht“.
+- Markdown → PDF eingebaut („Als PDF exportieren“ im Kontextmenü und in der
+  Kontextleiste): gesetzt wie die Vorschau mit Formeln, Diagrammen und
+  Code, auf hellem A4-Papier – ohne pandoc oder LaTeX.
+- TeX → PDF („Zu PDF übersetzen“ für .tex-Dateien): latexmk, sonst
+  pdflatex, im Terminal; Fehler bleiben sichtbar.
+- PDF: Pfeiltasten – hoch/runter scrollen, links/rechts blättern.
+
+### Behoben
+- PDF-Dunkelmodus ruckelte beim Ändern der Fenstergröße: Die Umkehrung
+  wird jetzt einmal beim Rendern gemacht statt bei jedem Neuzeichnen.
+- Die Beispielaktion „Markdown als PDF exportieren“ (pandoc) scheiterte
+  ohne LaTeX-Installation; die Vorlage für neue Aktionsdateien nutzt
+  stattdessen Word (pandoc → .docx), PDF gibt es eingebaut.
+- Einstellungsfenster scrollt auf kleinen Bildschirmen.
+
 ## [1.1.0] – 2026-10-22
 
 Graph fürs ganze Projekt, Verknüpfungen und Ordner-Knoten, eine Session je

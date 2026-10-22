@@ -174,9 +174,9 @@ pub const TEMPLATE: &str = r#"# Eigene Aktionen für Atlas (Format: docs/actions
 # Befehle laufen ohne Shell; `shell: true` aktiviert sie ausdrücklich.
 version: 1
 actions:
-  - name: Markdown als PDF exportieren
+  - name: Markdown als Word-Datei (pandoc)
     applies_to: "*.md"
-    command: [pandoc, "{file}", -o, "{stem}.pdf"]
+    command: [pandoc, "{file}", -o, "{stem}.docx"]
 
   - name: Prüfsumme anzeigen
     applies_to: "*"

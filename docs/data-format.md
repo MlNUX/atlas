@@ -244,6 +244,14 @@ disabled = ["core"]                              # ausgeschaltete Erweiterungen
 [places]
 file_manager = true                              # Orte wie in Dolphin (ohne KDE: feste + GTK-Lesezeichen); Standard
 
+[context]                                        # Module der Kontextleiste (Übersicht)
+calendar = true                                  # Demnächst: Termine, Blöcke, Fristen (7 Tage)
+tasks = true                                     # offene Aufgaben
+pomodoro = true                                  # Lernzeit-Timer
+pomodoro_work = 25                               # Minuten lernen
+pomodoro_break = 5                               # kurze Pause
+pomodoro_long_break = 15                         # lange Pause nach vier Runden
+
 [pdf]
 dark = true                                      # Dunkelmodus: Farben umgekehrt (Mond in der PDF-Leiste)
 

@@ -153,6 +153,50 @@ impl Default for PlacesConfig {
     }
 }
 
+/// `[context]`: optional modules of the context bar.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextConfig {
+    /// Upcoming entries of the calendar.
+    #[serde(default = "enabled")]
+    pub calendar: bool,
+    /// Open tasks with a field for new ones.
+    #[serde(default = "enabled")]
+    pub tasks: bool,
+    /// Pomodoro timer for learning.
+    #[serde(default = "enabled")]
+    pub pomodoro: bool,
+    /// Minutes of work and of the short and long break.
+    #[serde(default = "pomodoro_work")]
+    pub pomodoro_work: u32,
+    #[serde(default = "pomodoro_short")]
+    pub pomodoro_break: u32,
+    #[serde(default = "pomodoro_long")]
+    pub pomodoro_long_break: u32,
+}
+
+fn pomodoro_work() -> u32 {
+    25
+}
+fn pomodoro_short() -> u32 {
+    5
+}
+fn pomodoro_long() -> u32 {
+    15
+}
+
+impl Default for ContextConfig {
+    fn default() -> Self {
+        Self {
+            calendar: true,
+            tasks: true,
+            pomodoro: true,
+            pomodoro_work: pomodoro_work(),
+            pomodoro_break: pomodoro_short(),
+            pomodoro_long_break: pomodoro_long(),
+        }
+    }
+}
+
 /// `[pdf]`: how PDFs are shown.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PdfConfig {
@@ -175,6 +219,8 @@ pub struct Config {
     pub places: PlacesConfig,
     #[serde(default)]
     pub pdf: PdfConfig,
+    #[serde(default)]
+    pub context: ContextConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -218,6 +264,11 @@ impl Config {
     /// Updates only the `[places]` table.
     pub fn save_places(places: &PlacesConfig) -> Result<()> {
         save_table(&config_file(), "places", places)
+    }
+
+    /// Updates only the `[context]` table.
+    pub fn save_context(context: &ContextConfig) -> Result<()> {
+        save_table(&config_file(), "context", context)
     }
 
     /// Updates only the `[pdf]` table.

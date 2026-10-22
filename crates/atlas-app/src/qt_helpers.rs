@@ -44,6 +44,8 @@ pub mod ffi {
         unsafe fn save_window_image(window: *mut QObject, path: &QString) -> bool;
         #[cxx_name = "sendWheel"]
         unsafe fn send_wheel(window: *mut QObject, x: f64, y: f64, delta: i32, flags: i32);
+        #[cxx_name = "sendKey"]
+        unsafe fn send_key(window: *mut QObject, key: i32, modifiers: i32);
         #[cxx_name = "setOwner"]
         unsafe fn set_owner(object: *mut QObject, owner: *mut QObject);
         #[cxx_name = "imageFormats"]

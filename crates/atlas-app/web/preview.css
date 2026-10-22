@@ -86,3 +86,24 @@ a.line-marker { display: block; height: 0; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #22304a; border-radius: 5px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* Export as PDF (Markdown → PDF): light paper, no editor helpers. Code
+   blocks keep their dark look. */
+@page { size: A4; margin: 0; }
+table.print-frame { display: table; border-collapse: collapse; width: 100%; margin: 0; border: 0; }
+table.print-frame > * > tr > td { padding: 0; border: 0; background: none; }
+.page-space { height: 16mm; }
+@media print {
+  :root {
+    color-scheme: light;
+    --bg: #ffffff; --raised: #f1f3f6; --border: #d5dae2; --text: #1f2430; --strong: #0b0f17;
+    --muted: #5b6474; --accent: #2a6fd6; --link: #1f5fbf;
+  }
+  main { max-width: none; padding: 0 18mm; }
+  h1::before, h2::before { content: none; }
+  h1, h2, h3 { break-after: avoid; }
+  pre, blockquote, table:not(.print-frame), img, pre.mermaid { break-inside: avoid; }
+  a.broken::after { content: none; }
+  input.task { -webkit-print-color-adjust: exact; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

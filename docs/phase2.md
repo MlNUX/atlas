@@ -856,3 +856,42 @@ Umbenennung.
 Tests: Kern-Test mit einer von cairo erzeugten PDF (Web-Link und Sprung
 mit Position); Selbsttest mit Link-Annotationen in `zweite.pdf` (Sprung
 und URI, Fläche, Sprung zur Zielseite).
+
+### Nachtrag – Kontextleiste mit Modulen, PDF-Export, Pfeiltasten
+
+- **Module der Kontextleiste** (`ContextModules.qml`, oben in der
+  „Übersicht“): *Lernzeit* – Pomodoro mit Endzeitpunkt statt
+  Sekundenzähler (genau auch bei ruckelnder Oberfläche), vier Punkte für die
+  Runden, nach der vierten eine lange Pause; *Demnächst* – Vorkommen des
+  Kalenders und Fristen aus Notizen der nächsten sieben Tage, ohne
+  erledigte und vergangene, Klick öffnet die Woche mit dem Eintrag;
+  *Aufgaben* – noch nicht eingeplante, abhaken setzt den Status „done“,
+  Eingabefeld legt neue an. Schalter und Längen unter Einstellungen →
+  Kontextleiste (`[context]`); die Einstellungen scrollen jetzt, wenn das
+  Fenster klein ist.
+- **Markdown → PDF** (`MarkdownPdfExport.qml`): eine unsichtbare
+  Vorschauseite (durchsichtig neben dem Fenster – verborgene Seiten legt
+  Chromium nicht an) bekommt das HTML der Notiz, wartet auf Mermaid und
+  Schriften (`atlas.busy()`) und druckt mit `printToPdf`. Druckstil: helles
+  Papier, keine `#`-Marken. Qt druckt ohne Seitenränder und übergeht
+  `@page`; eine Tabelle, deren leerer Kopf und Fuß sich auf jeder Seite
+  wiederholen, ergibt die Ränder oben und unten. Gefunden: Chromium schreibt
+  nicht in Pfade mit `/../`.
+- Die alte Beispielaktion mit pandoc braucht `pdflatex`; fehlt es (z. B.
+  NixOS ohne TeX Live), bricht pandoc ab – vermutlich der gemeldete Fehler.
+- **TeX → PDF**: `latexmk -pdf -interaction=nonstopmode -file-line-error`,
+  ohne latexmk `pdflatex`, im Ordner der Datei im Terminal; ohne beides eine
+  klare Meldung.
+- **Pfeiltasten in PDFs:** hoch/runter 80 px, links/rechts blättern (bei
+  breiter Seite sie seitlich verschieben); die Seitenliste nimmt die Tasten
+  nicht mehr selbst.
+- **Dunkelmodus ohne Ruckeln:** Die Seite wird beim Rendern umgekehrt
+  (`max(255 − v, 0x26)` per Tabelle, auf dem Render-Thread); der Painter
+  kehrt nur noch übergangsweise um, bis nach dem Umschalten die neue Seite
+  da ist. Vorher liefen bei jeder Größenänderung zwei Füll-Durchgänge über
+  jede sichtbare Seite.
+
+Selbsttest: Pfeiltasten (über `sendKey`), Export einer Notiz als PDF,
+Module (Termin von morgen, neue und erledigte Aufgabe, Kalendermodul aus,
+Pomodoro-Phasenwechsel). TeX → PDF nur ohne TeX-Installation geprüft (die
+Meldung); latexmk/pdflatex selbst gibt es in der Testumgebung nicht.

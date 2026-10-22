@@ -46,8 +46,12 @@ window.atlas = (function () {
                 document.head.appendChild(s);
             });
         }
-        mermaidLoading.then(() => mermaid.run({ nodes: blocks, suppressErrors: true }));
+        return mermaidLoading.then(() => mermaid.run({ nodes: blocks, suppressErrors: true }));
     }
+
+    // Set while diagrams and fonts are still being drawn (the PDF export
+    // waits for it).
+    let busy = false;
 
     function highlight(root) {
         root.querySelectorAll("pre code[class*=language-]").forEach((el) => {
@@ -111,7 +115,11 @@ window.atlas = (function () {
             main.innerHTML = html;
             renderMath(main);
             highlight(main);
-            renderMermaid(main);
+            busy = true;
+            Promise.resolve(renderMermaid(main))
+                .catch(() => {})
+                .then(() => document.fonts.ready)
+                .then(() => { busy = false; });
             window.scrollTo(0, y);
         },
         scrollToLine(line) {
@@ -126,6 +134,22 @@ window.atlas = (function () {
         },
         scrollToY(y) { window.scrollTo(0, y); },
         scrollToAnchor,
+        busy() { return busy; },
+        // For the PDF export: Qt prints without page margins and ignores
+        // @page, so a table whose empty header and footer repeat on every
+        // page makes the top and bottom margin (the sides are padding).
+        preparePrint() {
+            const main = document.getElementById("content");
+            if (main.querySelector(":scope > table.print-frame")) return;
+            const frame = document.createElement("table");
+            frame.className = "print-frame";
+            frame.innerHTML = "<thead><tr><td><div class='page-space'></div></td></tr></thead>"
+                + "<tbody><tr><td class='print-body'></td></tr></tbody>"
+                + "<tfoot><tr><td><div class='page-space'></div></td></tr></tfoot>";
+            const body = frame.querySelector(".print-body");
+            while (main.firstChild) body.appendChild(main.firstChild);
+            main.appendChild(frame);
+        },
         find(text, back) { return window.find(text, false, !!back, true); },
     };
 })();

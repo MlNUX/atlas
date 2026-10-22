@@ -59,6 +59,10 @@ pub mod qobject {
         #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
         /// PDFs in dark mode (inverted brightness); `[pdf] dark` in config.toml.
         #[qproperty(bool, pdf_dark, cxx_name = "pdfDark", READ, WRITE = set_pdf_dark, NOTIFY)]
+        /// Modules of the context bar (`[context]` in config.toml) as JSON:
+        /// {calendar, tasks, pomodoro, pomodoro_work, pomodoro_break,
+        /// pomodoro_long_break}; change with `setContextModule`.
+        #[qproperty(QString, context_modules, cxx_name = "contextModules", READ, NOTIFY)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
@@ -96,6 +100,12 @@ pub mod qobject {
         #[cxx_name = "setFileManagerPlaces"]
         fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
+
+        /// Switches a module of the context bar on or off (`calendar`,
+        /// `tasks`, `pomodoro`) or sets a pomodoro length in minutes.
+        #[qinvokable]
+        #[cxx_name = "setContextModule"]
+        fn set_context_module(self: Pin<&mut AppController>, key: &QString, value: i32);
 
         /// Reads the places again (also done when the file managers' files
         /// change).
@@ -557,6 +567,12 @@ pub mod qobject {
         #[cxx_name = "sendWheel"]
         unsafe fn send_wheel(self: &AppController, window: *mut QObject, x: f64, y: f64, delta: i32, flags: i32);
 
+        /// Sends a key press and release (Qt key code, modifier flags) to
+        /// the window's focus item; for the smoke test.
+        #[qinvokable]
+        #[cxx_name = "sendKey"]
+        unsafe fn send_key(self: &AppController, window: *mut QObject, key: i32, modifiers: i32);
+
         /// Makes `owner` responsible for deleting `object` (QObject parent),
         /// whatever its visual parent.
         #[qinvokable]
@@ -590,6 +606,7 @@ pub struct AppControllerRust {
     fixed_place_count: i32,
     file_manager_places: bool,
     pdf_dark: bool,
+    context_modules: QString,
     /// Watches the file managers' places files.
     places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
@@ -656,6 +673,7 @@ impl Default for AppControllerRust {
             fixed_place_count: 0,
             file_manager_places: Config::load().places.file_manager,
             pdf_dark: Config::load().pdf.dark,
+            context_modules: context_json(&Config::load().context),
             places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
@@ -772,6 +790,28 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().pdf_dark = on;
         self.as_mut().pdf_dark_changed();
+    }
+
+    pub fn set_context_module(mut self: Pin<&mut Self>, key: &QString, value: i32) {
+        let mut config = Config::load().context;
+        let minutes = value.clamp(1, 180) as u32;
+        match key.to_string().as_str() {
+            "calendar" => config.calendar = value != 0,
+            "tasks" => config.tasks = value != 0,
+            "pomodoro" => config.pomodoro = value != 0,
+            "pomodoro_work" => config.pomodoro_work = minutes,
+            "pomodoro_break" => config.pomodoro_break = minutes,
+            "pomodoro_long_break" => config.pomodoro_long_break = minutes,
+            other => {
+                log::warn!("unknown context module {other}");
+                return;
+            }
+        }
+        if let Err(err) = Config::save_context(&config) {
+            log::warn!("cannot save [context]: {err:#}");
+        }
+        self.as_mut().rust_mut().context_modules = context_json(&config);
+        self.as_mut().context_modules_changed();
     }
 
     /// Dolphin or a GTK file manager changed its places: read them again.
@@ -2285,6 +2325,12 @@ impl qobject::AppController {
     }
 
     /// # Safety
+    /// As for `save_window_image`.
+    pub unsafe fn send_key(&self, window: *mut cxx_qt::QObject, key: i32, modifiers: i32) {
+        unsafe { crate::qt_helpers::send_key(window, key, modifiers) }
+    }
+
+    /// # Safety
     /// Both must be null or live QObjects (passed from QML).
     pub unsafe fn set_owner(&self, object: *mut cxx_qt::QObject, owner: *mut cxx_qt::QObject) {
         unsafe { crate::qt_helpers::set_owner(object, owner) }
@@ -2376,6 +2422,11 @@ fn percent_decode(s: &str) -> String {
         }
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// `[context]` for QML.
+fn context_json(c: &atlas_core::config::ContextConfig) -> QString {
+    QString::from(serde_json::to_string(c).unwrap_or_else(|_| "{}".into()).as_str())
 }
 
 #[cfg(test)]

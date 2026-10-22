@@ -38,6 +38,7 @@ bool saveWindowImage(QObject* window, const QString& path);
 // Sends a wheel event (`delta` in eighths of a degree, 120 = one notch) at
 // (x, y), with Ctrl if `ctrl`; for the smoke test.
 void sendWheel(QObject* window, double x, double y, int delta, int flags);
+void sendKey(QObject* window, int key, int modifiers);
 
 // File suffixes of the image formats Qt can read here (lower case).
 QStringList imageFormats();
