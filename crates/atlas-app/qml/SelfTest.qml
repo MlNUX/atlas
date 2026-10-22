@@ -1024,6 +1024,19 @@ Item {
                 check("Geänderte PDF ohne Anmerkungen: kein Hinweis", !v.changeNotice && v.annotationStore.count === 0, v.annotationStore.status)
             },
             () => {
+                // Links of the PDF: one to page 2, one to a web address.
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => (v.linksByPage[0] || []).length === 2)) return
+                const jump = v.linkAt(0, 100, 842 - 415)
+                const web = v.linkAt(0, 100, 842 - 315)
+                check("PDF-Links gelesen", !!jump && jump.target === 1 && Math.abs(jump.top - 342) < 1 && !!web && web.uri === "https://example.org/",
+                      JSON.stringify(v.linksByPage))
+                check("Kein Link neben den Links", v.linkAt(0, 400, 842 - 415) === null)
+                v.goToPage(0)
+                v.followLink(jump)
+                check("Link springt zur Zielseite", v.currentPage === 1, v.currentPage)
+            },
+            () => {
                 // The project folder cannot be collapsed: a click on it keeps the tree.
                 const rows = treeModel.rowOf(path("docs")) >= 0
                 const header = projectTree.rootRow

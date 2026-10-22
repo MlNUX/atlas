@@ -125,6 +125,30 @@ Rectangle {
         const i = Math.max(0, Math.min(doc.pageCount - 1, index))
         pages.positionViewAtIndex(i, ListView.Beginning)
     }
+    /// Links of the document by 0-based page (from `doc.linksJson`).
+    readonly property var linksByPage: {
+        const by = {}
+        try {
+            for (const l of JSON.parse(doc.linksJson || "[]")) (by[l.page] = by[l.page] || []).push(l)
+        } catch (e) {}
+        return by
+    }
+    function linkAt(page, x, y) {
+        return (linksByPage[page] || []).find(l => x >= l.rect[0] && x <= l.rect[0] + l.rect[2]
+                                                && y >= l.rect[1] && y <= l.rect[1] + l.rect[3]) || null
+    }
+    /// Follows a link: jumps inside the document or opens a web address in
+    /// the browser (only web and mail addresses, nothing to run).
+    function followLink(link) {
+        if (link.target >= 0) {
+            if (link.top >= 0) showPoint(link.target, link.top)
+            else goToPage(link.target)
+        } else if (/^(https?|mailto|ftp):/i.test(link.uri)) {
+            Qt.openUrlExternally(link.uri)
+        } else if (root.actions) {
+            root.actions.showMessage(qsTr("Link nicht geöffnet: %1").arg(link.uri))
+        }
+    }
     /// Scrolls so that `y` (points) of page `index` is in the upper third.
     function showPoint(index, y) {
         pages.positionViewAtIndex(index, ListView.Beginning)
@@ -1049,17 +1073,24 @@ Rectangle {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             hoverEnabled: true
                             cursorShape: root.tool === "ink" || root.tool === "note" ? Qt.CrossCursor
-                                : hoveredAnnotation ? Qt.PointingHandCursor : Qt.IBeamCursor
+                                : hoveredAnnotation || hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
                             property var pressPoint: null
                             property bool moved: false
                             property var hoveredAnnotation: null
+                            property var hoveredLink: null
+                            ToolTip.visible: !!hoveredLink && !!hoveredLink.uri && !pressed
+                            ToolTip.text: hoveredLink ? hoveredLink.uri : ""
+                            ToolTip.delay: 400
                             function pointOf(mouse) {
                                 return { page: pageDelegate.index, x: mouse.x / root.zoomScale, y: mouse.y / root.zoomScale }
                             }
                             onPositionChanged: (mouse) => {
                                 const vp = mapToItem(pages, mouse.x, mouse.y)
                                 if (!pressed) {
-                                    if (root.tool === "select") hoveredAnnotation = root.annotationAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
+                                    if (root.tool === "select") {
+                                        hoveredAnnotation = root.annotationAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
+                                        hoveredLink = hoveredAnnotation ? null : root.linkAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
+                                    }
                                     return
                                 }
                                 root.dragViewport = vp
@@ -1118,10 +1149,15 @@ Rectangle {
                                     return
                                 }
                                 if (!moved && !(mouse.modifiers & Qt.ShiftModifier)) {
-                                    // A click: open an annotation or drop the selection.
+                                    // A click: open an annotation, follow a link or drop
+                                    // the selection.
                                     const hit = root.annotationAt(p.page, p.x, p.y)
                                     root.clearSelection()
                                     if (hit) annotPopup.show(hit.id, mapToItem(root, mouse.x, mouse.y))
+                                    else {
+                                        const link = root.linkAt(p.page, p.x, p.y)
+                                        if (link) root.followLink(link)
+                                    }
                                     return
                                 }
                                 if (mouse.modifiers & Qt.ShiftModifier) { root.dragEnd = root.pointAt(mapToItem(pages, mouse.x, mouse.y).x, mapToItem(pages, mouse.x, mouse.y).y) || p; root.requestSelection() }

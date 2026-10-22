@@ -37,29 +37,21 @@ pub struct RenderedPage {
     pub elapsed: Duration,
 }
 
-/// Darkest shade of the inverted page: paper becomes dark grey, not black.
-pub const DARK_PAPER: u8 = 0x26;
+/// A link on a page: its area in points (origin top left) and its target.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageLink {
+    pub page: usize,
+    pub rect: [f64; 4],
+    pub target: LinkTarget,
+}
 
-impl RenderedPage {
-    /// Dark mode: puts the page on white paper and inverts its brightness
-    /// while keeping hue and saturation (HSL lightness L → 1 − L), so black
-    /// text turns light and a red heading stays red. White paper becomes
-    /// [`DARK_PAPER`].
-    pub fn invert(&mut self) {
-        let floor = DARK_PAPER as u32;
-        for px in self.bgra.as_chunks_mut::<4>().0 {
-            // Premultiplied BGRA: compose onto white first.
-            let a = px[3] as u32;
-            let c = [px[0] as u32 + 255 - a, px[1] as u32 + 255 - a, px[2] as u32 + 255 - a].map(|v| v.min(255));
-            let max = c[0].max(c[1]).max(c[2]);
-            let min = c[0].min(c[1]).min(c[2]);
-            for i in 0..3 {
-                let v = c[i] + 255 - max - min;
-                px[i] = (floor + v * (255 - floor) / 255) as u8;
-            }
-            px[3] = 255;
-        }
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub enum LinkTarget {
+    /// A page of this document (0-based), optionally a position on it in
+    /// points from the top.
+    Page { page: usize, top: Option<f64> },
+    /// A web address or other URI (`mailto:` …).
+    Uri(String),
 }
 
 /// One entry of the document outline (table of contents).
@@ -108,6 +100,7 @@ trait Backend {
     fn render(&mut self, path: &Path, page: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)>;
     fn text(&mut self, path: &Path, page: usize) -> Result<String>;
     fn outline(&mut self, path: &Path) -> Result<Vec<OutlineItem>>;
+    fn links(&mut self, path: &Path) -> Result<Vec<PageLink>>;
     fn search(&mut self, path: &Path, query: &str, limit: usize) -> Result<Vec<SearchHit>>;
     /// Text in `area` (`[x1, y1, x2, y2]`: start and end of the drag).
     fn select(
@@ -276,6 +269,11 @@ impl PdfService {
         self.submit(Box::new(move |backend, _| done(backend.outline(&path))));
     }
 
+    /// Reads the links of all pages (internal jumps and web addresses).
+    pub fn links(&self, path: PathBuf, done: impl FnOnce(Result<Vec<PageLink>>) + Send + 'static) {
+        self.submit(Box::new(move |backend, _| done(backend.links(&path))));
+    }
+
     /// Finds `query` (case insensitive) in all pages.
     pub fn search(
         &self,
@@ -404,23 +402,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn dark_mode_inverts_brightness_and_keeps_hue() {
-        // White, black, transparent, pure red (BGRA, premultiplied).
-        let mut page = RenderedPage {
-            width: 4,
-            height: 1,
-            bgra: vec![255, 255, 255, 255, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 255, 255],
-            elapsed: Duration::ZERO,
-        };
-        page.invert();
-        let d = DARK_PAPER;
-        assert_eq!(&page.bgra[0..4], &[d, d, d, 255], "white paper turns dark");
-        assert_eq!(&page.bgra[4..8], &[255, 255, 255, 255], "black text turns white");
-        assert_eq!(&page.bgra[8..12], &[d, d, d, 255], "transparent counts as paper");
-        assert_eq!(&page.bgra[12..16], &[d, d, 255, 255], "red stays red");
-    }
-
-    #[test]
     fn renders_and_extracts_text() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sample.pdf");
@@ -462,6 +443,42 @@ mod outline_tests {
             cr.show_page().unwrap();
         }
         surface.finish();
+    }
+
+    #[test]
+    fn reads_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("links.pdf");
+        {
+            let surface = cairo::PdfSurface::new(595.0, 842.0, &path).unwrap();
+            let cr = cairo::Context::new(&surface).unwrap();
+            cr.set_font_size(20.0);
+            cr.tag_begin("Link", "uri='https://example.org/'");
+            cr.move_to(100.0, 200.0);
+            cr.show_text("Webseite").unwrap();
+            cr.tag_end("Link");
+            cr.tag_begin("Link", "page=2 pos=[0 300]");
+            cr.move_to(100.0, 400.0);
+            cr.show_text("Zu Seite 2").unwrap();
+            cr.tag_end("Link");
+            cr.show_page().unwrap();
+            cr.show_text("Seite 2").unwrap();
+            cr.show_page().unwrap();
+            surface.finish();
+        }
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        PdfService::get().links(path.clone(), move |r| tx.send(r).unwrap());
+        let links = rx.recv().unwrap().unwrap();
+        assert_eq!(links.len(), 2, "{links:?}");
+        let web = links.iter().find(|l| l.target == LinkTarget::Uri("https://example.org/".into())).unwrap();
+        assert_eq!(web.page, 0);
+        // Area around the text, origin top left.
+        assert!(web.rect[0] <= 101.0 && web.rect[1] < 200.0 && web.rect[1] + web.rect[3] > 190.0, "{:?}", web.rect);
+        let jump = links.iter().find(|l| matches!(l.target, LinkTarget::Page { .. })).unwrap();
+        let LinkTarget::Page { page, top } = jump.target else { unreachable!() };
+        assert_eq!(page, 1);
+        assert!(top.is_none_or(|t| (t - 300.0).abs() < 1.0), "{top:?}");
+        assert!(jump.rect[1] < 400.0 && jump.rect[1] > 300.0, "{:?}", jump.rect);
     }
 
     #[test]

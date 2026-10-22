@@ -26,9 +26,11 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - Markdown-Editor mit Zeilennummern; Tab/Umschalt+Tab rücken Listenpunkte
   ein und aus; Zeilenumbrüche erscheinen in der Vorschau.
 - Ordner lassen sich verknüpfen, auch Ordner-Knoten untereinander.
-- PDF-Dunkelmodus (Mond in der PDF-Leiste): Seiten mit umgekehrter
-  Helligkeit auf dunkelgrauem Papier, Farbtöne bleiben – rote Überschriften
-  bleiben rot. Gilt für alle PDFs und wird in `config.toml` gemerkt.
+- PDF-Dunkelmodus (Mond in der PDF-Leiste): Seiten mit umgekehrten Farben
+  auf dunkelgrauem Papier, sofort umschaltbar ohne neues Rendern. Gilt für
+  alle PDFs und wird in `config.toml` gemerkt.
+- Links in PDFs: Verweise innerhalb des Dokuments springen zur Zielstelle,
+  Webadressen öffnen sich im Browser (Adresse als Tooltip).
 
 ### Behoben
 - PDF-Vorschaubilder in der Dateiansicht haben wieder weißes Papier statt

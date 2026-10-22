@@ -245,7 +245,7 @@ disabled = ["core"]                              # ausgeschaltete Erweiterungen
 file_manager = true                              # Orte wie in Dolphin (ohne KDE: feste + GTK-Lesezeichen); Standard
 
 [pdf]
-dark = true                                      # Dunkelmodus: Helligkeit umgekehrt, Farbtöne bleiben (Mond in der PDF-Leiste)
+dark = true                                      # Dunkelmodus: Farben umgekehrt (Mond in der PDF-Leiste)
 
 [calendar]                                       # Nextcloud/CalDAV oder Google – ohne Passwort
 provider = ""                                    # "" = Nextcloud/CalDAV, "google" = Google (siehe google-kalender.md)

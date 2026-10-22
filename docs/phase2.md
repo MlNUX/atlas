@@ -816,11 +816,9 @@ echte Dienste konnte nicht getestet werden.
 
 ### Nachtrag – PDF-Dunkelmodus, Scrollen, Erweiterungen
 
-- **Dunkelmodus für PDFs** (Mond in der PDF-Leiste, `[pdf] dark`): Die
-  gerenderten Seiten werden auf dem Render-Thread umgekehrt – die
-  HSL-Helligkeit wird gespiegelt (`c + 255 − max − min`), Farbton und
-  Sättigung bleiben. Weißes Papier wird dunkelgrau (`#262626`), nicht
-  schwarz; durchsichtige Stellen zählen als Papier. Miniaturen ebenso.
+- **Dunkelmodus für PDFs** (Mond in der PDF-Leiste, `[pdf] dark`): siehe
+  den folgenden Nachtrag – die erste Fassung kehrte die Helligkeit pro
+  Pixel in Rust um und renderte beim Umschalten alle Seiten neu.
 - **Vorschaubilder:** Qts PDF-Bildmodul rendert Seiten durchsichtig; in der
   Dateiansicht liegt jetzt ein weißes Blatt darunter.
 - **Mausrad:** 160 px pro Raste statt der wenigen Zeilen der Liste;
@@ -835,5 +833,26 @@ echte Dienste konnte nicht getestet werden.
   Erweiterung …“ und „Schließen“ rechts.
 
 Selbsttest: Mausrad scrollt eine volle Stufe, Dunkelmodus an/aus, alte
-Beispiel-Erweiterung heißt nach dem Start „Core“. Kern-Tests für die
-Umkehrung (Weiß, Schwarz, Durchsichtig, Rot) und die Umbenennung.
+Beispiel-Erweiterung heißt nach dem Start „Core“. Kern-Test für die
+Umbenennung.
+
+### Nachtrag – Dunkelmodus schneller, Links in PDFs
+
+- **Dunkelmodus ohne Neu-Rendern:** Die Umkehrung pro Pixel in Rust
+  (farbtonerhaltend) kostete bei großen Seiten spürbar Zeit, und das
+  Umschalten renderte alle sichtbaren Seiten neu. Jetzt kehrt der Painter
+  der Seite beim Zeichnen um: `Difference` mit Weiß, dann `Lighten` mit
+  `#262626` für dunkelgraues statt schwarzes Papier – Qts Raster-Routinen
+  (SIMD). Umschalten zeichnet nur neu. Preis: Farbtöne werden mit
+  umgekehrt (Rot → Cyan), wie in den meisten PDF-Programmen.
+- **Links:** Poppler liefert die Link-Flächen jeder Seite
+  (`poppler_page_get_link_mapping`); beim Öffnen liest Atlas sie für das
+  ganze Dokument (`PdfDocument.linksJson`). Interne Verweise (auch benannte
+  Ziele) springen zur Seite und, wenn angegeben, zur Höhe; `http`, `https`,
+  `mailto` und `ftp` öffnet der Browser, andere Schemata (z. B. `file:`)
+  werden nicht ausgeführt, nur gemeldet. Über einem Link zeigt der Mauszeiger
+  eine Hand und die Adresse als Tooltip; Anmerkungen haben Vorrang.
+
+Tests: Kern-Test mit einer von cairo erzeugten PDF (Web-Link und Sprung
+mit Position); Selbsttest mit Link-Annotationen in `zweite.pdf` (Sprung
+und URI, Fläche, Sprung zur Zielseite).
