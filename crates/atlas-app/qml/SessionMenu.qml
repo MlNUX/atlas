@@ -41,8 +41,7 @@ AbstractButton {
         implicitWidth: row.implicitWidth
         Row {
             id: row
-            anchors.verticalCenter: parent.verticalCenter
-            x: 2
+            anchors.centerIn: parent
             spacing: 8
             Icon { name: "session"; size: 16; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
             Text {
@@ -202,9 +201,9 @@ AbstractButton {
                         }
                         IconButton {
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: entryHover.hovered && !entry.active
+                            visible: entryHover.hovered
                             iconName: "more"
-                            tip: qsTr("Umbenennen oder entfernen")
+                            tip: entry.active ? qsTr("Umbenennen") : qsTr("Umbenennen oder entfernen")
                             onClicked: rowMenu.openFor(entry.modelData, this)
                         }
                     }
@@ -224,20 +223,6 @@ AbstractButton {
                     icon: "plus"
                     text: qsTr("Neue Session")
                     onTriggered: { panel.close(); root.newSessionRequested(search.text.trim()) }
-                    IconButton {
-                        id: moreButton
-                        anchors.right: parent.right
-                        anchors.rightMargin: 6
-                        anchors.verticalCenter: parent.verticalCenter
-                        implicitWidth: 32
-                        implicitHeight: 32
-                        iconName: "more"
-                        iconSize: 18
-                        tip: qsTr("Aktive Session: umbenennen, speichern")
-                        checkable: true
-                        checked: activeMenu.visible
-                        onClicked: activeMenu.popup(moreButton, moreButton.width - activeMenu.width + 40, moreButton.height + 4)
-                    }
                 }
             }
         }
@@ -263,19 +248,18 @@ AbstractButton {
         }
     }
 
-    // The active session (⋮ next to "Neue Session").
-    Menu {
-        id: activeMenu
-        MenuItem { text: qsTr("Umbenennen …"); onTriggered: { panel.close(); nameDialog.ask(root.app.projectRoot, root.app.activeSessionName) } }
-        MenuItem { text: qsTr("Session speichern"); onTriggered: { root.saveRequested(); panel.close() } }
-    }
-    // Another session (⋮ in its row).
+    // A session (⋮ in its row): rename; other sessions also remove.
     Menu {
         id: rowMenu
         property var target: null
         function openFor(s, button) { target = s; popup(button, 0, button.height) }
         MenuItem { text: qsTr("Umbenennen …"); onTriggered: { panel.close(); nameDialog.ask(rowMenu.target.root, rowMenu.target.name) } }
-        MenuItem { text: qsTr("Aus der Liste entfernen …"); onTriggered: { panel.close(); confirm.ask(rowMenu.target.root, rowMenu.target.name) } }
+        MenuItem {
+            text: qsTr("Aus der Liste entfernen …")
+            visible: !!rowMenu.target && rowMenu.target.root !== root.app.projectRoot
+            height: visible ? implicitHeight : 0
+            onTriggered: { panel.close(); confirm.ask(rowMenu.target.root, rowMenu.target.name) }
+        }
     }
 
     Dialog {

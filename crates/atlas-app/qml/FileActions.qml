@@ -372,7 +372,8 @@ Item {
         }
         MenuItem {
             text: qsTr("Verknüpfen mit …")
-            visible: menu.single && !!app.atlasDir && !ops.isDir(menu.paths[0])
+            // Files and folders (a folder becomes a node in the graph).
+            visible: menu.single && !!app.atlasDir && menu.paths[0] !== app.projectRoot
             height: visible ? implicitHeight : 0
             onTriggered: app.requestRelate(menu.paths[0])
         }

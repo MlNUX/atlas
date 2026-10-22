@@ -186,6 +186,7 @@ Rectangle {
         }
     }
     readonly property alias annotationStore: notes
+    readonly property alias pagesView: pages
     readonly property bool changeNotice: notes.status === "changed" && notes.count > 0
 
     function message(text) { if (root.actions) root.actions.showMessage(text) }
@@ -285,6 +286,7 @@ Rectangle {
     readonly property bool pageBookmarked: (annotsByPage[currentPage + 1] || []).some(a => a.kind === "bookmark")
 
     function exportCopy() {
+        if (notes.count === 0) return
         exportDialog.selectedFile = "file://" + notes.defaultExportPath()
         exportDialog.open()
     }
@@ -823,15 +825,26 @@ Rectangle {
                         event.accepted = true
                         const steps = root.wheelSteps(event)
                         if (!steps) return
-                        const at = Qt.point(pages.contentX + event.x - pages.originX, pages.contentY + event.y - pages.originY)
+                        // The point under the mouse in page coordinates: pages are
+                        // centred in the content, so a page narrower than the view
+                        // must not move sideways (it jumped and slid back before).
                         const before = root.zoomScale
+                        const offset = (z) => (pages.contentWidth - doc.maxPageWidth * z) / 2
+                        const px = (pages.contentX - pages.originX + event.x - offset(before)) / before
+                        const top = pages.contentY - pages.originY + event.y - pages.topMargin
                         root.zoomBy(Math.pow(1.1, steps))
                         const k = root.zoomScale / before
-                        Qt.callLater(() => {
-                            pages.contentX = Math.max(0, at.x * k - event.x) + pages.originX
-                            pages.contentY = Math.max(0, at.y * k - event.y) + pages.originY
-                            pages.returnToBounds()
-                        })
+                        const place = () => {
+                            const maxX = Math.max(0, pages.contentWidth - pages.width)
+                            const x = offset(root.zoomScale) + px * root.zoomScale - event.x
+                            pages.contentX = Math.max(0, Math.min(maxX, x)) + pages.originX
+                            const y = top * k + pages.topMargin - event.y
+                            pages.contentY = Math.max(0, Math.min(Math.max(0, pages.contentHeight - pages.height), y)) + pages.originY
+                        }
+                        // At once (no frame at the old position), and again after
+                        // the list laid its pages out at the new size.
+                        place()
+                        Qt.callLater(place)
                         event.accepted = true
                     }
                 }

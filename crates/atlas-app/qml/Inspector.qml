@@ -77,8 +77,11 @@ Rectangle {
         if (kind === "pdf" && pdfViewer) {
             out.push({ icon: "quote", name: qsTr("Zitat übernehmen"), enabled: !!pdfViewer.selectionText,
                        tip: qsTr("Markierte Stelle als Zitat in eine Notiz (Strg+Q)"), run: () => pdfViewer.quoteSelection() })
-            out.push({ icon: "export", name: qsTr("PDF-Kopie exportieren"), enabled: true,
-                       tip: qsTr("Kopie mit Anmerkungen; das Original bleibt unverändert"), run: () => pdfViewer.exportCopy() })
+            // Only worth it with marks, comments, ink or bookmarks.
+            out.push({ icon: "export", name: qsTr("PDF-Kopie exportieren"), enabled: pdfViewer.annotationStore.count > 0,
+                       tip: pdfViewer.annotationStore.count > 0 ? qsTr("Kopie mit Anmerkungen; das Original bleibt unverändert")
+                                                                : qsTr("Erst etwas markieren oder kommentieren – ohne Anmerkungen wäre die Kopie gleich dem Original"),
+                       run: () => pdfViewer.exportCopy() })
         }
         if (document && app.isRunnable(document))
             out.push({ icon: "play", name: qsTr("Ausführen"), enabled: true, tip: qsTr("Skript im Terminal starten (im Ordner des Skripts)"),

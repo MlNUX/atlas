@@ -429,7 +429,7 @@ Rectangle {
                         x: area.cursorRectangle.x
                         y: area.cursorRectangle.y + area.cursorRectangle.height + 2
                         width: 420
-                        height: Math.min(8, results.length) * 26 + 8
+                        height: Math.min(8, root.completionResults.length) * 26 + 8
                         padding: 4
                         focus: false
                         closePolicy: Popup.CloseOnPressOutside

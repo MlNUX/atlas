@@ -6,9 +6,10 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Atlas
 
-// "Verknüpfen mit …": relates a file with another file of the project
-// (e.g. two PDFs). The relation lives in `.atlas/relations.json`, shows in
-// the graph and under "Verknüpfungen"; the files stay unchanged.
+// "Verknüpfen mit …": relates a file or folder with another file or folder
+// of the project (e.g. two PDFs, two folder nodes). The relation lives in
+// `.atlas/relations.json`, shows in the graph (folders as nodes) and under
+// "Verknüpfungen"; the files stay unchanged.
 Dialog {
     id: dialog
     required property AppController app
@@ -16,6 +17,7 @@ Dialog {
     property string source
     property var related: []
     property var results: []
+    property bool sourceIsDir: false
 
     anchors.centerIn: Overlay.overlay
     width: 560
@@ -26,17 +28,22 @@ Dialog {
 
     function ask(path) {
         source = path
+        sourceIsDir = app.fileKind(path) === "dir"
         try { related = JSON.parse(app.relatedFiles(path)).map(r => r.path) } catch (e) { related = [] }
         field.text = ""
         search()
         open()
         field.forceActiveFocus()
     }
-    /// Files of the project (no folders, no hidden files, not the file itself).
+    /// Files and folders of the project (no hidden ones, not the source).
+    /// Folder nodes come first for a folder.
     function search() {
         let found = []
         try { found = JSON.parse(app.quickOpen(field.text, 200)) } catch (e) {}
-        results = found.filter(r => r.kind !== "dir" && r.path !== source && !/(^|\/)\./.test(r.relative)).slice(0, 80)
+        found = found.filter(r => r.path !== source && !/(^|\/)\./.test(r.relative))
+        const node = (r) => r.kind === "dir" && app.isFolderNode(r.path)
+        if (sourceIsDir) found = found.filter(node).concat(found.filter(r => !node(r)))
+        results = found.slice(0, 80)
         list.currentIndex = 0
     }
     function pick(r) {
@@ -88,7 +95,7 @@ Dialog {
                     anchors.rightMargin: 10
                     spacing: 10
                     Icon {
-                        readonly property var look: Theme.fileIcon(row.modelData.relative, false)
+                        readonly property var look: Theme.fileIcon(row.modelData.relative, row.modelData.kind === "dir")
                         name: look[0]
                         color: look[1]
                         size: 16
@@ -99,6 +106,12 @@ Dialog {
                         color: Theme.textStrong
                         font.pixelSize: Theme.fontSize
                         elide: Text.ElideMiddle
+                    }
+                    Text {
+                        visible: !row.done && row.modelData.kind === "dir" && dialog.app.isFolderNode(row.modelData.path)
+                        text: qsTr("Ordner-Knoten")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.smallFontSize
                     }
                     Text {
                         visible: row.done

@@ -236,7 +236,7 @@ ApplicationWindow {
                 list.push({ name: qsTr("Anzeigen mit: %1").arg(p.name), hint: p.extension, run: () => editor.open(current, 0, "tab", { processor: p.id }) })
         }
         list.push({ name: qsTr("Erweiterungen verwalten …"), run: () => extensionsDialog.open() })
-        list.push({ name: qsTr("Neue Erweiterung …"), run: () => { const m = app.newExtension(); if (m) editor.open(m, 0, "tab") } })
+        list.push({ name: qsTr("Neue Erweiterung …"), run: () => { extensionsDialog.open(); extensionsDialog.askNew() } })
         return list
     }
 
@@ -743,10 +743,8 @@ ApplicationWindow {
                         MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: window.toggleSidebar() }
                         MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
                         MenuSeparator {}
+                        // (Calendar, extensions and editor: in the settings.)
                         MenuItem { text: qsTr("Einstellungen …"); onTriggered: settingsDialog.open() }
-                        MenuItem { text: qsTr("Kalender-Einstellungen …"); onTriggered: fileActions.calendarSync.openSettings() }
-                        MenuItem { text: qsTr("Erweiterungen verwalten …"); onTriggered: extensionsDialog.open() }
-                        MenuItem { text: qsTr("Externen Editor festlegen …"); onTriggered: fileActions.configureEditor() }
                     }
                 }
             }

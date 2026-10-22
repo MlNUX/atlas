@@ -169,6 +169,43 @@ exporters:
     command: [pandoc, "{file}", --standalone, -o, "{output}"]
 "#;
 
+/// A new extension called `title`: its name (folder, ID prefix) and its
+/// manifest – the template with the examples commented out, so a new
+/// extension adds nothing until it is filled in.
+pub fn starter(title: &str) -> (String, String) {
+    let title = title.trim();
+    let name = match slug(title) {
+        s if s.is_empty() => "erweiterung".to_owned(),
+        s => s,
+    };
+    let mut out = String::new();
+    let mut examples = false;
+    for line in TEMPLATE.lines() {
+        let line = match line {
+            "name: beispiel" => format!("name: {name}"),
+            "title: Beispiel-Erweiterung" => format!("title: {}", yaml_text(title)),
+            l if l.starts_with("description:") => "description: \"\"".to_owned(),
+            l => l.to_owned(),
+        };
+        examples |= line.starts_with("# Aktionen");
+        if examples && !line.is_empty() && !line.starts_with('#') {
+            out.push_str("# ");
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    (name, out)
+}
+
+/// `text` as a YAML scalar (quoted if needed).
+fn yaml_text(text: &str) -> String {
+    if text.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '-') && !text.is_empty() {
+        text.to_owned()
+    } else {
+        format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+}
+
 // ------------------------------------------------------------------ loading
 
 fn globs(patterns: &[String]) -> Result<globset::GlobSet> {
@@ -677,6 +714,18 @@ mod tests {
         assert!(proj.errors.iter().any(|e| e.contains("{output}")));
         assert!(found[2].errors[0].contains("atlas_extension"));
 
+        // A new extension: own name, examples only as comments.
+        let (name, text) = starter("Projekt-Werkzeuge: PDF");
+        assert_eq!(name, "projekt-werkzeuge-pdf");
+        write_ext(&user, &name, &text);
+        let fresh = load(&user.join(&name), Location::User);
+        assert_eq!(fresh.title, "Projekt-Werkzeuge: PDF", "{text}");
+        assert!(
+            fresh.errors.is_empty() && fresh.actions.is_empty() && fresh.processors.is_empty(),
+            "{:?}",
+            fresh.errors
+        );
+        assert!(text.contains("#   - name: Wörter zählen"), "{text}");
         let template = load(&user.join("beispiel"), Location::User);
         assert!(template.errors.is_empty(), "{:?}", template.errors);
         assert_eq!((template.actions.len(), template.processors.len(), template.exporters.len()), (1, 1, 1));

@@ -178,13 +178,47 @@ Dialog {
             Layout.fillWidth: true
             Button {
                 text: qsTr("Neue Erweiterung …")
-                onClicked: {
-                    const manifest = dialog.app.newExtension()
-                    if (manifest && dialog.actions) dialog.actions.openRequested(manifest, false)
-                    dialog.close()
-                }
+                onClicked: dialog.askNew()
             }
             Button { text: qsTr("Neu laden"); flat: true; onClicked: dialog.reload() }
+        }
+    }
+
+    /// Asks for the name of a new extension, then opens its manifest.
+    function askNew() {
+        newName.text = ""
+        newDialog.open()
+        newName.forceActiveFocus()
+    }
+    Dialog {
+        id: newDialog
+        anchors.centerIn: Overlay.overlay
+        parent: Overlay.overlay
+        width: 420
+        modal: true
+        title: qsTr("Neue Erweiterung")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            if (!newName.text.trim()) return
+            const manifest = dialog.app.newExtension(newName.text.trim())
+            if (manifest && dialog.actions) dialog.actions.openRequested(manifest, false)
+            dialog.close()
+        }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Theme.textMuted
+                text: qsTr("Wie soll sie heißen? Die Vorlage enthält Beispiele als Kommentare – sie tut nichts, bis du sie ausfüllst.")
+            }
+            TextField {
+                id: newName
+                Layout.fillWidth: true
+                placeholderText: qsTr("z. B. PDF-Werkzeuge")
+                onAccepted: newDialog.accept()
+            }
         }
     }
 

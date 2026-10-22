@@ -527,6 +527,15 @@ Item {
                 const plain = v.zoomScale
                 app.sendWheel(window, p.x, p.y, -120, false)
                 check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
+                // A page narrower than the view stays centred while zooming
+                // (no jump to the side).
+                v.zoom = 0.4
+                test.zoomBefore = v.zoomScale
+                const side = v.mapToItem(null, v.width * 0.8, v.height * 0.6)
+                app.sendWheel(window, side.x, side.y, 120, true)
+                check("Strg+Mausrad: schmale Seite bleibt mittig", v.zoomScale > test.zoomBefore && v.pagesView.contentX === v.pagesView.originX,
+                      v.pagesView.contentX + " / " + v.pagesView.originX)
+                v.zoom = plain
                 // Touchpads (and fine scrolling on Wayland): a gesture with
                 // pixel-only deltas zooms as well and never scrolls.
                 app.sendWheel(window, p.x, p.y, 0, 7)
@@ -747,6 +756,39 @@ Item {
             () => {
                 check("Terminal-Knopf: ein Klick blendet ein", terminalPanel.visible && window.terminalButton.checked,
                       terminalPanel.visible + " / " + window.terminalButton.checked)
+                // Split beside, then below: every terminal gets room.
+                test.tabsBefore = terminalPanel.currentGroup.terminals.length
+                terminalPanel.splitTerminal(false)
+            },
+            () => {
+                const g = terminalPanel.currentGroup
+                const sizes = () => g.terminals.map(t => Math.round(t.width) + "x" + Math.round(t.height)).join(", ")
+                // (One terminal before: two halves.)
+                check("Terminal nebeneinander geteilt, gleich breit", g.terminals.length === test.tabsBefore + 1 && g.orientation === Qt.Horizontal
+                      && g.terminals.every(t => t.visible && t.height > 40)
+                      && (test.tabsBefore !== 1 || Math.abs(g.terminals[0].width - g.terminals[1].width) < 8), sizes())
+                terminalPanel.splitTerminal(true)
+            },
+            () => {
+                const g = terminalPanel.currentGroup
+                const sizes = () => g.terminals.map(t => Math.round(t.width) + "x" + Math.round(t.height)).join(", ")
+                // Only the active (right) terminal is divided; the left one keeps
+                // its full height.
+                const [left, right, below] = g.terminals.slice(-3)
+                check("Terminal untereinander: nur das aktive geteilt", g.terminals.length === test.tabsBefore + 2 && g.orientation === Qt.Horizontal
+                      && Math.abs(left.height - g.height) < 4 && Math.abs(right.height - below.height) < 8
+                      && Math.abs(right.width - below.width) < 4 && right.height < g.height * 0.7, sizes())
+                test.layoutBefore = JSON.stringify(g.serialize())
+                while (g.terminals.length > test.tabsBefore) g.removeTerminal(g.terminals[g.terminals.length - 1])
+            },
+            () => {
+                const g = terminalPanel.currentGroup
+                const tree = JSON.parse(test.layoutBefore)
+                // (Terminals running a program are not saved.)
+                check("Terminal-Splits in der Session als Baum", tree.orientation === "horizontal"
+                      && tree.items.some(i => i.orientation === "vertical" && i.items.length === 2), test.layoutBefore)
+                check("Geteilte Terminals wieder geschlossen", g.terminals.length === test.tabsBefore && g.terminals.every(t => Math.abs(t.height - g.height) < 4),
+                      g.terminals.map(t => Math.round(t.width) + "x" + Math.round(t.height)).join(", "))
             },
             () => {
                 // With Dolphin's places file: exactly its visible local places,
@@ -1008,8 +1050,9 @@ Item {
             },
             () => {
                 const target = relateDialog.results.find(r => r.relative === "docs/umbenannt.pdf")
-                check("Verknüpfen: Dialog mit Dateien, ohne Ordner und versteckte", relateDialog.visible && !!target
-                      && !relateDialog.results.some(r => r.kind === "dir" || r.relative.startsWith(".") || r.path === path("docs/zweite.pdf")),
+                check("Verknüpfen: Dialog mit Dateien und Ordnern, ohne versteckte", relateDialog.visible && !!target
+                      && relateDialog.results.some(r => r.kind === "dir")
+                      && !relateDialog.results.some(r => r.relative.startsWith(".") || r.path === path("docs/zweite.pdf")),
                       relateDialog.results.length)
                 relateDialog.pick(target)
             },
@@ -1054,6 +1097,15 @@ Item {
                 fileActions.showMenu([path("docs")], app.projectRoot)
                 const entries = fileActions.contextMenu.shownEntries()
                 fileActions.contextMenu.close()
+                // Two folder nodes linked with each other.
+                app.setFolderNode(path("notes"), true)
+                app.relateFiles(path("docs"), path("notes"))
+                const g2 = JSON.parse(app.contextGraph(path("docs/zweite.pdf"), 0))
+                const di = g2.nodes.findIndex(n => n.relative === "docs"), ni = g2.nodes.findIndex(n => n.relative === "notes")
+                check("Ordner-Knoten untereinander verknüpft", di >= 0 && ni >= 0
+                      && g2.edges.some(e => e.related && ((e.from === di && e.to === ni) || (e.from === ni && e.to === di))))
+                app.unrelateFiles(path("docs"), path("notes"))
+                app.setFolderNode(path("notes"), false)
                 check("Ordner-Knoten auflösen", entries.indexOf("Ordner-Knoten auflösen") >= 0 && app.setFolderNode(path("docs"), false)
                       && !app.isFolderNode(path("docs")), entries.join(" | "))
             },

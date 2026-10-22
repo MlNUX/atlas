@@ -489,10 +489,11 @@ pub mod qobject {
         #[cxx_name = "setExtensionEnabled"]
         fn set_extension_enabled(self: Pin<&mut AppController>, name: &QString, enabled: bool) -> QString;
 
-        /// Creates a new user extension from the template; manifest path.
+        /// Creates a new user extension called `title` from the template;
+        /// manifest path ("" on errors).
         #[qinvokable]
         #[cxx_name = "newExtension"]
-        fn new_extension(self: &AppController) -> QString;
+        fn new_extension(self: &AppController, title: &QString) -> QString;
 
         /// Re-reads the extensions (updates `untrustedExtensions`).
         #[qinvokable]
@@ -2041,17 +2042,16 @@ impl qobject::AppController {
         result
     }
 
-    pub fn new_extension(&self) -> QString {
+    pub fn new_extension(&self, title: &QString) -> QString {
         let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
-        let mut dir = root.join("beispiel");
-        let mut n = 2;
-        while dir.exists() {
-            dir = root.join(format!("beispiel-{n}"));
+        let (base, text) = atlas_core::extensions::starter(&title.to_string());
+        let (mut name, mut n) = (base.clone(), 2);
+        while root.join(&name).exists() {
+            name = format!("{base}-{n}");
             n += 1;
         }
-        let name = dir.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-        let manifest = dir.join(atlas_core::extensions::MANIFEST);
-        let text = atlas_core::extensions::TEMPLATE.replace("name: beispiel", &format!("name: {name}"));
+        let manifest = root.join(&name).join(atlas_core::extensions::MANIFEST);
+        let text = text.replace(&format!("name: {base}\n"), &format!("name: {name}\n"));
         match atlas_core::paths::write_atomic(&manifest, text.as_bytes()) {
             Ok(()) => qs(manifest.to_string_lossy()),
             Err(err) => {
@@ -2158,12 +2158,17 @@ impl qobject::AppController {
     pub fn actions_for(&self, paths: &QStringList) -> QString {
         let (actions, _) = self.load_actions();
         let ctx = self.action_context(paths, 0);
-        let list: Vec<_> = atlas_core::actions::applicable(&actions, &ctx)
-            .into_iter()
+        let applicable = atlas_core::actions::applicable(&actions, &ctx);
+        // Two actions with the same name (e.g. from two extensions) say
+        // where they come from.
+        let twice = |name: &str| applicable.iter().filter(|a| a.name == name).count() > 1;
+        let list: Vec<_> = applicable
+            .iter()
             .map(|a| {
+                let name = if twice(&a.name) { format!("{} ({})", a.name, a.source.label()) } else { a.name.clone() };
                 serde_json::json!({
                     "id": a.id,
-                    "name": a.name,
+                    "name": name,
                     "description": a.description,
                     "source": a.source.label(),
                 })
