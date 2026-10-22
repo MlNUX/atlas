@@ -20,6 +20,7 @@ Rectangle {
     readonly property alias linksPanel: linksPanel
     readonly property alias tabBar: tabFlick
     readonly property alias modules: contextModules
+    readonly property alias pomodoro: pomodoroTimer
 
     signal openRequested(string path, int line, string where, var state)
 
@@ -210,12 +211,12 @@ Rectangle {
                     width: overview.availableWidth
                     spacing: 10
                     Item { Layout.preferredHeight: 2 }
-                    // Pomodoro, calendar and tasks (each can be switched off
-                    // in the settings).
+                    // Today's entries and tasks (each can be switched off in
+                    // the settings).
                     ContextModules {
                         id: contextModules
                         Layout.fillWidth: true
-                        visible: showPomodoro || showCalendar || showTasks
+                        visible: showCalendar || showTasks
                         app: inspector.app
                         actions: inspector.actions
                     }
@@ -329,6 +330,16 @@ Rectangle {
                     }
                 }
             }
+        }
+
+        // Pomodoro, fixed to the bottom edge on every tab.
+        PomodoroTimer {
+            id: pomodoroTimer
+            Layout.fillWidth: true
+            Layout.margins: 10
+            visible: pomodoroTimer.settings.pomodoro !== false
+            app: inspector.app
+            actions: inspector.actions
         }
     }
 

@@ -895,3 +895,19 @@ Selbsttest: Pfeiltasten (über `sendKey`), Export einer Notiz als PDF,
 Module (Termin von morgen, neue und erledigte Aufgabe, Kalendermodul aus,
 Pomodoro-Phasenwechsel). TeX → PDF nur ohne TeX-Installation geprüft (die
 Meldung); latexmk/pdflatex selbst gibt es in der Testumgebung nicht.
+
+### Nachtrag – Lernzeit unten, Kalender nur für heute
+
+- Der Pomodoro-Timer ist eine eigene Komponente (`PomodoroTimer.qml`) am
+  unteren Rand der Kontextleiste, außerhalb der Reiter, damit er beim
+  Wechsel sichtbar bleibt und weiterläuft. Gestaltung: Ring mit dem
+  Fortschritt der Phase (Shape, Bogen), Zeit in Monospace, Phase und
+  Runden-Punkte, runder Start/Pause-Knopf in der Phasenfarbe (blau beim
+  Lernen, grün in der Pause), daneben Neu beginnen und Überspringen. Der
+  Hintergrund wird beim Laufen kräftiger.
+- Das Kalendermodul heißt „Heute“ und zeigt nur den Tag: ganztägige
+  Einträge zuerst, dann nach Uhrzeit mit Von–Bis; vorbei ist gedimmt, um
+  Mitternacht wechselt der Tag.
+
+Selbsttest: Termin von heute erscheint, der von morgen nicht; der Timer
+liegt auf einem anderen Reiter an der Unterkante; abschaltbar.

@@ -511,6 +511,7 @@ ApplicationWindow {
                 "md-edit": () => { if (editor.activeTab && editor.activeTab.viewerItem) editor.activeTab.viewerItem.mode = "split" },
                 "html": () => fileActions.renderHtml(file),
                 "md-pdf": () => fileActions.markdownToPdf(file),
+                "pomodoro": () => { inspector.pomodoro.startPause(); inspector.pomodoro.endsAt = Date.now() + (17 * 60 + 42) * 1000; inspector.pomodoro.rounds = 2 },
                 "relate": () => app.requestRelate(file),
                 "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
                 "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },

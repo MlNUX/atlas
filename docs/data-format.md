@@ -245,9 +245,9 @@ disabled = ["core"]                              # ausgeschaltete Erweiterungen
 file_manager = true                              # Orte wie in Dolphin (ohne KDE: feste + GTK-Lesezeichen); Standard
 
 [context]                                        # Module der Kontextleiste (Übersicht)
-calendar = true                                  # Demnächst: Termine, Blöcke, Fristen (7 Tage)
+calendar = true                                  # Heute: Termine, Blöcke, Fristen des Tages
 tasks = true                                     # offene Aufgaben
-pomodoro = true                                  # Lernzeit-Timer
+pomodoro = true                                  # Lernzeit-Timer am unteren Rand
 pomodoro_work = 25                               # Minuten lernen
 pomodoro_break = 5                               # kurze Pause
 pomodoro_long_break = 15                         # lange Pause nach vier Runden

@@ -152,7 +152,7 @@ Dialog {
                             key: "pomodoro"
                             icon: "focus"
                             title: qsTr("Lernzeit (Pomodoro)")
-                            detail: qsTr("%1 Min. lernen, %2 Min. Pause, nach vier Runden %3 Min.")
+                            detail: qsTr("Unten in der Kontextleiste: %1 Min. lernen, %2 Min. Pause, nach vier Runden %3 Min.")
                                 .arg(dialog.context.pomodoro_work || 25).arg(dialog.context.pomodoro_break || 5).arg(dialog.context.pomodoro_long_break || 15)
                             // Lengths of the phases.
                             Row {

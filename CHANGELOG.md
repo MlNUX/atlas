@@ -11,12 +11,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Neu
-- Kontextleiste: neue Module **Lernzeit** (Pomodoro-Timer: 25 Min. lernen,
-  5 Min. Pause, nach vier Runden 15 Min.; Längen einstellbar),
-  **Demnächst** (Termine, Arbeitsblöcke und Fristen der nächsten sieben
-  Tage) und **Aufgaben** (abhaken, neue anlegen). Jedes lässt sich in den
-  Einstellungen ein- und ausschalten. Der erste Reiter heißt jetzt
-  „Übersicht“.
+- Kontextleiste: **Lernzeit** – ein Pomodoro-Timer fest am unteren Rand
+  (auf allen Reitern) mit Ring, Runden und Start/Pause, Neu beginnen,
+  Überspringen; 25 Min. lernen, 5 Min. Pause, nach vier Runden 15 Min.,
+  Längen einstellbar. Oben in der „Übersicht“ (so heißt der erste Reiter
+  jetzt) **Heute** mit den Terminen, Blöcken und Fristen des Tages und
+  **Aufgaben** zum Abhaken und Anlegen. Alle drei lassen sich in den
+  Einstellungen ein- und ausschalten.
 - Markdown → PDF eingebaut („Als PDF exportieren“ im Kontextmenü und in der
   Kontextleiste): gesetzt wie die Vorschau mit Formeln, Diagrammen und
   Code, auf hellem A4-Papier – ohne pandoc oder LaTeX.

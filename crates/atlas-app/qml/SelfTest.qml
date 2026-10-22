@@ -48,6 +48,8 @@ Item {
     property string mdPdf
     property string modEvent
     property string modTask
+    property string modTomorrow
+    property bool inspectorWasVisible
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -1055,7 +1057,12 @@ Item {
                 test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
                 check("Markdown-PDF-Export startet", fileActions.markdownPdf.exportPdf(path("notes/idee.md"), test.mdPdf))
             },
-            () => { if (waitFor(() => !fileActions.markdownPdf.busy)) return },
+            () => {
+                // The context bar is shown for the module checks below.
+                test.inspectorWasVisible = window.inspectorVisible
+                window.inspectorVisible = true
+                if (waitFor(() => !fileActions.markdownPdf.busy)) return
+            },
             () => { if (waitFor(() => !fileActions.markdownPdf.busy)) return },
             () => {
                 if (waitFor(() => !fileActions.markdownPdf.busy)) return
@@ -1063,28 +1070,42 @@ Item {
                       fileActions.markdownPdf.busy ? "läuft noch" : app.readTextFile(test.mdPdf).slice(0, 8))
                 // Context bar modules: pomodoro, upcoming entries, tasks.
                 const m = inspector.modules
-                check("Module der Kontextleiste eingeschaltet", m.showPomodoro && m.showCalendar && m.showTasks)
+                check("Module der Kontextleiste eingeschaltet", m.showCalendar && m.showTasks && inspector.pomodoro.visible)
                 const cal = fileActions.calendar
-                const t = new Date(Date.now() + 86400000)
-                const day = m.isoDate(t)
-                test.modEvent = cal.save(JSON.stringify({ kind: "event", title: "Modul-Termin", start: day + "T10:00", end: day + "T11:00" }))
+                const now = new Date()
+                const day = m.isoDate(now)
+                const tomorrow = m.isoDate(new Date(now.getTime() + 86400000))
+                test.modEvent = cal.save(JSON.stringify({ kind: "event", title: "Modul-Termin", start: day + "T00:00", end: day + "T23:59" }))
+                test.modTomorrow = cal.save(JSON.stringify({ kind: "event", title: "Modul-Morgen", start: tomorrow + "T10:00", end: tomorrow + "T11:00" }))
                 test.modTask = cal.save(JSON.stringify({ kind: "task", title: "Modul-Aufgabe" }))
-                check("Demnächst zeigt den Termin von morgen", m.upcoming.some(o => o.title === "Modul-Termin"), JSON.stringify(m.upcoming.map(o => o.title)))
+                check("Heute zeigt den Termin von heute, nicht den von morgen",
+                      m.today.some(o => o.title === "Modul-Termin") && !m.today.some(o => o.title === "Modul-Morgen"), JSON.stringify(m.today.map(o => o.title)))
                 check("Aufgaben zeigen die neue Aufgabe", m.openTasks.some(o => o.title === "Modul-Aufgabe"))
                 cal.setStatus(test.modTask, "done")
                 check("Erledigte Aufgabe verschwindet", !m.openTasks.some(o => o.title === "Modul-Aufgabe"))
                 app.setContextModule("calendar", 0)
                 check("Kalendermodul abschaltbar", !m.showCalendar && JSON.parse(app.contextModules).calendar === false)
                 app.setContextModule("calendar", 1)
-                // Pomodoro: start, let the phase end, a break follows.
-                m.startPause()
-                check("Pomodoro läuft", m.running && m.phase === "work")
-                m.endsAt = Date.now()
+                // Pomodoro at the bottom edge, on every tab.
+                const p = inspector.pomodoro
+                inspector.tab = 2
+                const bottom = p.mapToItem(inspector, 0, p.height).y
+                check("Pomodoro unten fixiert, auch auf anderen Reitern", p.visible && Math.abs(inspector.height - bottom - 10) < 3,
+                      bottom + " / " + inspector.height)
+                inspector.tab = 0
+                app.setContextModule("pomodoro", 0)
+                check("Pomodoro abschaltbar", !p.visible)
+                app.setContextModule("pomodoro", 1)
+                p.startPause()
+                check("Pomodoro läuft", p.running && p.phase === "work")
+                p.endsAt = Date.now()
             },
             () => {
-                const m = inspector.modules
-                check("Pomodoro: nach dem Lernen kommt die Pause", !m.running && m.phase === "break" && m.rounds === 1 && m.remaining === 5 * 60,
-                      m.phase + " " + m.rounds + " " + m.remaining)
+                const p = inspector.pomodoro
+                check("Pomodoro: nach dem Lernen kommt die Pause", !p.running && p.phase === "break" && p.rounds === 1 && p.remaining === 5 * 60,
+                      p.phase + " " + p.rounds + " " + p.remaining)
+                fileActions.calendar.remove(test.modTomorrow)
+                window.inspectorVisible = test.inspectorWasVisible
                 fileActions.calendar.remove(test.modEvent)
             },
             () => {
