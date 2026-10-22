@@ -58,7 +58,7 @@ Fest in einer NixOS-Konfiguration mit Flakes:
 ```nix
 # flake.nix des Systems
 {
-  inputs.atlas.url = "github:MlNUX/atlas/v1.0.0";
+  inputs.atlas.url = "github:MlNUX/atlas/v1.1.0";
   inputs.atlas.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs = { nixpkgs, atlas, ... }: {

@@ -10,6 +10,14 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+## [1.1.0] – 2026-10-22
+
+Graph fürs ganze Projekt, Verknüpfungen und Ordner-Knoten, eine Session je
+Projektordner, Google-Kalender, PDF-Dunkelmodus und Links in PDFs.
+
+Beim Update: Projekte mit mehreren benannten Sessions behalten die zuletzt
+benutzte; Erweiterungen aus der alten Vorlage heißen danach „Core“.
+
 ### Neu
 - Google-Kalender als Alternative zu Nextcloud: Anmeldung im Browser
   (eigener OAuth-Client, Anleitung in docs/google-kalender.md), Termine
@@ -21,7 +29,6 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - Ordner-Knoten: Rechtsklick auf einen Ordner → „Als Ordner-Knoten
   verknüpfen“. Im Graph entsteht ein Knoten mit dem Ordnernamen, an dem
   alle Dateien des Ordners hängen – auch später hinzugefügte.
-
 - Graph in eigenem großen Fenster („Groß anzeigen“).
 - Markdown-Editor mit Zeilennummern; Tab/Umschalt+Tab rücken Listenpunkte
   ein und aus; Zeilenumbrüche erscheinen in der Vorschau.
@@ -121,4 +128,6 @@ Erste öffentliche Version.
 - Nix-Flake mit Paket, App, Overlay und Entwicklungsumgebung.
 - PKGBUILD für das AUR (`atlas-workspace`).
 
+[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/MlNUX/atlas/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/MlNUX/atlas/releases/tag/v1.0.0
