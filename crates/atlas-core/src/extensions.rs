@@ -169,6 +169,43 @@ exporters:
     command: [pandoc, "{file}", --standalone, -o, "{output}"]
 "#;
 
+/// A new extension called `title`: its name (folder, ID prefix) and its
+/// manifest – the template with the examples commented out, so a new
+/// extension adds nothing until it is filled in.
+pub fn starter(title: &str) -> (String, String) {
+    let title = title.trim();
+    let name = match slug(title) {
+        s if s.is_empty() => "erweiterung".to_owned(),
+        s => s,
+    };
+    let mut out = String::new();
+    let mut examples = false;
+    for line in TEMPLATE.lines() {
+        let line = match line {
+            "name: beispiel" => format!("name: {name}"),
+            "title: Beispiel-Erweiterung" => format!("title: {}", yaml_text(title)),
+            l if l.starts_with("description:") => "description: \"\"".to_owned(),
+            l => l.to_owned(),
+        };
+        examples |= line.starts_with("# Aktionen");
+        if examples && !line.is_empty() && !line.starts_with('#') {
+            out.push_str("# ");
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    (name, out)
+}
+
+/// `text` as a YAML scalar (quoted if needed).
+fn yaml_text(text: &str) -> String {
+    if text.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '-') && !text.is_empty() {
+        text.to_owned()
+    } else {
+        format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+}
+
 // ------------------------------------------------------------------ loading
 
 fn globs(patterns: &[String]) -> Result<globset::GlobSet> {
@@ -391,6 +428,71 @@ pub fn discover(user_root: &Path, project_root: Option<&Path>) -> Vec<Extension>
         }
     }
     out
+}
+
+/// Title the extension template of Atlas ≤ 1.0 left in every new extension
+/// (folders `beispiel`, `beispiel-2`, …).
+const LEGACY_TITLE: &str = "title: Beispiel-Erweiterung";
+
+/// Gives extensions created from the old template a real name: the first
+/// becomes „Core“ (`core/`), further ones „Core 2“ … – folder, `name:` and
+/// `title:` change, the rest of the manifest stays. Returns the renamed
+/// extensions as (old name, new name), e.g. to carry over switched-off ones.
+pub fn migrate_legacy(user_root: &Path) -> Vec<(String, String)> {
+    let Ok(entries) = std::fs::read_dir(user_root) else { return Vec::new() };
+    let mut legacy: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|dir| {
+            dir.file_name().is_some_and(|n| n.to_string_lossy().starts_with("beispiel"))
+                && std::fs::read_to_string(dir.join(MANIFEST))
+                    .is_ok_and(|t| t.lines().any(|l| l.trim_end() == LEGACY_TITLE))
+        })
+        .collect();
+    // `beispiel` before `beispiel-2` before `beispiel-10`.
+    legacy.sort_by_key(|d| {
+        let name = d.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        (name.rsplit('-').next().and_then(|n| n.parse::<u32>().ok()).unwrap_or(1), name)
+    });
+    let mut renamed = Vec::new();
+    let mut n = 1;
+    for dir in legacy {
+        let (name, title) = loop {
+            let candidate = if n == 1 {
+                ("core".to_owned(), "Core".to_owned())
+            } else {
+                (format!("core-{n}"), format!("Core {n}"))
+            };
+            n += 1;
+            if !user_root.join(&candidate.0).exists() {
+                break candidate;
+            }
+        };
+        let Ok(text) = std::fs::read_to_string(dir.join(MANIFEST)) else { continue };
+        let old = dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let text: String = text
+            .lines()
+            .map(|l| {
+                if l.trim_end() == LEGACY_TITLE {
+                    format!("title: {title}")
+                } else if l.starts_with("name: ") {
+                    format!("name: {name}")
+                } else {
+                    l.to_owned()
+                }
+            })
+            .map(|l| l + "\n")
+            .collect();
+        let target = user_root.join(&name);
+        if std::fs::rename(&dir, &target).is_err() {
+            continue;
+        }
+        if let Err(err) = crate::paths::write_atomic(&target.join(MANIFEST), text.as_bytes()) {
+            log::warn!("cannot rename extension {old}: {err:#}");
+        }
+        renamed.push((old, name));
+    }
+    renamed
 }
 
 pub fn user_root(config_dir: &Path) -> PathBuf {
@@ -677,12 +779,45 @@ mod tests {
         assert!(proj.errors.iter().any(|e| e.contains("{output}")));
         assert!(found[2].errors[0].contains("atlas_extension"));
 
+        // A new extension: own name, examples only as comments.
+        let (name, text) = starter("Projekt-Werkzeuge: PDF");
+        assert_eq!(name, "projekt-werkzeuge-pdf");
+        write_ext(&user, &name, &text);
+        let fresh = load(&user.join(&name), Location::User);
+        assert_eq!(fresh.title, "Projekt-Werkzeuge: PDF", "{text}");
+        assert!(
+            fresh.errors.is_empty() && fresh.actions.is_empty() && fresh.processors.is_empty(),
+            "{:?}",
+            fresh.errors
+        );
+        assert!(text.contains("#   - name: Wörter zählen"), "{text}");
         let template = load(&user.join("beispiel"), Location::User);
         assert!(template.errors.is_empty(), "{:?}", template.errors);
         assert_eq!((template.actions.len(), template.processors.len(), template.exporters.len()), (1, 1, 1));
         assert_eq!(template.actions[0].id, "beispiel/wörter-zählen");
         assert_eq!(template.actions[0].base_dir.as_deref(), Some(user.join("beispiel").as_path()));
         assert_eq!(template.processors[0].id, "beispiel/hexdump");
+    }
+
+    #[test]
+    fn old_template_extensions_become_core() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let old = |n: &str| {
+            format!(
+                "atlas_extension: 1\nname: {n}\ntitle: Beispiel-Erweiterung\nactions:\n- {{name: Ls, command: ls}}\n"
+            )
+        };
+        write_ext(root, "beispiel", &old("beispiel"));
+        write_ext(root, "beispiel-2", &old("beispiel-2"));
+        write_ext(root, "beispiel-3", "atlas_extension: 1\nname: beispiel-3\ntitle: Meine\n");
+        let renamed = migrate_legacy(root);
+        assert_eq!(renamed, [("beispiel".into(), "core".into()), ("beispiel-2".into(), "core-2".into())]);
+        let core = load(&root.join("core"), Location::User);
+        assert_eq!((core.name.as_str(), core.title.as_str(), core.actions.len()), ("core", "Core", 1));
+        assert_eq!(load(&root.join("core-2"), Location::User).title, "Core 2");
+        assert!(root.join("beispiel-3").is_dir(), "own titles stay");
+        assert!(migrate_legacy(root).is_empty(), "runs once");
     }
 
     #[test]

@@ -611,6 +611,9 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
                 )
                 .into(),
             )),
+            // A line break in the text is one in the preview too (as in
+            // Obsidian), not just a space.
+            Event::SoftBreak if html => events.push(Event::HardBreak),
             other => events.push(other),
         }
     }
@@ -779,6 +782,13 @@ mod tests {
             resolve("/a.pdf#page=3&annot=ab%2012", &f, root),
             Target::File { path: file("a.pdf"), anchor: Anchor::Annotation(3, "ab 12".into()), root_relative: true }
         );
+    }
+
+    #[test]
+    fn line_breaks_stay_line_breaks() {
+        let html = render("Erste Zeile\nzweite Zeile\n\n```\na\nb\n```\n", Path::new("/p/n.md"), None).html;
+        assert!(html.contains("Erste Zeile<br />\nzweite Zeile"), "{html}");
+        assert!(html.contains("a\nb"), "code blocks unchanged: {html}");
     }
 
     #[test]

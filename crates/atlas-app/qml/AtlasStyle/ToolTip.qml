@@ -17,6 +17,8 @@ T.ToolTip {
     closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutsideParent | T.Popup.CloseOnReleaseOutsideParent
 
     contentItem: Text {
+        // (Tips can carry server messages; never render them as HTML.)
+        textFormat: Text.PlainText
         text: control.text
         font: control.font
         wrapMode: Text.Wrap

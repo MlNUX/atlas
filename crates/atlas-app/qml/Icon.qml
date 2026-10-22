@@ -56,6 +56,7 @@ Item {
         "sidebar-right": "<rect x='3' y='4' width='18' height='16' rx='2'/><path d='M15 4v16'/>",
         "sidebar-left": "<rect x='3' y='4' width='18' height='16' rx='2'/><path d='M9 4v16'/>",
         "link": "<path d='M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1'/><path d='M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1'/>",
+        "focus": "<circle cx='12' cy='12' r='3'/><path d='M12 2v4M12 18v4M2 12h4M18 12h4'/>",
         "graph": "<circle cx='12' cy='12' r='2.5'/><circle cx='5' cy='6' r='2'/><circle cx='19' cy='6' r='2'/><circle cx='6' cy='19' r='2'/><circle cx='18' cy='18' r='2'/><path d='m6.5 7.5 3.6 3M17.5 7.5l-3.6 3M7.5 17.5l2.8-3.6M16.5 16.5l-2.6-2.7'/>",
         "quote": "<path fill='COLOR' stroke='none' d='M5 17.5c2.8 0 4.5-2 4.5-4.8V7H4v5.5h3c0 1.6-.8 2.7-2 2.9zM14 17.5c2.8 0 4.5-2 4.5-4.8V7H13v5.5h3c0 1.6-.8 2.7-2 2.9z'/>",
         "play": "<path d='M7 5v14l11-7z'/>",
@@ -81,6 +82,7 @@ Item {
         "logo": "<path fill='COLOR' stroke='none' d='M12 2.5 22 21h-4.4L12 10.6 6.4 21H2z'/><path fill='COLOR' stroke='none' opacity='.55' d='M12 13.6 15.4 21H8.6z'/>",
         "warning": "<path d='M12 4 2.5 20h19z'/><path d='M12 10v4.5M12 17.5v.5'/>",
         "key": "<circle cx='8' cy='15' r='4'/><path d='m11 12 9-9M17 6l3 3M15 8l2 2'/>",
+        "moon": "<path d='M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z'/>",
     })
 
     readonly property string svg: shapes[name]

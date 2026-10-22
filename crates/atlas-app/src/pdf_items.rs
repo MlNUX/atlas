@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use atlas_core::pdf::{CancelToken, PdfService, RenderedPage, SelectionStyle, selection_spans};
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::{QImage, QImageFormat, QRect, QString};
+use cxx_qt_lib::{QColor, QImage, QImageFormat, QPainterCompositionMode, QRect, QRectF, QString};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -37,6 +37,10 @@ pub mod qobject {
         #[qproperty(f64, max_page_width, cxx_name = "maxPageWidth", READ, NOTIFY)]
         /// Outline as JSON: [{title, page, depth}], page -1 if unknown.
         #[qproperty(QString, outline_json, cxx_name = "outlineJson", READ, NOTIFY)]
+        /// Links as JSON: [{page, rect: [x, y, w, h], target, top, uri}] in
+        /// points from the top left; target -1 for web addresses, top -1 if
+        /// the link names no position.
+        #[qproperty(QString, links_json, cxx_name = "linksJson", READ, NOTIFY)]
         type PdfDocument = super::PdfDocumentRust;
 
         /// Page width in PDF points.
@@ -100,6 +104,8 @@ pub mod qobject {
         #[qproperty(QString, source, READ, WRITE, NOTIFY)]
         #[qproperty(i32, page, READ, WRITE, NOTIFY)]
         #[qproperty(i32, render_width, cxx_name = "renderWidth", READ, WRITE, NOTIFY)]
+        /// Dark mode: brightness inverted, hues kept.
+        #[qproperty(bool, inverted, READ, WRITE, NOTIFY)]
         #[qproperty(bool, rendered, READ, NOTIFY)]
         #[qproperty(i32, render_ms, cxx_name = "renderMs", READ, NOTIFY)]
         #[qproperty(QString, error, READ, NOTIFY)]
@@ -132,6 +138,7 @@ pub struct PdfDocumentRust {
     page_sizes: Vec<(f64, f64)>,
     generation: u64,
     outline_json: QString,
+    links_json: QString,
     search_cancel: CancelToken,
     select_cancel: CancelToken,
     select_request: i32,
@@ -149,6 +156,7 @@ impl Default for PdfDocumentRust {
             page_sizes: Vec::new(),
             generation: 0,
             outline_json: QString::default(),
+            links_json: QString::default(),
             search_cancel: CancelToken::default(),
             select_cancel: CancelToken::default(),
             select_request: 0,
@@ -198,7 +206,8 @@ impl qobject::PdfDocument {
                         doc.as_mut().max_page_width_changed();
                         doc.as_mut().open_ms_changed();
                         doc.as_mut().set_status("ready", "");
-                        doc.load_outline(generation);
+                        doc.as_mut().load_outline(generation);
+                        doc.load_links(generation);
                     }
                     Err(err) => {
                         doc.as_mut().rust_mut().page_count = 0;
@@ -227,6 +236,31 @@ impl qobject::PdfDocument {
                 if doc.generation == generation {
                     doc.as_mut().rust_mut().outline_json = QString::from(json.as_str());
                     doc.outline_json_changed();
+                }
+            });
+        });
+    }
+
+    fn load_links(self: Pin<&mut Self>, generation: u64) {
+        use atlas_core::pdf::LinkTarget;
+        let thread = self.qt_thread();
+        PdfService::get().links(PathBuf::from(self.source.to_string()), move |result| {
+            let links: Vec<serde_json::Value> = result
+                .unwrap_or_default()
+                .into_iter()
+                .map(|l| {
+                    let (target, top, uri) = match l.target {
+                        LinkTarget::Page { page, top } => (page as i64, top.unwrap_or(-1.0), String::new()),
+                        LinkTarget::Uri(uri) => (-1, -1.0, uri),
+                    };
+                    serde_json::json!({ "page": l.page, "rect": l.rect, "target": target, "top": top, "uri": uri })
+                })
+                .collect();
+            let json = serde_json::Value::Array(links).to_string();
+            let _ = thread.queue(move |mut doc| {
+                if doc.generation == generation {
+                    doc.as_mut().rust_mut().links_json = QString::from(json.as_str());
+                    doc.links_json_changed();
                 }
             });
         });
@@ -329,6 +363,7 @@ pub struct PdfPageRust {
     source: QString,
     page: i32,
     render_width: i32,
+    inverted: bool,
     rendered: bool,
     render_ms: i32,
     error: QString,
@@ -349,6 +384,8 @@ impl cxx_qt::Initialize for qobject::PdfPage {
         self.as_mut().on_source_changed(|p| p.schedule_render()).release();
         self.as_mut().on_page_changed(|p| p.schedule_render()).release();
         self.as_mut().on_render_width_changed(|p| p.schedule_render()).release();
+        // Only the way the page is drawn changes: no new render.
+        self.as_mut().on_inverted_changed(|p| p.update()).release();
     }
 }
 
@@ -415,6 +452,17 @@ impl qobject::PdfPage {
         let mut painter = unsafe { Pin::new_unchecked(painter) };
         painter.as_mut().set_render_hint(cxx_qt_lib::QPainterRenderHint::SmoothPixmapTransform, true);
         let rect = QRect::new(0, 0, self.width().round() as i32, self.height().round() as i32);
-        painter.draw_image(&rect, image);
+        painter.as_mut().draw_image(&rect, image);
+        if self.inverted {
+            // Dark mode, done by the painter (Qt's SIMD raster ops) instead of
+            // per pixel in Rust: switching needs no new render. Difference
+            // with white inverts; Lighten lifts black paper to dark grey.
+            let area = QRectF::new(0.0, 0.0, f64::from(rect.width()), f64::from(rect.height()));
+            painter.as_mut().set_composition_mode(QPainterCompositionMode::CompositionMode_Difference);
+            painter.as_mut().fill_rect(&area, &QColor::from_rgb(255, 255, 255));
+            painter.as_mut().set_composition_mode(QPainterCompositionMode::CompositionMode_Lighten);
+            painter.as_mut().fill_rect(&area, &QColor::from_rgb(0x26, 0x26, 0x26));
+            painter.as_mut().set_composition_mode(QPainterCompositionMode::CompositionMode_SourceOver);
+        }
     }
 }

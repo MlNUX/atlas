@@ -33,6 +33,7 @@ Rectangle {
 
     readonly property alias editorItem: editor
     readonly property alias previewItem: web
+    readonly property alias contextPanelItem: contextPanel
 
     color: Theme.editor
 
@@ -41,7 +42,6 @@ Rectangle {
             mode: root.mode,
             backlinks: root.showBacklinks,
             contextTab: contextPanel.tab,
-            graphDepth: contextPanel.depth,
             line: root.mode === "edit" ? editor.topLine : root.previewLine,
             y: root.previewY,
             cursor: editor.viewState().cursor,
@@ -51,7 +51,6 @@ Rectangle {
         if (state.mode) root.mode = state.mode
         if (state.backlinks !== undefined) root.showBacklinks = state.backlinks
         if (state.contextTab !== undefined) contextPanel.tab = state.contextTab
-        if (state.graphDepth !== undefined) contextPanel.depth = state.graphDepth
         if (state.cursor !== undefined) editor.applyState({ cursor: state.cursor })
         if (state.line) {
             root.previewLine = state.line
@@ -179,7 +178,7 @@ Rectangle {
                 }
                 IconButton {
                     iconName: "graph"
-                    tip: qsTr("Lokaler Graph: verknüpfte Notizen, PDFs und Dateien")
+                    tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
                     checkable: true
                     checked: root.showBacklinks && contextPanel.tab === 1
                     onClicked: {

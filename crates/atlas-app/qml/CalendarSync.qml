@@ -18,7 +18,8 @@ Item {
     function message(text) { if (actions) actions.showMessage(text) }
 
     function openSettings() { settings.open() }
-    function askPassword() { passwordDialog.open() }
+    /// Nextcloud: the app password; Google: sign in again (settings).
+    function askPassword() { if (sync.model.google) settings.open(); else passwordDialog.open() }
     function showConflicts() { conflictDialog.open() }
     function importChecklist(path) { checklistDialog.show(path) }
 
@@ -61,6 +62,7 @@ Item {
                 wrapMode: Text.Wrap
                 color: Theme.error
                 font.pixelSize: Theme.smallFontSize
+                textFormat: Text.PlainText
                 text: qsTr("Passwort-Befehl fehlgeschlagen: %1").arg(sync.model.passwordError)
             }
             TextField {
@@ -99,14 +101,25 @@ Item {
         property string status: ""
         property bool testing: false
         property bool advanced: false
+        /// "" (Nextcloud/CalDAV) or "google", as chosen in the dialog.
+        property string provider: ""
+        /// Google sign-in: the address opened in the browser (to open again).
+        property string signInUrl: ""
+        property bool signingIn: false
+        readonly property bool google: provider === "google"
 
         function refresh() {
             try { calendars = JSON.parse(sync.model.calendars()) } catch (e) { calendars = [] }
         }
         onAboutToShow: {
             const a = sync.accountInfo()
-            serverField.text = a.server || ""
-            userField.text = a.user || ""
+            provider = a.provider || ""
+            clientIdField.text = a.googleClientId || ""
+            clientSecretField.text = a.googleClientSecret || ""
+            signInUrl = ""
+            signingIn = false
+            serverField.text = a.provider === "google" ? "" : (a.server || "")
+            userField.text = a.provider === "google" ? "" : (a.user || "")
             davField.text = a.davUrl || ""
             commandField.text = a.passwordCommand || ""
             rememberBox.checked = a.rememberPassword !== undefined && sync.model.connected ? a.rememberPassword : true
@@ -120,6 +133,15 @@ Item {
         Connections {
             target: sync.model
             function onRevisionChanged() { if (settings.visible) settings.refresh() }
+            function onGoogleSignInUrl(url) {
+                settings.signInUrl = url
+                Qt.openUrlExternally(url)
+            }
+            function onGoogleSignedIn(ok, text) {
+                settings.signingIn = false
+                settings.signInUrl = ""
+                if (!ok) settings.problem = text
+            }
             function onConnectionTested(ok, text, list) {
                 settings.testing = false
                 settings.status = ok ? text : ""
@@ -136,8 +158,91 @@ Item {
                 width: settingsScroll.availableWidth
                 spacing: 8
 
-                Label { text: qsTr("NEXTCLOUD-VERBINDUNG"); font.bold: true; color: Theme.text; font.pixelSize: Theme.smallFontSize }
+                Label { text: qsTr("KONTO"); font.bold: true; color: Theme.text; font.pixelSize: Theme.smallFontSize }
+                // Nextcloud (or another CalDAV server) or Google – one account.
+                Row {
+                    spacing: 6
+                    Repeater {
+                        model: [{ id: "", text: qsTr("Nextcloud / CalDAV") }, { id: "google", text: qsTr("Google") }]
+                        Button {
+                            required property var modelData
+                            text: modelData.text
+                            checkable: true
+                            checked: settings.provider === modelData.id
+                            highlighted: checked
+                            onClicked: { settings.provider = modelData.id; settings.found = []; settings.problem = ""; settings.status = "" }
+                        }
+                    }
+                }
+
+                // ---- Google
                 Label {
+                    visible: settings.google
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                    text: qsTr("Google verlangt eine eigene Anmeldung (OAuth). Lege dafür einmal in der Google Cloud Console ein OAuth-Client vom Typ „Desktop-App“ an und trage Client-ID und Client-Secret hier ein – die Anleitung führt Schritt für Schritt durch. Atlas merkt sich danach nur ein Zugriffs-Token, verschlüsselt auf diesem Rechner. Google-Kalender kennen keine Aufgaben: Aufgaben bleiben im Projektkalender.")
+                }
+                Button {
+                    visible: settings.google
+                    flat: true
+                    text: qsTr("Anleitung: Google-Zugang einrichten ↗")
+                    onClicked: Qt.openUrlExternally("https://github.com/MlNUX/atlas/blob/main/docs/google-kalender.md")
+                }
+                GridLayout {
+                    visible: settings.google
+                    Layout.fillWidth: true
+                    columns: 2
+                    Label { text: qsTr("Client-ID"); color: Theme.textMuted }
+                    TextField { id: clientIdField; Layout.fillWidth: true; placeholderText: "…apps.googleusercontent.com" }
+                    Label { text: qsTr("Client-Secret"); color: Theme.textMuted }
+                    TextField { id: clientSecretField; Layout.fillWidth: true; echoMode: TextInput.Password; placeholderText: "GOCSPX-…" }
+                }
+                RowLayout {
+                    visible: settings.google
+                    Button {
+                        text: settings.signingIn ? qsTr("Warte auf den Browser …") : sync.model.google && sync.model.connected ? qsTr("Neu anmelden") : qsTr("Mit Google anmelden")
+                        highlighted: !(sync.model.google && sync.model.connected)
+                        enabled: !settings.signingIn && clientIdField.text.trim() && clientSecretField.text.trim()
+                        onClicked: {
+                            settings.signingIn = true
+                            settings.problem = ""
+                            settings.status = ""
+                            sync.model.googleSignIn(clientIdField.text, clientSecretField.text)
+                        }
+                    }
+                    Button {
+                        visible: settings.signingIn && settings.signInUrl !== ""
+                        flat: true
+                        text: qsTr("Browser erneut öffnen")
+                        onClicked: Qt.openUrlExternally(settings.signInUrl)
+                    }
+                    Button {
+                        text: qsTr("Speichern")
+                        highlighted: settings.found.length > 0
+                        visible: settings.found.length > 0 && sync.model.google
+                        onClicked: {
+                            const known = settings.calendars.filter(c => c.remote)
+                            const list = settings.found.map(c => ({ url: c.url, name: c.name, visible: (known.find(k => k.id === c.url) || { visible: true }).visible }))
+                            sync.model.saveAccount("", sync.accountInfo().user, "", "", JSON.stringify(list), "")
+                            settings.found = []
+                            settings.status = qsTr("Gespeichert")
+                            settings.refresh()
+                        }
+                    }
+                    Item { Layout.fillWidth: true }
+                    Label {
+                        visible: sync.model.google && sync.model.connected
+                        text: qsTr("Angemeldet als %1").arg(sync.model.revision >= 0 && sync.model.connected ? sync.accountInfo().user || "" : "")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                }
+
+                // ---- Nextcloud / CalDAV
+                Label {
+                    visible: !settings.google
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
                     color: Theme.textMuted
@@ -145,6 +250,7 @@ Item {
                     text: qsTr("Atlas nutzt CalDAV, keine Nextcloud-App nötig. Lege in Nextcloud unter Einstellungen → Sicherheit ein App-Passwort an. Atlas merkt es sich auf Wunsch verschlüsselt auf diesem Rechner; alternativ holt ein Passwort-Befehl es z. B. aus pass oder rbw.")
                 }
                 GridLayout {
+                    visible: !settings.google
                     Layout.fillWidth: true
                     columns: 2
                     Label { text: qsTr("Server"); color: Theme.textMuted }
@@ -194,6 +300,7 @@ Item {
                     }
                 }
                 RowLayout {
+                    visible: !settings.google
                     Button {
                         text: settings.testing ? qsTr("Prüfe …") : qsTr("Verbindung testen")
                         enabled: !settings.testing && userField.text && (serverField.text || davField.text) && (appPassword.text || sync.model.unlocked || commandField.text.trim())
@@ -205,7 +312,7 @@ Item {
                         }
                     }
                     Button {
-                        text: sync.model.connected ? qsTr("Speichern") : qsTr("Verbinden")
+                        text: sync.model.connected && !sync.model.google ? qsTr("Speichern") : qsTr("Verbinden")
                         highlighted: settings.found.length > 0
                         enabled: settings.found.length > 0 || (sync.model.connected && appPassword.text === "")
                             || (sync.model.connected && commandField.text.trim() !== (sync.accountInfo().passwordCommand || ""))
@@ -215,6 +322,8 @@ Item {
                             const list = settings.found.length
                                 ? settings.found.map(c => ({ url: c.url, name: c.name, visible: (known.find(k => k.id === c.url) || { visible: true }).visible }))
                                 : known.map(c => ({ url: c.id, name: c.name, visible: c.visible }))
+                            // From Google back to Nextcloud: the Google sign-in goes.
+                            sync.model.setProvider("")
                             sync.model.rememberPassword(rememberBox.checked)
                             sync.model.saveAccount(serverField.text, userField.text, appPassword.text, davField.text, JSON.stringify(list), commandField.text)
                             appPassword.text = ""
@@ -227,7 +336,7 @@ Item {
                     CheckBox { text: qsTr("Erweitert"); checked: settings.advanced; onToggled: settings.advanced = checked }
                 }
                 Label { visible: settings.status !== ""; text: "✓ " + settings.status; color: Theme.ok; Layout.fillWidth: true; wrapMode: Text.Wrap }
-                Label { visible: settings.problem !== ""; text: "⚠ " + settings.problem; color: Theme.error; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                Label { visible: settings.problem !== ""; textFormat: Text.PlainText; text: "⚠ " + settings.problem; color: Theme.error; Layout.fillWidth: true; wrapMode: Text.Wrap }
                 Repeater {
                     model: settings.found
                     Label {
@@ -305,6 +414,8 @@ Item {
                     visible: sync.model.connected
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
+                    // Server messages are plain text (error pages are HTML).
+                    textFormat: Text.PlainText
                     text: sync.model.syncStatus + (sync.model.pending ? qsTr(" · %n Änderung(en) warten", "", sync.model.pending) : "")
                         + (sync.model.conflictCount ? qsTr(" · %n Konflikt(e)", "", sync.model.conflictCount) : "")
                     color: sync.model.syncFailed ? Theme.warn : Theme.textMuted
@@ -314,15 +425,16 @@ Item {
                     Layout.fillWidth: true
                     spacing: 6
                     Button { text: qsTr("Jetzt synchronisieren"); enabled: sync.model.unlocked && !sync.model.syncing; onClicked: sync.model.syncNow() }
-                    Button { text: qsTr("App-Passwort neu eingeben …"); onClicked: passwordDialog.open() }
+                    Button { visible: !sync.model.google; text: qsTr("App-Passwort neu eingeben …"); onClicked: passwordDialog.open() }
                     Button { text: qsTr("Konflikte lösen …"); visible: sync.model.conflictCount > 0; onClicked: conflictDialog.open() }
                     Button { text: qsTr("„Atlas – Projektarbeit“ anlegen …"); enabled: sync.model.unlocked; onClicked: createDialog.open() }
                     Button { text: qsTr("Lokalen Cache leeren"); onClicked: confirm.ask(qsTr("Cache leeren?"),
-                        qsTr("Die zwischengespeicherten Nextcloud-Termine dieses Projekts werden entfernt und neu geladen.") + (sync.model.pending
+                        qsTr("Die zwischengespeicherten Termine vom Server werden für dieses Projekt entfernt und neu geladen.") + (sync.model.pending
                             ? qsTr(" %n noch nicht übertragene Änderung(en) gehen verloren.", "", sync.model.pending) : ""),
                         qsTr("Leeren"), () => sync.model.clearCache()) }
                     Button { text: qsTr("Konto trennen"); onClicked: confirm.ask(qsTr("Konto trennen?"),
-                        qsTr("Atlas vergisst Verbindung, App-Passwort und Cache. Auf dem Nextcloud-Server wird nichts gelöscht."),
+                        sync.model.google ? qsTr("Atlas vergisst Google-Anmeldung und Cache. In Google wird nichts gelöscht; den Zugriff kannst du zusätzlich unter myaccount.google.com → Sicherheit entziehen.")
+                                          : qsTr("Atlas vergisst Verbindung, App-Passwort und Cache. Auf dem Nextcloud-Server wird nichts gelöscht."),
                         qsTr("Trennen"), () => { sync.model.disconnectAccount(); settings.refresh() }) }
                 }
             }

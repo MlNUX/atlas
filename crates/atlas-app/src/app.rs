@@ -16,6 +16,7 @@ use atlas_core::project::Project;
 use atlas_core::project::index::{FileIndex, Previous, Report};
 use atlas_core::project::metadata::Metadata;
 use atlas_core::project::writer::SessionWriter;
+use atlas_core::relations::Relations;
 use atlas_core::session::{AppState, ProjectSession};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
@@ -56,6 +57,8 @@ pub mod qobject {
         #[qproperty(i32, fixed_place_count, cxx_name = "fixedPlaceCount", READ, NOTIFY = places_changed)]
         /// Setting `[places] file_manager` (saved when changed).
         #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
+        /// PDFs in dark mode (inverted brightness); `[pdf] dark` in config.toml.
+        #[qproperty(bool, pdf_dark, cxx_name = "pdfDark", READ, WRITE = set_pdf_dark, NOTIFY)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
@@ -92,6 +95,7 @@ pub mod qobject {
 
         #[cxx_name = "setFileManagerPlaces"]
         fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
+        fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
 
         /// Reads the places again (also done when the file managers' files
         /// change).
@@ -197,6 +201,22 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "sessionSummaries"]
         fn session_summaries(self: &AppController) -> QString;
+        /// The sessions of all opened project folders (one each, this
+        /// project first), each with `root`.
+        #[qinvokable]
+        #[cxx_name = "allSessions"]
+        fn all_sessions(self: &AppController) -> QString;
+
+        /// Names the session of the project in `root` (one session per
+        /// project folder).
+        #[qinvokable]
+        #[cxx_name = "renameProjectSession"]
+        fn rename_project_session(self: Pin<&mut AppController>, root: &QString, name: &QString) -> bool;
+        /// Removes the session of another project from the list (its tabs
+        /// and layout; the folder stays).
+        #[qinvokable]
+        #[cxx_name = "forgetProject"]
+        fn forget_project(self: Pin<&mut AppController>, root: &QString) -> bool;
 
         #[qinvokable]
         #[cxx_name = "renameSession"]
@@ -326,9 +346,38 @@ pub mod qobject {
         #[cxx_name = "noteDeadlines"]
         fn note_deadlines(self: &AppController) -> QString;
 
-        /// Local context graph around `path` (`depth` 1 or 2): JSON
+        /// Context graph around `path` (`depth` 1 or 2), or of the whole
+        /// project with `path` first (`depth` 0; unlinked parts have depth
+        /// 255): JSON
         /// {nodes: [{path, relative, label, kind, depth, missing}],
         /// edges: [{from, to, count, quotes}], truncated}.
+        /// Files related to `path` by hand: JSON list of {path, relative,
+        /// kind, missing}.
+        #[qinvokable]
+        #[cxx_name = "relatedFiles"]
+        fn related_files(self: &AppController, path: &QString) -> QString;
+        /// Relates two files ("Verknüpfen mit …"); false if they already
+        /// were (a message tells) or on errors.
+        #[qinvokable]
+        #[cxx_name = "relateFiles"]
+        fn relate_files(self: Pin<&mut AppController>, a: &QString, b: &QString) -> bool;
+        #[qinvokable]
+        #[cxx_name = "unrelateFiles"]
+        fn unrelate_files(self: Pin<&mut AppController>, a: &QString, b: &QString) -> bool;
+        /// `path` is a folder node (its files are linked with it).
+        #[qinvokable]
+        #[cxx_name = "isFolderNode"]
+        fn is_folder_node(self: &AppController, path: &QString) -> bool;
+        /// Makes a folder a folder node ("Als Ordner-Knoten verknüpfen") or
+        /// dissolves it.
+        #[qinvokable]
+        #[cxx_name = "setFolderNode"]
+        fn set_folder_node(self: Pin<&mut AppController>, path: &QString, on: bool) -> bool;
+        /// Files moved to the trash in Atlas: their relations go.
+        #[qinvokable]
+        #[cxx_name = "filesTrashed"]
+        fn files_trashed(self: Pin<&mut AppController>, paths: &QStringList);
+
         #[qinvokable]
         #[cxx_name = "contextGraph"]
         fn context_graph(self: &AppController, path: &QString, depth: i32) -> QString;
@@ -374,6 +423,15 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "notesMessage"]
         fn notes_message(self: Pin<&mut AppController>, message: QString);
+
+        /// "Verknüpfen mit …" for `path`, from anywhere (Main shows the
+        /// dialog).
+        #[qsignal]
+        #[cxx_name = "relateRequested"]
+        fn relate_requested(self: Pin<&mut AppController>, path: QString);
+        #[qinvokable]
+        #[cxx_name = "requestRelate"]
+        fn request_relate(self: Pin<&mut AppController>, path: &QString);
 
         /// PDF annotations of the project matching `query` (fuzzy over text,
         /// comment, bookmark title and file name; all if empty). JSON list
@@ -434,10 +492,11 @@ pub mod qobject {
         #[cxx_name = "setExtensionEnabled"]
         fn set_extension_enabled(self: Pin<&mut AppController>, name: &QString, enabled: bool) -> QString;
 
-        /// Creates a new user extension from the template; manifest path.
+        /// Creates a new user extension called `title` from the template;
+        /// manifest path ("" on errors).
         #[qinvokable]
         #[cxx_name = "newExtension"]
-        fn new_extension(self: &AppController) -> QString;
+        fn new_extension(self: &AppController, title: &QString) -> QString;
 
         /// Re-reads the extensions (updates `untrustedExtensions`).
         #[qinvokable]
@@ -530,6 +589,7 @@ pub struct AppControllerRust {
     image_formats: QStringList,
     fixed_place_count: i32,
     file_manager_places: bool,
+    pdf_dark: bool,
     /// Watches the file managers' places files.
     places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
@@ -595,6 +655,7 @@ impl Default for AppControllerRust {
             image_formats: crate::qt_helpers::image_formats(),
             fixed_place_count: 0,
             file_manager_places: Config::load().places.file_manager,
+            pdf_dark: Config::load().pdf.dark,
             places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
@@ -700,6 +761,19 @@ impl qobject::AppController {
         self.refresh_places();
     }
 
+    pub fn set_pdf_dark(mut self: Pin<&mut Self>, on: bool) {
+        if self.pdf_dark == on {
+            return;
+        }
+        let mut config = Config::load().pdf;
+        config.dark = on;
+        if let Err(err) = Config::save_pdf(&config) {
+            log::warn!("cannot save [pdf]: {err:#}");
+        }
+        self.as_mut().rust_mut().pdf_dark = on;
+        self.as_mut().pdf_dark_changed();
+    }
+
     /// Dolphin or a GTK file manager changed its places: read them again.
     fn watch_places(mut self: Pin<&mut Self>) {
         let sources = atlas_core::places::sources();
@@ -727,6 +801,22 @@ impl qobject::AppController {
 
 fn path_of(s: &QString) -> PathBuf {
     PathBuf::from(s.to_string())
+}
+
+/// The session of `project` (one per project folder) for the session
+/// list.
+fn session_entry(project: &Project) -> serde_json::Value {
+    let id = project.active_session();
+    let summary = project.load_named(&id).summary();
+    let saved = std::fs::metadata(project.session_path(&id))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+    serde_json::json!({
+        "id": id, "name": project.session_name(), "tabs": summary.tabs, "splits": summary.splits,
+        "kind": summary.kind, "saved": saved, "root": project.root().to_string_lossy(),
+    })
 }
 
 fn describe(report: &Report) -> String {
@@ -838,7 +928,7 @@ impl qobject::AppController {
 
         if self.persist_session {
             let mut app = AppState::load();
-            app.last_project = Some(root);
+            app.remember(&root);
             if let Err(err) = app.save() {
                 log::warn!("cannot save app state: {err:#}");
             }
@@ -945,10 +1035,8 @@ impl qobject::AppController {
         let (mut active, mut active_name) = (String::new(), String::new());
         if let Some(project) = self.project.clone() {
             active = project.active_session();
+            active_name = project.session_name();
             for s in project.list_sessions() {
-                if s.id == active {
-                    active_name = s.name.clone();
-                }
                 ids.append(qs(&s.id));
                 names.append(qs(&s.name));
             }
@@ -1051,24 +1139,68 @@ impl qobject::AppController {
     }
 
     pub fn session_summaries(&self) -> QString {
-        let Some(project) = self.project.as_ref() else { return qs("[]") };
-        let list: Vec<serde_json::Value> = project
-            .list_sessions()
-            .into_iter()
-            .map(|s| {
-                let summary = project.load_named(&s.id).summary();
-                let saved = std::fs::metadata(project.session_path(&s.id))
-                    .and_then(|m| m.modified())
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs());
-                serde_json::json!({
-                    "id": s.id, "name": s.name, "tabs": summary.tabs, "splits": summary.splits,
-                    "kind": summary.kind, "saved": saved,
-                })
-            })
-            .collect();
+        let list: Vec<_> = self.project.as_deref().map(session_entry).into_iter().collect();
         qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn all_sessions(&self) -> QString {
+        let mut list: Vec<_> = self.project.as_deref().map(session_entry).into_iter().collect();
+        if self.persist_session {
+            for root in AppState::load().projects {
+                if Some(&root) == self.root.as_ref() || !root.is_dir() {
+                    continue;
+                }
+                if let Some(project) = Project::open_existing(&root) {
+                    list.push(session_entry(&project));
+                }
+            }
+        }
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn rename_project_session(mut self: Pin<&mut Self>, root: &QString, name: &QString) -> bool {
+        let root = path_of(root);
+        let result = if Some(&root) == self.root.as_ref() {
+            let Some(project) = self.project.clone() else { return false };
+            self.flush_session();
+            project.rename(&name.to_string())
+        } else {
+            match Project::open_existing(&root) {
+                Some(project) => project.rename(&name.to_string()),
+                None => Err(anyhow::anyhow!("{} hat keine Session.", root.display())),
+            }
+        };
+        match result {
+            Ok(()) => {
+                self.refresh_sessions();
+                true
+            }
+            Err(err) => {
+                self.as_mut().session_failed(err);
+                false
+            }
+        }
+    }
+
+    pub fn forget_project(mut self: Pin<&mut Self>, root: &QString) -> bool {
+        let root = path_of(root);
+        if Some(&root) == self.root.as_ref() {
+            return false;
+        }
+        if let Some(project) = Project::open_existing(&root)
+            && let Err(err) = project.clear_sessions()
+        {
+            self.as_mut().session_failed(err);
+            return false;
+        }
+        let mut state = AppState::load();
+        state.forget(&root);
+        if let Err(err) = state.save() {
+            self.as_mut().session_failed(err);
+            return false;
+        }
+        self.sessions_changed();
+        true
     }
 
     pub fn rename_session(mut self: Pin<&mut Self>, id: &QString, name: &QString) -> bool {
@@ -1268,7 +1400,13 @@ impl qobject::AppController {
             let files = Arc::new(finder::list(&root));
             let _ = thread.queue(move |mut app| {
                 if app.generation == generation {
+                    // The graph shows all files (and folder nodes their
+                    // current members): redraw on changes.
+                    let changed = app.files.as_deref() != Some(&*files);
                     app.as_mut().rust_mut().files = Some(files);
+                    if changed {
+                        app.as_mut().bump_notes();
+                    }
                 }
             });
         });
@@ -1465,11 +1603,166 @@ impl qobject::AppController {
         qs(serde_json::Value::from(list).to_string())
     }
 
+    /// Files related by hand in this project (none without `.atlas/`).
+    fn relations(&self) -> Option<Relations> {
+        self.project.as_ref().map(|p| Relations::new(&p.atlas_dir()))
+    }
+
+    /// The relations as pairs of absolute paths, folder nodes included:
+    /// each folder node with the files directly in it (not hidden ones) and
+    /// with the closest folder node above it.
+    fn relation_pairs(&self) -> Vec<(PathBuf, PathBuf)> {
+        let (Some(root), Some(relations)) = (self.root.as_ref(), self.relations()) else { return Vec::new() };
+        let mut pairs: Vec<_> = relations.list().into_iter().map(|r| (root.join(r.a), root.join(r.b))).collect();
+        let folders = relations.folders();
+        for folder in &folders {
+            if let Some(above) = folder.ancestors().skip(1).find(|a| folders.iter().any(|f| f == a)) {
+                pairs.push((root.join(above), root.join(folder)));
+            }
+        }
+        if let Some(files) = self.files.as_ref() {
+            for entry in files.iter().filter(|e| !e.is_dir && !e.relative.split('/').any(|p| p.starts_with('.'))) {
+                let parent = Path::new(&entry.relative).parent().unwrap_or(Path::new(""));
+                if folders.iter().any(|f| f == parent) {
+                    pairs.push((root.join(parent), finder::absolute(root, entry)));
+                }
+            }
+        }
+        pairs
+    }
+
+    pub fn is_folder_node(&self, path: &QString) -> bool {
+        let Some(relations) = self.relations() else { return false };
+        let folder = self.relative(&path_of(path));
+        relations.folders().contains(&folder)
+    }
+
+    pub fn set_folder_node(mut self: Pin<&mut Self>, path: &QString, on: bool) -> bool {
+        let Some(relations) = self.relations() else { return false };
+        let folder = self.relative(&path_of(path));
+        match relations.set_folder(&folder, on) {
+            Ok(changed) => {
+                let name = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let message = if on {
+                    let members = self.relation_pairs().iter().filter(|(a, _)| *a == path_of(path)).count();
+                    format!("Ordner-Knoten „{name}“: {members} Einträge verknüpft")
+                } else {
+                    format!("Ordner-Knoten „{name}“ aufgelöst")
+                };
+                self.as_mut().bump_notes();
+                self.notes_message(qs(message));
+                changed
+            }
+            Err(err) => {
+                self.notes_message(qs(format!("{err:#}")));
+                false
+            }
+        }
+    }
+
+    pub fn request_relate(self: Pin<&mut Self>, path: &QString) {
+        self.relate_requested(path.clone());
+    }
+
+    pub fn related_files(&self, path: &QString) -> QString {
+        let (Some(root), Some(relations)) = (self.root.as_ref(), self.relations()) else { return qs("[]") };
+        let relative = self.relative(&path_of(path));
+        let mut others = relations.of(&relative);
+        // The folder node the file belongs to.
+        if let Some(parent) = relative.parent()
+            && relations.folders().iter().any(|f| f == parent)
+        {
+            others.insert(0, parent.to_path_buf());
+        }
+        let list: Vec<_> = others
+            .into_iter()
+            .map(|rel| {
+                let path = root.join(&rel);
+                serde_json::json!({
+                    "path": path.to_string_lossy(), "relative": rel.to_string_lossy(),
+                    "kind": file_kind(&path), "missing": path.symlink_metadata().is_err(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn relate_files(mut self: Pin<&mut Self>, a: &QString, b: &QString) -> bool {
+        let Some(relations) = self.relations() else { return false };
+        let (a, b) = (self.relative(&path_of(a)), self.relative(&path_of(b)));
+        match relations.add(&a, &b) {
+            Ok(added) => {
+                let text = if added { "Verknüpft: {a} ↔ {b}" } else { "{a} und {b} sind schon verknüpft" };
+                let text = text.replace("{a}", &a.to_string_lossy()).replace("{b}", &b.to_string_lossy());
+                self.as_mut().bump_notes();
+                self.notes_message(qs(text));
+                added
+            }
+            Err(err) => {
+                self.notes_message(qs(format!("{err:#}")));
+                false
+            }
+        }
+    }
+
+    pub fn unrelate_files(mut self: Pin<&mut Self>, a: &QString, b: &QString) -> bool {
+        let Some(relations) = self.relations() else { return false };
+        let (a, b) = (self.relative(&path_of(a)), self.relative(&path_of(b)));
+        match relations.remove(&a, &b) {
+            Ok(removed) => {
+                self.as_mut().bump_notes();
+                removed
+            }
+            Err(err) => {
+                self.notes_message(qs(format!("{err:#}")));
+                false
+            }
+        }
+    }
+
+    pub fn files_trashed(mut self: Pin<&mut Self>, paths: &QStringList) {
+        let Some(relations) = self.relations() else { return };
+        let mut count = 0;
+        for path in paths.iter() {
+            match relations.removed(&self.relative(&path_of(path))) {
+                Ok(n) => count += n,
+                Err(err) => log::warn!("cannot update relations: {err:#}"),
+            }
+        }
+        if count > 0 {
+            self.as_mut().bump_notes();
+        }
+    }
+
+    /// The files of the project for the graph (without hidden ones and
+    /// folders): PDFs, then other documents and images, then the rest.
+    fn graph_files(&self) -> Vec<PathBuf> {
+        let (Some(root), Some(files)) = (self.root.as_ref(), self.files.as_ref()) else { return Vec::new() };
+        let rank = |relative: &str| {
+            let ext = relative.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+            match ext.as_str() {
+                "pdf" => 0,
+                "md" | "txt" | "rst" | "html" | "htm" | "docx" | "odt" | "doc" | "rtf" | "tex" | "epub" => 1,
+                "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "csv" | "xlsx" | "ods" | "pptx" | "odp" => 2,
+                _ => 3,
+            }
+        };
+        let mut list: Vec<&finder::Entry> =
+            files.iter().filter(|e| !e.is_dir && !e.relative.split('/').any(|part| part.starts_with('.'))).collect();
+        list.sort_by_key(|e| rank(&e.relative));
+        list.into_iter().map(|e| finder::absolute(root, e)).collect()
+    }
+
     pub fn context_graph(&self, path: &QString, depth: i32) -> QString {
         const LIMIT: usize = 60;
+        const PROJECT_LIMIT: usize = 500;
         let center = path_of(path);
         let Some(json) = self.with_notes(|n| {
-            let graph = n.graph(&center, depth.clamp(1, 2) as u8, LIMIT);
+            let graph = if depth <= 0 {
+                n.project_graph(&center, &self.graph_files(), &self.relation_pairs(), PROJECT_LIMIT)
+            } else {
+                n.graph(&center, depth.min(2) as u8, LIMIT)
+            };
             let nodes: Vec<_> = graph
                 .nodes
                 .iter()
@@ -1490,7 +1783,9 @@ impl qobject::AppController {
             let edges: Vec<_> = graph
                 .edges
                 .iter()
-                .map(|e| serde_json::json!({ "from": e.from, "to": e.to, "count": e.count, "quotes": e.quotes }))
+                .map(|e| {
+                    serde_json::json!({ "from": e.from, "to": e.to, "count": e.count, "quotes": e.quotes, "related": e.related })
+                })
                 .collect();
             serde_json::json!({ "nodes": nodes, "edges": edges, "truncated": graph.truncated })
         }) else {
@@ -1531,6 +1826,12 @@ impl qobject::AppController {
             if let Err(err) = store.moved(&old.to_string_lossy(), &new.to_string_lossy()) {
                 log::warn!("cannot update annotation paths: {err:#}");
             }
+        }
+        // So do files related by hand.
+        if let Some(relations) = self.relations()
+            && let Err(err) = relations.moved(&self.relative(&moves[0].0), &self.relative(&moves[0].1))
+        {
+            log::warn!("cannot update relations: {err:#}");
         }
         let Some(done) = self.with_notes(|n| {
             let plan = n.plan_relink(&moves);
@@ -1759,17 +2060,16 @@ impl qobject::AppController {
         result
     }
 
-    pub fn new_extension(&self) -> QString {
+    pub fn new_extension(&self, title: &QString) -> QString {
         let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
-        let mut dir = root.join("beispiel");
-        let mut n = 2;
-        while dir.exists() {
-            dir = root.join(format!("beispiel-{n}"));
+        let (base, text) = atlas_core::extensions::starter(&title.to_string());
+        let (mut name, mut n) = (base.clone(), 2);
+        while root.join(&name).exists() {
+            name = format!("{base}-{n}");
             n += 1;
         }
-        let name = dir.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-        let manifest = dir.join(atlas_core::extensions::MANIFEST);
-        let text = atlas_core::extensions::TEMPLATE.replace("name: beispiel", &format!("name: {name}"));
+        let manifest = root.join(&name).join(atlas_core::extensions::MANIFEST);
+        let text = text.replace(&format!("name: {base}\n"), &format!("name: {name}\n"));
         match atlas_core::paths::write_atomic(&manifest, text.as_bytes()) {
             Ok(()) => qs(manifest.to_string_lossy()),
             Err(err) => {
@@ -1876,12 +2176,17 @@ impl qobject::AppController {
     pub fn actions_for(&self, paths: &QStringList) -> QString {
         let (actions, _) = self.load_actions();
         let ctx = self.action_context(paths, 0);
-        let list: Vec<_> = atlas_core::actions::applicable(&actions, &ctx)
-            .into_iter()
+        let applicable = atlas_core::actions::applicable(&actions, &ctx);
+        // Two actions with the same name (e.g. from two extensions) say
+        // where they come from.
+        let twice = |name: &str| applicable.iter().filter(|a| a.name == name).count() > 1;
+        let list: Vec<_> = applicable
+            .iter()
             .map(|a| {
+                let name = if twice(&a.name) { format!("{} ({})", a.name, a.source.label()) } else { a.name.clone() };
                 serde_json::json!({
                     "id": a.id,
-                    "name": a.name,
+                    "name": name,
                     "description": a.description,
                     "source": a.source.label(),
                 })

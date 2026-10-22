@@ -21,7 +21,7 @@ Rectangle {
     property int line: 0
     /// Soft wrap (Markdown, prose); code is shown unwrapped with line numbers.
     property bool wrap: false
-    property bool showLineNumbers: !wrap
+    property bool showLineNumbers: true
     property bool autosave: true
     readonly property alias text: area.text
     readonly property bool modified: editGeneration !== savedGeneration
@@ -39,6 +39,12 @@ Rectangle {
 
     /// Shows file suggestions while the cursor is inside an unfinished
     /// `[[…` (no `|`, `#` or `]]` typed yet).
+    // The suggestions live here, not on the Popup: `var` properties of a
+    // Popup were lost when the JavaScript garbage collector ran.
+    property var completionResults: []
+    property int completionCurrent: 0
+    /// Start of the typed path (after `[[`).
+    property int completionStart: -1
     function updateCompletion() {
         const pos = area.cursorPosition
         const before = area.getText(Math.max(0, pos - 200), pos)
@@ -51,9 +57,9 @@ Rectangle {
         const results = JSON.parse(root.app.quickOpen(query.replace(/^\//, ""), 12))
             .filter(r => r.kind !== "dir" && root.app.exists(r.path)).slice(0, 8)
         if (!results.length) { completion.close(); return }
-        completion.results = results
-        completion.current = 0
-        completion.start = pos - query.length
+        root.completionResults = results
+        root.completionCurrent = 0
+        root.completionStart = pos - query.length
         completion.open()
     }
     property bool showSymbols: false
@@ -159,6 +165,83 @@ Rectangle {
         flashLine.opacity = 0.5
         flashAnim.restart()
     }
+    /// Indents (or with `outdent` moves back) the list items on the lines of
+    /// the cursor or selection by two spaces; false if the first of these
+    /// lines is no list item (Tab then works as usual).
+    function indentListItems(outdent) {
+        const item = /^\s*([-*+]|\d+[.)])(\s|$)/
+        const text = area.text
+        const start = Math.min(area.selectionStart, area.selectionEnd), end = Math.max(area.selectionStart, area.selectionEnd)
+        let lineStart = text.lastIndexOf("\n", start - 1) + 1
+        const firstLine = text.slice(lineStart, (text.indexOf("\n", lineStart) + 1 || text.length + 1) - 1)
+        if (!item.test(firstLine)) return false
+        const cursor = area.cursorPosition, anchor = cursor === area.selectionStart ? area.selectionEnd : area.selectionStart
+        let shiftCursor = 0, shiftAnchor = 0
+        // Back to front, so earlier positions stay valid.
+        const starts = []
+        for (let p = lineStart; p <= Math.max(start, end - (end > start ? 1 : 0)) && p <= text.length; ) {
+            starts.push(p)
+            const next = text.indexOf("\n", p)
+            if (next < 0) break
+            p = next + 1
+        }
+        for (let i = starts.length - 1; i >= 0; --i) {
+            const p = starts[i]
+            const line = text.slice(p, (text.indexOf("\n", p) + 1 || text.length + 1) - 1)
+            if (!item.test(line)) continue
+            let delta = 0
+            if (!outdent) {
+                area.insert(p, "  ")
+                delta = 2
+            } else {
+                const lead = line.startsWith("\t") ? 1 : line.startsWith("  ") ? 2 : line.startsWith(" ") ? 1 : 0
+                if (!lead) continue
+                area.remove(p, p + lead)
+                delta = -lead
+            }
+            if (cursor >= p) shiftCursor += delta
+            if (anchor >= p) shiftAnchor += delta
+        }
+        if (anchor === cursor) area.cursorPosition = Math.max(lineStart, cursor + shiftCursor)
+        else area.select(anchor + shiftAnchor, cursor + shiftCursor)
+        return true
+    }
+
+    /// Lines of the text (not wrapped rows), for the gutter width.
+    readonly property int logicalLines: wrap ? area.text.split("\n").length : 0
+    /// Numbers of the visible lines of wrapped text and where they start:
+    /// [{n, y}], updated after scrolling, typing and resizing.
+    property var wrappedNumbers: []
+    function updateWrappedNumbers() {
+        if (!wrap || !showLineNumbers) return
+        const text = area.text
+        const bottom = flick.contentY + flick.height
+        let n = Math.max(1, lineAtY(flick.contentY))
+        let pos = positionOfLine(n)
+        const out = []
+        for (;;) {
+            const y = area.positionToRectangle(pos).y
+            if (y > bottom) break
+            out.push({ n: n, y: y })
+            const next = text.indexOf("\n", pos)
+            if (next < 0) break
+            pos = next + 1
+            n++
+        }
+        wrappedNumbers = out
+    }
+    Timer { id: numbersTimer; interval: 0; onTriggered: root.updateWrappedNumbers() }
+    Connections {
+        target: flick
+        function onContentYChanged() { numbersTimer.restart() }
+        function onWidthChanged() { numbersTimer.restart() }
+        function onHeightChanged() { numbersTimer.restart() }
+    }
+    Connections {
+        target: area
+        function onTextChanged() { numbersTimer.restart() }
+        function onContentHeightChanged() { numbersTimer.restart() }
+    }
     function positionOfLine(n) {
         let pos = 0
         for (let i = 1; i < n; ++i) {
@@ -185,7 +268,20 @@ Rectangle {
     function currentLine() { return area.getText(0, area.cursorPosition).split("\n").length }
     /// Wiki link suggestions are shown (see `updateCompletion`).
     readonly property bool completing: completion.visible
-    function acceptCompletion() { completion.accept() }
+    /// Inserts the chosen suggestion.
+    function acceptCompletion() {
+        const r = root.completionResults[root.completionCurrent]
+        if (!r || root.completionStart < 0) { completion.close(); return }
+        const end = area.cursorPosition
+        const closing = area.text.slice(end, end + 2) === "]]" ? "" : "]]"
+        area.remove(root.completionStart, end)
+        area.insert(root.completionStart, "/" + r.relative + closing)
+        area.cursorPosition = root.completionStart + r.relative.length + 1 + 2
+        completion.close()
+    }
+    function moveCompletion(step) {
+        root.completionCurrent = (root.completionCurrent + step + root.completionResults.length) % root.completionResults.length
+    }
 
     function applyState(state) {
         if (state.cursor !== undefined) area.cursorPosition = Math.min(state.cursor, area.length)
@@ -291,16 +387,34 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // ---- line numbers (unwrapped text: fixed line height)
+            // ---- line numbers: unwrapped text has a fixed line height;
+            // wrapped text (Markdown) numbers each line where it starts.
             Rectangle {
                 id: gutter
                 visible: root.showLineNumbers
-                width: visible ? Math.max(3, String(area.lineCount).length) * 8 + 20 : 0
+                width: visible ? Math.max(3, String(root.wrap ? root.logicalLines : area.lineCount).length) * 8 + 20 : 0
                 height: parent.height
                 color: Theme.editor
                 clip: true
                 Repeater {
-                    model: gutter.visible ? Math.ceil(flick.height / root.lineHeight) + 1 : 0
+                    model: gutter.visible && root.wrap ? root.wrappedNumbers : []
+                    Text {
+                        required property var modelData
+                        x: 0
+                        width: gutter.width - 10
+                        // (positionToRectangle includes the top padding.)
+                        y: modelData.y - flick.contentY
+                        height: root.lineHeight
+                        horizontalAlignment: Text.AlignRight
+                        verticalAlignment: Text.AlignVCenter
+                        text: modelData.n
+                        color: area.cursorLine === modelData.n ? Theme.text : Theme.textFaint
+                        font.family: Theme.monoFont
+                        font.pixelSize: 12
+                    }
+                }
+                Repeater {
+                    model: gutter.visible && !root.wrap ? Math.ceil(flick.height / root.lineHeight) + 1 : 0
                     Text {
                         required property int index
                         readonly property int number: Math.floor(flick.contentY / root.lineHeight) + index + 1
@@ -357,7 +471,9 @@ Rectangle {
 
                 TextEdit {
                     id: area
-                    readonly property int cursorLine: root.wrap ? 0 : Math.floor(cursorRectangle.y / root.lineHeight) + 1
+                    // (Wrapped text: count the line breaks before the cursor.)
+                    readonly property int cursorLine: root.wrap ? text.slice(0, cursorPosition).split("\n").length
+                                                                : Math.floor(cursorRectangle.y / root.lineHeight) + 1
                     width: root.wrap ? flick.width : Math.max(flick.width, implicitWidth)
                     padding: 8
                     leftPadding: root.wrap ? 24 : 6
@@ -390,12 +506,18 @@ Rectangle {
                     Keys.onPressed: (event) => {
                         const ctrl = event.modifiers & Qt.ControlModifier
                         if (completion.visible) {
-                            if (event.key === Qt.Key_Down) { completion.move(1); event.accepted = true; return }
-                            if (event.key === Qt.Key_Up) { completion.move(-1); event.accepted = true; return }
+                            if (event.key === Qt.Key_Down) { root.moveCompletion(1); event.accepted = true; return }
+                            if (event.key === Qt.Key_Up) { root.moveCompletion(-1); event.accepted = true; return }
                             if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Tab) {
-                                completion.accept(); event.accepted = true; return
+                                root.acceptCompletion(); event.accepted = true; return
                             }
                             if (event.key === Qt.Key_Escape) { completion.close(); event.accepted = true; return }
+                        }
+                        // Markdown lists: Tab indents the item, Shift+Tab outdents it.
+                        if (root.wrap && !ctrl && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
+                                && root.indentListItems(event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier))) {
+                            event.accepted = true
+                            return
                         }
                         if (ctrl && event.key === Qt.Key_S) { root.save(); event.accepted = true }
                         else if (ctrl && event.key === Qt.Key_F) { root.openFind(); event.accepted = true }
@@ -407,33 +529,18 @@ Rectangle {
                     // Completion of wiki links: `[[` suggests project files.
                     Popup {
                         id: completion
-                        property var results: []
-                        property int current: 0
-                        /// Start of the typed path (after `[[`).
-                        property int start: -1
                         x: area.cursorRectangle.x
                         y: area.cursorRectangle.y + area.cursorRectangle.height + 2
                         width: 420
-                        height: Math.min(8, results.length) * 26 + 8
+                        height: Math.min(8, root.completionResults.length) * 26 + 8
                         padding: 4
                         focus: false
                         closePolicy: Popup.CloseOnPressOutside
                         background: Rectangle { color: Theme.header; border.color: Theme.border; radius: 4 }
-                        function move(step) { current = (current + step + results.length) % results.length }
-                        function accept() {
-                            const r = results[current]
-                            if (!r || start < 0) { close(); return }
-                            const end = area.cursorPosition
-                            const closing = area.text.slice(end, end + 2) === "]]" ? "" : "]]"
-                            area.remove(start, end)
-                            area.insert(start, "/" + r.relative + closing)
-                            area.cursorPosition = start + r.relative.length + 1 + 2
-                            close()
-                        }
                         ListView {
                             anchors.fill: parent
-                            model: completion.results
-                            currentIndex: completion.current
+                            model: root.completionResults
+                            currentIndex: root.completionCurrent
                             clip: true
                             delegate: Rectangle {
                                 required property var modelData
@@ -441,7 +548,7 @@ Rectangle {
                                 width: ListView.view.width
                                 height: 26
                                 radius: 3
-                                color: index === completion.current ? Theme.activeSelection : "transparent"
+                                color: index === root.completionCurrent ? Theme.activeSelection : "transparent"
                                 Row {
                                     anchors.verticalCenter: parent.verticalCenter
                                     x: 6
@@ -457,7 +564,7 @@ Rectangle {
                                 }
                                 MouseArea {
                                     anchors.fill: parent
-                                    onClicked: { completion.current = parent.index; completion.accept() }
+                                    onClicked: { root.completionCurrent = parent.index; root.acceptCompletion() }
                                 }
                             }
                         }

@@ -24,6 +24,7 @@ pub mod pdf;
 pub mod perms;
 pub mod places;
 pub mod project;
+pub mod relations;
 pub mod search;
 pub mod secret;
 pub mod session;

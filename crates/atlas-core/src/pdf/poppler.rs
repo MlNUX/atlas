@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use glib::translate::ToGlibPtr;
 use poppler_sys as ffi;
 
-use super::{Backend, OutlineItem, SearchHit, scaled_height};
+use super::{Backend, LinkTarget, OutlineItem, PageLink, SearchHit, scaled_height};
 
 #[derive(Default)]
 pub struct PopplerBackend {
@@ -73,6 +73,10 @@ impl Backend for PopplerBackend {
         self.search_in(path, query, limit)
     }
 
+    fn links(&mut self, path: &Path) -> Result<Vec<PageLink>> {
+        self.links_of(path)
+    }
+
     fn select(
         &mut self,
         path: &Path,
@@ -129,6 +133,53 @@ impl PopplerBackend {
     }
 }
 
+impl PopplerBackend {
+    pub(super) fn links_of(&mut self, path: &Path) -> Result<Vec<PageLink>> {
+        let doc = self.doc(path)?;
+        let doc_ptr: *mut ffi::PopplerDocument = doc.to_glib_none().0;
+        let heights: Vec<f64> = (0..doc.n_pages()).map(|i| doc.page(i).map_or(842.0, |p| p.size().1)).collect();
+        let mut out = Vec::new();
+        for (index, height) in heights.iter().enumerate() {
+            let Some(page) = doc.page(index as i32) else { continue };
+            let page_ptr: *mut ffi::PopplerPage = page.to_glib_none().0;
+            // SAFETY: poppler-glib owns the list until it is freed below; the
+            // actions in it stay valid as long as the list does.
+            unsafe {
+                let list = ffi::poppler_page_get_link_mapping(page_ptr);
+                let mut node = list;
+                while !node.is_null() {
+                    let mapping = (*node).data as *const ffi::PopplerLinkMapping;
+                    node = (*node).next;
+                    if mapping.is_null() || (*mapping).action.is_null() {
+                        continue;
+                    }
+                    let action = (*mapping).action;
+                    let target = match (*action).type_ {
+                        ffi::POPPLER_ACTION_GOTO_DEST => {
+                            dest_target(doc_ptr, (*action).goto_dest.dest).map(|(page, top)| LinkTarget::Page {
+                                page,
+                                top: top.map(|t| heights.get(page).copied().unwrap_or(*height) - t),
+                            })
+                        }
+                        ffi::POPPLER_ACTION_URI if !(*action).uri.uri.is_null() => Some(LinkTarget::Uri(
+                            std::ffi::CStr::from_ptr((*action).uri.uri).to_string_lossy().into_owned(),
+                        )),
+                        _ => None,
+                    };
+                    let Some(target) = target else { continue };
+                    // PDF coordinates: origin bottom left.
+                    let a = &(*mapping).area;
+                    let (x1, x2) = (a.x1.min(a.x2), a.x1.max(a.x2));
+                    let (y1, y2) = (a.y1.min(a.y2), a.y1.max(a.y2));
+                    out.push(PageLink { page: index, rect: [x1, height - y2, x2 - x1, y2 - y1], target });
+                }
+                ffi::poppler_page_free_link_mapping(list);
+            }
+        }
+        Ok(out)
+    }
+}
+
 /// Walks one level of the outline (and its children).
 ///
 /// # Safety
@@ -174,22 +225,33 @@ unsafe fn walk(
 
 /// 0-based page of a destination, resolving named destinations.
 unsafe fn dest_page(doc: *mut ffi::PopplerDocument, dest: *mut ffi::PopplerDest) -> Option<usize> {
+    unsafe { dest_target(doc, dest).map(|(page, _)| page) }
+}
+
+/// 0-based page of a destination and, if it names one, the position on the
+/// page (PDF coordinates, from the bottom).
+unsafe fn dest_target(doc: *mut ffi::PopplerDocument, dest: *mut ffi::PopplerDest) -> Option<(usize, Option<f64>)> {
     unsafe {
         if dest.is_null() {
             return None;
         }
-        let page = if (*dest).type_ == ffi::POPPLER_DEST_NAMED && !(*dest).named_dest.is_null() {
+        let read = |d: *const ffi::PopplerDest| {
+            let top = matches!((*d).type_, ffi::POPPLER_DEST_XYZ | ffi::POPPLER_DEST_FITH | ffi::POPPLER_DEST_FITBH)
+                && (*d).top > 0.0;
+            ((*d).page_num, top.then_some((*d).top))
+        };
+        let (page, top) = if (*dest).type_ == ffi::POPPLER_DEST_NAMED && !(*dest).named_dest.is_null() {
             let named = ffi::poppler_document_find_dest(doc, (*dest).named_dest);
             if named.is_null() {
                 return None;
             }
-            let page = (*named).page_num;
+            let found = read(named);
             ffi::poppler_dest_free(named);
-            page
+            found
         } else {
-            (*dest).page_num
+            read(dest)
         };
-        (page > 0).then(|| page as usize - 1)
+        (page > 0).then(|| (page as usize - 1, top))
     }
 }
 

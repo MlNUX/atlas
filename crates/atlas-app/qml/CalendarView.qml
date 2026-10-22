@@ -243,7 +243,7 @@ Rectangle {
                     glyph: !cal.model ? "" : cal.model.syncing ? "⟳ …" : !cal.model.unlocked ? "🔑" : cal.model.syncFailed ? "⚠ ⟳" : "⟳"
                         + (cal.model && cal.model.pending ? " " + cal.model.pending : "")
                     tip: cal.model ? cal.model.syncStatus + (cal.model.pending ? qsTr(" · %n Änderung(en) warten", "", cal.model.pending) : "")
-                        + (cal.model.unlocked ? qsTr(" · Klick: jetzt synchronisieren") : qsTr(" · Klick: App-Passwort eingeben")) : ""
+                        + (cal.model.unlocked ? qsTr(" · Klick: jetzt synchronisieren") : cal.model.google ? qsTr(" · Klick: bei Google anmelden") : qsTr(" · Klick: App-Passwort eingeben")) : ""
                     onClicked: cal.model.unlocked ? cal.model.syncNow() : cal.actions.calendarSync.askPassword()
                 }
                 IconButton {
@@ -254,6 +254,7 @@ Rectangle {
                 }
                 Label {
                     visible: cal.model && cal.model.error !== ""
+                    textFormat: Text.PlainText
                     text: cal.model ? "⚠ " + cal.model.error : ""
                     color: Theme.error
                     font.pixelSize: Theme.smallFontSize

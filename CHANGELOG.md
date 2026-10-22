@@ -8,6 +8,79 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
+## [Unveröffentlicht]
+
+### Neu
+- Google-Kalender als Alternative zu Nextcloud: Anmeldung im Browser
+  (eigener OAuth-Client, Anleitung in docs/google-kalender.md), Termine
+  lesen und schreiben, offline wie bei Nextcloud.
+- „Verknüpfen mit …“ verbindet zwei Dateien direkt, z. B. zwei PDFs – im
+  Kontextmenü, in der Arbeitsleiste und in der Kontextleiste. Im Graph als
+  grüne gestrichelte Linie, unter „Verknüpfungen“ mit Liste zum Öffnen und
+  Lösen; folgt Umbenennungen.
+- Ordner-Knoten: Rechtsklick auf einen Ordner → „Als Ordner-Knoten
+  verknüpfen“. Im Graph entsteht ein Knoten mit dem Ordnernamen, an dem
+  alle Dateien des Ordners hängen – auch später hinzugefügte.
+
+- Graph in eigenem großen Fenster („Groß anzeigen“).
+- Markdown-Editor mit Zeilennummern; Tab/Umschalt+Tab rücken Listenpunkte
+  ein und aus; Zeilenumbrüche erscheinen in der Vorschau.
+- Ordner lassen sich verknüpfen, auch Ordner-Knoten untereinander.
+- PDF-Dunkelmodus (Mond in der PDF-Leiste): Seiten mit umgekehrten Farben
+  auf dunkelgrauem Papier, sofort umschaltbar ohne neues Rendern. Gilt für
+  alle PDFs und wird in `config.toml` gemerkt.
+- Links in PDFs: Verweise innerhalb des Dokuments springen zur Zielstelle,
+  Webadressen öffnen sich im Browser (Adresse als Tooltip).
+
+### Behoben
+- Markdown-Vorschau: Formeln, die KaTeX anders als LaTeX noch annimmt (z. B.
+  `array` mit weniger Spalten als angegeben), schreiben keine Warnung
+  „LaTeX-incompatible input“ mehr ins Terminal – bei jeder Aktualisierung.
+- PDF-Vorschaubilder in der Dateiansicht haben wieder weißes Papier statt
+  eines durchsichtigen Hintergrunds.
+- Kalender-Abgleich scheiterte manchmal mit „Interrupted system call“, wenn
+  gleichzeitig ein Programm im Terminal endete; solche Anfragen werden jetzt
+  wiederholt.
+- Terminal: horizontal und vertikal teilen teilen das aktive Terminal.
+- PDF springt beim Zoomen mit Strg+Mausrad nicht mehr zur Seite;
+  „PDF-Kopie exportieren“ nur mit Anmerkungen.
+- Doppelte Aktionen aus neu angelegten Erweiterungen; neue Erweiterungen
+  bekommen einen eigenen Namen.
+- Nextcloud-Kalender: Fehlerseiten des Servers erscheinen als kurzer Text mit
+  Anfrage und Adresse statt als großes HTML; aus dem Browser kopierte
+  Server-Adressen und Nextcloud in Unterordnern werden gefunden.
+- Wiki-Link-Vorschläge konnten nach dem Neuberechnen des Graphen leer sein:
+  Qt verlor bei der schrittweisen Speicherbereinigung Werte; Atlas sammelt
+  jetzt in einem Zug.
+
+### Geändert
+- Mausrad in PDFs scrollt deutlich weiter pro Raste (Touchpads etwas
+  schneller als bisher).
+- Erweiterungen aus der alten Vorlage hießen alle „Beispiel-Erweiterung“;
+  sie heißen jetzt „Core“, „Core 2“ … (Ordner und Name werden beim Start
+  umbenannt, ausgeschaltete bleiben aus). Das Erweiterungsfenster ist neu
+  gestaltet wie die Einstellungen.
+- Aktionen in der Kontextleiste als aufgeräumte Liste („Für diese Datei“,
+  „Eigene Aktionen“); nicht verfügbare sagen, warum; nichts ragt mehr über
+  den Rand.
+- Neues Desktop-Symbol (das „A“ der Titelleiste); Hauptmenü ohne Einträge,
+  die es in den Einstellungen gibt.
+- Kontextmenü und Hauptmenü gestrafft (ohne Standardprogramm, Dateimanager,
+  „Editor teilen“, „Splits untereinander“; „Neu …“ nur auf Ordnern),
+  Einstellungsfenster neu gestaltet.
+- „Lokaler Graph“ heißt jetzt „Graph“ und zeigt in einer Ansicht das ganze
+  Projekt – alle Dateien des Projektordners außer versteckten: die aktuelle
+  Datei in der Mitte, verknüpfte Dateien um sie herum, den Rest gleichmäßig
+  außen; Zoom mit Strg+Mausrad, Verschieben durch Ziehen.
+- Eine Session ist jetzt ein Projektordner: jeder Ordner hat genau eine
+  Session (Tabs, Splits, Baum), benannt nach dem Ordner oder mit eigenem
+  Namen. Das Sessionfenster listet die Sessions aller geöffneten Ordner,
+  ein Klick wechselt dorthin; „Neue Session“ wählt einen Ordner. Bisher
+  verschwanden nach „Neue Session“ in einem anderen Ordner die Sessions des
+  vorigen aus der Liste und wirkten überschrieben.
+- Vor dem Wechsel in einen anderen Projektordner wird die aktuelle Session
+  gespeichert.
+
 ## [1.0.0] – 2026-10-20
 
 Erste öffentliche Version.

@@ -653,3 +653,206 @@ stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).
 - README für die Veröffentlichung neu geschrieben, mit echten Screenshots;
   die Konzept-Mockups stehen jetzt in [design.md](design.md).
 - `CHANGELOG.md` und GitHub-CI (`nix flake check`).
+
+### Nachtrag – Eine Session je Projektordner
+
+Eine Session ist ein Projektordner: jeder Ordner hat genau eine Session
+(Tabs, Splits, aufgeklappte Ordner), gespeichert wie bisher in
+`.atlas/sessions/<gerät>/`. Ihr Name ist der Ordnername, außer sie wurde
+umbenannt. Atlas merkt sich die geöffneten Ordner (`projects` in
+`app.json`, die letzten 30); das Sessionfenster listet je Ordner einen
+Eintrag mit Pfad und Umfang, ein Klick öffnet den Ordner (vorher wird die
+aktuelle Session gespeichert). „Neue Session“ wählt einen Ordner und
+optional einen Namen – hat der Ordner schon eine Session, wird sie
+geöffnet (und ggf. umbenannt). Umbenennen geht für jede Session,
+„Aus der Liste entfernen“ für andere Ordner: Tabs und Anordnung werden
+vergessen, die Dateien bleiben. „In Session wechseln“ im Kalender öffnet
+den Ordner der genannten Session. Ältere Projekte mit mehreren benannten
+Sessions nutzen ihre zuletzt aktive.
+
+Rauchtest: Session des Projekts benennen (kein zweiter Eintrag), Session
+in einem zweiten Ordner (nach ihm benannt), Liste mit beiden, Rückkehr mit
+unverändertem Layout, Wechsel über den Kalender, Entfernen.
+
+### Nachtrag – Graph des ganzen Projekts
+
+„Lokaler Graph“ heißt jetzt **Graph** und hat nur noch eine Ansicht statt
+der Tiefen 1 und 2: alle Notizen des Projekts und alle Dateien, auf die sie
+verlinken, dazu alle übrigen Dateien des Projektordners – ohne versteckte
+Dateien und Ordner und ohne das, was `.gitignore` oder Build-Ordner
+ausschließen (`NoteIndex::project_graph`, höchstens 500 Knoten; bei mehr
+zuerst die verknüpften, dann Notizen, PDFs, Dokumente, Bilder, der Rest). Die aktuelle
+Datei steht groß in der Mitte. Alle Dateien mit Links liegen nach einem
+Kräfte-Layout (Gruppen, die nicht mit ihr verbunden sind, nahe daneben);
+Dateien ganz ohne Links füllen den Raum darum gleichmäßig als
+Sonnenblumen-Spirale – ein Ring wurde bei vielen Dateien riesig, und alles
+verschmolz zu einem Fleck. Knoten, Linien und Pfeile werden beim
+Herauszoomen kleiner; Namen erscheinen beim Darüberfahren, beim Vergrößern
+und für direkte Nachbarn, sobald Platz ist. Strg+Mausrad zoomt (auch unter
+Wayland, wo Mausräder als „Touchpad“ gemeldet werden); das Mausrad allein
+scrollt die umgebende Leiste. Ziehen verschiebt,
+„Ganzen Graphen zeigen“ passt ein.
+
+### Nachtrag – Dateien verknüpfen
+
+„Verknüpfen mit …“ verbindet zwei beliebige Dateien ohne Notiz dazwischen,
+etwa zwei PDFs: im Kontextmenü einer Datei, in der Arbeitsleiste, unter
+„Aktionen“ der Kontextleiste und mit „+“ in „Verknüpfungen“. Ein Dialog
+sucht die zweite Datei (unscharf wie Strg+P, ohne Ordner und versteckte
+Dateien). Gespeichert wird in `.atlas/relations.json`
+(`atlas_core::relations`), die Dateien bleiben unverändert. Im Graph ist
+eine Verknüpfung eine grüne, gestrichelte Linie ohne Pfeil; unter
+„Verknüpfungen“ → „Dieses Dokument“ steht „Verknüpft mit“ mit den Dateien
+(Klick öffnet, × löst). Umbenennen und Verschieben in Atlas passen die
+Pfade an, Löschen entfernt die Verknüpfung.
+
+Rauchtest: Dialog (nur Dateien), zwei PDFs verknüpfen, Kante im Graph,
+Umbenennen, Lösen.
+
+### Nachtrag – Ordner-Knoten
+
+Rechtsklick auf einen Ordner → **„Als Ordner-Knoten verknüpfen“**: Im
+Graph entsteht ein Knoten mit dem Namen des Ordners, an dem alle Dateien
+hängen, die direkt in ihm liegen (ohne versteckte). Die Mitglieder werden
+nicht gespeichert, nur der Ordner (`folders` in `.atlas/relations.json`):
+später hinzugefügte Dateien gehören dazu, hinaus verschobene nicht mehr.
+Ein Unterordner, der selbst Ordner-Knoten ist, hängt am nächsten
+Ordner-Knoten darüber. Umbenennen und Verschieben in Atlas passen den
+Ordner an, „Ordner-Knoten auflösen“ im selben Menü entfernt ihn. Dateien
+zeigen ihren Ordner-Knoten unter „Verknüpft mit“.
+
+Gefunden und behoben: Die schrittweise Speicherbereinigung von QML
+(Qt 6.8+) verlor Werte von `var`-Eigenschaften, die während einer laufenden
+Sammlung gesetzt wurden – die Wiki-Link-Vorschläge waren plötzlich
+`undefined`, als der Graph nach Änderungen der Dateiliste neu rechnete.
+Atlas setzt deshalb `QV4_GC_TIMELIMIT=0` (Sammlung in einem Zug), außer die
+Variable ist schon gesetzt; die Vorschläge liegen zusätzlich nicht mehr auf
+dem Popup.
+
+Rauchtest: Menüeintrag, Ordner-Knoten im Graph mit allen Dateien des
+Ordners (auch einer neu angelegten), Datei kennt ihren Knoten, Auflösen.
+
+### Nachtrag – Menüs gestrafft, Einstellungen neu
+
+- Kontextmenü: „Mit Standardprogramm öffnen“ und „Im Dateimanager zeigen“
+  entfallen; „Neue Datei …“ und „Neuer Ordner …“ gibt es nur noch auf
+  Ordnern und der leeren Fläche, nicht auf Dateien.
+- Menü oben rechts: „Editor teilen“ und „Splits untereinander/nebeneinander“
+  entfallen (Strg+\\ und die Arbeitsleiste bleiben).
+- Einstellungen im Stil der neuen Dialoge: Kopf mit Speicherort, Schalter
+  „Orte wie in Dolphin“ mit Herkunft der Orte, darunter eine Liste zu
+  Externem Editor, Kalender und Nextcloud, Erweiterungen, Projekt- und
+  globalen Aktionen – jeweils mit dem aktuellen Stand; unten die Version.
+
+### Nachtrag – Nextcloud: 405 und HTML-Fehlerseiten
+
+Ein Server antwortete mit „405 Not Allowed“ – die HTML-Fehlerseite von
+nginx stand dann als großes Bild im Einstellungsfenster. Jetzt:
+
+- Fehlermeldungen nennen Anfrage und Adresse
+  („PROPFIND https://… – 405 Not Allowed“); aus HTML-Seiten wird nur der
+  Titel übernommen, alles erscheint als reiner Text (auch in Tooltips).
+- Die Suche nach der CalDAV-Adresse probiert nacheinander die Adresse unter
+  der Server-Angabe (aus dem Browser kopierte Adressen werden vor `/apps/`
+  bzw. `/index.php` abgeschnitten), `/remote.php/dav/` an der Wurzel und
+  `/.well-known/caldav`; 400, 403, 404, 405 und 501 führen zur nächsten.
+
+### Nachtrag – Rückmeldungen vom 22.10.
+
+- Menü oben rechts ohne „Kalender-Einstellungen“, „Erweiterungen
+  verwalten“ und „Externen Editor festlegen“ (alles in den Einstellungen).
+  Sessionfenster ohne ⋮ bei „Neue Session“; „Umbenennen“ im ⋮ jeder Zeile.
+  Text im Session-Knopf mittig.
+- „Wörter zählen“ doppelt: Jede mit „Neue Erweiterung“ angelegte
+  Erweiterung hieß „Beispiel-Erweiterung“ und brachte dieselben Aktionen
+  mit. Jetzt fragt Atlas nach dem Namen und legt die Beispiele nur als
+  Kommentare an; gleich benannte Aktionen zeigen ihre Quelle in Klammern.
+- „Verknüpfen mit …“ auch für Ordner – Ordner-Knoten lassen sich
+  untereinander verbinden.
+- PDF: Strg+Mausrad hält die Stelle unter der Maus in Seitenkoordinaten
+  fest; eine Seite schmaler als die Ansicht sprang vorher zur Seite und
+  glitt zurück. „PDF-Kopie exportieren“ nur, wenn es Anmerkungen gibt.
+- Terminal: Teilen teilt das aktive Terminal neben oder unter sich
+  (verschachtelt, die Teile gleich groß), statt den ganzen Tab umzustellen;
+  die Session speichert die Aufteilung als Baum.
+- „Groß anzeigen“ beim Graph öffnet ein eigenes großes Fenster.
+- Desktop-Symbol: das „A“ der Titelleiste.
+- Markdown: Zeilenumbrüche im Text sind auch in der Vorschau Umbrüche;
+  der Editor nummeriert die Zeilen (auch umbrochene, je am Zeilenanfang);
+  Tab rückt Listenpunkte ein, Umschalt+Tab aus (auch mehrere markierte).
+
+### Nachtrag – Google-Kalender
+
+Alternativ zu Nextcloud lässt sich ein Google-Konto verbinden
+(`provider = "google"`; Einrichtung: [google-kalender.md](google-kalender.md)).
+
+- **Anmeldung** mit OAuth 2.0 für installierte Apps
+  (`atlas_core::calendar::google`): der Browser öffnet Googles Anmeldeseite,
+  Atlas wartet auf `127.0.0.1:<Port>` auf die Rückleitung (PKCE, `state`),
+  tauscht den Code gegen Tokens und liest die E-Mail-Adresse aus dem
+  ID-Token. Der Nutzer bringt einen eigenen OAuth-Client („Desktop-App“)
+  mit; Client-ID und -Secret stehen in `config.toml`, das Refresh-Token
+  liegt wie das Nextcloud-App-Passwort verschlüsselt im Geheimnisspeicher
+  (eigener Name `google`).
+- **Kalenderliste** über die Calendar API (`users/me/calendarList`, Name,
+  Farbe, Schreibrecht); **Termine** über Googles CalDAV
+  (`apidata.googleusercontent.com/caldav/v2/<id>/events/`) mit demselben
+  Abgleich wie bei Nextcloud (Cache, Warteschlange, Konflikte). Der Client
+  holt Zugriffs-Tokens selbst und versucht es bei 401 einmal mit einem
+  frischen; ein abgelaufenes Refresh-Token führt zu „Bei Google neu
+  anmelden“. „Atlas – Projektarbeit“ legt die Calendar API an.
+- **Nur Termine:** Aufgaben bleiben bei Google im Projektkalender.
+- Der Wechsel zwischen Nextcloud und Google vergisst Anmeldung, Auswahl und
+  Cache des anderen Kontos.
+- Gefunden dabei: Das eingebaute Terminal behandelt SIGCHLD; endete ein
+  Programm, brachen Lesevorgänge des Kalenders mit „Interrupted system
+  call“ ab. Unterbrochene Anfragen werden wiederholt.
+
+Kern-Tests gegen einen nachgebildeten Google-Dienst: Token-Endpunkt,
+Kalenderliste (mit Leserechten), Termine über CalDAV mit Bearer-Token,
+abgelaufenes Zugriffs-Token, widerrufenes Refresh-Token, neuer Kalender;
+dazu Rückleitung auf dem lokalen Port und Token-Antworten. Gegen Googles
+echte Dienste konnte nicht getestet werden.
+
+### Nachtrag – PDF-Dunkelmodus, Scrollen, Erweiterungen
+
+- **Dunkelmodus für PDFs** (Mond in der PDF-Leiste, `[pdf] dark`): siehe
+  den folgenden Nachtrag – die erste Fassung kehrte die Helligkeit pro
+  Pixel in Rust um und renderte beim Umschalten alle Seiten neu.
+- **Vorschaubilder:** Qts PDF-Bildmodul rendert Seiten durchsichtig; in der
+  Dateiansicht liegt jetzt ein weißes Blatt darunter.
+- **Mausrad:** 160 px pro Raste statt der wenigen Zeilen der Liste;
+  Touchpads (Pixel-Deltas, keine ganze Raste) behalten ihre Bewegung, um
+  die Hälfte verstärkt.
+- **Erweiterungen „Core“:** Erweiterungen aus der Vorlage von 1.0
+  (`beispiel*/`, Titel „Beispiel-Erweiterung“) werden beim Start zu
+  `core/` „Core“, `core-2/` „Core 2“ …; eigene Titel bleiben unberührt,
+  `[extensions] disabled` wird mitgezogen.
+- **Erweiterungsfenster** mit Kopf wie die Einstellungen, Karten mit
+  Aktionen rechts und einer Fußzeile: Anzahl und Neu laden links, „Neue
+  Erweiterung …“ und „Schließen“ rechts.
+
+Selbsttest: Mausrad scrollt eine volle Stufe, Dunkelmodus an/aus, alte
+Beispiel-Erweiterung heißt nach dem Start „Core“. Kern-Test für die
+Umbenennung.
+
+### Nachtrag – Dunkelmodus schneller, Links in PDFs
+
+- **Dunkelmodus ohne Neu-Rendern:** Die Umkehrung pro Pixel in Rust
+  (farbtonerhaltend) kostete bei großen Seiten spürbar Zeit, und das
+  Umschalten renderte alle sichtbaren Seiten neu. Jetzt kehrt der Painter
+  der Seite beim Zeichnen um: `Difference` mit Weiß, dann `Lighten` mit
+  `#262626` für dunkelgraues statt schwarzes Papier – Qts Raster-Routinen
+  (SIMD). Umschalten zeichnet nur neu. Preis: Farbtöne werden mit
+  umgekehrt (Rot → Cyan), wie in den meisten PDF-Programmen.
+- **Links:** Poppler liefert die Link-Flächen jeder Seite
+  (`poppler_page_get_link_mapping`); beim Öffnen liest Atlas sie für das
+  ganze Dokument (`PdfDocument.linksJson`). Interne Verweise (auch benannte
+  Ziele) springen zur Seite und, wenn angegeben, zur Höhe; `http`, `https`,
+  `mailto` und `ftp` öffnet der Browser, andere Schemata (z. B. `file:`)
+  werden nicht ausgeführt, nur gemeldet. Über einem Link zeigt der Mauszeiger
+  eine Hand und die Adresse als Tooltip; Anmerkungen haben Vorrang.
+
+Tests: Kern-Test mit einer von cairo erzeugten PDF (Web-Link und Sprung
+mit Position); Selbsttest mit Link-Annotationen in `zweite.pdf` (Sprung
+und URI, Fläche, Sprung zur Zielseite).

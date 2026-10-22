@@ -7,14 +7,14 @@ import QtQuick.Layouts
 import Atlas
 
 // Right context bar for the active document: annotations of the PDF in
-// use, links (backlinks with filters), the local graph and user actions.
+// use, links (backlinks with filters), the project graph and user actions.
 // The first tab is an overview with all three as cards.
 Rectangle {
     id: inspector
     required property AppController app
     required property var editor
     required property var actions
-    /// 0 = Anmerkungen (overview), 1 = Verknüpfungen, 2 = Lokaler Graph,
+    /// 0 = Anmerkungen (overview), 1 = Verknüpfungen, 2 = Graph,
     /// 3 = Aktionen.
     property int tab: 0
     readonly property alias linksPanel: linksPanel
@@ -76,9 +76,14 @@ Rectangle {
         const kind = document ? app.fileKind(document) : ""
         if (kind === "pdf" && pdfViewer) {
             out.push({ icon: "quote", name: qsTr("Zitat übernehmen"), enabled: !!pdfViewer.selectionText,
+                       note: qsTr("Erst Text in der PDF markieren"),
                        tip: qsTr("Markierte Stelle als Zitat in eine Notiz (Strg+Q)"), run: () => pdfViewer.quoteSelection() })
-            out.push({ icon: "export", name: qsTr("PDF-Kopie exportieren"), enabled: true,
-                       tip: qsTr("Kopie mit Anmerkungen; das Original bleibt unverändert"), run: () => pdfViewer.exportCopy() })
+            // Only worth it with marks, comments, ink or bookmarks.
+            out.push({ icon: "export", name: qsTr("PDF-Kopie exportieren"), enabled: pdfViewer.annotationStore.count > 0,
+                       note: qsTr("Noch keine Anmerkungen"),
+                       tip: pdfViewer.annotationStore.count > 0 ? qsTr("Kopie mit Anmerkungen; das Original bleibt unverändert")
+                                                                : qsTr("Erst etwas markieren oder kommentieren – ohne Anmerkungen wäre die Kopie gleich dem Original"),
+                       run: () => pdfViewer.exportCopy() })
         }
         if (document && app.isRunnable(document))
             out.push({ icon: "play", name: qsTr("Ausführen"), enabled: true, tip: qsTr("Skript im Terminal starten (im Ordner des Skripts)"),
@@ -86,6 +91,9 @@ Rectangle {
         if (document && actions.isHtml(document))
             out.push({ icon: "eye", name: qsTr("Als Webseite anzeigen"), enabled: true, tip: qsTr("HTML gerendert anzeigen (lädt beim Speichern neu)"),
                        run: () => actions.renderHtml(document) })
+        if (document && app.atlasDir && app.exists(document))
+            out.push({ icon: "link", name: qsTr("Verknüpfen mit …"), enabled: true, tip: qsTr("Mit einer anderen Datei verbinden, z. B. zwei PDFs (im Graph sichtbar)"),
+                       run: () => app.requestRelate(document) })
         if (kind === "markdown")
             out.push({ icon: "check-square", name: qsTr("Checkliste als Aufgaben"), enabled: true, tip: qsTr("Punkte in den Kalender übernehmen"),
                        run: () => actions.calendarSync.importChecklist(document) })
@@ -144,7 +152,7 @@ Rectangle {
                     spacing: 2
                     Repeater {
                         id: tabRepeater
-                        model: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Lokaler Graph"), qsTr("Aktionen")]
+                        model: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Graph"), qsTr("Aktionen")]
                         Item {
                             required property string modelData
                             required property int index
@@ -220,8 +228,8 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.leftMargin: 14
                         Layout.rightMargin: 8
-                        Label { Layout.fillWidth: true; text: qsTr("Lokaler Graph"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
-                        IconButton { iconName: "maximize"; iconSize: 14; tip: qsTr("Groß anzeigen"); onClicked: inspector.tab = 2 }
+                        Label { Layout.fillWidth: true; text: qsTr("Graph"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
+                        IconButton { iconName: "maximize"; iconSize: 14; tip: qsTr("Groß anzeigen (eigenes Fenster)"); onClicked: graphDialog.show(inspector.document) }
                     }
                     ContextPanel {
                         Layout.fillWidth: true
@@ -236,14 +244,8 @@ Rectangle {
                     }
 
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-                    Label { Layout.leftMargin: 14; text: qsTr("Eigene Aktionen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
-                    Repeater {
-                        model: inspector.builtins.concat(inspector.actionList.slice(0, 4).map(a => ({
-                            icon: "play", name: a.name, enabled: true, tip: a.description || a.source,
-                            run: () => inspector.actions.runAction(a.id, a.paths, 0)
-                        })))
-                        ActionCard { }
-                    }
+                    Label { Layout.leftMargin: 14; text: qsTr("Aktionen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
+                    ActionList { items: inspector.builtins.concat(inspector.userActions.slice(0, 4)) }
                     Item { Layout.preferredHeight: 8 }
                 }
             }
@@ -278,23 +280,29 @@ Rectangle {
                     width: actionsView.availableWidth
                     spacing: 8
                     Item { Layout.preferredHeight: 4 }
+                    SectionLabel {
+                        visible: inspector.builtins.length > 0
+                        text: inspector.document ? qsTr("Für %1").arg(inspector.app.fileName(inspector.document)) : ""
+                    }
+                    ActionList { items: inspector.builtins }
+                    SectionLabel { text: qsTr("Eigene Aktionen"); Layout.topMargin: 6 }
+                    ActionList { items: inspector.userActions }
                     Label {
+                        visible: inspector.userActions.length === 0
+                        Layout.fillWidth: true
                         Layout.leftMargin: 14
-                        visible: !!inspector.document
-                        text: inspector.app.fileName(inspector.document)
-                        color: Theme.textMuted
+                        Layout.rightMargin: 14
+                        wrapMode: Text.Wrap
+                        color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
+                        text: qsTr("Noch keine eigenen Aktionen für diese Datei. Lege welche für das Projekt an oder installiere Erweiterungen.")
                     }
-                    Repeater {
-                        model: inspector.builtins.concat(inspector.actionList.map(a => ({
-                            icon: "play", name: a.name, enabled: true, tip: a.description || a.source,
-                            run: () => inspector.actions.runAction(a.id, a.paths, 0)
-                        })))
-                        ActionCard { }
-                    }
-                    RowLayout {
-                        Layout.leftMargin: 10
-                        Layout.rightMargin: 10
+                    // (Wraps in a narrow bar instead of widening it.)
+                    Flow {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 6
+                        Layout.rightMargin: 6
+                        spacing: 2
                         Button { flat: true; text: qsTr("Projektaktionen bearbeiten …"); onClicked: inspector.actions.editActions(false) }
                         Button { flat: true; text: qsTr("Erweiterungen …"); onClicked: inspector.actions.extensionsRequested() }
                     }
@@ -302,6 +310,14 @@ Rectangle {
             }
         }
     }
+
+    GraphDialog {
+        id: graphDialog
+        parent: Overlay.overlay
+        app: inspector.app
+        onOpenRequested: (path, line, newPane, state) => inspector.openRequested(path, line, newPane ? "split" : "tab", state)
+    }
+    readonly property alias graphWindow: graphDialog
 
     component AnnotationCard: Rectangle {
         required property var modelData
@@ -363,35 +379,103 @@ Rectangle {
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: inspector.openAnnotation(parent.modelData) }
     }
 
-    component ActionCard: Rectangle {
-        id: card
-        required property var modelData
+    /// The user's actions for the document, as rows of an action list.
+    readonly property var userActions: actionList.map(a => ({
+        icon: "play", name: a.name, enabled: true, note: "", detail: a.description || a.source, tip: a.description || a.source,
+        run: () => inspector.actions.runAction(a.id, a.paths, 0)
+    }))
+
+    component SectionLabel: Text {
+        Layout.leftMargin: 14
+        Layout.rightMargin: 14
+        Layout.fillWidth: true
+        color: Theme.textMuted
+        font.pixelSize: Theme.smallFontSize
+        font.weight: Font.DemiBold
+        font.capitalization: Font.AllUppercase
+        font.letterSpacing: 0.5
+        elide: Text.ElideMiddle
+    }
+
+    /// Actions as one card with a row each: icon, name and a second line
+    /// (why it is not available, or what it does).
+    component ActionList: Rectangle {
+        id: list
+        property var items: []
+        visible: items.length > 0
         Layout.fillWidth: true
         Layout.leftMargin: 10
         Layout.rightMargin: 10
-        implicitHeight: 38
-        radius: 8
-        color: !modelData.enabled ? "transparent" : actionHover.hovered ? Theme.hover : Theme.header
+        implicitHeight: rows.implicitHeight
+        radius: 10
+        color: Theme.header
         border.color: Theme.border
-        opacity: modelData.enabled ? 1 : 0.5
-        HoverHandler { id: actionHover }
-        Row {
-            anchors.verticalCenter: parent.verticalCenter
-            x: 14
-            spacing: 14
-            Icon { name: card.modelData.icon; size: 17; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
-            Label {
-                text: card.modelData.name
-                color: Theme.textStrong
-                font.pixelSize: Theme.fontSize
-                width: card.width - 60
-                elide: Text.ElideRight
-                anchors.verticalCenter: parent.verticalCenter
+        Column {
+            id: rows
+            width: parent.width
+            Repeater {
+                model: list.items
+                Item {
+                    id: row
+                    required property var modelData
+                    required property int index
+                    readonly property string second: !modelData.enabled ? (modelData.note || "") : (modelData.detail || "")
+                    width: rows.width
+                    height: second ? 50 : 40
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 3
+                        radius: 7
+                        color: rowHover.hovered && row.modelData.enabled ? Theme.hover : "transparent"
+                    }
+                    HoverHandler { id: rowHover }
+                    Icon {
+                        x: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: row.modelData.icon
+                        size: 17
+                        color: row.modelData.enabled ? Theme.accent : Theme.textFaint
+                    }
+                    Column {
+                        x: 42
+                        width: row.width - 54
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        Text {
+                            width: parent.width
+                            text: row.modelData.name
+                            color: row.modelData.enabled ? Theme.textStrong : Theme.textFaint
+                            font.pixelSize: Theme.fontSize
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            visible: row.second !== ""
+                            width: parent.width
+                            text: row.second
+                            color: Theme.textFaint
+                            font.pixelSize: Theme.smallFontSize
+                            elide: Text.ElideRight
+                        }
+                    }
+                    Rectangle {
+                        visible: row.index < list.items.length - 1
+                        anchors.bottom: parent.bottom
+                        x: 42
+                        width: parent.width - 54
+                        height: 1
+                        color: Theme.border
+                    }
+                    ToolTip.visible: rowHover.hovered && !!row.modelData.tip
+                    ToolTip.delay: 600
+                    ToolTip.text: row.modelData.tip || ""
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: row.modelData.enabled
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: row.modelData.run()
+                    }
+                }
             }
         }
-        ToolTip.visible: actionHover.hovered && !!modelData.tip
-        ToolTip.delay: 600
-        ToolTip.text: modelData.tip || ""
-        MouseArea { anchors.fill: parent; enabled: card.modelData.enabled; cursorShape: Qt.PointingHandCursor; onClicked: card.modelData.run() }
     }
 }

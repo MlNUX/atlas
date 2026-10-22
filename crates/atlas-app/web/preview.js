@@ -17,7 +17,14 @@ window.atlas = (function () {
     function renderMath(root) {
         root.querySelectorAll("span.math[data-tex]").forEach((el) => {
             try {
-                katex.render(el.dataset.tex, el, { displayMode: el.classList.contains("display"), throwOnError: false });
+                // strict "ignore": KaTeX renders what LaTeX would reject (e.g. an
+                // array with fewer columns than given) without a console
+                // warning per formula and render, which ended up in the log.
+                katex.render(el.dataset.tex, el, {
+                    displayMode: el.classList.contains("display"),
+                    throwOnError: false,
+                    strict: "ignore",
+                });
             } catch (e) {
                 el.textContent = el.dataset.tex;
                 el.classList.add("math-error");

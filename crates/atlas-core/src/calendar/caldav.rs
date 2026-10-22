@@ -22,7 +22,7 @@ pub enum DavError {
     /// The server cannot be reached (no network, DNS, timeout, TLS …).
     #[error("Server nicht erreichbar: {0}")]
     Offline(String),
-    #[error("Anmeldung abgelehnt – Benutzername oder App-Passwort prüfen")]
+    #[error("Anmeldung abgelehnt – Nextcloud: Benutzername und App-Passwort prüfen; Google: neu anmelden")]
     Auth,
     #[error("Server antwortet mit {0}: {1}")]
     Http(u16, String),
@@ -113,12 +113,35 @@ pub struct Account {
 impl Account {
     /// Where discovery starts.
     pub fn start_url(&self) -> String {
+        self.start_urls().remove(0)
+    }
+
+    /// Addresses discovery tries, in this order: the CalDAV URL entered by
+    /// hand only; else the Nextcloud DAV root below the server address (an
+    /// address copied from the browser is cut before `/apps/` or
+    /// `/index.php`), at the host's root, and the well-known URL.
+    pub fn start_urls(&self) -> Vec<String> {
         if !self.dav_url.trim().is_empty() {
-            return with_scheme(self.dav_url.trim());
+            return vec![with_scheme(self.dav_url.trim())];
         }
         let server = with_scheme(self.server.trim());
-        let server = server.trim_end_matches('/');
-        if server.contains("/remote.php/") { format!("{server}/") } else { format!("{server}/remote.php/dav/") }
+        let mut base = server.trim_end_matches('/').to_owned();
+        for cut in ["/index.php", "/apps/"] {
+            if let Some(i) = base.find(cut) {
+                base.truncate(i);
+            }
+        }
+        let first = match base.find("/remote.php/") {
+            Some(i) => format!("{}/remote.php/dav/", &base[..i]),
+            None => format!("{base}/remote.php/dav/"),
+        };
+        let mut urls = vec![first];
+        for url in [format!("{}/remote.php/dav/", origin(&base)), format!("{}/.well-known/caldav", origin(&base))] {
+            if !urls.contains(&url) {
+                urls.push(url);
+            }
+        }
+        urls
     }
 }
 
@@ -297,8 +320,22 @@ fn usable(c: &RemoteCalendar) -> bool {
 /// HTTP client for one account.
 pub struct Client {
     account: Account,
-    password: String,
+    auth: Auth,
     agent: ureq::Agent,
+}
+
+/// How requests sign in.
+enum Auth {
+    /// Nextcloud and other CalDAV servers: user name and app password.
+    Basic(String),
+    /// Google: a refresh token gives short-lived access tokens.
+    Google {
+        client: super::google::OAuthClient,
+        refresh: String,
+        endpoints: super::google::Endpoints,
+        /// Access token and when it expires.
+        token: std::sync::Mutex<Option<(String, std::time::Instant)>>,
+    },
 }
 
 const PROPFIND_HOME: &str = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -321,25 +358,84 @@ impl Client {
     /// `use_proxy`: honour `HTTPS_PROXY`/`HTTP_PROXY` (off for tests on
     /// localhost).
     pub fn new(account: Account, password: &str, use_proxy: bool) -> Self {
-        let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
-        let mut config = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .allow_non_standard_methods(true)
-            .timeout_global(Some(Duration::from_secs(30)))
-            .timeout_connect(Some(Duration::from_secs(10)))
-            .user_agent(format!("Atlas/{}", env!("CARGO_PKG_VERSION")))
-            .tls_config(tls);
-        if !use_proxy {
-            config = config.proxy(None);
+        Self { account, auth: Auth::Basic(password.to_owned()), agent: agent(use_proxy) }
+    }
+
+    /// A Google account (`email`), signed in with `refresh` from the OAuth
+    /// sign-in ([`super::google`]).
+    pub fn google(
+        email: &str,
+        client: super::google::OAuthClient,
+        refresh: &str,
+        endpoints: super::google::Endpoints,
+        use_proxy: bool,
+    ) -> Self {
+        Self {
+            account: Account { user: email.to_owned(), ..Default::default() },
+            auth: Auth::Google { client, refresh: refresh.to_owned(), endpoints, token: Default::default() },
+            agent: agent(use_proxy),
         }
-        Self { account, password: password.to_owned(), agent: config.build().into() }
     }
 
-    fn auth(&self) -> String {
-        format!("Basic {}", base64(format!("{}:{}", self.account.user, self.password).as_bytes()))
+    /// Posts a form to Google's token endpoint (the sign-in); status and body.
+    pub fn post_form(&self, url: &str, form: &str) -> DavResult<(u16, String)> {
+        let (status, _, text) =
+            self.send("POST", url, &[("Content-Type", "application/x-www-form-urlencoded")], None, Some(form))?;
+        Ok((status, text))
     }
 
-    /// Sends a request; returns status, headers of interest and body.
+    /// The `Authorization` header (for Google with a fresh access token).
+    fn authorization(&self) -> DavResult<String> {
+        match &self.auth {
+            Auth::Basic(password) => {
+                Ok(format!("Basic {}", base64(format!("{}:{}", self.account.user, password).as_bytes())))
+            }
+            Auth::Google { client, refresh, endpoints, token } => {
+                let mut token = token.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some((access, until)) = token.as_ref()
+                    && std::time::Instant::now() < *until
+                {
+                    return Ok(format!("Bearer {access}"));
+                }
+                let (status, text) = self.post_form(&endpoints.token, &super::google::refresh_form(client, refresh))?;
+                // A revoked or expired refresh token: sign in again.
+                if status == 400 || status == 401 {
+                    return Err(DavError::Auth);
+                }
+                let tokens =
+                    super::google::parse_tokens(status, &text).map_err(|e| DavError::Invalid(format!("{e:#}")))?;
+                let until = std::time::Instant::now() + Duration::from_secs(tokens.expires_in.saturating_sub(60));
+                *token = Some((tokens.access.clone(), until));
+                Ok(format!("Bearer {}", tokens.access))
+            }
+        }
+    }
+
+    fn is_google(&self) -> bool {
+        matches!(self.auth, Auth::Google { .. })
+    }
+}
+
+/// The HTTP agent: system certificates, generous timeouts; `use_proxy`
+/// honours `HTTPS_PROXY`/`HTTP_PROXY` (off for tests on localhost).
+fn agent(use_proxy: bool) -> ureq::Agent {
+    let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
+    let mut config = ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .allow_non_standard_methods(true)
+        .timeout_global(Some(Duration::from_secs(30)))
+        .timeout_connect(Some(Duration::from_secs(10)))
+        .user_agent(format!("Atlas/{}", env!("CARGO_PKG_VERSION")))
+        .tls_config(tls);
+    if !use_proxy {
+        config = config.proxy(None);
+    }
+    config.build().into()
+}
+
+impl Client {
+    /// Sends a request signed in; returns status, ETag and body. Google's
+    /// access tokens expire: on a 401 a fresh one is tried once.
     fn request(
         &self,
         method: &str,
@@ -347,16 +443,57 @@ impl Client {
         headers: &[(&str, &str)],
         body: Option<&str>,
     ) -> DavResult<(u16, Option<String>, String)> {
-        let mut builder = ureq::http::Request::builder()
-            .method(ureq::http::Method::from_bytes(method.as_bytes()).map_err(|e| DavError::Invalid(e.to_string()))?)
-            .uri(url)
-            .header("Authorization", self.auth());
-        for (name, value) in headers {
-            builder = builder.header(*name, *value);
+        let auth = self.authorization()?;
+        let mut result = self.send(method, url, headers, Some(&auth), body)?;
+        if result.0 == 401
+            && let Auth::Google { token, .. } = &self.auth
+        {
+            *token.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            let auth = self.authorization()?;
+            result = self.send(method, url, headers, Some(&auth), body)?;
         }
-        let result = match body {
-            Some(b) => self.agent.run(builder.body(b.to_owned()).map_err(|e| DavError::Invalid(e.to_string()))?),
-            None => self.agent.run(builder.body(()).map_err(|e| DavError::Invalid(e.to_string()))?),
+        if result.0 == 401 {
+            return Err(DavError::Auth);
+        }
+        Ok(result)
+    }
+
+    /// Sends one request (with `auth` as `Authorization`, if any).
+    fn send(
+        &self,
+        method: &str,
+        url: &str,
+        headers: &[(&str, &str)],
+        auth: Option<&str>,
+        body: Option<&str>,
+    ) -> DavResult<(u16, Option<String>, String)> {
+        let method = ureq::http::Method::from_bytes(method.as_bytes()).map_err(|e| DavError::Invalid(e.to_string()))?;
+        let build = || {
+            let mut builder = ureq::http::Request::builder().method(method.clone()).uri(url);
+            if let Some(auth) = auth {
+                builder = builder.header("Authorization", auth);
+            }
+            for (name, value) in headers {
+                builder = builder.header(*name, *value);
+            }
+            builder
+        };
+        // A signal (e.g. a terminal's child process exiting: the embedded
+        // terminal handles SIGCHLD) interrupts socket reads with a timeout;
+        // such a request is simply sent again. All writes are conditional
+        // (If-Match / If-None-Match), so a repeat does no harm.
+        let mut attempts = 0;
+        let result = loop {
+            let request = build();
+            let result = match body {
+                Some(b) => self.agent.run(request.body(b.to_owned()).map_err(|e| DavError::Invalid(e.to_string()))?),
+                None => self.agent.run(request.body(()).map_err(|e| DavError::Invalid(e.to_string()))?),
+            };
+            attempts += 1;
+            match result {
+                Err(ureq::Error::Io(err)) if err.kind() == std::io::ErrorKind::Interrupted && attempts < 4 => continue,
+                other => break other,
+            }
         };
         let mut response = result.map_err(|e| match e {
             ureq::Error::StatusCode(code) => DavError::Http(code, String::new()),
@@ -366,9 +503,6 @@ impl Client {
         let status = response.status().as_u16();
         let etag = response.headers().get("etag").and_then(|v| v.to_str().ok()).map(str::to_owned);
         let text = response.body_mut().with_config().limit(64 * 1024 * 1024).read_to_string().unwrap_or_default();
-        if status == 401 {
-            return Err(DavError::Auth);
-        }
         Ok((status, etag, text))
     }
 
@@ -382,34 +516,121 @@ impl Client {
         match status {
             207 => Ok(Some(parse_multistatus(&text)?)),
             404 | 410 => Ok(None),
-            s => Err(DavError::Http(s, short(&text))),
+            s => Err(failed("PROPFIND", url, s, &text)),
         }
     }
 }
 
+/// An HTTP error with the request (method and address) and the reason.
+fn failed(method: &str, url: &str, status: u16, body: &str) -> DavError {
+    let reason = short(body);
+    DavError::Http(
+        status,
+        if reason.is_empty() { format!("{method} {url}") } else { format!("{method} {url} – {reason}") },
+    )
+}
+
+/// The reason in an error body, as one short line of plain text.
 fn short(body: &str) -> String {
-    // Sabre puts the reason into <s:message>.
-    if let Some(start) = body.find("<s:message>")
-        && let Some(end) = body[start..].find("</s:message>")
-    {
-        return body[start + 11..start + end].trim().to_owned();
+    let between = |open: &str, close: &str| {
+        let start = body.find(open)? + open.len();
+        let end = body[start..].find(close)?;
+        Some(body[start..start + end].to_owned())
+    };
+    // Sabre puts the reason into <s:message>, web servers send an HTML page.
+    let text = between("<s:message>", "</s:message>")
+        .or_else(|| between("<title>", "</title>"))
+        .or_else(|| between("<h1>", "</h1>"))
+        .unwrap_or_else(|| body.to_owned());
+    let mut plain = String::new();
+    let mut in_tag = false;
+    for c in text.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                plain.push(' ');
+            }
+            c if !in_tag => plain.push(c),
+            _ => {}
+        }
     }
-    body.chars().take(200).collect::<String>().trim().to_owned()
+    let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    plain.chars().take(160).collect()
+}
+
+impl Client {
+    /// Google: the calendars of the account from the Calendar API (its
+    /// CalDAV interface has no discovery). Google's CalDAV knows events
+    /// only, no tasks.
+    fn google_calendars(&self) -> DavResult<Discovery> {
+        let Auth::Google { endpoints, .. } = &self.auth else { unreachable!() };
+        let mut calendars = Vec::new();
+        let mut page = String::new();
+        loop {
+            let mut url = format!("{}/users/me/calendarList?minAccessRole=reader", endpoints.api);
+            if !page.is_empty() {
+                url += &format!("&pageToken={page}");
+            }
+            let (status, _, text) = self.request("GET", &url, &[], None)?;
+            if status != 200 {
+                return Err(failed("GET", &url, status, &text));
+            }
+            let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| DavError::Invalid(e.to_string()))?;
+            for item in v["items"].as_array().into_iter().flatten() {
+                let Some(id) = item["id"].as_str() else { continue };
+                let name = item["summaryOverride"].as_str().or(item["summary"].as_str()).unwrap_or(id);
+                let role = item["accessRole"].as_str().unwrap_or("reader");
+                calendars.push(RemoteCalendar {
+                    url: endpoints.calendar_url(id),
+                    name: name.to_owned(),
+                    color: normalize_color(item["backgroundColor"].as_str().unwrap_or("#4285f4")),
+                    writable: role == "owner" || role == "writer",
+                    components: vec!["VEVENT".into()],
+                });
+            }
+            match v["nextPageToken"].as_str() {
+                Some(next) if !next.is_empty() => page = next.to_owned(),
+                _ => break,
+            }
+        }
+        calendars.sort_by_key(|c| c.name.to_lowercase());
+        Ok(Discovery { home: None, calendars })
+    }
 }
 
 impl Remote for Client {
     fn discover(&self) -> DavResult<Discovery> {
-        let start = self.account.start_url();
+        if self.is_google() {
+            return self.google_calendars();
+        }
         let mut home: Option<String> = None;
         let mut principal: Option<String> = None;
-        let mut first = self.propfind(&start, "0", PROPFIND_HOME)?;
-        if first.is_none() && self.account.dav_url.trim().is_empty() {
-            // Not a Nextcloud path: try the well-known URL (RFC 6764).
-            let wk = format!("{}/.well-known/caldav", origin(&start));
-            first = self.propfind(&wk, "0", PROPFIND_HOME)?;
+        // The first address that answers as CalDAV: the given one, then the
+        // usual Nextcloud and well-known (RFC 6764) addresses. Web servers
+        // answer PROPFIND on other paths with 405 or 404.
+        let mut found = None;
+        let mut last_error = None;
+        for url in self.account.start_urls() {
+            match self.propfind(&url, "0", PROPFIND_HOME) {
+                Ok(Some(list)) => {
+                    found = Some((url, list));
+                    break;
+                }
+                Ok(None) => last_error = Some(DavError::Http(404, format!("PROPFIND {url}"))),
+                Err(DavError::Http(code, reason)) if [400, 403, 404, 405, 501].contains(&code) => {
+                    last_error = Some(DavError::Http(code, reason))
+                }
+                Err(err) => return Err(err),
+            }
         }
-        let Some(first) = first else {
-            return Err(DavError::Http(404, format!("kein CalDAV unter {start}")));
+        let Some((start, first)) = found else {
+            let hint =
+                "kein CalDAV gefunden – als Server die Adresse der Nextcloud angeben, z. B. https://cloud.example.com";
+            return Err(match last_error {
+                Some(DavError::Http(code, reason)) => DavError::Http(code, format!("{reason}; {hint}")),
+                _ => DavError::Invalid(hint.into()),
+            });
         };
         for r in &first {
             if let Some(h) = r.hrefs.get(&k(CALDAV, "calendar-home-set")) {
@@ -479,7 +700,7 @@ impl Remote for Client {
                 Some(&body),
             )?;
             if status != 207 {
-                return Err(DavError::Http(status, short(&text)));
+                return Err(failed("REPORT", calendar, status, &text));
             }
             for r in parse_multistatus(&text)? {
                 let (Some(etag), Some(data)) =
@@ -507,7 +728,7 @@ impl Remote for Client {
             200..=299 => Ok(Write::Done(new_etag)),
             412 => Ok(Write::Changed),
             404 | 410 if etag.is_some() => Ok(Write::Gone),
-            s => Err(DavError::Http(s, short(&text))),
+            s => Err(failed("PUT", href, s, &text)),
         }
     }
 
@@ -516,11 +737,29 @@ impl Remote for Client {
         match status {
             200..=299 | 404 | 410 => Ok(Write::Done(None)),
             412 => Ok(Write::Changed),
-            s => Err(DavError::Http(s, short(&text))),
+            s => Err(failed("DELETE", href, s, &text)),
         }
     }
 
     fn create_calendar(&self, home: &str, name: &str, color: &str) -> DavResult<RemoteCalendar> {
+        if let Auth::Google { endpoints, .. } = &self.auth {
+            // No MKCALENDAR at Google: the Calendar API creates it.
+            let url = format!("{}/calendars", endpoints.api);
+            let body = serde_json::json!({ "summary": name }).to_string();
+            let (status, _, text) = self.request("POST", &url, &[("Content-Type", "application/json")], Some(&body))?;
+            if status != 200 {
+                return Err(failed("POST", &url, status, &text));
+            }
+            let v: serde_json::Value = serde_json::from_str(&text).map_err(|e| DavError::Invalid(e.to_string()))?;
+            let id = v["id"].as_str().ok_or_else(|| DavError::Invalid("keine Kalender-ID".into()))?;
+            return Ok(RemoteCalendar {
+                url: endpoints.calendar_url(id),
+                name: name.to_owned(),
+                color: normalize_color(color),
+                writable: true,
+                components: vec!["VEVENT".into()],
+            });
+        }
         let slug: String = name
             .to_lowercase()
             .chars()
@@ -567,7 +806,7 @@ impl Remote for Client {
                     });
                 }
                 405 | 409 => continue, // exists
-                s => return Err(DavError::Http(s, short(&text))),
+                s => return Err(failed("MKCALENDAR", &url, s, &text)),
             }
         }
         Err(DavError::Invalid("kein freier Name für den neuen Kalender".into()))
@@ -610,6 +849,33 @@ pub(crate) mod tests {
         assert_eq!(
             Account { server: "cloud.example.com/".into(), ..Default::default() }.start_url(),
             "https://cloud.example.com/remote.php/dav/"
+        );
+        // An address copied from the browser, Nextcloud in a subfolder.
+        let urls = |server: &str| Account { server: server.into(), ..Default::default() }.start_urls();
+        assert_eq!(
+            urls("https://cloud.example.com/nextcloud/apps/calendar/dayGridMonth/now"),
+            [
+                "https://cloud.example.com/nextcloud/remote.php/dav/",
+                "https://cloud.example.com/remote.php/dav/",
+                "https://cloud.example.com/.well-known/caldav"
+            ]
+        );
+        assert_eq!(urls("cloud.example.com/index.php/apps/files/")[0], "https://cloud.example.com/remote.php/dav/");
+        assert_eq!(urls("https://c.de/remote.php/dav/calendars/u/")[0], "https://c.de/remote.php/dav/");
+        assert_eq!(urls("https://c.de").len(), 2);
+        let manual = Account { dav_url: "c.de/dav/".into(), server: "x".into(), ..Default::default() };
+        assert_eq!(manual.start_urls(), ["https://c.de/dav/"]);
+        // Error pages as one line of plain text.
+        assert_eq!(
+            short(
+                "<html>\r\n<head><title>405 Not Allowed</title></head>\r\n<body>\r\n<center><h1>405 Not Allowed</h1></center>\r\n<hr><center>nginx</center></body></html>"
+            ),
+            "405 Not Allowed"
+        );
+        assert_eq!(short("<d:error><s:message>Kalender <b>fehlt</b></s:message></d:error>"), "Kalender fehlt");
+        assert_eq!(
+            failed("PROPFIND", "https://c.de/x/", 405, "<h1>Nope</h1>").to_string(),
+            "Server antwortet mit 405: PROPFIND https://c.de/x/ – Nope"
         );
         assert_eq!(object_name("0a1b@atlas"), "0a1b-atlas.ics");
         assert!(same_href("https://h/c/a%40b.ics", "https://h/c/a@b.ics"));
@@ -661,6 +927,8 @@ pub(crate) mod tests {
         pub counter: u32,
         pub puts: u32,
         pub requests: Vec<String>,
+        /// Google: access tokens currently valid (cleared = expired).
+        pub tokens: Vec<String>,
     }
 
     pub struct TestServer {
@@ -741,8 +1009,49 @@ pub(crate) mod tests {
     ) -> (u16, String, String) {
         let mut s = state.lock().unwrap();
         s.requests.push(format!("{method} {path}"));
-        if headers.get("authorization").map(String::as_str) != Some("Basic bWludXg6Z2VoZWlt") {
+        let json = |status: u16, body: String| (status, "Content-Type: application/json\r\n".to_owned(), body);
+        // Google's token endpoint: refresh token "r1" is valid.
+        if method == "POST" && path == "/token" {
+            if !body.contains("refresh_token=r1") || !body.contains("grant_type=refresh_token") {
+                return json(
+                    400,
+                    r#"{"error":"invalid_grant","error_description":"Token has been expired or revoked."}"#.into(),
+                );
+            }
+            s.counter += 1;
+            let token = format!("tok{}", s.counter);
+            s.tokens.push(token.clone());
+            return json(200, format!(r#"{{"access_token":"{token}","expires_in":3599,"token_type":"Bearer"}}"#));
+        }
+        let auth = headers.get("authorization").cloned().unwrap_or_default();
+        let bearer = auth.strip_prefix("Bearer ").is_some_and(|t| s.tokens.iter().any(|v| v == t));
+        if auth != "Basic bWludXg6Z2VoZWlt" && !bearer {
             return (401, String::new(), String::new());
+        }
+        // Google's Calendar API: the calendars below /caldav/v2/.
+        if method == "GET" && path.starts_with("/calendar/v3/users/me/calendarList") {
+            let items: Vec<_> = s
+                .calendars
+                .iter()
+                .filter_map(|(p, (name, _))| {
+                    let id = p.strip_prefix("/caldav/v2/")?.strip_suffix("/events/")?.replace("%40", "@");
+                    let role = if name.contains("Feiertage") { "reader" } else { "owner" };
+                    Some(serde_json::json!({ "id": id, "summary": name, "accessRole": role, "backgroundColor": "#16a765" }))
+                })
+                .collect();
+            return json(200, serde_json::json!({ "items": items }).to_string());
+        }
+        if method == "POST" && path == "/calendar/v3/calendars" {
+            s.counter += 1;
+            let id = format!("neu{}@group.calendar.google.com", s.counter);
+            let name = serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v["summary"].as_str().map(str::to_owned));
+            s.calendars.insert(
+                format!("/caldav/v2/{}/events/", id.replace('@', "%40")),
+                (name.unwrap_or_default(), BTreeMap::new()),
+            );
+            return json(200, serde_json::json!({ "id": id }).to_string());
         }
         let ms = |inner: String| {
             (
@@ -841,11 +1150,62 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn talks_to_google() {
+        use crate::calendar::google::{Endpoints, OAuthClient};
+        let server = TestServer::start();
+        for (path, name) in
+            [("/caldav/v2/ich%40gmail.com/events/", "Ich"), ("/caldav/v2/feiertage/events/", "Feiertage")]
+        {
+            server.state.lock().unwrap().calendars.insert(path.into(), (name.into(), BTreeMap::new()));
+        }
+        let endpoints = Endpoints {
+            auth: String::new(),
+            token: format!("{}/token", server.base),
+            api: format!("{}/calendar/v3", server.base),
+            caldav: format!("{}/caldav/v2", server.base),
+        };
+        let app = OAuthClient { id: "id".into(), secret: "s".into() };
+        let revoked = Client::google("ich@gmail.com", app.clone(), "alt", endpoints.clone(), false);
+        assert_eq!(revoked.discover(), Err(DavError::Auth), "sign in again");
+
+        let client = Client::google("ich@gmail.com", app, "r1", endpoints.clone(), false);
+        let d = client.discover().unwrap();
+        let mine = endpoints.calendar_url("ich@gmail.com");
+        assert_eq!(d.home, None);
+        assert_eq!(
+            d.calendars.iter().map(|c| (c.name.as_str(), c.writable)).collect::<Vec<_>>(),
+            [("Feiertage", false), ("Ich", true)]
+        );
+        assert!(d.calendars.iter().any(|c| c.url == mine && c.components == ["VEVENT"]));
+
+        // Events over CalDAV with the access token.
+        let href = format!("{mine}{}", object_name("g1@atlas"));
+        let data =
+            "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g1@atlas\r\nSUMMARY:Lesen\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert!(matches!(client.put(&href, data, None).unwrap(), Write::Done(Some(_))));
+        assert_eq!(client.etags(&mine).unwrap().unwrap().len(), 1);
+        // The access token expired: a new one, and the request goes through.
+        let before = server.state.lock().unwrap().counter;
+        server.state.lock().unwrap().tokens.clear();
+        assert_eq!(client.etags(&mine).unwrap().unwrap().len(), 1);
+        assert!(server.state.lock().unwrap().counter > before);
+
+        let created = client.create_calendar("", "Atlas – Projektarbeit", "#2ea043").unwrap();
+        assert!(created.url.starts_with(&format!("{}/caldav/v2/neu", server.base)), "{}", created.url);
+        assert!(client.etags(&created.url).unwrap().unwrap().is_empty());
+    }
+
+    #[test]
     fn talks_to_a_caldav_server() {
         let server = TestServer::start();
         let account = Account { server: server.base.clone(), user: "minux".into(), dav_url: String::new() };
         let wrong = Client::new(account.clone(), "falsch", false);
         assert_eq!(wrong.discover(), Err(DavError::Auth));
+
+        // An address copied from the browser: the DAV root is found anyway.
+        let copied = Account { server: format!("{}/sub/apps/calendar/now", server.base), ..account.clone() };
+        let d = Client::new(copied, "geheim", false).discover().unwrap();
+        assert_eq!(d.home.as_deref(), Some(format!("{}/remote.php/dav/calendars/minux/", server.base).as_str()));
 
         let client = Client::new(account, "geheim", false);
         let d = client.discover().unwrap();

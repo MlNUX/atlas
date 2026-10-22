@@ -37,6 +37,23 @@ pub struct RenderedPage {
     pub elapsed: Duration,
 }
 
+/// A link on a page: its area in points (origin top left) and its target.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageLink {
+    pub page: usize,
+    pub rect: [f64; 4],
+    pub target: LinkTarget,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LinkTarget {
+    /// A page of this document (0-based), optionally a position on it in
+    /// points from the top.
+    Page { page: usize, top: Option<f64> },
+    /// A web address or other URI (`mailto:` …).
+    Uri(String),
+}
+
 /// One entry of the document outline (table of contents).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutlineItem {
@@ -83,6 +100,7 @@ trait Backend {
     fn render(&mut self, path: &Path, page: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)>;
     fn text(&mut self, path: &Path, page: usize) -> Result<String>;
     fn outline(&mut self, path: &Path) -> Result<Vec<OutlineItem>>;
+    fn links(&mut self, path: &Path) -> Result<Vec<PageLink>>;
     fn search(&mut self, path: &Path, query: &str, limit: usize) -> Result<Vec<SearchHit>>;
     /// Text in `area` (`[x1, y1, x2, y2]`: start and end of the drag).
     fn select(
@@ -249,6 +267,11 @@ impl PdfService {
     /// Reads the outline (table of contents).
     pub fn outline(&self, path: PathBuf, done: impl FnOnce(Result<Vec<OutlineItem>>) + Send + 'static) {
         self.submit(Box::new(move |backend, _| done(backend.outline(&path))));
+    }
+
+    /// Reads the links of all pages (internal jumps and web addresses).
+    pub fn links(&self, path: PathBuf, done: impl FnOnce(Result<Vec<PageLink>>) + Send + 'static) {
+        self.submit(Box::new(move |backend, _| done(backend.links(&path))));
     }
 
     /// Finds `query` (case insensitive) in all pages.
@@ -420,6 +443,42 @@ mod outline_tests {
             cr.show_page().unwrap();
         }
         surface.finish();
+    }
+
+    #[test]
+    fn reads_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("links.pdf");
+        {
+            let surface = cairo::PdfSurface::new(595.0, 842.0, &path).unwrap();
+            let cr = cairo::Context::new(&surface).unwrap();
+            cr.set_font_size(20.0);
+            cr.tag_begin("Link", "uri='https://example.org/'");
+            cr.move_to(100.0, 200.0);
+            cr.show_text("Webseite").unwrap();
+            cr.tag_end("Link");
+            cr.tag_begin("Link", "page=2 pos=[0 300]");
+            cr.move_to(100.0, 400.0);
+            cr.show_text("Zu Seite 2").unwrap();
+            cr.tag_end("Link");
+            cr.show_page().unwrap();
+            cr.show_text("Seite 2").unwrap();
+            cr.show_page().unwrap();
+            surface.finish();
+        }
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        PdfService::get().links(path.clone(), move |r| tx.send(r).unwrap());
+        let links = rx.recv().unwrap().unwrap();
+        assert_eq!(links.len(), 2, "{links:?}");
+        let web = links.iter().find(|l| l.target == LinkTarget::Uri("https://example.org/".into())).unwrap();
+        assert_eq!(web.page, 0);
+        // Area around the text, origin top left.
+        assert!(web.rect[0] <= 101.0 && web.rect[1] < 200.0 && web.rect[1] + web.rect[3] > 190.0, "{:?}", web.rect);
+        let jump = links.iter().find(|l| matches!(l.target, LinkTarget::Page { .. })).unwrap();
+        let LinkTarget::Page { page, top } = jump.target else { unreachable!() };
+        assert_eq!(page, 1);
+        assert!(top.is_none_or(|t| (t - 300.0).abs() < 1.0), "{top:?}");
+        assert!(jump.rect[1] < 400.0 && jump.rect[1] > 300.0, "{:?}", jump.rect);
     }
 
     #[test]

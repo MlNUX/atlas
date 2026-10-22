@@ -121,7 +121,8 @@ pub fn quote_text(text: &str, line: usize) -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GraphNode {
     pub path: PathBuf,
-    /// 0 = the file itself, 1 = direct neighbour, 2 = neighbour of one.
+    /// Distance from the centre: 0 = the file itself, 1 = direct
+    /// neighbour, 2 = neighbour of one … ([`UNCONNECTED`]: not linked).
     pub depth: u8,
     pub missing: bool,
 }
@@ -134,6 +135,8 @@ pub struct GraphEdge {
     pub count: usize,
     /// Some links are quotes of PDF annotations.
     pub quotes: usize,
+    /// The two files are related by hand ([`crate::relations`]).
+    pub related: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -142,6 +145,127 @@ pub struct Graph {
     pub edges: Vec<GraphEdge>,
     /// Neighbours that were left out because of the size limit.
     pub truncated: usize,
+}
+
+/// Depth of the nodes of [`NoteIndex::project_graph`] that are not linked
+/// with its centre.
+pub const UNCONNECTED: u8 = u8::MAX;
+
+/// Collects the nodes and aggregated edges of a [`Graph`].
+struct GraphBuilder<'a> {
+    notes: &'a NoteIndex,
+    /// Links to each file: target → (source note, link).
+    incoming: BTreeMap<&'a Path, Vec<(&'a Path, &'a NoteLink)>>,
+    /// Files related by hand, both ways: file → (other, stored first).
+    related: BTreeMap<PathBuf, Vec<(PathBuf, bool)>>,
+    nodes: Vec<GraphNode>,
+    index: BTreeMap<PathBuf, usize>,
+    /// (from, to) → (count, quotes, related)
+    edges: BTreeMap<(usize, usize), (usize, usize, bool)>,
+    truncated: usize,
+}
+
+impl<'a> GraphBuilder<'a> {
+    /// `relations`: pairs of files related by hand (absolute paths).
+    fn new(notes: &'a NoteIndex, center: &Path, relations: &[(PathBuf, PathBuf)]) -> Self {
+        let mut incoming: BTreeMap<&'a Path, Vec<(&'a Path, &'a NoteLink)>> = BTreeMap::new();
+        for (source, note) in &notes.notes {
+            for link in note.links.iter().filter(|l| &l.target != source) {
+                incoming.entry(link.target.as_path()).or_default().push((source.as_path(), link));
+            }
+        }
+        let mut related: BTreeMap<PathBuf, Vec<(PathBuf, bool)>> = BTreeMap::new();
+        for (a, b) in relations.iter().filter(|(a, b)| a != b) {
+            related.entry(a.clone()).or_default().push((b.clone(), true));
+            related.entry(b.clone()).or_default().push((a.clone(), false));
+        }
+        let mut builder = Self {
+            notes,
+            incoming,
+            related,
+            nodes: Vec::new(),
+            index: BTreeMap::new(),
+            edges: BTreeMap::new(),
+            truncated: 0,
+        };
+        builder.nodes.push(GraphNode { path: center.to_path_buf(), depth: 0, missing: false });
+        builder.index.insert(center.to_path_buf(), 0);
+        builder
+    }
+
+    fn add(&mut self, path: &Path, depth: u8) -> usize {
+        let missing = path.symlink_metadata().is_err();
+        self.nodes.push(GraphNode { path: path.to_path_buf(), depth, missing });
+        self.index.insert(path.to_path_buf(), self.nodes.len() - 1);
+        self.nodes.len() - 1
+    }
+
+    /// Breadth-first from `start` (already a node), at most `levels` steps.
+    /// New nodes get their distance from `start`, or `depth` if given.
+    fn grow(&mut self, start: &Path, levels: u8, depth: Option<u8>, limit: usize) {
+        let notes = self.notes;
+        let mut frontier = vec![start.to_path_buf()];
+        for level in 1..=levels {
+            if frontier.is_empty() {
+                break;
+            }
+            let mut next = Vec::new();
+            for path in &frontier {
+                let from = self.index[path];
+                // Links from `path` (if it is a note), links to it and files
+                // related to it by hand (no link).
+                let mut neighbours: Vec<(PathBuf, bool, Option<&'a NoteLink>)> = Vec::new();
+                if let Some(note) = notes.notes.get(path) {
+                    neighbours.extend(note.links.iter().map(|l| (l.target.clone(), true, Some(l))));
+                }
+                if let Some(list) = self.incoming.get(path.as_path()) {
+                    neighbours.extend(list.iter().map(|&(source, link)| (source.to_path_buf(), false, Some(link))));
+                }
+                if let Some(list) = self.related.get(path) {
+                    neighbours.extend(list.iter().map(|(other, first)| (other.clone(), *first, None)));
+                }
+                for (other, outgoing, link) in neighbours {
+                    let other = other.as_path();
+                    // Hidden files (and files in hidden folders) stay out.
+                    if other == path || notes.is_hidden(other) {
+                        continue;
+                    }
+                    let to = match self.index.get(other) {
+                        Some(&i) => i,
+                        None if self.nodes.len() >= limit => {
+                            self.truncated += 1;
+                            continue;
+                        }
+                        None => {
+                            next.push(other.to_path_buf());
+                            self.add(other, depth.unwrap_or(level))
+                        }
+                    };
+                    let key = if outgoing { (from, to) } else { (to, from) };
+                    let entry = self.edges.entry(key).or_default();
+                    match link {
+                        Some(link) => {
+                            entry.0 += 1;
+                            if matches!(link.anchor, LinkAnchor::Annotation(..)) {
+                                entry.1 += 1;
+                            }
+                        }
+                        None => entry.2 = true,
+                    }
+                }
+            }
+            frontier = next;
+        }
+    }
+
+    fn finish(self) -> Graph {
+        let edges = self
+            .edges
+            .into_iter()
+            .map(|((from, to), (count, quotes, related))| GraphEdge { from, to, count, quotes, related })
+            .collect();
+        Graph { nodes: self.nodes, edges, truncated: self.truncated }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,6 +345,14 @@ impl NoteIndex {
 
     pub fn len(&self) -> usize {
         self.notes.len()
+    }
+
+    /// `path` is hidden or inside a hidden folder of the project.
+    fn is_hidden(&self, path: &Path) -> bool {
+        path.strip_prefix(&self.root)
+            .unwrap_or(path)
+            .components()
+            .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -324,57 +456,50 @@ impl NoteIndex {
     /// to it, files it links to (if it is a note) and – with `depth` 2 –
     /// their neighbours. At most `limit` nodes; closer ones first.
     pub fn graph(&self, center: &Path, depth: u8, limit: usize) -> Graph {
-        let mut nodes: Vec<GraphNode> = vec![GraphNode { path: center.to_path_buf(), depth: 0, missing: false }];
-        let mut index: BTreeMap<PathBuf, usize> = BTreeMap::from([(center.to_path_buf(), 0)]);
-        // (from, to) → (count, quotes)
-        let mut edges: BTreeMap<(usize, usize), (usize, usize)> = BTreeMap::new();
-        let mut truncated = 0;
-        let mut frontier = vec![center.to_path_buf()];
-        for level in 1..=depth.max(1) {
-            let mut next = Vec::new();
-            for path in &frontier {
-                let from = index[path];
-                // Links from `path` (if it is a note) and links to it.
-                let mut neighbours: Vec<(PathBuf, bool, &NoteLink)> = Vec::new();
-                if let Some(note) = self.notes.get(path) {
-                    neighbours.extend(note.links.iter().map(|l| (l.target.clone(), true, l)));
-                }
-                for (source, note) in &self.notes {
-                    for link in note.links.iter().filter(|l| &l.target == path && source != path) {
-                        neighbours.push((source.clone(), false, link));
-                    }
-                }
-                for (other, outgoing, link) in neighbours {
-                    if &other == path {
-                        continue;
-                    }
-                    let to = match index.get(&other) {
-                        Some(&i) => i,
-                        None if nodes.len() >= limit => {
-                            truncated += 1;
-                            continue;
-                        }
-                        None => {
-                            let missing = other.symlink_metadata().is_err();
-                            nodes.push(GraphNode { path: other.clone(), depth: level, missing });
-                            index.insert(other.clone(), nodes.len() - 1);
-                            next.push(other.clone());
-                            nodes.len() - 1
-                        }
-                    };
-                    let key = if outgoing { (from, to) } else { (to, from) };
-                    let entry = edges.entry(key).or_default();
-                    entry.0 += 1;
-                    if matches!(link.anchor, LinkAnchor::Annotation(..)) {
-                        entry.1 += 1;
-                    }
-                }
+        let mut builder = GraphBuilder::new(self, center, &[]);
+        builder.grow(center, depth.max(1), None, limit);
+        builder.finish()
+    }
+
+    /// The whole project: every note, every file a note links to, files
+    /// related by hand (`relations`) and the `others` (further files of the
+    /// project, in this order). `center`
+    /// comes first; the depth of a node is its distance from it,
+    /// [`UNCONNECTED`] for the parts not linked with it. At most `limit`
+    /// nodes: the part around `center` first, then the other notes.
+    pub fn project_graph(
+        &self,
+        center: &Path,
+        others: &[PathBuf],
+        relations: &[(PathBuf, PathBuf)],
+        limit: usize,
+    ) -> Graph {
+        let mut builder = GraphBuilder::new(self, center, relations);
+        builder.grow(center, UNCONNECTED - 1, None, limit);
+        for path in self.notes.keys() {
+            if builder.index.contains_key(path) || self.is_hidden(path) {
+                continue;
             }
-            frontier = next;
+            if builder.nodes.len() >= limit {
+                builder.truncated += 1;
+                continue;
+            }
+            builder.add(path, UNCONNECTED);
+            builder.grow(path, UNCONNECTED - 1, Some(UNCONNECTED), limit);
         }
-        let edges =
-            edges.into_iter().map(|((from, to), (count, quotes))| GraphEdge { from, to, count, quotes }).collect();
-        Graph { nodes, edges, truncated }
+        for path in others {
+            if builder.index.contains_key(path) || self.is_hidden(path) {
+                continue;
+            }
+            if builder.nodes.len() >= limit {
+                builder.truncated += 1;
+                continue;
+            }
+            builder.add(path, UNCONNECTED);
+            // Related by hand to something outside the part around `center`.
+            builder.grow(path, UNCONNECTED - 1, Some(UNCONNECTED), limit);
+        }
+        builder.finish()
     }
 
     /// All tags, sorted by key.
@@ -665,6 +790,32 @@ mod graph_tests {
         assert!(find(&root.join("notes/fehlt.md")).unwrap().missing);
         assert_eq!(index.graph(&a, 2, 3).nodes.len(), 3, "limited");
         assert!(index.graph(&a, 2, 3).truncated > 0);
+
+        // The whole project around c.md: everything linked with it by
+        // distance, an unlinked note marked as such.
+        let e = write(root, "notes/e.md", "allein\n");
+        write(root, ".github/notes.md", "[[/notes/c]]\n");
+        let index = NoteIndex::build(root);
+        let other = write(root, "daten/tabelle.csv", "a,b\n");
+        let other2 = write(root, "daten/b.pdf", "%PDF");
+        let related = [(pdf.clone(), other2.clone()), (other.clone(), other2.clone())];
+        let g = index.project_graph(&c, &[other.clone(), pdf.clone(), other2.clone()], &related, 50);
+        let find = |p: &Path| g.nodes.iter().find(|n| n.path == p).cloned();
+        assert_eq!(g.nodes[0].path, c);
+        assert_eq!(find(&b).unwrap().depth, 1);
+        assert_eq!(find(&a).unwrap().depth, 2);
+        assert_eq!(find(&pdf).unwrap().depth, 3);
+        assert_eq!(find(&d).unwrap().depth, 4);
+        assert_eq!(find(&e).unwrap().depth, UNCONNECTED);
+        assert_eq!(find(&other2).unwrap().depth, 4, "related by hand to the PDF");
+        assert_eq!(find(&other).unwrap().depth, 5, "and on to the table");
+        let idx = |p: &Path| g.nodes.iter().position(|n| n.path == p).unwrap();
+        let edge = g.edges.iter().find(|e| e.from == idx(&pdf) && e.to == idx(&other2)).unwrap();
+        assert!(edge.related && edge.count == 0);
+        assert_eq!(g.nodes.iter().filter(|n| n.path == pdf).count(), 1);
+        assert!(g.nodes.iter().all(|n| n.path != root.join(".github/notes.md")), "no hidden files");
+        assert_eq!(g.edges.len(), index.graph(&c, 9, 50).edges.len() + 2, "e.md has no links");
+        assert_eq!(index.project_graph(&c, &[other], &[], 3).nodes.len(), 3, "limited");
 
         // Backlinks know the kind of link and the line.
         let back = index.backlinks(&pdf);

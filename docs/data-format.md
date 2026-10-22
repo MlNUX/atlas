@@ -15,12 +15,13 @@ Projektdaten sind immer **relativ zur Projektwurzel** und verwenden `/`.
 | Datei | Inhalt | Wiederherstellbar? |
 |---|---|---|
 | `project.toml` | `format_version`, Projekt-`id` (UUID), `created_unix` | wird bei Fehlen neu angelegt |
-| `sessions/<device-id>/<session>.json` | benannte Sessions dieses Geräts | nein (Nutzerzustand) |
+| `sessions/<device-id>/<session>.json` | die Session des Ordners auf diesem Gerät (eine je Projektordner; ältere Projekte können mehrere haben, genutzt wird die aktive) | nein (Nutzerzustand) |
 | `sessions/<device-id>/active.json` | `{"session": "<id>"}` – aktive Session | ja (Standard-Session) |
 | `metadata.sqlite` | Dokumentidentitäten und Anzeigezustand | teilweise (Positionen gehen verloren) |
 | `index.sqlite` | Dateiliste mit Gerät/Inode | ja, wird bei jedem Start neu aufgebaut |
 | `recovery/<hash>.json` | ungespeicherte Bearbeitungen | nein, bis gespeichert oder verworfen |
 | `annotations/<name>-<8 hex>.json` | PDF-Annotationen, eine Datei je PDF | nein (Nutzerdaten) |
+| `relations.json` | von Hand verknüpfte Dateien („Verknüpfen mit …“): `{"version": 1, "relations": [{"a": "docs/a.pdf", "b": "docs/b.pdf"}], "folders": ["literatur"]}`, ohne Richtung; `folders` sind Ordner-Knoten (alle Dateien direkt im Ordner hängen daran); folgt Umbenennen/Verschieben in Atlas, Einträge gelöschter Dateien entfallen | nein (Nutzerdaten) |
 | `actions.yaml` | eigene Aktionen des Projekts ([actions.md](actions.md)) | nein (Nutzerdaten) |
 | `extensions/<name>/extension.yaml` | Erweiterungen des Projekts ([extensions.md](extensions.md)) | nein (Nutzerdaten) |
 | `cache/processed/` | Ergebnisse der Dateiverarbeitung durch Erweiterungen | ja |
@@ -217,7 +218,7 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 
 | Ort | Inhalt |
 |---|---|
-| `$XDG_STATE_HOME/atlas/app.json` | `{"version": 1, "last_project": "/pfad"}` |
+| `$XDG_STATE_HOME/atlas/app.json` | `{"version": 1, "last_project": "/pfad", "projects": ["/pfad", …]}` – zuletzt geöffnete Projekte (höchstens 30) für die Sessionliste |
 | `$XDG_STATE_HOME/atlas/device-id` | `<hostname>-<8 hex>`, einmal erzeugt |
 | `$XDG_STATE_HOME/atlas/recovery/` | Recovery für Dateien außerhalb von Projekten |
 | `$XDG_CONFIG_HOME/atlas/config.toml` | Einstellungen (siehe unten) |
@@ -238,12 +239,18 @@ terminal = false                                 # im Atlas-Terminal ausführen
 shell = "/run/current-system/sw/bin/fish"        # Standard: Login-Shell
 
 [extensions]
-disabled = ["beispiel"]                          # ausgeschaltete Erweiterungen
+disabled = ["core"]                              # ausgeschaltete Erweiterungen
 
 [places]
 file_manager = true                              # Orte wie in Dolphin (ohne KDE: feste + GTK-Lesezeichen); Standard
 
-[calendar]                                       # Nextcloud/CalDAV – ohne Passwort
+[pdf]
+dark = true                                      # Dunkelmodus: Farben umgekehrt (Mond in der PDF-Leiste)
+
+[calendar]                                       # Nextcloud/CalDAV oder Google – ohne Passwort
+provider = ""                                    # "" = Nextcloud/CalDAV, "google" = Google (siehe google-kalender.md)
+google_client_id = ""                            # Google: eigener OAuth-Client (Desktop-App)
+google_client_secret = ""                        # für Desktop-Apps nicht geheim; das Token steht nie hier
 server = "https://cloud.example.com"
 user = "minux"
 dav_url = ""                                     # optional: CalDAV-URL von Hand

@@ -7,8 +7,8 @@ import QtQuick.Layouts
 import Atlas
 
 // Chooses a project folder: places on the left, a clickable path bar and
-// the subfolders of the shown folder. For a new session it also asks for
-// the session's name.
+// the subfolders of the shown folder. For a new session (one per project
+// folder) it also offers a name; without one the folder name is used.
 Dialog {
     id: root
     required property AppController app
@@ -47,7 +47,6 @@ Dialog {
     function segments(path) { return pathEdit.segments(path) }
     function accept() {
         if (!chosenPath || folder.error) return
-        if (mode === "session" && !nameField.text.trim()) { nameField.forceActiveFocus(); return }
         chosen(chosenPath, nameField.text.trim())
         close()
     }
@@ -96,7 +95,7 @@ Dialog {
                 Text {
                     Layout.fillWidth: true
                     elide: Text.ElideRight
-                    text: root.mode === "session" ? qsTr("Wähle den Projektordner, in dem die Session angelegt wird.")
+                    text: root.mode === "session" ? qsTr("Jeder Projektordner hat genau eine Session; gibt es sie schon, wird sie geöffnet.")
                         : qsTr("Atlas legt seine Daten im Unterordner .atlas des Projekts ab.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.smallFontSize
@@ -297,7 +296,7 @@ Dialog {
                 id: nameField
                 visible: root.mode === "session"
                 Layout.preferredWidth: 200
-                placeholderText: qsTr("Name der Session")
+                placeholderText: root.nameOf(root.chosenPath)
                 onAccepted: root.accept()
             }
             Icon { name: "folder"; size: 16; color: Theme.textMuted }
@@ -310,9 +309,9 @@ Dialog {
             }
             Button { text: qsTr("Abbrechen"); onClicked: root.close() }
             Button {
-                text: root.mode === "session" ? qsTr("Session anlegen") : qsTr("Ordner öffnen")
+                text: root.mode === "session" ? qsTr("Session öffnen") : qsTr("Ordner öffnen")
                 highlighted: true
-                enabled: !!root.chosenPath && !folder.error && (root.mode !== "session" || nameField.text.trim().length > 0)
+                enabled: !!root.chosenPath && !folder.error
                 onClicked: root.accept()
             }
         }

@@ -16,7 +16,10 @@
 //! [places]
 //! file_manager = true            # also Dolphin's/GTK's places (default)
 //!
-//! [calendar]                     # Nextcloud/CalDAV (never a password)
+//! [calendar]                     # Nextcloud/CalDAV or Google (never a password)
+//! provider = ""                  # "" = Nextcloud/CalDAV, "google"
+//! google_client_id = ""          # Google: the user's OAuth client (Desktop app)
+//! google_client_secret = ""
 //! server = "https://cloud.example.com"
 //! user = "minux"
 //! dav_url = ""                   # optional, if discovery fails
@@ -88,6 +91,16 @@ impl CalendarChoice {
 /// once per start or comes from `password_command`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalendarConfig {
+    /// "" (Nextcloud or another CalDAV server) or "google".
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub provider: String,
+    /// Google: the user's own OAuth client ("Desktop app"); its secret is
+    /// not secret for installed apps. The refresh token is kept like the
+    /// app password (see `secret`), never here.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub google_client_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub google_client_secret: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub server: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -111,7 +124,14 @@ pub struct CalendarConfig {
 
 impl CalendarConfig {
     pub fn connected(&self) -> bool {
+        if self.is_google() {
+            return !self.user.is_empty() && !self.google_client_id.is_empty();
+        }
         !self.user.is_empty() && (!self.server.is_empty() || !self.dav_url.is_empty())
+    }
+
+    pub fn is_google(&self) -> bool {
+        self.provider == "google"
     }
 }
 
@@ -133,6 +153,14 @@ impl Default for PlacesConfig {
     }
 }
 
+/// `[pdf]`: how PDFs are shown.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PdfConfig {
+    /// Dark mode: pages with inverted brightness (hues are kept).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dark: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
@@ -145,6 +173,8 @@ pub struct Config {
     pub calendar: CalendarConfig,
     #[serde(default)]
     pub places: PlacesConfig,
+    #[serde(default)]
+    pub pdf: PdfConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -188,6 +218,11 @@ impl Config {
     /// Updates only the `[places]` table.
     pub fn save_places(places: &PlacesConfig) -> Result<()> {
         save_table(&config_file(), "places", places)
+    }
+
+    /// Updates only the `[pdf]` table.
+    pub fn save_pdf(pdf: &PdfConfig) -> Result<()> {
+        save_table(&config_file(), "pdf", pdf)
     }
 
     /// Updates only the `[extensions]` table.

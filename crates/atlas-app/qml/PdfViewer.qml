@@ -32,6 +32,9 @@ Rectangle {
         if (index < 0 || index >= doc.pageCount) return null
         return { w: Math.round(doc.pageWidth(index) * 25.4 / 72), h: Math.round(doc.pageHeight(index) * 25.4 / 72) }
     }
+    /// Dark mode for all PDFs (setting of the app): inverted brightness.
+    readonly property bool dark: !!root.app && root.app.pdfDark
+    readonly property color paperColor: dark ? "#262626" : "white"
     /// 0 = thumbnails, 1 = outline, 2 = annotations.
     property int sidebarTab: 0
     /// Notes citing or linking to this PDF, and the local graph.
@@ -88,7 +91,7 @@ Rectangle {
     function viewState() {
         return {
             zoom: root.zoom, page: currentPage, sidebar: sidebarVisible, sidebarTab: sidebarTab,
-            context: showContext, contextTab: contextPanel.tab, graphDepth: contextPanel.depth,
+            context: showContext, contextTab: contextPanel.tab,
         }
     }
     function applyState(state) {
@@ -106,7 +109,6 @@ Rectangle {
         if (s.sidebarTab !== undefined) root.sidebarTab = s.sidebarTab
         if (s.context !== undefined) root.showContext = s.context
         if (s.contextTab !== undefined) contextPanel.tab = s.contextTab
-        if (s.graphDepth !== undefined) contextPanel.depth = s.graphDepth
         restorePage = s.page || 0
         if (doc.status === "ready") Qt.callLater(root.restore)
     }
@@ -122,6 +124,30 @@ Rectangle {
     function goToPage(index) {
         const i = Math.max(0, Math.min(doc.pageCount - 1, index))
         pages.positionViewAtIndex(i, ListView.Beginning)
+    }
+    /// Links of the document by 0-based page (from `doc.linksJson`).
+    readonly property var linksByPage: {
+        const by = {}
+        try {
+            for (const l of JSON.parse(doc.linksJson || "[]")) (by[l.page] = by[l.page] || []).push(l)
+        } catch (e) {}
+        return by
+    }
+    function linkAt(page, x, y) {
+        return (linksByPage[page] || []).find(l => x >= l.rect[0] && x <= l.rect[0] + l.rect[2]
+                                                && y >= l.rect[1] && y <= l.rect[1] + l.rect[3]) || null
+    }
+    /// Follows a link: jumps inside the document or opens a web address in
+    /// the browser (only web and mail addresses, nothing to run).
+    function followLink(link) {
+        if (link.target >= 0) {
+            if (link.top >= 0) showPoint(link.target, link.top)
+            else goToPage(link.target)
+        } else if (/^(https?|mailto|ftp):/i.test(link.uri)) {
+            Qt.openUrlExternally(link.uri)
+        } else if (root.actions) {
+            root.actions.showMessage(qsTr("Link nicht geöffnet: %1").arg(link.uri))
+        }
     }
     /// Scrolls so that `y` (points) of page `index` is in the upper third.
     function showPoint(index, y) {
@@ -187,6 +213,7 @@ Rectangle {
         }
     }
     readonly property alias annotationStore: notes
+    readonly property alias pagesView: pages
     readonly property bool changeNotice: notes.status === "changed" && notes.count > 0
 
     function message(text) { if (root.actions) root.actions.showMessage(text) }
@@ -286,6 +313,7 @@ Rectangle {
     readonly property bool pageBookmarked: (annotsByPage[currentPage + 1] || []).some(a => a.kind === "bookmark")
 
     function exportCopy() {
+        if (notes.count === 0) return
         exportDialog.selectedFile = "file://" + notes.defaultExportPath()
         exportDialog.open()
     }
@@ -401,6 +429,8 @@ Rectangle {
         const p = event.pixelDelta.y || event.pixelDelta.x
         return p / 50
     }
+    /// Pixels per wheel notch.
+    readonly property int wheelStep: 160
     function zoomBy(factor) { zoom = Math.max(0.2, Math.min(6, zoomScale * factor)) }
 
     Keys.onPressed: (event) => {
@@ -470,6 +500,14 @@ Rectangle {
                 IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg++)"); onClicked: root.zoomBy(1.2) }
                 IconButton { glyph: "↔"; tip: qsTr("Seitenbreite (Strg+0)"); checkable: true; checked: root.zoom === 0; onClicked: root.zoom = 0 }
                 IconButton { glyph: "▯"; tip: qsTr("Ganze Seite"); checkable: true; checked: root.zoom < 0; onClicked: root.zoom = -1 }
+                IconButton {
+                    iconName: "moon"
+                    tip: root.dark ? qsTr("Dunkelmodus aus: Originalfarben") : qsTr("Dunkelmodus: Farben umkehren (für alle PDFs)")
+                    checkable: true
+                    checked: root.dark
+                    enabled: !!root.app
+                    onClicked: root.app.pdfDark = !root.app.pdfDark
+                }
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
                 IconButton {
                     glyph: "I"
@@ -562,7 +600,7 @@ Rectangle {
                 }
                 IconButton {
                     iconName: "graph"
-                    tip: qsTr("Lokaler Graph: verknüpfte Notizen und Dateien")
+                    tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
                     checkable: true
                     checked: root.showContext && contextPanel.tab === 1
                     onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 1); contextPanel.tab = 1 }
@@ -623,7 +661,7 @@ Rectangle {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     width: 110
                                     height: parent.height - 22
-                                    color: "white"
+                                    color: root.paperColor
                                     border.width: thumb.index === root.currentPage ? 2 : 0
                                     border.color: Theme.accent
                                     PdfPage {
@@ -631,6 +669,7 @@ Rectangle {
                                         anchors.margins: parent.border.width
                                         source: doc.source
                                         page: thumb.index
+                                        inverted: root.dark
                                         renderWidth: Math.round(110 * Screen.devicePixelRatio)
                                     }
                                     Text {
@@ -824,15 +863,46 @@ Rectangle {
                         event.accepted = true
                         const steps = root.wheelSteps(event)
                         if (!steps) return
-                        const at = Qt.point(pages.contentX + event.x - pages.originX, pages.contentY + event.y - pages.originY)
+                        // The point under the mouse in page coordinates: pages are
+                        // centred in the content, so a page narrower than the view
+                        // must not move sideways (it jumped and slid back before).
                         const before = root.zoomScale
+                        const offset = (z) => (pages.contentWidth - doc.maxPageWidth * z) / 2
+                        const px = (pages.contentX - pages.originX + event.x - offset(before)) / before
+                        const top = pages.contentY - pages.originY + event.y - pages.topMargin
                         root.zoomBy(Math.pow(1.1, steps))
                         const k = root.zoomScale / before
-                        Qt.callLater(() => {
-                            pages.contentX = Math.max(0, at.x * k - event.x) + pages.originX
-                            pages.contentY = Math.max(0, at.y * k - event.y) + pages.originY
-                            pages.returnToBounds()
-                        })
+                        const place = () => {
+                            const maxX = Math.max(0, pages.contentWidth - pages.width)
+                            const x = offset(root.zoomScale) + px * root.zoomScale - event.x
+                            pages.contentX = Math.max(0, Math.min(maxX, x)) + pages.originX
+                            const y = top * k + pages.topMargin - event.y
+                            pages.contentY = Math.max(0, Math.min(Math.max(0, pages.contentHeight - pages.height), y)) + pages.originY
+                        }
+                        // At once (no frame at the old position), and again after
+                        // the list laid its pages out at the new size.
+                        place()
+                        Qt.callLater(place)
+                        event.accepted = true
+                    }
+                }
+                // Plain wheel: scroll faster than the list would (a few lines
+                // per notch felt sluggish on long documents). Touchpads keep
+                // their own pixel deltas, a bit amplified.
+                WheelHandler {
+                    acceptedDevices: PointerDevice.AllDevices
+                    acceptedPointerTypes: PointerDevice.AllPointerTypes
+                    acceptedModifiers: Qt.NoModifier
+                    onWheel: (event) => {
+                        const delta = (angle, pixel) => pixel !== 0 && angle % 120 !== 0
+                            ? pixel * 1.5 : angle / 120 * root.wheelStep
+                        pages.cancelFlick()
+                        const minY = pages.originY - pages.topMargin
+                        const maxY = Math.max(minY, pages.originY + pages.contentHeight + pages.bottomMargin - pages.height)
+                        pages.contentY = Math.max(minY, Math.min(maxY, pages.contentY - delta(event.angleDelta.y, event.pixelDelta.y)))
+                        const maxX = Math.max(0, pages.contentWidth - pages.width)
+                        const dx = delta(event.angleDelta.x, event.pixelDelta.x)
+                        if (dx) pages.contentX = Math.max(0, Math.min(maxX, pages.contentX - pages.originX - dx)) + pages.originX
                         event.accepted = true
                     }
                 }
@@ -849,13 +919,14 @@ Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: doc.pageWidth(pageDelegate.index) * root.zoomScale
                         height: parent.height
-                        color: "white"
+                        color: root.paperColor
 
                         PdfPage {
                             id: page
                             anchors.fill: parent
                             source: doc.source
                             page: pageDelegate.index
+                            inverted: root.dark
                             renderWidth: Math.round(doc.pageWidth(pageDelegate.index) * root.renderScale * Screen.devicePixelRatio)
                             onRenderMsChanged: root.lastRenderMs = renderMs
                         }
@@ -1002,17 +1073,24 @@ Rectangle {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             hoverEnabled: true
                             cursorShape: root.tool === "ink" || root.tool === "note" ? Qt.CrossCursor
-                                : hoveredAnnotation ? Qt.PointingHandCursor : Qt.IBeamCursor
+                                : hoveredAnnotation || hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
                             property var pressPoint: null
                             property bool moved: false
                             property var hoveredAnnotation: null
+                            property var hoveredLink: null
+                            ToolTip.visible: !!hoveredLink && !!hoveredLink.uri && !pressed
+                            ToolTip.text: hoveredLink ? hoveredLink.uri : ""
+                            ToolTip.delay: 400
                             function pointOf(mouse) {
                                 return { page: pageDelegate.index, x: mouse.x / root.zoomScale, y: mouse.y / root.zoomScale }
                             }
                             onPositionChanged: (mouse) => {
                                 const vp = mapToItem(pages, mouse.x, mouse.y)
                                 if (!pressed) {
-                                    if (root.tool === "select") hoveredAnnotation = root.annotationAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
+                                    if (root.tool === "select") {
+                                        hoveredAnnotation = root.annotationAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
+                                        hoveredLink = hoveredAnnotation ? null : root.linkAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
+                                    }
                                     return
                                 }
                                 root.dragViewport = vp
@@ -1071,10 +1149,15 @@ Rectangle {
                                     return
                                 }
                                 if (!moved && !(mouse.modifiers & Qt.ShiftModifier)) {
-                                    // A click: open an annotation or drop the selection.
+                                    // A click: open an annotation, follow a link or drop
+                                    // the selection.
                                     const hit = root.annotationAt(p.page, p.x, p.y)
                                     root.clearSelection()
                                     if (hit) annotPopup.show(hit.id, mapToItem(root, mouse.x, mouse.y))
+                                    else {
+                                        const link = root.linkAt(p.page, p.x, p.y)
+                                        if (link) root.followLink(link)
+                                    }
                                     return
                                 }
                                 if (mouse.modifiers & Qt.ShiftModifier) { root.dragEnd = root.pointAt(mapToItem(pages, mouse.x, mouse.y).x, mapToItem(pages, mouse.x, mouse.y).y) || p; root.requestSelection() }

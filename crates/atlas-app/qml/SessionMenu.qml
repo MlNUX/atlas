@@ -6,9 +6,10 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Atlas
 
-// Session button in the title bar ("Sitzung: …") and its panel: search,
-// all sessions with their size, switch with a click; new, duplicate,
-// rename, save and delete.
+// Session button in the title bar ("Sitzung: …") and its panel. A session
+// is a project folder (its tabs, splits and tree): search, all sessions
+// with their folder and size, switch with a click; new (choose a folder),
+// rename, save and remove from the list.
 AbstractButton {
     id: root
     required property AppController app
@@ -16,14 +17,13 @@ AbstractButton {
     property int activeTabs: 0
     property int activeSplits: 0
 
-    signal switchRequested(string id)
-    signal createRequested(string name, bool duplicate)
-    /// A new, empty session: Main asks for the project folder and name.
+    /// Another session: open its project folder.
+    signal openRequested(string projectRoot)
+    /// A new session: Main asks for the project folder (and a name).
     signal newSessionRequested(string name)
     signal saveRequested()
-    signal deleteRequested(string id)
 
-    /// Asks for the project folder and name of a new, empty session.
+    /// Asks for the project folder and name of a new session.
     function askNew() { root.newSessionRequested("") }
 
     enabled: !!app.projectRoot && app.persistSession
@@ -41,8 +41,7 @@ AbstractButton {
         implicitWidth: row.implicitWidth
         Row {
             id: row
-            anchors.verticalCenter: parent.verticalCenter
-            x: 2
+            anchors.centerIn: parent
             spacing: 8
             Icon { name: "session"; size: 16; color: Theme.textMuted; anchors.verticalCenter: parent.verticalCenter }
             Text {
@@ -76,9 +75,14 @@ AbstractButton {
     }
 
     property var sessions: []
+    function isActive(s) { return s.root === app.projectRoot }
+    function shortPath(path) {
+        const home = app.placePaths.length ? app.placePaths[0] : ""
+        return home && path.startsWith(home + "/") ? "~" + path.slice(home.length) : path
+    }
     readonly property var shown: {
         const q = search.text.trim().toLowerCase()
-        return sessions.filter(s => !q || s.name.toLowerCase().indexOf(q) >= 0)
+        return sessions.filter(s => !q || s.name.toLowerCase().indexOf(q) >= 0 || s.root.toLowerCase().indexOf(q) >= 0)
     }
 
     Popup {
@@ -92,13 +96,13 @@ AbstractButton {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         onAboutToShow: {
             search.text = ""
-            try { root.sessions = JSON.parse(root.app.sessionSummaries()) } catch (e) { root.sessions = [] }
-            list.currentIndex = Math.max(0, root.shown.findIndex(s => s.id === root.app.activeSession))
+            try { root.sessions = JSON.parse(root.app.allSessions()) } catch (e) { root.sessions = [] }
+            list.currentIndex = Math.max(0, root.shown.findIndex(s => root.isActive(s)))
             Qt.callLater(search.forceActiveFocus)
         }
         function pick(s) {
             panel.close()
-            if (s && s.id !== root.app.activeSession) root.switchRequested(s.id)
+            if (s && !root.isActive(s)) root.openRequested(s.root)
         }
 
         contentItem: ColumnLayout {
@@ -124,7 +128,7 @@ AbstractButton {
             ListView {
                 id: list
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(contentHeight, 4.5 * 62)
+                Layout.preferredHeight: Math.min(contentHeight, 6 * 62)
                 clip: true
                 spacing: 2
                 model: root.shown
@@ -135,7 +139,7 @@ AbstractButton {
                     id: entry
                     required property var modelData
                     required property int index
-                    readonly property bool active: modelData.id === root.app.activeSession
+                    readonly property bool active: root.isActive(modelData)
                     // The active session counts what is open right now.
                     readonly property int tabs: active ? root.activeTabs : modelData.tabs
                     readonly property int splits: active ? root.activeSplits : modelData.splits
@@ -174,9 +178,12 @@ AbstractButton {
                             elide: Text.ElideRight
                         }
                         Text {
-                            text: root.plural(entry.tabs, qsTr("Tab"), qsTr("Tabs")) + "  ·  " + root.plural(entry.splits, qsTr("Split"), qsTr("Splits"))
+                            width: parent.width
+                            text: root.shortPath(entry.modelData.root) + "  ·  " + root.plural(entry.tabs, qsTr("Tab"), qsTr("Tabs"))
+                                + "  ·  " + root.plural(entry.splits, qsTr("Split"), qsTr("Splits"))
                             color: entry.active ? Theme.text : Theme.textMuted
                             font.pixelSize: Theme.smallFontSize + 1
+                            elide: Text.ElideMiddle
                         }
                     }
                     Row {
@@ -194,9 +201,9 @@ AbstractButton {
                         }
                         IconButton {
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: entryHover.hovered && !entry.active
+                            visible: entryHover.hovered
                             iconName: "more"
-                            tip: qsTr("Umbenennen oder löschen")
+                            tip: entry.active ? qsTr("Umbenennen") : qsTr("Umbenennen oder entfernen")
                             onClicked: rowMenu.openFor(entry.modelData, this)
                         }
                     }
@@ -216,20 +223,6 @@ AbstractButton {
                     icon: "plus"
                     text: qsTr("Neue Session")
                     onTriggered: { panel.close(); root.newSessionRequested(search.text.trim()) }
-                    IconButton {
-                        id: moreButton
-                        anchors.right: parent.right
-                        anchors.rightMargin: 6
-                        anchors.verticalCenter: parent.verticalCenter
-                        implicitWidth: 32
-                        implicitHeight: 32
-                        iconName: "more"
-                        iconSize: 18
-                        tip: qsTr("Aktive Session: umbenennen, speichern, löschen")
-                        checkable: true
-                        checked: activeMenu.visible
-                        onClicked: activeMenu.popup(moreButton, moreButton.width - activeMenu.width + 40, moreButton.height + 4)
-                    }
                 }
             }
         }
@@ -255,38 +248,33 @@ AbstractButton {
         }
     }
 
-    // The active session (⋮ next to "Neue Session").
-    Menu {
-        id: activeMenu
-        MenuItem { text: qsTr("Umbenennen …"); onTriggered: { panel.close(); nameDialog.ask(qsTr("Session umbenennen"), root.app.activeSessionName, "rename", root.app.activeSession) } }
-        MenuItem { text: qsTr("Session speichern"); onTriggered: { root.saveRequested(); panel.close() } }
-        MenuSeparator {}
-        MenuItem { text: qsTr("Löschen …"); onTriggered: { panel.close(); confirm.ask(root.app.activeSession, root.app.activeSessionName) } }
-    }
-    // Another session (⋮ in its row).
+    // A session (⋮ in its row): rename; other sessions also remove.
     Menu {
         id: rowMenu
         property var target: null
         function openFor(s, button) { target = s; popup(button, 0, button.height) }
-        MenuItem { text: qsTr("Umbenennen …"); onTriggered: { panel.close(); nameDialog.ask(qsTr("Session umbenennen"), rowMenu.target.name, "rename", rowMenu.target.id) } }
-        MenuItem { text: qsTr("Löschen …"); onTriggered: { panel.close(); confirm.ask(rowMenu.target.id, rowMenu.target.name) } }
+        MenuItem { text: qsTr("Umbenennen …"); onTriggered: { panel.close(); nameDialog.ask(rowMenu.target.root, rowMenu.target.name) } }
+        MenuItem {
+            text: qsTr("Aus der Liste entfernen …")
+            visible: !!rowMenu.target && rowMenu.target.root !== root.app.projectRoot
+            height: visible ? implicitHeight : 0
+            onTriggered: { panel.close(); confirm.ask(rowMenu.target.root, rowMenu.target.name) }
+        }
     }
 
     Dialog {
         id: nameDialog
-        /// "new" or "rename".
-        property string mode: "new"
-        property string targetId
+        /// Project folder of the session.
+        property string targetRoot
         anchors.centerIn: Overlay.overlay
         parent: Overlay.overlay
         width: 400
         modal: true
+        title: qsTr("Session umbenennen")
         standardButtons: Dialog.Ok | Dialog.Cancel
 
-        function ask(title, initial, mode, targetId) {
-            nameDialog.title = title
-            nameDialog.mode = mode
-            nameDialog.targetId = targetId
+        function ask(projectRoot, initial) {
+            targetRoot = projectRoot
             field.text = initial
             open()
             field.forceActiveFocus()
@@ -294,18 +282,15 @@ AbstractButton {
         }
         onAccepted: {
             const name = field.text.trim()
-            if (!name) return
-            if (mode === "rename") root.app.renameSession(targetId, name)
-            else root.createRequested(name, mode === "duplicate")
+            if (name) root.app.renameProjectSession(targetRoot, name)
         }
         ColumnLayout {
             anchors.fill: parent
             spacing: 10
             Label {
-                text: nameDialog.mode === "new" ? qsTr("Beginnt mit einer leeren Arbeitsanordnung.") : ""
-                visible: text.length > 0
+                text: root.shortPath(nameDialog.targetRoot)
                 color: Theme.textMuted
-                wrapMode: Text.Wrap
+                elide: Text.ElideMiddle
                 Layout.fillWidth: true
             }
             TextField {
@@ -319,28 +304,25 @@ AbstractButton {
 
     Dialog {
         id: confirm
-        property string targetId
+        property string targetRoot
         property string targetName
         anchors.centerIn: Overlay.overlay
         parent: Overlay.overlay
         width: 420
         modal: true
-        title: qsTr("Session löschen?")
-        function ask(id, name) { targetId = id; targetName = name; open() }
+        title: qsTr("Session entfernen?")
+        function ask(projectRoot, name) { targetRoot = projectRoot; targetName = name; open() }
         Label {
             width: parent.width
             wrapMode: Text.Wrap
             color: Theme.text
-            text: confirm.targetId !== root.app.activeSession
-                ? qsTr("„%1“ wird gelöscht. Projektdateien bleiben unverändert.").arg(confirm.targetName)
-                : root.app.sessionIds.length > 1
-                ? qsTr("„%1“ wird gelöscht. Atlas wechselt vorher zu einer anderen Session. Projektdateien bleiben unverändert.").arg(confirm.targetName)
-                : qsTr("„%1“ ist die einzige Session. Atlas legt vorher eine neue, leere Session an. Projektdateien bleiben unverändert.").arg(confirm.targetName)
+            text: qsTr("„%1“ verschwindet aus der Liste, ihre Tabs und Anordnung werden vergessen. Der Ordner %2 und seine Dateien bleiben unverändert.")
+                .arg(confirm.targetName).arg(root.shortPath(confirm.targetRoot))
         }
         footer: DialogButtonBox {
             Button { text: qsTr("Abbrechen"); flat: true; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
-            Button { text: qsTr("Löschen"); DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
+            Button { text: qsTr("Entfernen"); DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
         }
-        onAccepted: root.deleteRequested(targetId)
+        onAccepted: root.app.forgetProject(targetRoot)
     }
 }

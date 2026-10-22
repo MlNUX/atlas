@@ -47,12 +47,11 @@ Rectangle {
         group.addTerminal(cwd, command)
     }
 
-    /// Adds a terminal to the current tab, beside (`vertical` false) or
-    /// below the others. A tab arranges all its terminals in one direction.
+    /// Splits the active terminal of the current tab: the new one goes
+    /// beside it (`vertical` false) or below it.
     function splitTerminal(vertical) {
         if (!currentGroup) return newTerminal()
-        currentGroup.orientation = vertical ? Qt.Vertical : Qt.Horizontal
-        currentGroup.addTerminal()
+        currentGroup.splitActive(vertical)
     }
 
     function killTerminal() {

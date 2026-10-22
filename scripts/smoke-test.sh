@@ -16,6 +16,11 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 project="$work/projekt"
 mkdir -p "$project"/{notes,src,docs,target,node_modules/x}
+# A hidden note: not part of the graph.
+printf '# Versteckt\n' > "$project/.versteckt.md"
+# A second project for sessions in another folder.
+mkdir -p "$work/zweites/texte"
+printf '# Zweites Projekt\n' > "$work/zweites/texte/start.md"
 
 cat > "$project/notes/idee.md" <<'MD'
 ---
@@ -27,6 +32,8 @@ tags: [Architektur/Backend, rust]
 Siehe [main](/src/main.rs#L2) und [kaputt](/fehlt.pdf#page=3).
 
 $E = mc^2$
+
+$$\begin{array}{c} a & b \end{array}$$
 
 ```rust
 fn main() {}
@@ -50,13 +57,15 @@ fn main() {}
 RS
 # A two page PDF with known text positions (Helvetica 20 pt at y = 700
 # and 670 from the bottom), written with a correct cross-reference table.
+# With "links": page 1 links to page 2 (y = 500) and to a web address.
 pdf() {
-  local out="$1" objs=() offsets=() i body
+  local out="$1" objs=() offsets=() i body annots=""
+  [ "${2:-}" = links ] && annots=" /Annots [8 0 R 9 0 R]"
   local page1="BT /F1 20 Tf 72 700 Td (Zitat aus der Quelle) Tj 0 -30 Td (Zweite Zeile hier) Tj ET"
   local page2="BT /F1 20 Tf 72 700 Td (Seite zwei Text) Tj ET"
   objs+=("<< /Type /Catalog /Pages 2 0 R >>")
   objs+=("<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>")
-  objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >> >>")
+  objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >>$annots >>")
   objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>")
   objs+=("<< /Length ${#page1} >>
 stream
@@ -67,6 +76,10 @@ stream
 $page2
 endstream")
   objs+=("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+  if [ -n "$annots" ]; then
+    objs+=("<< /Type /Annot /Subtype /Link /Rect [72 400 300 430] /Border [0 0 0] /Dest [4 0 R /XYZ 0 500 null] >>")
+    objs+=("<< /Type /Annot /Subtype /Link /Rect [72 300 300 330] /Border [0 0 0] /A << /S /URI /URI (https://example.org/) >> >>")
+  fi
   body="%PDF-1.4"$'\n'
   for i in "${!objs[@]}"; do
     offsets+=("$(printf '%s' "$body" | wc -c)")
@@ -80,7 +93,7 @@ endstream")
   printf '%s' "$body" > "$out"
 }
 pdf "$project/docs/quelle.pdf"
-pdf "$project/docs/zweite.pdf"
+pdf "$project/docs/zweite.pdf" links
 
 mkdir -p "$project/.atlas"
 cat > "$project/.atlas/actions.yaml" <<'YAML'
@@ -116,6 +129,10 @@ processors:
 exporters:
   - {name: Kopie als Text, applies_to: "*.md", target: txt, command: [cp, "{file}", "{output}"]}
 YAML
+# Made from the template of Atlas 1.0: becomes „Core“ on start.
+mkdir -p "$work/config/extensions/beispiel"
+printf 'atlas_extension: 1\nname: beispiel\ntitle: Beispiel-Erweiterung\nversion: 0.1.0\n' \
+    > "$work/config/extensions/beispiel/extension.yaml"
 cat > "$project/.atlas/extensions/proj/extension.yaml" <<'YAML'
 atlas_extension: 1
 name: proj
@@ -167,6 +184,11 @@ status=0
 # One step every 1.5 s; generous for slow machines.
 timeout 300 "$bin" "$project" --self-test 2> "$work/log" || status=$?
 grep -E "selftest:" "$work/log" | sed 's/^qml: //' || true
+# KaTeX accepts what LaTeX would reject; that must not flood the log.
+if grep -q "LaTeX-incompatible" "$work/log"; then
+  echo "selftest: FEHLER KaTeX-Warnungen im Log" >&2
+  status=1
+fi
 if [ "$status" -ne 0 ]; then
   echo "--- Fehler (Exit $status); letzte Ausgabe:" >&2
   grep -vE "selftest:" "$work/log" | tail -20 >&2

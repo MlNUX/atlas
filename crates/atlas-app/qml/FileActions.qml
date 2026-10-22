@@ -320,6 +320,8 @@ Item {
         property bool canPaste: false
         /// Only what applies is shown (nothing greyed out).
         readonly property bool textFile: single && ["markdown", "text"].indexOf(app.fileKind(paths[0])) >= 0
+        /// Opened on a folder or on the empty area (not on files).
+        readonly property bool inFolder: !any || (single && ops.isDir(paths[0]))
         function showSubmenu(sub, on) {
             for (let i = 0; i < count; ++i) {
                 const item = itemAt(i)
@@ -358,6 +360,22 @@ Item {
             visible: menu.single && app.isRunnable(menu.paths[0])
             height: visible ? implicitHeight : 0
             onTriggered: actions.runScript(menu.paths[0])
+        }
+        MenuItem {
+            // A folder node: all files of the folder linked with it (graph).
+            // (notesRevision: re-read after a change, also for the same folder.)
+            readonly property bool node: app.notesRevision >= 0 && menu.single && ops.isDir(menu.paths[0]) && app.isFolderNode(menu.paths[0])
+            text: node ? qsTr("Ordner-Knoten auflösen") : qsTr("Als Ordner-Knoten verknüpfen")
+            visible: menu.single && !!app.atlasDir && ops.isDir(menu.paths[0]) && menu.paths[0] !== app.projectRoot
+            height: visible ? implicitHeight : 0
+            onTriggered: app.setFolderNode(menu.paths[0], !node)
+        }
+        MenuItem {
+            text: qsTr("Verknüpfen mit …")
+            // Files and folders (a folder becomes a node in the graph).
+            visible: menu.single && !!app.atlasDir && menu.paths[0] !== app.projectRoot
+            height: visible ? implicitHeight : 0
+            onTriggered: app.requestRelate(menu.paths[0])
         }
         MenuItem {
             text: qsTr("Als Webseite anzeigen")
@@ -432,9 +450,10 @@ Item {
             height: visible ? implicitHeight : 0
             onTriggered: calendarSync.importChecklist(menu.paths[0])
         }
-        MenuSeparator {}
-        MenuItem { text: qsTr("Neue Datei …"); onTriggered: actions.newFile(menu.dir) }
-        MenuItem { text: qsTr("Neuer Ordner …"); onTriggered: actions.newFolder(menu.dir) }
+        // New files and folders: on a folder or the empty area, not on files.
+        MenuSeparator { visible: menu.inFolder; height: visible ? implicitHeight : 0 }
+        MenuItem { text: qsTr("Neue Datei …"); visible: menu.inFolder; height: visible ? implicitHeight : 0; onTriggered: actions.newFile(menu.dir) }
+        MenuItem { text: qsTr("Neuer Ordner …"); visible: menu.inFolder; height: visible ? implicitHeight : 0; onTriggered: actions.newFolder(menu.dir) }
         MenuSeparator { visible: menu.any || menu.canPaste; height: visible ? implicitHeight : 0 }
         MenuItem { text: qsTr("Ausschneiden\tStrg+X"); visible: menu.any; height: visible ? implicitHeight : 0; onTriggered: actions.cut(menu.paths) }
         MenuItem { text: qsTr("Kopieren\tStrg+C"); visible: menu.any; height: visible ? implicitHeight : 0; onTriggered: actions.copy(menu.paths) }
@@ -442,18 +461,6 @@ Item {
         MenuSeparator { visible: menu.any; height: visible ? implicitHeight : 0 }
         MenuItem { text: qsTr("Umbenennen …\tF2"); visible: menu.single; height: visible ? implicitHeight : 0; onTriggered: actions.rename(menu.paths[0]) }
         MenuItem { text: qsTr("Pfad kopieren"); visible: menu.any; height: visible ? implicitHeight : 0; onTriggered: actions.copyPaths(menu.paths) }
-        MenuItem {
-            text: qsTr("Mit Standardprogramm öffnen")
-            visible: menu.single
-            height: visible ? implicitHeight : 0
-            onTriggered: actions.openWithSystem(menu.paths[0])
-        }
-        MenuItem {
-            text: qsTr("Im Dateimanager zeigen")
-            visible: menu.single
-            height: visible ? implicitHeight : 0
-            onTriggered: actions.showInFileManager(menu.paths[0])
-        }
         MenuItem {
             text: qsTr("Eigenschaften …\tAlt+Enter")
             visible: menu.single

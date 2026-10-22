@@ -92,17 +92,15 @@ ApplicationWindow {
         reminders = list
     }
 
-    /// "In Session wechseln": saves the current session and opens the one
-    /// called `name` (created empty if there is none yet).
+    /// "In Session wechseln": saves the current session and opens the
+    /// project folder of the session called `name`.
     function switchSessionByName(name) {
-        const i = app.sessionNames.indexOf(name)
-        if (i >= 0) {
-            if (app.sessionIds[i] === app.activeSession) fileActions.showMessage(qsTr("Session „%1“ ist bereits aktiv").arg(name))
-            else switchSession(app.sessionIds[i])
-        } else {
-            createSession(name, false)
-            fileActions.showMessage(qsTr("Session „%1“ neu angelegt").arg(name))
-        }
+        let sessions = []
+        try { sessions = JSON.parse(app.allSessions()) } catch (e) {}
+        const s = sessions.find(s => s.name === name)
+        if (!s) fileActions.showMessage(qsTr("Keine Session „%1“ – zuerst über „Neue Session“ einen Ordner wählen").arg(name))
+        else if (s.root === app.projectRoot) fileActions.showMessage(qsTr("Session „%1“ ist bereits aktiv").arg(name))
+        else openProject(s.root)
     }
 
     // Reminders appear while Atlas runs.
@@ -128,6 +126,11 @@ ApplicationWindow {
     }
     property bool calendarPasswordLater: false
     Connections { target: app; function onProjectRootChanged() { window.calendarPasswordLater = false } }
+    RelateDialog {
+        id: relateDialog
+        app: app
+    }
+
     SendToNoteDialog {
         id: sendToNote
         app: app
@@ -187,7 +190,7 @@ ApplicationWindow {
         if (calendar.connected) {
             list.push({ name: qsTr("Kalender synchronisieren"), hint: calendar.syncStatus,
                         run: () => calendar.unlocked ? calendar.syncNow() : fileActions.calendarSync.askPassword() })
-            list.push({ name: qsTr("App-Passwort für Nextcloud eingeben …"), run: () => fileActions.calendarSync.askPassword() })
+            list.push({ name: calendar.google ? qsTr("Bei Google anmelden …") : qsTr("App-Passwort für Nextcloud eingeben …"), run: () => fileActions.calendarSync.askPassword() })
         }
         if (calendar.conflictCount > 0) list.push({ name: qsTr("Kalenderkonflikte lösen …"), hint: String(calendar.conflictCount), run: () => fileActions.calendarSync.showConflicts() })
         if (current) {
@@ -198,13 +201,16 @@ ApplicationWindow {
                 list.push({ name: qsTr("Ausführen"), hint: app.fileName(current), run: () => fileActions.runScript(current) })
             if (fileActions.isHtml(current))
                 list.push({ name: qsTr("Als Webseite anzeigen"), hint: app.fileName(current), run: () => fileActions.renderHtml(current) })
+            if (app.atlasDir && app.exists(current))
+                list.push({ name: qsTr("Verknüpfen mit …"), hint: app.fileName(current), run: () => app.requestRelate(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
             if (app.fileKind(current) === "markdown")
                 list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
         }
-        for (let i = 0; i < app.sessionIds.length; ++i) {
-            const id = app.sessionIds[i]
-            if (id !== app.activeSession) list.push({ name: qsTr("Session wechseln: %1").arg(app.sessionNames[i]), run: () => window.switchSession(id) })
+        let sessions = []
+        try { sessions = JSON.parse(app.allSessions()) } catch (e) {}
+        for (const s of sessions) {
+            if (s.root !== app.projectRoot) list.push({ name: qsTr("Session wechseln: %1").arg(s.name), hint: s.root, run: () => window.openProject(s.root) })
         }
         // User defined actions: for the active document, then for the project.
         const seen = {}
@@ -230,7 +236,7 @@ ApplicationWindow {
                 list.push({ name: qsTr("Anzeigen mit: %1").arg(p.name), hint: p.extension, run: () => editor.open(current, 0, "tab", { processor: p.id }) })
         }
         list.push({ name: qsTr("Erweiterungen verwalten …"), run: () => extensionsDialog.open() })
-        list.push({ name: qsTr("Neue Erweiterung …"), run: () => { const m = app.newExtension(); if (m) editor.open(m, 0, "tab") } })
+        list.push({ name: qsTr("Neue Erweiterung …"), run: () => { extensionsDialog.open(); extensionsDialog.askNew() } })
         return list
     }
 
@@ -274,7 +280,7 @@ ApplicationWindow {
             app.filesMoved(from, to)
             fileListTimer.restart()
         }
-        function onTrashed(paths) { editor.pathsRemoved(paths); fileListTimer.restart() }
+        function onTrashed(paths) { editor.pathsRemoved(paths); app.filesTrashed(paths); fileListTimer.restart() }
     }
     Connections {
         target: fileActions
@@ -304,11 +310,10 @@ ApplicationWindow {
         function askProject() { ask("open", app.projectRoot ? parentOf(app.projectRoot) : "", "") }
         function parentOf(path) { const i = path.lastIndexOf("/"); return i > 0 ? path.slice(0, i) : "/" }
         onChosen: (path, name) => {
-            if (mode === "open") { app.openProject(path); return }
-            // A new session always belongs to the chosen project folder.
-            if (path !== app.projectRoot && !app.openProject(path)) return
-            window.createSession(name, false)
-            fileActions.showMessage(qsTr("Session „%1“ in %2 angelegt").arg(name).arg(app.projectName))
+            // The session of a folder is opened with it; a new name names it.
+            if (!window.openProject(path)) return
+            if (mode === "session" && name && name !== app.activeSessionName) app.renameProjectSession(app.projectRoot, name)
+            if (mode === "session") fileActions.showMessage(qsTr("Session „%1“ – %2").arg(app.activeSessionName).arg(app.projectRoot))
         }
     }
 
@@ -413,33 +418,16 @@ ApplicationWindow {
         app.saveSession(JSON.stringify(currentLayout()), treeModel.expandedDirs(), editor.documents())
     }
 
-    /// Saves the active session, then activates `id` and applies its layout.
-    function switchSession(id) {
-        if (id === app.activeSession) return
+    /// Opens another project folder and so its session (one per folder);
+    /// the session of the current one is saved first.
+    function openProject(path) {
+        if (path === app.projectRoot) return true
         app.requestSaveAll()
         saveSession()
-        if (!app.switchSession(id)) return
-        restoring = true
-        applyLayout(readLayout())
-        restoring = false
+        app.flushSession()
+        return app.openProject(path)
     }
 
-    function createSession(name, duplicate) {
-        saveSession()
-        const id = app.createSession(name, duplicate ? JSON.stringify(currentLayout()) : "",
-                                     duplicate ? treeModel.expandedDirs() : [])
-        if (id) switchSession(id)
-    }
-
-    /// The active session is deleted only after another one is active.
-    function deleteSession(id) {
-        if (id === app.activeSession) {
-            const other = app.sessionIds.find(s => s !== id)
-            if (other) switchSession(other)
-            else createSession(qsTr("Neue Session"), false)
-        }
-        if (id !== app.activeSession) app.deleteSession(id)
-    }
 
     Dialog {
         id: sessionError
@@ -461,6 +449,7 @@ ApplicationWindow {
     Connections {
         target: app
         function onNotesMessage(message) { fileActions.showMessage(message) }
+        function onRelateRequested(path) { relateDialog.ask(path) }
     }
     Connections {
         target: Qt.application
@@ -517,7 +506,11 @@ ApplicationWindow {
                 "sessions": () => sessionMenu.clicked(),
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "settings": () => settingsDialog.open(),
+                "graph": () => inspector.graphWindow.show(file),
+                "actions": () => { window.inspectorWidth = 300; inspector.tab = 3 },
+                "md-edit": () => { if (editor.activeTab && editor.activeTab.viewerItem) editor.activeTab.viewerItem.mode = "split" },
                 "html": () => fileActions.renderHtml(file),
+                "relate": () => app.requestRelate(file),
                 "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
                 "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },
                 "new-session": () => sessionMenu.askNew(),
@@ -570,7 +563,7 @@ ApplicationWindow {
             Object.assign(item, {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
-                sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, settingsDialog: settingsDialog,
+                sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, relateDialog: relateDialog, settingsDialog: settingsDialog,
                 projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector,
             })
             item.start()
@@ -620,6 +613,8 @@ ApplicationWindow {
     Connections { target: app; function onProjectRootChanged() { window.extensionNoticeHidden = false } }
     /// Right context bar (annotations, links, graph, actions).
     property bool inspectorVisible: true
+    /// Preferred width of the context bar.
+    property real inspectorWidth: 400
     header: Column {
         Rectangle {
             width: parent.width
@@ -711,11 +706,9 @@ ApplicationWindow {
                     app: app
                     activeTabs: editor.groups.reduce((n, g) => n + g.tabs.length, 0)
                     activeSplits: editor.groups.filter(g => g.tabs.length > 0).length
-                    onSwitchRequested: (id) => window.switchSession(id)
-                    onCreateRequested: (name, duplicate) => window.createSession(name, duplicate)
-                    onNewSessionRequested: (name) => folderDialog.ask("session", app.projectRoot, name || qsTr("Neue Session"))
+                    onOpenRequested: (projectRoot) => window.openProject(projectRoot)
+                    onNewSessionRequested: (name) => folderDialog.ask("session", app.projectRoot ? folderDialog.parentOf(app.projectRoot) : "", name)
                     onSaveRequested: { window.saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) }
-                    onDeleteRequested: (id) => window.deleteSession(id)
                 }
                 IconButton {
                     id: terminalButton
@@ -750,18 +743,11 @@ ApplicationWindow {
                         MenuItem { text: qsTr("Projektordner öffnen …\tStrg+O"); onTriggered: folderDialog.askProject() }
                         MenuItem { text: qsTr("Alle Befehle …\tStrg+Umschalt+P"); onTriggered: commandPalette.show(">") }
                         MenuSeparator {}
-                        MenuItem { text: qsTr("Editor teilen\tStrg+\\"); onTriggered: if (editor.activeGroup) editor.splitGroup(editor.activeGroup) }
-                        MenuItem {
-                            text: editor.orientation === Qt.Horizontal ? qsTr("Splits untereinander") : qsTr("Splits nebeneinander")
-                            onTriggered: { editor.orientation = editor.orientation === Qt.Horizontal ? Qt.Vertical : Qt.Horizontal; saveTimer.restart() }
-                        }
                         MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: window.toggleSidebar() }
                         MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
                         MenuSeparator {}
+                        // (Calendar, extensions and editor: in the settings.)
                         MenuItem { text: qsTr("Einstellungen …"); onTriggered: settingsDialog.open() }
-                        MenuItem { text: qsTr("Kalender-Einstellungen …"); onTriggered: fileActions.calendarSync.openSettings() }
-                        MenuItem { text: qsTr("Erweiterungen verwalten …"); onTriggered: extensionsDialog.open() }
-                        MenuItem { text: qsTr("Externen Editor festlegen …"); onTriggered: fileActions.configureEditor() }
                     }
                 }
             }
@@ -786,13 +772,14 @@ ApplicationWindow {
             visible: window.calendar.connected && !window.calendar.unlocked && !window.calendar.fetchingPassword
                 && !window.calendarPasswordLater
             tone: window.calendar.passwordError ? Theme.warn : Theme.accent
-            message: (window.calendar.passwordError
+            message: (window.calendar.google ? qsTr("Google-Kalender: Bitte neu anmelden, um Termine abzugleichen.")
+                    : window.calendar.passwordError
                     ? qsTr("Nextcloud-Kalender: Passwort-Befehl fehlgeschlagen – %1").arg(window.calendar.passwordError)
                     : qsTr("Nextcloud-Kalender: App-Passwort für diese Atlas-Sitzung eingeben, um Termine abzugleichen."))
                 + (window.calendar.pending ? qsTr(" %n Änderung(en) warten auf Übertragung.", "", window.calendar.pending) : "")
             actions: (window.calendar.passwordError ? [{ text: qsTr("Erneut versuchen"), run: () => window.calendar.retryPasswordCommand() }] : [])
                 .concat([
-                    { text: qsTr("Eingeben …"), run: () => fileActions.calendarSync.askPassword() },
+                    { text: window.calendar.google ? qsTr("Anmelden …") : qsTr("Eingeben …"), run: () => fileActions.calendarSync.askPassword() },
                     { text: qsTr("Später"), run: () => window.calendarPasswordLater = true },
                 ])
         }
@@ -974,7 +961,7 @@ ApplicationWindow {
         Inspector {
             id: inspector
             visible: window.inspectorVisible
-            SplitView.preferredWidth: 400
+            SplitView.preferredWidth: window.inspectorWidth
             SplitView.minimumWidth: 260
             app: app
             editor: editor

@@ -22,6 +22,7 @@ Item {
     property var sendToNote
     property var sessionMenu
     property var folderDialog
+    property var relateDialog
     property var settingsDialog
     property var projectTree
     property var quickLook
@@ -37,6 +38,8 @@ Item {
     property var term: null
     property var moved: null
     property string before
+    property string firstRoot
+    property string firstSession
 
     property string layoutBefore
     property real zoomBefore
@@ -211,8 +214,13 @@ Item {
                 const graph = JSON.parse(app.contextGraph(path("docs/umbenannt.pdf"), 1))
                 const zitate = graph.nodes.findIndex(n => n.relative === "notes/zitate.md")
                 check("Graph der PDF zeigt zitierende Notiz", zitate > 0 && graph.edges.some(e => e.from === zitate && e.to === 0 && e.quotes === 1), JSON.stringify(graph))
-                const graph2 = JSON.parse(app.contextGraph(wiki, 2))
-                check("Graph mit Tiefe 2", graph2.nodes.some(n => n.depth === 2), JSON.stringify(graph2.nodes.map(n => n.relative + ":" + n.depth)))
+                // The graph shows the whole project, this note first.
+                const all = JSON.parse(app.contextGraph(wiki, 0))
+                const depthOf = (rel) => { const n = all.nodes.find(n => n.relative === rel); return n ? n.depth : -1 }
+                check("Graph zeigt das ganze Projekt", all.nodes[0].relative === "notes/wiki.md" && depthOf("notes/plan.md") === 1
+                      && depthOf("notes/zitate.md") >= 1 && depthOf("docs/umbenannt.pdf") >= 1 && depthOf("notes/aufgaben.md") >= 1
+                      && depthOf("src/hallo.sh") === 255 && depthOf("docs/seite.css") === 255 && !all.nodes.some(n => /(^|\/)\./.test(n.relative)),
+                      JSON.stringify(all.nodes.map(n => n.relative + ":" + n.depth)))
                 editor.open(wiki, 0, "tab", { backlinks: true, contextTab: 1 })
                 fileActions.ops.rename(path("notes/plan.md"), "plan-neu.md")
             },
@@ -221,6 +229,23 @@ Item {
                 check("Wiki-Link folgt Umbenennung", text.indexOf("[[/notes/plan-neu|Plan]]") > 0, text)
                 const md = editor.activeTab.viewerItem
                 check("Kontextpanel mit Graph", !!md && md.showBacklinks && md.viewState().contextTab === 1, JSON.stringify(md ? md.viewState() : {}))
+                // Plain wheel: no zoom.
+                const area = md.contextPanelItem.graphView
+                const p = area.mapToItem(null, area.width / 2, area.height / 2)
+                test.zoomBefore = md.contextPanelItem.zoom
+                app.sendWheel(window, p.x, p.y, 120, 0)
+            },
+            () => {
+                const panel = editor.activeTab.viewerItem.contextPanelItem
+                check("Graph: Mausrad ohne Strg zoomt nicht", panel.zoom === test.zoomBefore, panel.zoom)
+                // Ctrl+wheel, as Wayland reports a mouse wheel ("touchpad").
+                const area = panel.graphView
+                const p = area.mapToItem(null, area.width / 2, area.height / 2)
+                app.sendWheel(window, p.x, p.y, 120, 17)
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Graph: Strg+Mausrad zoomt", md.contextPanelItem.zoom > test.zoomBefore * 1.1, test.zoomBefore + " → " + md.contextPanelItem.zoom)
                 md.mode = "split"
             },
             () => {
@@ -233,6 +258,16 @@ Item {
                 check("Wiki-Link-Vorschläge", ed.completing)
                 ed.acceptCompletion()
                 check("Wiki-Link vervollständigt", ed.text.indexOf("Neu: [[/notes/plan-neu.md]]") > 0, ed.text.slice(-60))
+                // Markdown: line numbers also for wrapped text, Tab indents a list item.
+                check("Markdown mit Zeilennummern", ed.showLineNumbers && ed.wrappedNumbers.length > 0 && ed.wrappedNumbers[0].n >= 1,
+                      JSON.stringify(ed.wrappedNumbers.slice(0, 3)))
+                ed.insertText("\n- Punkt", true)
+                ed.applyState({ cursor: ed.text.length })
+                const indented = ed.indentListItems(false) && ed.text.endsWith("\n  - Punkt")
+                const outdented = ed.indentListItems(true) && ed.text.endsWith("\n- Punkt")
+                ed.insertText("\nText", true)
+                ed.applyState({ cursor: ed.text.length })
+                check("Tab rückt Listenpunkte ein und aus, nicht normalen Text", indented && outdented && !ed.indentListItems(false), ed.text.slice(-30))
                 // ---- Phase 2: user defined actions
                 check("Aktionsdatei fehlerfrei", app.actionErrors() === "[]", app.actionErrors())
                 const names = (paths) => fileActions.actionsFor(paths).map(a => a.name).join(",")
@@ -254,6 +289,9 @@ Item {
                 const exts = JSON.parse(app.extensions())
                 const status = (n) => (exts.find(e => e.name === n) || {}).status
                 check("Erweiterungen gefunden", status("demo") === "active" && status("proj") === "untrusted", JSON.stringify(exts.map(e => e.name + ":" + e.status)))
+                const core = exts.find(e => e.name === "core")
+                check("Alte Beispiel-Erweiterung heißt jetzt Core", !!core && core.title === "Core" && !exts.some(e => e.name === "beispiel"),
+                      JSON.stringify(exts.map(e => e.name + ":" + e.title)))
                 check("Projekt-Erweiterung wartet auf Freigabe", app.untrustedExtensions.length === 1 && app.untrustedExtensions[0] === "proj")
                 const projectActions = () => fileActions.actionsFor([]).map(a => a.name)
                 check("Nicht freigegeben: keine Aktionen", projectActions().indexOf("Hallo") >= 0 && projectActions().indexOf("Projekt-Hallo") < 0, projectActions())
@@ -500,8 +538,25 @@ Item {
                 app.sendWheel(window, p.x, p.y, -240, true)
                 check("Strg+Mausrad zurück verkleinert", v.zoomScale < zoomed, zoomed + " → " + v.zoomScale)
                 const plain = v.zoomScale
+                const y0 = v.pagesView.contentY
                 app.sendWheel(window, p.x, p.y, -120, false)
                 check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
+                check("Mausrad scrollt eine große Stufe", v.pagesView.contentY - y0 >= v.wheelStep - 1, y0 + " → " + v.pagesView.contentY)
+                app.sendWheel(window, p.x, p.y, 120, false)
+                // Dark mode: one switch for all PDFs, stored in config.toml.
+                app.pdfDark = true
+                check("PDF-Dunkelmodus: Seiten invertiert, Papier dunkel", v.dark && Qt.colorEqual(v.paperColor, "#262626"), v.paperColor)
+                app.pdfDark = false
+                check("PDF-Dunkelmodus aus", !v.dark && Qt.colorEqual(v.paperColor, "white"))
+                // A page narrower than the view stays centred while zooming
+                // (no jump to the side).
+                v.zoom = 0.4
+                test.zoomBefore = v.zoomScale
+                const side = v.mapToItem(null, v.width * 0.8, v.height * 0.6)
+                app.sendWheel(window, side.x, side.y, 120, true)
+                check("Strg+Mausrad: schmale Seite bleibt mittig", v.zoomScale > test.zoomBefore && v.pagesView.contentX === v.pagesView.originX,
+                      v.pagesView.contentX + " / " + v.pagesView.originX)
+                v.zoom = plain
                 // Touchpads (and fine scrolling on Wayland): a gesture with
                 // pixel-only deltas zooms as well and never scrolls.
                 app.sendWheel(window, p.x, p.y, 0, 7)
@@ -564,7 +619,7 @@ Item {
                 // "Neue Session" asks for the project folder (own dialog).
                 sessionMenu.askNew()
                 check("Neue Session fragt nach dem Projektordner", folderDialog.visible && folderDialog.mode === "session"
-                      && folderDialog.folderPath === app.projectRoot && folderDialog.sessionName.length > 0, folderDialog.folderPath)
+                      && app.projectRoot.indexOf(folderDialog.folderPath) === 0, folderDialog.folderPath)
                 folderDialog.navigate(path("notes"))
             },
             () => {
@@ -589,8 +644,9 @@ Item {
                 folderDialog.accept()
             },
             () => {
-                check("Session im gewählten Projekt angelegt", !folderDialog.visible && app.sessionNames.indexOf("Selbsttest-Session") >= 0
-                      && app.sessionIds[app.sessionNames.indexOf("Selbsttest-Session")] === app.activeSession, app.sessionNames.join(", "))
+                // The folder already has its session: it is named, not doubled.
+                check("Eine Session je Projektordner", !folderDialog.visible && app.activeSessionName === "Selbsttest-Session"
+                      && JSON.parse(app.allSessions()).length === 1, app.activeSessionName + " " + app.allSessions())
                 folderDialog.askProject()
                 check("Projektordner öffnen: eigener Dialog", folderDialog.visible && folderDialog.mode === "open")
                 folderDialog.close()
@@ -721,12 +777,48 @@ Item {
             () => {
                 check("Terminal-Knopf: ein Klick blendet ein", terminalPanel.visible && window.terminalButton.checked,
                       terminalPanel.visible + " / " + window.terminalButton.checked)
+                // Split beside, then below: every terminal gets room.
+                test.tabsBefore = terminalPanel.currentGroup.terminals.length
+                terminalPanel.splitTerminal(false)
+            },
+            () => {
+                const g = terminalPanel.currentGroup
+                const sizes = () => g.terminals.map(t => Math.round(t.width) + "x" + Math.round(t.height)).join(", ")
+                // (One terminal before: two halves.)
+                check("Terminal nebeneinander geteilt, gleich breit", g.terminals.length === test.tabsBefore + 1 && g.orientation === Qt.Horizontal
+                      && g.terminals.every(t => t.visible && t.height > 40)
+                      && (test.tabsBefore !== 1 || Math.abs(g.terminals[0].width - g.terminals[1].width) < 8), sizes())
+                terminalPanel.splitTerminal(true)
+            },
+            () => {
+                const g = terminalPanel.currentGroup
+                const sizes = () => g.terminals.map(t => Math.round(t.width) + "x" + Math.round(t.height)).join(", ")
+                // Only the active (right) terminal is divided; the left one keeps
+                // its full height.
+                const [left, right, below] = g.terminals.slice(-3)
+                check("Terminal untereinander: nur das aktive geteilt", g.terminals.length === test.tabsBefore + 2 && g.orientation === Qt.Horizontal
+                      && Math.abs(left.height - g.height) < 4 && Math.abs(right.height - below.height) < 8
+                      && Math.abs(right.width - below.width) < 4 && right.height < g.height * 0.7, sizes())
+                test.layoutBefore = JSON.stringify(g.serialize())
+                while (g.terminals.length > test.tabsBefore) g.removeTerminal(g.terminals[g.terminals.length - 1])
+            },
+            () => {
+                const g = terminalPanel.currentGroup
+                const tree = JSON.parse(test.layoutBefore)
+                // (Terminals running a program are not saved.)
+                check("Terminal-Splits in der Session als Baum", tree.orientation === "horizontal"
+                      && tree.items.some(i => i.orientation === "vertical" && i.items.length === 2), test.layoutBefore)
+                check("Geteilte Terminals wieder geschlossen", g.terminals.length === test.tabsBefore && g.terminals.every(t => Math.abs(t.height - g.height) < 4),
+                      g.terminals.map(t => Math.round(t.width) + "x" + Math.round(t.height)).join(", "))
             },
             () => {
                 // With Dolphin's places file: exactly its visible local places,
                 // instead of the fixed ones (GTK bookmarks are not added).
                 check("Orte wie in Dolphin", app.fileManagerPlaces && app.fixedPlaceCount === 0
                       && app.placeNames.join(",") === "Belege" && app.placePaths[0] === path("docs"), app.placeNames.join(","))
+                inspector.graphWindow.show(path("notes/wiki.md"))
+                check("Graph im eigenen Fenster", inspector.graphWindow.visible && inspector.graphWindow.width > 600)
+                inspector.graphWindow.close()
                 settingsDialog.open()
                 check("Einstellungen öffnen", settingsDialog.visible)
                 app.fileManagerPlaces = false
@@ -829,6 +921,16 @@ Item {
                 check("Kontextmenü leere Fläche: keine Datei-Befehle", empty.indexOf("Neue Datei …") >= 0 && empty.indexOf("Terminal hier öffnen") >= 0
                       && ["Öffnen", "Umbenennen …", "Kopieren", "Ausschneiden", "In den Papierkorb", "Pfad kopieren"].every(t => empty.indexOf(t) < 0),
                       empty.join(" | "))
+                // No system program or file manager entries; new files and
+                // folders only on folders.
+                const gone = ["Mit Standardprogramm öffnen", "Im Dateimanager zeigen"]
+                check("Kontextmenü Datei: ohne Startprogramm, Dateimanager, Neu", gone.concat(["Neue Datei …", "Neuer Ordner …"]).every(t => pdf.indexOf(t) < 0 && md.indexOf(t) < 0),
+                      pdf.join(" | "))
+                fileActions.showMenu([path("docs")], app.projectRoot)
+                const folder = m.shownEntries()
+                m.close()
+                check("Kontextmenü Ordner: Neu, ohne Startprogramm und Dateimanager", folder.indexOf("Neue Datei …") >= 0
+                      && folder.indexOf("Neuer Ordner …") >= 0 && gone.every(t => folder.indexOf(t) < 0), folder.join(" | "))
             },
             () => {
                 // HTML rendered as a web page (built-in action).
@@ -922,6 +1024,19 @@ Item {
                 check("Geänderte PDF ohne Anmerkungen: kein Hinweis", !v.changeNotice && v.annotationStore.count === 0, v.annotationStore.status)
             },
             () => {
+                // Links of the PDF: one to page 2, one to a web address.
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => (v.linksByPage[0] || []).length === 2)) return
+                const jump = v.linkAt(0, 100, 842 - 415)
+                const web = v.linkAt(0, 100, 842 - 315)
+                check("PDF-Links gelesen", !!jump && jump.target === 1 && Math.abs(jump.top - 342) < 1 && !!web && web.uri === "https://example.org/",
+                      JSON.stringify(v.linksByPage))
+                check("Kein Link neben den Links", v.linkAt(0, 400, 842 - 415) === null)
+                v.goToPage(0)
+                v.followLink(jump)
+                check("Link springt zur Zielseite", v.currentPage === 1, v.currentPage)
+            },
+            () => {
                 // The project folder cannot be collapsed: a click on it keeps the tree.
                 const rows = treeModel.rowOf(path("docs")) >= 0
                 const header = projectTree.rootRow
@@ -937,6 +1052,7 @@ Item {
             () => {
                 // Context bar tabs: written out, scrollable when narrow.
                 window.inspectorVisible = true
+                window.inspectorWidth = 270
             },
             () => {
                 const bar = inspector.tabBar
@@ -947,6 +1063,7 @@ Item {
                 const bar = inspector.tabBar
                 check("Aktiver Reiter ins Bild gerückt", bar.contentX > 0 && bar.contentX + bar.width >= bar.contentWidth - 1, bar.contentX)
                 inspector.tab = 0
+                window.inspectorWidth = 400
             },
             () => {
                 // Built-in action „Ausführen“ for scripts.
@@ -963,6 +1080,110 @@ Item {
                 const done = () => app.readTextFile(path("src/gelaufen.txt")).indexOf("lief in src") === 0
                 if (waitFor(done)) return
                 check("Skript lief im Terminal, im eigenen Ordner", done() && terminalPanel.visible, app.readTextFile(path("src/gelaufen.txt")))
+            },
+            () => {
+                // "Verknüpfen mit …": two PDFs without a note.
+                app.requestRelate(path("docs/zweite.pdf"))
+            },
+            () => {
+                const target = relateDialog.results.find(r => r.relative === "docs/umbenannt.pdf")
+                check("Verknüpfen: Dialog mit Dateien und Ordnern, ohne versteckte", relateDialog.visible && !!target
+                      && relateDialog.results.some(r => r.kind === "dir")
+                      && !relateDialog.results.some(r => r.relative.startsWith(".") || r.path === path("docs/zweite.pdf")),
+                      relateDialog.results.length)
+                relateDialog.pick(target)
+            },
+            () => {
+                const related = JSON.parse(app.relatedFiles(path("docs/umbenannt.pdf")))
+                const graph = JSON.parse(app.contextGraph(path("docs/zweite.pdf"), 0))
+                const other = graph.nodes.findIndex(n => n.relative === "docs/umbenannt.pdf")
+                check("Zwei PDFs verknüpft, im Graph", !relateDialog.visible && related.length === 1 && related[0].relative === "docs/zweite.pdf"
+                      && graph.edges.some(e => e.related && ((e.from === 0 && e.to === other) || (e.to === 0 && e.from === other))),
+                      JSON.stringify(related) + " " + JSON.stringify(graph.edges))
+                fileActions.ops.rename(path("docs/zweite.pdf"), "zweite-neu.pdf")
+            },
+            () => {
+                const related = JSON.parse(app.relatedFiles(path("docs/umbenannt.pdf")))
+                check("Verknüpfung folgt Umbenennung", related.length === 1 && related[0].relative === "docs/zweite-neu.pdf", JSON.stringify(related))
+                check("Verknüpfung gelöst", app.unrelateFiles(path("docs/umbenannt.pdf"), path("docs/zweite-neu.pdf"))
+                      && app.relatedFiles(path("docs/umbenannt.pdf")) === "[]")
+                fileActions.ops.rename(path("docs/zweite-neu.pdf"), "zweite.pdf")
+            },
+            () => {
+                // Folder node: all files of docs/ hang on a node "docs".
+                fileActions.showMenu([path("docs")], app.projectRoot)
+                const entries = fileActions.contextMenu.shownEntries()
+                fileActions.contextMenu.close()
+                check("Ordner: „Als Ordner-Knoten verknüpfen“ im Menü", entries.indexOf("Als Ordner-Knoten verknüpfen") >= 0, entries.join(" | "))
+                check("Ordner-Knoten angelegt", app.setFolderNode(path("docs"), true) && app.isFolderNode(path("docs")))
+                // A file added later belongs to it too.
+                fileActions.ops.newFile(path("docs"), "neu.txt")
+                app.refreshFileList()
+            },
+            () => {
+                const graph = JSON.parse(app.contextGraph(path("docs/zweite.pdf"), 0))
+                const node = graph.nodes.findIndex(n => n.relative === "docs" && n.kind === "dir")
+                const members = graph.edges.filter(e => e.related && (e.from === node || e.to === node))
+                    .map(e => graph.nodes[e.from === node ? e.to : e.from].relative)
+                const done = () => members.indexOf("docs/neu.txt") >= 0
+                if (waitFor(done)) return
+                check("Ordner-Knoten im Graph, mit allen Dateien des Ordners", node > 0 && done() && members.indexOf("docs/zweite.pdf") >= 0
+                      && members.indexOf("docs/umbenannt.pdf") >= 0 && !members.some(m => m.indexOf("notes/") === 0), JSON.stringify(members))
+                const related = JSON.parse(app.relatedFiles(path("docs/zweite.pdf")))
+                check("Datei kennt ihren Ordner-Knoten", related.length > 0 && related[0].relative === "docs", JSON.stringify(related))
+                fileActions.showMenu([path("docs")], app.projectRoot)
+                const entries = fileActions.contextMenu.shownEntries()
+                fileActions.contextMenu.close()
+                // Two folder nodes linked with each other.
+                app.setFolderNode(path("notes"), true)
+                app.relateFiles(path("docs"), path("notes"))
+                const g2 = JSON.parse(app.contextGraph(path("docs/zweite.pdf"), 0))
+                const di = g2.nodes.findIndex(n => n.relative === "docs"), ni = g2.nodes.findIndex(n => n.relative === "notes")
+                check("Ordner-Knoten untereinander verknüpft", di >= 0 && ni >= 0
+                      && g2.edges.some(e => e.related && ((e.from === di && e.to === ni) || (e.from === ni && e.to === di))))
+                app.unrelateFiles(path("docs"), path("notes"))
+                app.setFolderNode(path("notes"), false)
+                check("Ordner-Knoten auflösen", entries.indexOf("Ordner-Knoten auflösen") >= 0 && app.setFolderNode(path("docs"), false)
+                      && !app.isFolderNode(path("docs")), entries.join(" | "))
+            },
+            () => {
+                // A session in another folder must not touch this one.
+                editor.open(path("notes/idee.md"), 0, "tab")
+                window.saveSession()
+                app.flushSession()
+                test.firstRoot = app.projectRoot
+                test.firstSession = app.activeSessionName
+                test.layoutBefore = app.loadLayout()
+                folderDialog.ask("session", app.projectRoot.replace(/\/[^/]*$/, "/zweites"), "")
+                folderDialog.accept()
+            },
+            () => {
+                check("Neue Session im anderen Ordner, nach ihm benannt", app.projectRoot.endsWith("/zweites") && app.activeSessionName === "zweites", app.projectRoot + " " + app.activeSessionName)
+                editor.open(app.projectRoot + "/texte/start.md", 0, "tab")
+                window.saveSession()
+                app.flushSession()
+                sessionMenu.clicked()
+                const all = sessionMenu.sessions
+                check("Sessionliste: ein Eintrag je Ordner", all.length === 2 && all[0].root === app.projectRoot && all[0].name === "zweites"
+                      && all[1].root === test.firstRoot && all[1].name === test.firstSession, JSON.stringify(all.map(s => s.root + ": " + s.name)))
+                sessionMenu.clicked()
+                // A click on the first session: back into its project.
+                sessionMenu.openRequested(test.firstRoot)
+            },
+            () => {
+                check("Erste Session unverändert", app.projectRoot === test.firstRoot && app.activeSessionName === test.firstSession
+                      && app.loadLayout() === test.layoutBefore && names().indexOf("idee.md") >= 0 && names().indexOf("start.md") < 0,
+                      app.activeSessionName + ": " + names())
+                // A calendar entry names a session: its folder opens.
+                test.before = app.projectRoot.replace(/\/[^/]*$/, "/zweites")
+                window.switchSessionByName("zweites")
+            },
+            () => {
+                check("Kalender: „In Session wechseln“ öffnet ihren Ordner", app.projectRoot === test.before, app.projectRoot)
+                window.openProject(test.firstRoot)
+                check("Offene Session lässt sich nicht entfernen", !app.forgetProject(test.firstRoot))
+                check("Andere Session aus der Liste entfernt", app.forgetProject(test.before)
+                      && JSON.parse(app.allSessions()).length === 1, app.allSessions())
             },
         ]
         timer.start()

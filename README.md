@@ -18,11 +18,13 @@ verändert weder PDFs noch Notizen ungefragt.
 
 - **Projektordner** mit Verzeichnisbaum, Dateiansicht (Symbole oder Details),
   Orten wie in Dolphin, Papierkorb sowie Besitzer, Gruppe und Rechten.
-- **Tabs und Splits** mit Ziehen und Ablegen; **Sessions** je Projekt werden
-  automatisch gespeichert.
+- **Tabs und Splits** mit Ziehen und Ablegen. Jeder Projektordner ist eine
+  **Session**: Tabs, Splits und Baum werden automatisch gespeichert, das
+  Sessionmenü wechselt zwischen deinen Ordnern.
 - **Schnellansicht** mit der Leertaste für PDFs, Bilder, Markdown und Code.
 - **PDFs** markieren, kommentieren, mit Lesezeichen versehen und zitieren –
-  die PDF selbst bleibt unverändert; Export als Kopie mit Anmerkungen.
+  die PDF selbst bleibt unverändert; Export als Kopie mit Anmerkungen,
+  Dunkelmodus mit umgekehrten Farben.
 - **Markdown** mit Live-Vorschau, Formeln (KaTeX), Diagrammen (Mermaid),
   Checklisten, Tags, Wiki-Links, Backlinks und lokalem Graph. Zitate springen
   direkt zur Stelle in der PDF.
@@ -31,7 +33,8 @@ verändert weder PDFs noch Notizen ungefragt.
 - **Terminal** im Fenster, **eigene Aktionen** und Skripte, kleine
   **Erweiterungen**.
 - **Projektkalender** mit Fristen aus Notizen und optionaler
-  Nextcloud-Synchronisierung (CalDAV).
+  Synchronisierung mit Nextcloud (CalDAV) oder Google-Kalender
+  ([Einrichtung](docs/google-kalender.md)).
 - HTML-Dateien als Webseite anzeigen, Code mit Syntaxhervorhebung, Übergabe
   an deinen Editor.
 
@@ -131,7 +134,8 @@ Alle Kürzel: [docs/shortcuts.md](docs/shortcuts.md).
 - Das Nextcloud-App-Passwort steht nie in Konfiguration oder Projekt. Atlas
   fragt es einmal ab und speichert es verschlüsselt mit `systemd-creds`
   (sonst als Datei nur für dich lesbar) oder holt es von einem
-  Passwort-Befehl wie `pass`.
+  Passwort-Befehl wie `pass`. Für Google merkt sich Atlas nach der Anmeldung
+  im Browser ebenso nur ein Zugriffs-Token.
 
 ## Entwicklung
 
