@@ -169,6 +169,35 @@ Dialog {
                     }
                 }
 
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: flingRow.implicitHeight + 24
+                    RowLayout {
+                        id: flingRow
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+                        Icon { Layout.alignment: Qt.AlignTop; name: "arrow-up"; size: 18; color: Theme.accent }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Text { text: qsTr("Schwung beim Touchpad-Scrollen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.smallFontSize
+                                text: qsTr("Nach einem schnellen Wischen mit zwei Fingern läuft die Ansicht weiter und bremst sanft ab; erneutes Berühren hält sie an. PDFs, Editor, Projektbaum und Ordner. Mausräder bleiben unverändert.")
+                            }
+                        }
+                        Toggle {
+                            Layout.alignment: Qt.AlignVCenter
+                            checked: dialog.app.touchpadFling
+                            onToggled: dialog.app.touchpadFling = !dialog.app.touchpadFling
+                        }
+                    }
+                }
+
                 SectionLabel { text: qsTr("Kontextleiste"); Layout.topMargin: 10 }
                 Card {
                     Layout.fillWidth: true

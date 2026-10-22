@@ -21,6 +21,14 @@ Rectangle {
     property var info: ({ tags: [], headings: [], broken: 0 })
     property bool pageReady: false
     property int previewLine: 1
+    /// When the editor last moved because the preview was scrolled (no echo).
+    property real syncedFromPreview: 0
+    // Coalesces editor scroll steps into one message per frame.
+    Timer {
+        id: followTimer
+        interval: 0
+        onTriggered: web.runJavaScript("atlas.follow(" + editor.exactTopLine() + ")")
+    }
     property real previewY: 0
     property var repairs: []
     /// FileActions (for "open in editor"); optional.
@@ -208,8 +216,9 @@ Rectangle {
                 onEdited: renderTimer.restart()
                 onSynced: { root.render(); root.app.noteChanged(root.source) }
                 onSavedAs: (path) => root.savedAs(path)
-                onTopLineChanged: if (root.mode === "split" && root.pageReady)
-                    web.runJavaScript("atlas.scrollToLine(" + editor.topLine + ")")
+                // Split view: the preview follows smoothly (#7) – unless this
+                // movement came from the preview itself.
+                onScrollYChanged: if (root.mode === "split" && root.pageReady && Date.now() - root.syncedFromPreview > 200) followTimer.restart()
             }
 
             WebEngineView {
@@ -243,6 +252,11 @@ Rectangle {
                         const s = JSON.parse(text.slice(13))
                         root.previewLine = s.line
                         root.previewY = s.y
+                        // Split view: the editor follows the preview (#7).
+                        if (root.mode === "split" && s.exact) {
+                            root.syncedFromPreview = Date.now()
+                            editor.scrollToExactLine(s.exact)
+                        }
                     } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
                 }
                 // Never stays black after a workspace switch (#2).

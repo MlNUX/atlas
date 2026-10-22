@@ -244,6 +244,12 @@ disabled = ["core"]                              # ausgeschaltete Erweiterungen
 [places]
 file_manager = true                              # Orte wie in Dolphin (ohne KDE: feste + GTK-Lesezeichen); Standard
 
+[files]                                          # Dateiansichten und Scrollen
+natural_sort = true                              # Zahlen nach Wert: 2 vor 10
+touchpad_fling = true                            # Schwung nach Touchpad-Wischen
+sort_key = "name"                                # zuletzt gewählte Sortierung (name, size, modified, kind)
+sort_ascending = true
+
 [context]                                        # Module der Kontextleiste (Übersicht)
 calendar = true                                  # Heute: Termine, Blöcke, Fristen des Tages
 tasks = true                                     # offene Aufgaben

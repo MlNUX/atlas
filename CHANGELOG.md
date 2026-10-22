@@ -24,8 +24,26 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - TeX → PDF („Zu PDF übersetzen“ für .tex-Dateien): latexmk, sonst
   pdflatex, im Terminal; Fehler bleiben sichtbar.
 - PDF: Pfeiltasten – hoch/runter scrollen, links/rechts blättern.
+- PDF-Anmerkungen rückgängig machen und wiederholen: Strg+Z,
+  Strg+Umschalt+Z oder Strg+Y und Knöpfe in der PDF-Leiste – für Zeichnen,
+  Markieren, Kommentare, Farben, Lesezeichen und Löschen
+  ([#6](https://github.com/MlNUX/atlas/issues/6)).
+- Natürliche Sortierung in Dateiansicht und Projektbaum: „2.pdf“ vor
+  „10.pdf“; schaltbar in den Einstellungen. Die zuletzt gewählte
+  Sortierung gilt für neue Ordneransichten
+  ([#5](https://github.com/MlNUX/atlas/issues/5)).
+- Schwung beim Touchpad-Scrollen: nach schnellem Wischen läuft die Ansicht
+  weiter und bremst ab (PDFs, Editor, Projektbaum, Ordner); schaltbar
+  ([#4](https://github.com/MlNUX/atlas/issues/4)).
 
 ### Behoben
+- Markdown-Vorschau blieb nach einem Workspace-Wechsel schwarz, bis man
+  scrollte ([#2](https://github.com/MlNUX/atlas/issues/2)).
+- Markdown-Vorschau zeigt keine „#“ mehr vor Überschriften
+  ([#3](https://github.com/MlNUX/atlas/issues/3)).
+- Markdown-Split: Scrollen in der Vorschau bewegt jetzt auch den Editor,
+  und die Vorschau folgt dem Editor weich statt in Sprüngen
+  ([#7](https://github.com/MlNUX/atlas/issues/7)).
 - PDF-Dunkelmodus ruckelte beim Ändern der Fenstergröße: Die Umkehrung
   wird jetzt einmal beim Rendern gemacht statt bei jedem Neuzeichnen.
 - Die Beispielaktion „Markdown als PDF exportieren“ (pandoc) scheiterte

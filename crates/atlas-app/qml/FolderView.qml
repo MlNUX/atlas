@@ -451,6 +451,12 @@ Rectangle {
                     }
                 }
             }
+            TouchpadFling {
+                anchors.fill: list
+                visible: list.visible
+                flickable: list
+                active: !root.app || root.app.touchpadFling
+            }
 
             // ---- icons view
             GridView {
@@ -600,6 +606,13 @@ Rectangle {
                         }
                     }
                 }
+            }
+            // Momentum after touchpad swipes (#4).
+            TouchpadFling {
+                anchors.fill: grid
+                visible: grid.visible
+                flickable: grid
+                active: !root.app || root.app.touchpadFling
             }
 
             // Ctrl+wheel zooms the icons, like in Dolphin.

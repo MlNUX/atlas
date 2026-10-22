@@ -21,6 +21,8 @@ printf '# Versteckt\n' > "$project/.versteckt.md"
 # Numbered files for natural sorting (outside the project).
 mkdir -p "$work/nummern"
 touch "$work/nummern/1.data.pdf" "$work/nummern/2.data.pdf" "$work/nummern/10.data.pdf"
+# A long note for scroll sync in the split view (outside the project).
+for i in $(seq 1 40); do printf '## Abschnitt %s\n\nText %s, eine Zeile.\n\n' "$i" "$i"; done > "$work/lang.md"
 # A second project for sessions in another folder.
 mkdir -p "$work/zweites/texte"
 printf '# Zweites Projekt\n' > "$work/zweites/texte/start.md"

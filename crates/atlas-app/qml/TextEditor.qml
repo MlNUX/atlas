@@ -257,6 +257,26 @@ Rectangle {
         while ((idx = area.text.indexOf("\n", idx + 1)) >= 0 && idx < pos) count++
         return count
     }
+    readonly property alias fling: touchpadFling
+    /// Vertical scroll position, for scroll sync.
+    readonly property real scrollY: flick.contentY
+    /// Top line with the fraction scrolled into it (scroll sync, #7).
+    function exactTopLine() {
+        const n = wrap ? lineAtY(flick.contentY) : Math.floor(flick.contentY / lineHeight) + 1
+        const y0 = area.positionToRectangle(positionOfLine(n)).y
+        const next = area.text.indexOf("\n", positionOfLine(n))
+        const y1 = next < 0 ? y0 + lineHeight : area.positionToRectangle(next + 1).y
+        return n + (y1 > y0 ? Math.max(0, Math.min(1, (flick.contentY - y0) / (y1 - y0))) : 0)
+    }
+    /// Scrolls so that line `line` (fractional) is at the top.
+    function scrollToExactLine(line) {
+        const n = Math.max(1, Math.floor(line))
+        const start = positionOfLine(n)
+        const y0 = area.positionToRectangle(start).y
+        const next = area.text.indexOf("\n", start)
+        const y1 = next < 0 ? y0 + lineHeight : area.positionToRectangle(next + 1).y
+        flick.contentY = Math.max(0, Math.min(y0 + (y1 - y0) * (line - n), flick.contentHeight - flick.height))
+    }
     function scrollToLine(n) {
         const rect = area.positionToRectangle(positionOfLine(n))
         flick.contentY = Math.max(0, Math.min(rect.y, flick.contentHeight - flick.height))
@@ -570,6 +590,13 @@ Rectangle {
                         }
                     }
                 }
+            }
+            // Momentum after touchpad swipes (#4).
+            TouchpadFling {
+                id: touchpadFling
+                anchors.fill: flick
+                flickable: flick
+                active: root.app.touchpadFling
             }
             Timer {
                 id: completionTimer

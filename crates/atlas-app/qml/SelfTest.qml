@@ -51,6 +51,9 @@ Item {
     property string modTomorrow
     property bool inspectorWasVisible
     property int repaints
+    property real flingY
+    property real flingDirect
+    property int flings
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -1083,6 +1086,14 @@ Item {
                 check("Rückgängig: Löschen zurückgenommen", !!store.annotation(id) && v.canRedo)
                 v.redo()
                 check("Wiederholen: wieder gelöscht", !store.annotation(id) && store.count === n0)
+                // Touchpad momentum (#4): a quick swipe glides on.
+                v.goToPage(0)
+                const tp = v.mapToItem(null, v.width / 2, v.height * 0.6)
+                test.flingY = v.pagesView.contentY
+                test.flings = v.fling.count
+                app.sendWheel(window, tp.x, tp.y, -40, 2 | 4 | 16)
+                for (let i = 0; i < 5; ++i) app.sendWheel(window, tp.x, tp.y, -40, 2 | 16)
+                test.flingDirect = v.pagesView.contentY - test.flingY
                 // Markdown → PDF with the preview (no pandoc).
                 test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
                 check("Markdown-PDF-Export startet", fileActions.markdownPdf.exportPdf(path("notes/idee.md"), test.mdPdf))
@@ -1096,6 +1107,12 @@ Item {
             () => { if (waitFor(() => !fileActions.markdownPdf.busy)) return },
             () => {
                 if (waitFor(() => !fileActions.markdownPdf.busy)) return
+                {
+                    const v = editor.activeTab.viewerItem
+                    check("Touchpad-Wischen läuft mit Schwung weiter", v.fling && v.fling.count === test.flings + 1
+                          && v.pagesView.contentY - test.flingY > test.flingDirect + 100,
+                          "direkt " + test.flingDirect + ", gesamt " + (v.pagesView.contentY - test.flingY))
+                }
                 check("Markdown als PDF exportiert", app.exists(test.mdPdf) && app.readTextFile(test.mdPdf).startsWith("%PDF"),
                       fileActions.markdownPdf.busy ? "läuft noch" : app.readTextFile(test.mdPdf).slice(0, 8))
                 // Context bar modules: pomodoro, upcoming entries, tasks.
@@ -1155,6 +1172,52 @@ Item {
                 f.sortBy("size")
                 check("Gewählte Sortierung gemerkt", JSON.parse(app.folderSort).key === "size", app.folderSort)
                 f.sortBy("name")
+                // Scroll sync of the Markdown split view, both ways (#7).
+                editor.open(app.projectRoot.replace(/\/[^/]+$/, "") + "/lang.md", 0, "tab")
+                editor.activeTab.viewerItem.mode = "split"
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => md.pageReady)) return
+                md.editorItem.scrollToExactLine(81)
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("atlas.exactTopLine()", (line) => {
+                    check("Split: Vorschau folgt dem Editor", Math.abs(line - 81) < 3, line)
+                    // The user scrolls the preview: the editor follows.
+                    md.previewItem.runJavaScript("window.scrollBy(0, -400)")
+                })
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("atlas.exactTopLine()", (line) => {
+                    const e = md.editorItem.exactTopLine()
+                    check("Split: Editor folgt der Vorschau", line < 78 && Math.abs(e - line) < 3, "Vorschau " + line + ", Editor " + e)
+                })
+            },
+            () => {
+                // Over the editor: the mouse wheel scrolls as before, a
+                // touchpad swipe glides on (#4).
+                const ed = editor.activeTab.viewerItem.editorItem
+                ed.scrollToExactLine(1)
+                const p = ed.mapToItem(null, ed.width / 2, ed.height / 2)
+                test.flingY = ed.scrollY
+                test.flings = ed.fling.count
+                app.sendWheel(window, p.x, p.y, -120, 0)
+            },
+            () => {
+                // (Qt animates wheel scrolling: checked a step later.)
+                const ed = editor.activeTab.viewerItem.editorItem
+                check("Editor: Mausrad scrollt weiter, ohne Schwung", ed.scrollY > test.flingY && ed.fling.count === test.flings,
+                      test.flingY + " → " + ed.scrollY)
+                const p = ed.mapToItem(null, ed.width / 2, ed.height / 2)
+                app.sendWheel(window, p.x, p.y, -30, 2 | 4 | 16)
+                for (let i = 0; i < 5; ++i) app.sendWheel(window, p.x, p.y, -30, 2 | 16)
+            },
+            () => {
+                const ed = editor.activeTab.viewerItem.editorItem
+                check("Editor: Touchpad-Schwung", ed.fling.count === test.flings + 1, ed.fling.count)
                 fileActions.calendar.remove(test.modEvent)
             },
             () => {

@@ -27,6 +27,7 @@ Rectangle {
     /// false: no toolbar (the quick look brings its own controls).
     property bool chrome: true
     readonly property int pageCount: doc.pageCount
+    readonly property alias fling: pagesFling
     /// Size of page `index` in millimetres ({ w, h }), from PDF points.
     function pageSizeMm(index) {
         if (index < 0 || index >= doc.pageCount) return null
@@ -1000,6 +1001,15 @@ Rectangle {
                         event.accepted = true
                     }
                 }
+                // Momentum after touchpad swipes (#4); the wheel handler below
+                // scrolls and reports the steps.
+                TouchpadFling {
+                    id: pagesFling
+                    parent: pages
+                    flickable: pages
+                    handleWheel: false
+                    active: !root.app || root.app.touchpadFling
+                }
                 // Plain wheel: scroll faster than the list would (a few lines
                 // per notch felt sluggish on long documents). Touchpads keep
                 // their own pixel deltas, a bit amplified.
@@ -1008,8 +1018,11 @@ Rectangle {
                     acceptedPointerTypes: PointerDevice.AllPointerTypes
                     acceptedModifiers: Qt.NoModifier
                     onWheel: (event) => {
-                        const delta = (angle, pixel) => pixel !== 0 && angle % 120 !== 0
+                        const delta = (angle, pixel) => pixel !== 0 && (angle === 0 || angle % 120 !== 0)
                             ? pixel * 1.5 : angle / 120 * root.wheelStep
+                        // Touchpad: measured for the momentum after the swipe.
+                        if (pagesFling.isTouchpad(event))
+                            pagesFling.sample(delta(event.angleDelta.x, event.pixelDelta.x), delta(event.angleDelta.y, event.pixelDelta.y))
                         root.scrollBy(-delta(event.angleDelta.x, event.pixelDelta.x), -delta(event.angleDelta.y, event.pixelDelta.y))
                         event.accepted = true
                     }

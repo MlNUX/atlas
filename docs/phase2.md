@@ -911,3 +911,40 @@ Meldung); latexmk/pdflatex selbst gibt es in der Testumgebung nicht.
 
 Selbsttest: Termin von heute erscheint, der von morgen nicht; der Timer
 liegt auf einem anderen Reiter an der Unterkante; abschaltbar.
+
+### Nachtrag – Issues #2 bis #7
+
+- **#2 Schwarze Vorschau:** Nach einem Workspace-Wechsel (Hyprland) bekam
+  Qt von Chromium kein neues Bild, bis gescrollt wurde. `WebRepaint.qml`
+  in jeder Web-Ansicht fordert beim Aktivieren oder Zeigen des Fensters und
+  beim Wiederzeigen der Ansicht ein Bild an (kurze Deckkraft-Änderung).
+- **#3 `#` vor Überschriften:** war Absicht (CSS-`::before`), störte aber;
+  entfernt, h1 bekommt eine feine Linie.
+- **#5 Natürliche Sortierung:** `listing::compare_names` vergleicht
+  Ziffernfolgen nach Wert (beliebig lang, führende Nullen nachrangig), für
+  Dateiansicht und Projektbaum; prozessweiter Schalter aus `[files]`.
+  Die zuletzt gewählte Sortierung wird gespeichert und von neuen
+  Ordneransichten übernommen (Tabs aus der Session behalten ihre).
+- **#6 Rückgängig für PDF-Anmerkungen:** alle Änderungen laufen über
+  `addAnnot`/`updateAnnot`/`removeAnnot`; jeder Schritt speichert
+  Schnappschüsse (Anmerkung samt Gruppe, `PdfAnnotations.snapshot`) vor und
+  nach der Änderung, `restore` setzt sie mit gleicher ID zurück.
+  Markierungen über mehrere Seiten und Tippen in einem Kommentar (1,5 s)
+  sind je ein Schritt; bis zu 200 Schritte je PDF-Tab.
+- **#7 Split-Scrollen:** beide Seiten tauschen die oberste Zeile mit
+  Bruchteil aus (zwischen zwei Blockmarken interpoliert). Die Vorschau
+  gleitet pro Frame ein Stück zum Ziel; eigene Bewegungen meldet sie nicht
+  zurück, und Editorbewegungen kurz nach einer Vorschau-Meldung schickt
+  Atlas nicht zurück – keine Rückkopplung.
+- **#4 Touchpad-Schwung:** `TouchpadFling.qml` beobachtet die
+  Radereignisse (`blocking: false`, die Liste scrollt wie bisher), misst bei
+  Pixel-Schritten ohne ganze Raste die Geschwindigkeit der letzten 100 ms
+  und ruft nach 70 ms Ruhe `flick()`; ein neues Wischen bricht den Schwung
+  ab. Im PDF meldet der eigene Rad-Handler die Schritte. Gefunden: Ein
+  nicht angenommenes Ereignis eines WheelHandlers erreicht die Liste
+  darunter nicht – nur `blocking: false` lässt sie weiter scrollen.
+
+Selbsttest: neue Prüfungen für alle sechs Issues (Vorschau-Neuzeichnen,
+Überschriften ohne `#`, Sortierung an/aus und gemerkt, Rückgängig per
+Tastatur und Funktion, Scroll-Sync in beide Richtungen, Schwung im PDF und
+im Editor, Mausrad im Editor unverändert).

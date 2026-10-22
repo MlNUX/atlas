@@ -65,6 +65,8 @@ pub mod qobject {
         #[qproperty(QString, context_modules, cxx_name = "contextModules", READ, NOTIFY)]
         /// Numbers in file names by value (`[files] natural_sort`).
         #[qproperty(bool, natural_sort, cxx_name = "naturalSort", READ, WRITE = set_natural_sort, NOTIFY)]
+        /// Momentum scrolling after touchpad swipes (`[files] touchpad_fling`).
+        #[qproperty(bool, touchpad_fling, cxx_name = "touchpadFling", READ, WRITE = set_touchpad_fling, NOTIFY)]
         /// Last chosen order of folder views as JSON {key, ascending}
         /// (`[files]`), the start for new views.
         #[qproperty(QString, folder_sort, cxx_name = "folderSort", READ, NOTIFY)]
@@ -106,6 +108,7 @@ pub mod qobject {
         fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
         fn set_natural_sort(self: Pin<&mut AppController>, on: bool);
+        fn set_touchpad_fling(self: Pin<&mut AppController>, on: bool);
 
         /// Remembers the order chosen in a folder view for new views.
         #[qinvokable]
@@ -619,6 +622,7 @@ pub struct AppControllerRust {
     pdf_dark: bool,
     context_modules: QString,
     natural_sort: bool,
+    touchpad_fling: bool,
     folder_sort: QString,
     /// Watches the file managers' places files.
     places_watcher: Option<atlas_core::watcher::DirWatcher>,
@@ -688,6 +692,7 @@ impl Default for AppControllerRust {
             pdf_dark: Config::load().pdf.dark,
             context_modules: context_json(&Config::load().context),
             natural_sort: Config::load().files.natural_sort,
+            touchpad_fling: Config::load().files.touchpad_fling,
             folder_sort: folder_sort_json(&Config::load().files),
             places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
@@ -820,6 +825,19 @@ impl qobject::AppController {
         self.as_mut().rust_mut().natural_sort = on;
         // Views sort again when they see the change.
         self.as_mut().natural_sort_changed();
+    }
+
+    pub fn set_touchpad_fling(mut self: Pin<&mut Self>, on: bool) {
+        if self.touchpad_fling == on {
+            return;
+        }
+        let mut config = Config::load().files;
+        config.touchpad_fling = on;
+        if let Err(err) = Config::save_files(&config) {
+            log::warn!("cannot save [files]: {err:#}");
+        }
+        self.as_mut().rust_mut().touchpad_fling = on;
+        self.as_mut().touchpad_fling_changed();
     }
 
     pub fn remember_folder_sort(mut self: Pin<&mut Self>, key: &QString, ascending: bool) {

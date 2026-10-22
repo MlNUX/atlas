@@ -153,12 +153,15 @@ impl Default for PlacesConfig {
     }
 }
 
-/// `[files]`: file views.
+/// `[files]`: file views and scrolling.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilesConfig {
     /// Numbers in names by value: `2.pdf` before `10.pdf`.
     #[serde(default = "enabled")]
     pub natural_sort: bool,
+    /// Touchpad: content keeps gliding after a quick swipe (momentum).
+    #[serde(default = "enabled")]
+    pub touchpad_fling: bool,
     /// Last chosen order, used by new folder views: name, size, modified
     /// or kind.
     #[serde(default = "sort_by_name")]
@@ -173,7 +176,7 @@ fn sort_by_name() -> String {
 
 impl Default for FilesConfig {
     fn default() -> Self {
-        Self { natural_sort: true, sort_key: sort_by_name(), sort_ascending: true }
+        Self { natural_sort: true, touchpad_fling: true, sort_key: sort_by_name(), sort_ascending: true }
     }
 }
 

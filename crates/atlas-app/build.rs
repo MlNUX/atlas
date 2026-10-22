@@ -48,6 +48,7 @@ const QML_FILES: &[&str] = &[
     "qml/TerminalPane.qml",
     "qml/TerminalPanel.qml",
     "qml/TextEditor.qml",
+    "qml/TouchpadFling.qml",
     "qml/TrashView.qml",
     "qml/WebRepaint.qml",
 ];

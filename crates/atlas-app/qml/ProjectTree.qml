@@ -335,6 +335,14 @@ Rectangle {
                 text: qsTr("Noch kein Projektordner geöffnet.")
             }
         }
+        // Momentum after touchpad swipes (#4).
+        TouchpadFling {
+            // Over the list, not a cell of the layout.
+            parent: list
+            anchors.fill: parent
+            flickable: list
+            active: !root.actions || !root.actions.app || root.actions.app.touchpadFling
+        }
 
         Button {
             Layout.fillWidth: true

@@ -1,0 +1,77 @@
+// SPDX-FileCopyrightText: 2026 Minux
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import QtQuick
+
+// Momentum for touchpad scrolling (#4). Wayland compositors send no
+// kinetic scrolling: when the fingers leave the touchpad the content stops
+// at once. This measures the speed of the last moments of a two-finger
+// swipe and lets the Flickable glide on, slowing down; touching again
+// stops it. Mouse wheels (whole notches) are left alone.
+//
+// Either it watches the wheel events itself (`handleWheel`, for plain
+// Flickables, which keep scrolling as before) or a view with its own wheel
+// handling reports each step with sample().
+Item {
+    id: fling
+    required property Flickable flickable
+    /// The setting (Einstellungen → Dateien).
+    property bool active: true
+    /// Watch the wheel here; false: the view calls sample() itself.
+    property bool handleWheel: true
+    /// How often a fling was started (for the smoke test).
+    property int count: 0
+
+    /// Recent steps: {t, dx, dy} in pixels (content moves by -d).
+    property var samples: []
+
+    /// A touchpad step; true if it was one (pixel delta, no whole notch).
+    function isTouchpad(event) {
+        const pixel = (p, a) => p !== 0 && (a === 0 || a % 120 !== 0)
+        return pixel(event.pixelDelta.y, event.angleDelta.y) || pixel(event.pixelDelta.x, event.angleDelta.x)
+    }
+    function sample(dx, dy) {
+        flickable.cancelFlick()
+        const now = Date.now()
+        samples = samples.filter(s => now - s.t < 100).concat([{ t: now, dx: dx, dy: dy }])
+        endTimer.restart()
+    }
+    function stop() {
+        endTimer.stop()
+        samples = []
+    }
+
+    // No step for a moment: the fingers left the touchpad.
+    Timer {
+        id: endTimer
+        interval: 70
+        onTriggered: {
+            const s = fling.samples
+            fling.samples = []
+            if (!fling.active || s.length < 2) return
+            // Steps arrive every few milliseconds; synthetic ones may come at
+            // once, so assume at least 8 ms between them.
+            const span = Math.max(s[s.length - 1].t - s[0].t, 8 * (s.length - 1)) / 1000
+            let dx = 0, dy = 0
+            for (const p of s) { dx += p.dx; dy += p.dy }
+            const vx = dx / span, vy = dy / span
+            if (Math.abs(vx) < 200 && Math.abs(vy) < 200) return
+            fling.count += 1
+            fling.flickable.flick(vx, vy)
+        }
+    }
+
+    // Only watches: the Flickable below scrolls as always (blocking: false
+    // passes every wheel event on).
+    WheelHandler {
+        enabled: fling.handleWheel && fling.active
+        blocking: false
+        target: null
+        acceptedDevices: PointerDevice.AllDevices
+        acceptedPointerTypes: PointerDevice.AllPointerTypes
+        acceptedModifiers: Qt.NoModifier
+        onWheel: (event) => {
+            if (fling.isTouchpad(event)) fling.sample(event.pixelDelta.x, event.pixelDelta.y)
+        }
+    }
+}
