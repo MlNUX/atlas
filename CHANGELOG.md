@@ -25,6 +25,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - Ordner lassen sich verknüpfen, auch Ordner-Knoten untereinander.
 
 ### Behoben
+- Kalender-Abgleich scheiterte manchmal mit „Interrupted system call“, wenn
+  gleichzeitig ein Programm im Terminal endete; solche Anfragen werden jetzt
+  wiederholt.
 - Terminal: horizontal und vertikal teilen teilen das aktive Terminal.
 - PDF springt beim Zoomen mit Strg+Mausrad nicht mehr zur Seite;
   „PDF-Kopie exportieren“ nur mit Anmerkungen.

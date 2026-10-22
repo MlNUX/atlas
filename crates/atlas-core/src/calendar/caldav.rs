@@ -370,16 +370,31 @@ impl Client {
         headers: &[(&str, &str)],
         body: Option<&str>,
     ) -> DavResult<(u16, Option<String>, String)> {
-        let mut builder = ureq::http::Request::builder()
-            .method(ureq::http::Method::from_bytes(method.as_bytes()).map_err(|e| DavError::Invalid(e.to_string()))?)
-            .uri(url)
-            .header("Authorization", self.auth());
-        for (name, value) in headers {
-            builder = builder.header(*name, *value);
-        }
-        let result = match body {
-            Some(b) => self.agent.run(builder.body(b.to_owned()).map_err(|e| DavError::Invalid(e.to_string()))?),
-            None => self.agent.run(builder.body(()).map_err(|e| DavError::Invalid(e.to_string()))?),
+        let method = ureq::http::Method::from_bytes(method.as_bytes()).map_err(|e| DavError::Invalid(e.to_string()))?;
+        let build = || {
+            let mut builder =
+                ureq::http::Request::builder().method(method.clone()).uri(url).header("Authorization", self.auth());
+            for (name, value) in headers {
+                builder = builder.header(*name, *value);
+            }
+            builder
+        };
+        // A signal (e.g. a terminal's child process exiting: the embedded
+        // terminal handles SIGCHLD) interrupts socket reads with a timeout;
+        // such a request is simply sent again. All writes are conditional
+        // (If-Match / If-None-Match), so a repeat does no harm.
+        let mut attempts = 0;
+        let result = loop {
+            let request = build();
+            let result = match body {
+                Some(b) => self.agent.run(request.body(b.to_owned()).map_err(|e| DavError::Invalid(e.to_string()))?),
+                None => self.agent.run(request.body(()).map_err(|e| DavError::Invalid(e.to_string()))?),
+            };
+            attempts += 1;
+            match result {
+                Err(ureq::Error::Io(err)) if err.kind() == std::io::ErrorKind::Interrupted && attempts < 4 => continue,
+                other => break other,
+            }
         };
         let mut response = result.map_err(|e| match e {
             ureq::Error::StatusCode(code) => DavError::Http(code, String::new()),
