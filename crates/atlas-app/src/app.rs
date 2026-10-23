@@ -153,10 +153,10 @@ pub mod qobject {
         fn ilias_scanned(self: Pin<&mut AppController>, status: QString, message: QString);
 
         /// Downloads file `url` (ILIAS address; `download`: the address
-        /// sending the file) into the download folder, one folder per entry
-        /// of `segments` (JSON list: course, folders …), named as the server
-        /// says or else `title`; remembers it with `info` in "downloads".
-        /// Then `iliasDownloaded`.
+        /// sending the file) straight into folder `dir`, named as the server
+        /// says or else `title` (numbered if another file has that name; a
+        /// new version replaces its earlier download there); remembers it
+        /// with `info` in "downloads". Then `iliasDownloaded`.
         #[qinvokable]
         #[cxx_name = "iliasDownload"]
         fn ilias_download(
@@ -165,7 +165,7 @@ pub mod qobject {
             download: &QString,
             title: &QString,
             info: &QString,
-            segments: &QString,
+            dir: &QString,
         );
 
         #[qsignal]
@@ -1015,21 +1015,14 @@ impl qobject::AppController {
         });
     }
 
-    pub fn ilias_download(
-        &self,
-        url: &QString,
-        download: &QString,
-        title: &QString,
-        info: &QString,
-        segments: &QString,
-    ) {
+    pub fn ilias_download(&self, url: &QString, download: &QString, title: &QString, info: &QString, dir: &QString) {
         use atlas_core::ilias::{self, IliasError};
         let config = Config::load().ilias;
         let address = if download.is_empty() { url.to_string() } else { download.to_string() };
         let live = crate::qt_helpers::web_cookie_header(&qs(&address)).to_string();
         let profile = PathBuf::from(crate::qt_helpers::web_profile_path().to_string());
         let agent = crate::qt_helpers::web_user_agent().to_string();
-        let (url, title, info, segments) = (url.to_string(), title.to_string(), info.to_string(), segments.to_string());
+        let (url, title, info, dir) = (url.to_string(), title.to_string(), info.to_string(), dir.to_string());
         let thread = self.qt_thread();
         std::thread::spawn(move || {
             let last = std::sync::Mutex::new(std::time::Instant::now());
@@ -1045,12 +1038,12 @@ impl qobject::AppController {
             };
             let result = (|| {
                 let other = |e: anyhow::Error| IliasError::Other(format!("{e:#}"));
-                let segments: Vec<String> = serde_json::from_str(&segments).map_err(|e| other(e.into()))?;
-                let dir = ilias::target_dir(Path::new(&config.download_dir), &segments).map_err(other)?;
+                let dir = ilias::target_dir(Path::new(&dir), &[]).map_err(other)?;
                 let cookies =
                     ilias::Url::parse(&address).map(|u| ilias::session_cookies(&profile, &u, &live)).unwrap_or(live);
                 let client = ilias::Client::new(&config.base_url, &cookies, &agent)?;
-                let path = ilias::download(&client, &address, &dir, &title, &progress)?;
+                let previous = ilias::previous_download(&url);
+                let path = ilias::download(&client, &address, &dir, &title, previous.as_deref(), &progress)?;
                 ilias::record_download(&url, &path, &info).map_err(other)?;
                 Ok(path)
             })();

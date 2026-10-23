@@ -268,7 +268,7 @@ dark = true                                      # Dunkelmodus: Farben umgekehrt
 
 [ilias]                                          # ILIAS unter „Orte“ – ohne Passwort
 base_url = "https://ilias.studium.kit.edu/"      # Standard: KIT
-download_dir = "/home/minux/Uni/ILIAS"           # wohin Dateien geladen werden (wird beim ersten Laden erfragt)
+download_dir = "/home/minux/Uni/ILIAS"           # zuletzt gewählter Zielordner, beim nächsten Download vorgeschlagen
 show_in_places = true
 
 [calendar]                                       # Nextcloud/CalDAV oder Google – ohne Passwort

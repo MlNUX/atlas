@@ -17,9 +17,10 @@ import Atlas
 //   `app.iliasScan` / `app.iliasDownload`) with that profile's session
 //   cookies. The tree and the downloads are JSON files in the state
 //   directory (`app.iliasLoad`).
-// - A file goes into the chosen folder (one folder per course, group,
-//   session and folder on the way) and is opened; it is downloaded again
-//   when ILIAS shows a new version.
+// - Each download asks for its folder (offering the file's earlier one, else
+//   the last chosen); the file goes straight in (no ILIAS folders; a name
+//   taken by another file gets a number) and is opened. A new version in
+//   ILIAS is downloaded again, replacing the earlier one in that folder.
 Item {
     id: service
     required property AppController app
@@ -45,8 +46,9 @@ Item {
     /// Bumped when downloads change (for bindings in views).
     property int revision: 0
 
-    /// A download folder is needed first (the view asks for one).
-    signal downloadDirNeeded()
+    /// Where to save `item`? The view asks (offering `dir`) and calls
+    /// `resume(folder)`.
+    signal downloadDirNeeded(var item, string dir)
 
     function loadState(name, fallback) {
         try { return JSON.parse(app.iliasLoad(name) || "null") || fallback } catch (e) { return fallback }
@@ -168,23 +170,33 @@ Item {
         if (!e || !app.exists(e.path)) return ""
         return e.info === (item.info || "") ? "loaded" : "changed"
     }
-    /// Opens file `item` (path of containers `segments`): downloads it
-    /// first if it is not here or ILIAS shows a new version.
+    /// Opens file `item` (`segments`: the containers on the way): downloads
+    /// it first if it is not here or ILIAS shows a new version (`reload`:
+    /// always) – into a folder asked for each time (`downloadDirNeeded`).
     function open(item, segments, reload) {
         const e = entry(item)
         if (!reload && e && fileState(item) === "loaded") { openLocal(e.path); return }
-        if (!downloadDir) { pendingOpen = { item: item, segments: segments }; downloadDirNeeded(); return }
         if (current && current.item.url === item.url || queue.some(q => q.item.url === item.url)) return
-        queue = queue.concat([{ item: item, segments: segments }])
-        next()
+        pendingOpen = { item: item, segments: segments }
+        downloadDirNeeded(item, suggestedDir(item))
+    }
+    /// The folder offered for a download: where the file was saved before,
+    /// else the folder chosen last.
+    function suggestedDir(item) {
+        const e = entry(item)
+        if (e && e.path && app.exists(e.path)) return e.path.slice(0, e.path.lastIndexOf("/"))
+        return downloadDir
     }
     property var pendingOpen: null
-    /// After the download folder was chosen.
-    function resume() {
-        if (!pendingOpen) return
+    /// The folder for the pending download was chosen: download there.
+    function resume(dir) {
+        if (!pendingOpen || !dir) return
         const p = pendingOpen
         pendingOpen = null
-        open(p.item, p.segments)
+        // Offered first next time.
+        if (dir !== downloadDir) app.setIliasConfig("download_dir", dir)
+        queue = queue.concat([{ item: p.item, segments: p.segments, dir: dir }])
+        next()
     }
     function openLocal(path) { if (actions) actions.openRequested(path, false) }
     function next() {
@@ -193,7 +205,7 @@ Item {
         queue = queue.slice(1)
         status = qsTr("Lade „%1“ …").arg(current.item.name)
         const item = current.item
-        app.iliasDownload(item.url, item.download || "", item.name, item.info || "", JSON.stringify(current.segments || []))
+        app.iliasDownload(item.url, item.download || "", item.name, item.info || "", current.dir)
     }
     function finish(text) {
         if (text) status = text

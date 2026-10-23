@@ -655,8 +655,14 @@ impl Client {
             }
             match req.call() {
                 Ok(res) => return Ok(res),
-                // A signal (e.g. a finished terminal program) interrupted the read.
-                Err(ureq::Error::Io(e)) if e.kind() == std::io::ErrorKind::Interrupted && attempts < 4 => continue,
+                // Interrupted by a signal (e.g. a finished terminal program),
+                // or a kept-alive connection the server had closed: again
+                // (GET only reads).
+                Err(ureq::Error::Io(e)) if attempts < 3 => {
+                    trace(&format!("GET {url} → {e} – noch einmal"));
+                    std::thread::sleep(Duration::from_millis(200 * attempts));
+                    continue;
+                }
                 Err(ureq::Error::StatusCode(code)) => {
                     trace(&format!("GET {url} → HTTP {code}"));
                     return Err(IliasError::Other(format!("ILIAS antwortet mit {code} ({url})")));
@@ -982,14 +988,15 @@ pub fn disposition_name(header: &str) -> Option<String> {
 }
 
 /// Downloads `url` into `dir` and returns the file: named as the server
-/// says, else `title`; an older file there is replaced only when the new
-/// one is complete. HTML instead of a file means the session is gone, or
+/// says, else `title` (numbered if the name is taken); `previous` (its
+/// earlier download) is replaced, only once the new one is complete. HTML instead of a file means the session is gone, or
 /// ILIAS shows an info page.
 pub fn download(
     client: &Client,
     url: &str,
     dir: &Path,
     title: &str,
+    previous: Option<&Path>,
     progress: &dyn Fn(u64, Option<u64>),
 ) -> Result<PathBuf, IliasError> {
     let io = |e: std::io::Error| IliasError::Other(e.to_string());
@@ -1012,10 +1019,15 @@ pub fn download(
         return Err(IliasError::Other(format!("ILIAS hat für „{title}“ keine Datei geliefert")));
     }
     let suggested = disposition_name(&disposition).unwrap_or_default();
-    let name = file_name(&suggested, title);
     let total = res.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse().ok());
     std::fs::create_dir_all(dir).map_err(io)?;
-    let target = dir.join(&name);
+    // A new version replaces the file's earlier download; any other file
+    // of that name (another course's, the user's own) stays.
+    let target = match previous.filter(|p| p.parent() == Some(dir)) {
+        Some(p) => p.to_path_buf(),
+        None => free_name(dir, &file_name(&suggested, title)),
+    };
+    let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let part = dir.join(format!(".{name}.part"));
     let mut file = std::fs::File::create(&part).map_err(io)?;
     let mut body = res.body_mut().with_config().limit(u64::MAX).reader();
@@ -1040,6 +1052,26 @@ pub fn download(
     std::fs::rename(&part, &target).map_err(io)?;
     trace(&format!("  gespeichert: {} ({received} Bytes)", target.display()));
     Ok(target)
+}
+
+/// `dir/name`, or with a number before the extension (`Blatt (2).pdf`) if
+/// that exists.
+fn free_name(dir: &Path, name: &str) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem, format!(".{ext}")),
+        _ => (name, String::new()),
+    };
+    (2..).map(|n| dir.join(format!("{stem} ({n}){ext}"))).find(|p| !p.exists()).unwrap_or(first)
+}
+
+/// Where file `url` was downloaded to before (`downloads.json`).
+pub fn previous_download(url: &str) -> Option<PathBuf> {
+    let all: serde_json::Value = serde_json::from_str(&load("downloads")).ok()?;
+    all.get(url)?.get("path")?.as_str().map(PathBuf::from)
 }
 
 /// Remembers a download in `downloads.json`: url → {path, info, time}.
@@ -1383,7 +1415,7 @@ mod tests {
         assert_eq!(scan(&client, &|_| {}), Err(IliasError::Login));
         let dir = tempfile::tempdir().unwrap();
         let url = format!("{}goto.php?target=file_102_download", mock.base);
-        assert_eq!(download(&client, &url, dir.path(), "Orga", &|_, _| {}), Err(IliasError::Login));
+        assert_eq!(download(&client, &url, dir.path(), "Orga", None, &|_, _| {}), Err(IliasError::Login));
     }
 
     #[test]
@@ -1424,7 +1456,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let orga = &tree[0].children.as_ref().unwrap()[1];
         let seen = Mutex::new(0u64);
-        let path = download(&client, orga.download.as_deref().unwrap(), dir.path(), &orga.name, &|n, total| {
+        let path = download(&client, orga.download.as_deref().unwrap(), dir.path(), &orga.name, None, &|n, total| {
             assert_eq!(total, Some(27));
             *seen.lock().unwrap() = n;
         })
@@ -1435,7 +1467,7 @@ mod tests {
 
         // A new version replaces the file; no partial file stays behind.
         mock.version.store(2, std::sync::atomic::Ordering::SeqCst);
-        download(&client, orga.download.as_deref().unwrap(), dir.path(), &orga.name, &|_, _| {}).unwrap();
+        download(&client, orga.download.as_deref().unwrap(), dir.path(), &orga.name, Some(&path), &|_, _| {}).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "Organisatorisches Version 2");
         let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
         assert_eq!(names, ["orga.pdf"]);
@@ -1443,13 +1475,23 @@ mod tests {
         // Names from the header (percent-encoded) or else the title.
         let folien = format!("{}goto.php?target=file_104_download", mock.base);
         assert_eq!(
-            download(&client, &folien, dir.path(), "Folien", &|_, _| {}).unwrap(),
+            download(&client, &folien, dir.path(), "Folien", None, &|_, _| {}).unwrap(),
             dir.path().join("folien 1.pdf")
         );
         let skript = format!("{}goto.php?target=file_108_download", mock.base);
-        assert_eq!(download(&client, &skript, dir.path(), "Skript", &|_, _| {}).unwrap(), dir.path().join("Skript"));
+        assert_eq!(
+            download(&client, &skript, dir.path(), "Skript", None, &|_, _| {}).unwrap(),
+            dir.path().join("Skript")
+        );
+        // Another file of the same name (another course's): numbered, the
+        // first stays.
+        let other =
+            download(&client, orga.download.as_deref().unwrap(), dir.path(), &orga.name, None, &|_, _| {}).unwrap();
+        assert_eq!(other, dir.path().join("orga (2).pdf"));
+        assert!(path.is_file());
+        assert_eq!(free_name(dir.path(), "Skript"), dir.path().join("Skript (2)"));
         // An ILIAS page instead of a file.
         let page = format!("{}goto.php?target=crs_100", mock.base);
-        assert!(matches!(download(&client, &page, dir.path(), "Kurs", &|_, _| {}), Err(IliasError::Other(_))));
+        assert!(matches!(download(&client, &page, dir.path(), "Kurs", None, &|_, _| {}), Err(IliasError::Other(_))));
     }
 }

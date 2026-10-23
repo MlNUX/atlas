@@ -249,10 +249,10 @@ Dialog {
                             Layout.fillWidth: true
                             Layout.leftMargin: 30
                             spacing: 8
-                            Text { text: qsTr("Downloads"); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize; Layout.preferredWidth: 70 }
+                            Text { text: qsTr("Vorschlag"); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize; Layout.preferredWidth: 70 }
                             Text {
                                 Layout.fillWidth: true
-                                text: iliasCard.ilias.download_dir || qsTr("Wird beim ersten Download gefragt")
+                                text: iliasCard.ilias.download_dir || qsTr("Jeder Download fragt nach dem Ordner")
                                 color: Theme.text
                                 font.pixelSize: Theme.smallFontSize
                                 elide: Text.ElideMiddle
@@ -422,8 +422,8 @@ Dialog {
         id: iliasDirChooser
         app: dialog.app
         parent: Overlay.overlay
-        pickTitle: qsTr("Download-Ordner für ILIAS")
-        pickHint: qsTr("Darin legt Atlas pro Favorit einen Ordner an, mit derselben Struktur wie in ILIAS.")
+        pickTitle: qsTr("Vorgeschlagener Download-Ordner")
+        pickHint: qsTr("Jeder Download fragt nach seinem Ordner; dieser wird zuerst angeboten.")
         pickButton: qsTr("Hier speichern")
         onChosen: (path) => dialog.app.setIliasConfig("download_dir", path)
     }

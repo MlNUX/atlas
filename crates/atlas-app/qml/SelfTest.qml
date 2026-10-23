@@ -57,6 +57,7 @@ Item {
     property var erase: []
     property int syncMid
     property var iliasOrga: null
+    property string iliasRoot: ""
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -1343,27 +1344,50 @@ Item {
                 view.enter(view.items.find(n => n.name === "Vorlesung"))
                 view.enter(view.items.find(n => n.name === "Übungen"))
                 check("ILIAS: Dateien natürlich sortiert", view.items.map(n => n.name).join(" | ") === "Blatt 2 | Blatt 10", view.items.map(n => n.name).join(" | "))
+                test.iliasRoot = fileActions.ilias.downloadDir
                 view.activate(view.items[0])
+            },
+            () => {
+                // Every download asks for its folder; the last one is offered.
+                const chooser = editor.activeTab.viewerItem.downloadChooser
+                if (waitFor(() => chooser.visible)) return
+                check("ILIAS: Download fragt nach dem Zielordner (zuletzt gewählter vorgeschlagen)",
+                      chooser.visible && chooser.folderPath === test.iliasRoot && chooser.pickTitle.indexOf("Blatt 2") >= 0,
+                      chooser.folderPath + " · " + chooser.pickTitle)
+                chooser.chosen(test.iliasRoot, "")
+                chooser.close()
             },
             () => { if (waitFor(() => !fileActions.ilias.current && fileActions.ilias.fileState(editor.activeTab.viewerItem.items ? editor.activeTab.viewerItem.items[0] : {}) === "loaded")) return },
             () => {
                 const il = fileActions.ilias
-                const target = il.downloadDir + "/Höhere Mathematik I/Vorlesung/Übungen/blatt02.pdf"
+                const target = test.iliasRoot + "/blatt02.pdf"
                 if (waitFor(() => editor.activeTab.path === target)) return
-                check("ILIAS: Klick lädt die Datei in den Kursordner und öffnet sie", app.exists(target) && editor.activeTab.path === target,
+                check("ILIAS: Datei landet direkt im gewählten Ordner und öffnet sich", app.exists(target) && editor.activeTab.path === target
+                      && !app.exists(test.iliasRoot + "/Höhere Mathematik I"),
                       editor.activeTab.path + " / " + il.status)
-                // A file that gets a new version in ILIAS.
+                // Opening it again: no question, no download.
                 editor.open("ilias:", 0, "tab")
                 const view = editor.activeTab.viewerItem
-                view.up(10)
-                view.enter(il.index.courses.find(c => c.name === "Höhere Mathematik I"))
-                test.iliasOrga = view.items.find(n => n.name === "Organisatorisches")
-                view.activate(test.iliasOrga)
+                view.activate(view.items.find(n => n.name === "Blatt 2"))
+                check("ILIAS: geladene Datei öffnet ohne Nachfrage", !view.downloadChooser.visible && editor.activeTab.path === target, editor.activeTab.path)
+                // A second file, into another folder.
+                editor.open("ilias:", 0, "tab")
+                const v2 = editor.activeTab.viewerItem
+                v2.up(10)
+                v2.enter(il.index.courses.find(c => c.name === "Höhere Mathematik I"))
+                test.iliasOrga = v2.items.find(n => n.name === "Organisatorisches")
+                v2.activate(test.iliasOrga)
+            },
+            () => {
+                const chooser = editor.activeTab.viewerItem.downloadChooser
+                if (waitFor(() => chooser.visible)) return
+                chooser.chosen(test.iliasRoot + "/Mathe", "")
+                chooser.close()
             },
             () => {
                 const il = fileActions.ilias
                 if (waitFor(() => !il.current && il.fileState(test.iliasOrga) === "loaded")) return
-                check("ILIAS: zweite Datei geladen", il.fileState(test.iliasOrga) === "loaded")
+                check("ILIAS: zweite Datei im anderen Ordner", il.fileState(test.iliasOrga) === "loaded" && app.exists(test.iliasRoot + "/Mathe/orga.pdf"), il.status)
                 // ILIAS shows version 2 now.
                 const xhr = new XMLHttpRequest()
                 xhr.open("GET", il.baseUrl + "bump")
@@ -1378,14 +1402,23 @@ Item {
                 const orga = course.children.find(n => n.name === "Organisatorisches")
                 check("ILIAS: neue Version erkannt", il.fileState(orga) === "changed", il.fileState(orga) + " " + orga.info)
                 test.iliasOrga = orga
+                editor.open("ilias:", 0, "tab")
                 il.open(orga, [course.name])
+            },
+            () => {
+                // The new version: its earlier folder is offered.
+                const chooser = editor.activeTab.viewerItem.downloadChooser
+                if (waitFor(() => chooser.visible)) return
+                check("ILIAS: neue Version bietet den Ordner der alten an", chooser.folderPath === test.iliasRoot + "/Mathe", chooser.folderPath)
+                chooser.chosen(chooser.folderPath, "")
+                chooser.close()
             },
             () => {
                 const il = fileActions.ilias
                 if (waitFor(() => !il.current && il.fileState(test.iliasOrga) === "loaded")) return
-                const file = il.downloadDir + "/Höhere Mathematik I/orga.pdf"
+                const file = test.iliasRoot + "/Mathe/orga.pdf"
                 check("ILIAS: neue Version geladen und ersetzt die alte", il.fileState(test.iliasOrga) === "loaded"
-                      && app.readTextFile(file).indexOf("Version 2") >= 0, il.status)
+                      && app.readTextFile(file).indexOf("Version 2") >= 0 && !app.exists(test.iliasRoot + "/Mathe/orga (2).pdf"), il.status)
             },
             () => {
                 // The project folder cannot be collapsed: a click on it keeps the tree.

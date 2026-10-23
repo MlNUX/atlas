@@ -171,7 +171,7 @@ Rectangle {
                 }
                 IconButton {
                     iconName: "downloads"
-                    tip: root.service && root.service.downloadDir ? qsTr("Download-Ordner: %1 (ändern …)").arg(root.service.downloadDir) : qsTr("Download-Ordner wählen …")
+                    tip: root.service && root.service.downloadDir ? qsTr("Vorgeschlagener Download-Ordner: %1 (ändern …)").arg(root.service.downloadDir) : qsTr("Vorgeschlagenen Download-Ordner wählen …")
                     onClicked: root.chooseDir()
                 }
             }
@@ -337,21 +337,34 @@ Rectangle {
         }
     }
 
-    // The download folder: asked before the first download.
-    function chooseDir() { dirChooser.ask("pick", service && service.downloadDir ? service.downloadDir : "", "") }
+    // The folder for each download; the header button sets the one offered.
+    property var askingFor: null
+    function chooseDir() {
+        askingFor = null
+        dirChooser.pickTitle = qsTr("Vorgeschlagener Download-Ordner")
+        dirChooser.pickButton = qsTr("Vorschlagen")
+        dirChooser.ask("pick", service && service.downloadDir ? service.downloadDir : "", "")
+    }
     Connections {
         target: root.service
-        function onDownloadDirNeeded() { if (root.visible) root.chooseDir() }
+        function onDownloadDirNeeded(item, dir) {
+            if (!root.visible) return
+            root.askingFor = item
+            dirChooser.pickTitle = qsTr("„%1“ speichern in …").arg(item.name)
+            dirChooser.pickButton = qsTr("Hier speichern")
+            dirChooser.ask("pick", dir, "")
+        }
     }
+    /// The folder dialog (for the smoke test).
+    readonly property alias downloadChooser: dirChooser
     FolderChooser {
         id: dirChooser
         app: root.app
-        pickTitle: qsTr("Download-Ordner für ILIAS")
-        pickHint: qsTr("Darin legt Atlas pro Favorit einen Ordner an, mit derselben Struktur wie in ILIAS.")
-        pickButton: qsTr("Hier speichern")
+        pickHint: qsTr("Atlas lädt die Datei direkt in diesen Ordner, ohne die Ordner aus ILIAS; ist der Name vergeben, bekommt sie eine Nummer.")
         onChosen: (path) => {
-            root.app.setIliasConfig("download_dir", path)
-            root.service.resume()
+            if (root.askingFor) root.service.resume(path)
+            else root.app.setIliasConfig("download_dir", path)
+            root.askingFor = null
         }
     }
 }

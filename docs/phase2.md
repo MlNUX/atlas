@@ -998,8 +998,13 @@ im Editor, Mausrad im Editor unverändert).
 - **Was:** „ILIAS“ unter „Orte“ (Tab `ilias:`) zeigt die Favoriten des
   Dashboards (`cmd=jumpToSelectedItems`) als Ordner, darin Ordner, Gruppen,
   Sitzungen und Dateien
-  (nur die Liste, nichts wird vorab geladen). Ein Klick auf eine Datei lädt
-  sie nach `<Download-Ordner>/<Kurs>/<Ordner …>/<Dateiname>` und öffnet sie.
+  (nur die Liste, nichts wird vorab geladen). Ein Klick auf eine Datei fragt
+  jedes Mal nach dem Zielordner – vorgeschlagen wird der, in dem sie schon
+  lag, sonst der zuletzt gewählte (`[ilias] download_dir`) –, lädt sie
+  direkt dorthin, ohne die Ordnerstruktur aus ILIAS (ein vergebener Name
+  wird zu `Name (2).pdf`), und öffnet sie. Eine aktuelle, schon geladene
+  Datei öffnet ohne Nachfrage. GET-Abrufe werden bei Verbindungsfehlern
+  (vom Server geschlossene Keep-Alive-Verbindung) zweimal wiederholt.
   ILIAS' Angaben zur Datei (Typ, Größe, Version, Datum) werden mit dem
   Download gemerkt; ändern sie sich beim nächsten Einlesen, steht „neue
   Version“ daneben, und der Klick lädt sie neu (die alte wird erst ersetzt,

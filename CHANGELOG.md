@@ -13,9 +13,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ### Neu
 - **ILIAS** (z. B. KIT) unter „Orte“: deine Favoriten vom Dashboard als
   Ordner mit allen Unterordnern, Sitzungen und Dateien. Ein
-  Klick lädt eine Datei in einen Download-Ordner deiner Wahl (je Kurs und
-  Ordner ein Unterordner) und öffnet sie; zeigt ILIAS eine neue Version,
-  steht „neue Version“ daneben und der Klick lädt sie neu. Anmelden im
+  Klick fragt nach dem Zielordner (vorgeschlagen: wo die Datei schon lag,
+  sonst der zuletzt gewählte), lädt die Datei direkt dorthin und öffnet
+  sie; ein vergebener Name bekommt eine Nummer. Zeigt ILIAS eine neue
+  Version, steht „neue Version“ daneben und der Klick lädt sie neu. Anmelden im
   eingebauten Fenster der Hochschule – Atlas merkt sich nur die Sitzung,
   nie das Passwort. Adresse, Ordner und Abmelden in den Einstellungen.
 - Kontextleiste: **Lernzeit** – ein Pomodoro-Timer fest am unteren Rand
