@@ -124,11 +124,25 @@ impl Node {
     }
 }
 
-/// Logged in: ILIAS shows a logout link on every page.
-pub fn logged_in(html: &str) -> bool {
+/// Logged in on page `at`: it links to the logout (ILIAS 7: `logout.php`,
+/// 8 and later: `cmd=doLogout`, in any case); else it must not be a login
+/// page (address `login.php` or Shibboleth, a password field, or a link to
+/// log in – ILIAS shows one to visitors).
+pub fn logged_in(html: &str, at: &Url) -> bool {
     let doc = Html::parse_document(html);
-    let sel = Selector::parse(r#"a[href*="logout"], a[href*="cmd=showLogout"], form[action*="logout"]"#).unwrap();
-    doc.select(&sel).next().is_some()
+    let targets = Selector::parse("a[href], form[action]").unwrap();
+    let addresses: Vec<String> = doc
+        .select(&targets)
+        .filter_map(|e| e.value().attr("href").or(e.value().attr("action")))
+        .map(str::to_lowercase)
+        .collect();
+    if addresses.iter().any(|a| a.contains("logout")) {
+        return true;
+    }
+    let login = |a: &str| a.contains("login.php") || a.contains("shib_login") || a.contains("cmd=showlogin");
+    let path = at.as_str().to_lowercase();
+    let password = Selector::parse(r#"input[type="password" i]"#).unwrap();
+    !(login(&path) || doc.select(&password).next().is_some() || addresses.iter().any(|a| login(a)))
 }
 
 /// Kind and ID of an ILIAS object link: from permalinks (`target=fold_12`,
@@ -290,14 +304,15 @@ pub struct Client {
 
 impl Client {
     /// `cookies`: the `Cookie` header of the logged-in session for the
-    /// ILIAS host.
-    pub fn new(base_url: &str, cookies: &str) -> Result<Client, IliasError> {
+    /// ILIAS host; `user_agent`: that of the browser the session belongs
+    /// to ("" for Atlas' own).
+    pub fn new(base_url: &str, cookies: &str, user_agent: &str) -> Result<Client, IliasError> {
         let base = Url::parse(base_url).map_err(|e| IliasError::Other(format!("ungültige ILIAS-Adresse: {e}")))?;
         let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
         let agent = ureq::Agent::config_builder()
             .tls_config(tls)
             .timeout_global(Some(Duration::from_secs(120)))
-            .user_agent("Atlas (ILIAS)")
+            .user_agent(if user_agent.is_empty() { "Atlas (ILIAS)" } else { user_agent })
             .build()
             .new_agent();
         Ok(Client { agent, base, cookies: cookies.to_owned() })
@@ -338,8 +353,8 @@ impl Client {
             .limit(32 * 1024 * 1024)
             .read_to_string()
             .map_err(|e| IliasError::Other(e.to_string()))?;
-        // Sent elsewhere (the university's login) or no logout link.
-        if final_url.host_str() != self.base.host_str() || !logged_in(&html) {
+        // Sent elsewhere (the university's login) or to ILIAS' login.
+        if final_url.host_str() != self.base.host_str() || !logged_in(&html, &final_url) {
             return Err(IliasError::Login);
         }
         Ok((html, final_url))
@@ -516,7 +531,7 @@ pub fn download(
     if content_type.starts_with("text/html") && !disposition.to_lowercase().contains("attachment") {
         let html = res.body_mut().read_to_string().unwrap_or_default();
         let at = Url::parse(&res.get_uri().to_string()).ok();
-        if at.as_ref().and_then(|u| u.host_str()) != client.base.host_str() || !logged_in(&html) {
+        if !at.as_ref().is_some_and(|u| u.host_str() == client.base.host_str() && logged_in(&html, u)) {
             return Err(IliasError::Login);
         }
         return Err(IliasError::Other(format!("ILIAS hat für „{title}“ keine Datei geliefert")));
@@ -766,8 +781,14 @@ mod tests {
             Some("https://ilias.example/goto.php?target=file_102_download&client_id=test")
         );
         assert_eq!(found[2].url, "https://ilias.example/ilias.php?ref_id=103&cmdClass=ilobjsessiongui");
-        assert!(logged_in(&html));
-        assert!(!logged_in("<html><body>Anmeldung</body></html>"));
+        assert!(logged_in(&html, &page));
+        let ilias9 = r#"<a href="ilias.php?baseClass=ilstartupgui&cmd=doLogout">Abmelden</a>"#;
+        assert!(logged_in(ilias9, &page));
+        assert!(logged_in("<html><body>Dashboard</body></html>", &page), "user menu loaded later");
+        let login = Url::parse("https://ilias.example/login.php?target=&cmd=force_login").unwrap();
+        assert!(!logged_in("<html><body>Anmeldung</body></html>", &login));
+        assert!(!logged_in(r#"<a href="/shib_login.php?target=">Anmelden</a>"#, &page));
+        assert!(!logged_in(r#"<form><input type="password" name="pw"></form>"#, &page));
         assert_eq!(
             download_url("https://i.ex/goto.php?target=file_7&client_id=k", "7", &page),
             "https://i.ex/goto.php?target=file_7_download&client_id=k"
@@ -789,7 +810,7 @@ mod tests {
     #[test]
     fn scan_needs_a_session() {
         let mock = Mock::start();
-        let client = Client::new(&mock.base, "").unwrap();
+        let client = Client::new(&mock.base, "", "").unwrap();
         assert_eq!(scan(&client, &|_| {}), Err(IliasError::Login));
         let dir = tempfile::tempdir().unwrap();
         let url = format!("{}goto.php?target=file_102_download", mock.base);
@@ -799,7 +820,7 @@ mod tests {
     #[test]
     fn scan_reads_the_tree_and_downloads() {
         let mock = Mock::start();
-        let client = Client::new(&mock.base, "lang=de; sid=1").unwrap();
+        let client = Client::new(&mock.base, "lang=de; sid=1", "Mozilla/5.0 Test").unwrap();
         let messages = Mutex::new(Vec::new());
         let tree = scan(&client, &|p| messages.lock().unwrap().push(p.text)).unwrap();
         assert_eq!(messages.lock().unwrap()[0], "2 Kurse");

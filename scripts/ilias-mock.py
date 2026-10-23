@@ -90,7 +90,8 @@ def item(kind, oid):
 
 
 def page(title, items):
-    nav = ('<nav class="il-maincontrols"><a href="/logout.php">Abmelden</a> '
+    # Logout as in ILIAS 8 and later (cmd=doLogout, capital L).
+    nav = ('<nav class="il-maincontrols"><a href="/ilias.php?baseClass=ilStartUpGUI&amp;cmd=doLogout">Abmelden</a> '
            '<a href="/goto.php?target=crs_100">Höhere Mathematik I</a></nav>'
            '<ol class="breadcrumb"><li><a href="/ilias.php?baseClass=ilDashboardGUI">Dashboard</a></li>'
            '<li><a href="/goto.php?target=crs_100">Höhere Mathematik I</a></li></ol>')
@@ -119,10 +120,11 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(url.query)
         logged_in = "sid=1" in (self.headers.get("Cookie") or "")
         if url.path == "/login.php":
-            return self.send(200, b'<!doctype html><html><body><h1>Anmeldung</h1><a id="login" href="/dologin">Anmelden</a></body></html>')
+            return self.send(200, b'<!doctype html><html><body><h1>Anmeldung</h1><a id="login" href="/dologin">Anmelden mit KIT-Konto</a>'
+                                  b'<form action="/login.php?cmd=post"><input type="password" name="pw"></form></body></html>')
         if url.path == "/dologin":
             return self.redirect("/ilias.php?baseClass=ilDashboardGUI&cmd=show", [("Set-Cookie", "sid=1; Path=/")])
-        if url.path == "/logout.php":
+        if url.path == "/logout.php" or (q.get("cmd") or [""])[0] == "doLogout":
             return self.redirect("/login.php", [("Set-Cookie", "sid=; Path=/; Max-Age=0")])
         if url.path == "/bump":
             state["version"] += 1
@@ -147,7 +149,7 @@ class Handler(BaseHTTPRequestHandler):
                                      [("Content-Disposition", f'attachment; filename="{FILES[oid][1]}"')])
             if target in TREE:
                 return self.send(200, page(NAMES[target], [item(k, i) for k, i in TREE[target]]).encode())
-        self.send(404, b"<!doctype html><html><body>Nicht gefunden <a href='/logout.php'>Abmelden</a></body></html>")
+        self.send(404, b"<!doctype html><html><body>Nicht gefunden <a href='/ilias.php?baseClass=ilStartUpGUI&amp;cmd=doLogout'>Abmelden</a></body></html>")
 
 
 if __name__ == "__main__":

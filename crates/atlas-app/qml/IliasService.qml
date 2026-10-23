@@ -66,7 +66,21 @@ Item {
         target: service.app
         function onIliasProgress(text) { if (service.busy) service.status = text }
         function onIliasScanned(status, text) {
-            if (status === "login") { service.needLogin(); return }
+            if (status === "login") {
+                // Right after a login: ILIAS did not take the session – no
+                // closing the window on its own again (no loop).
+                if (service.loggedInAt && Date.now() - service.loggedInAt < 60000) {
+                    service.loggedInAt = 0
+                    service.autoClose = false
+                    service.state = "login"
+                    service.status = qsTr("ILIAS hat die Sitzung nicht angenommen – bitte erneut anmelden")
+                    service.login()
+                    return
+                }
+                service.needLogin()
+                return
+            }
+            service.loggedInAt = 0
             if (status === "error") { service.state = "error"; service.status = text; return }
             service.index = service.loadState("index", { courses: [] })
             service.state = "idle"
@@ -106,6 +120,19 @@ Item {
 
     // ------------------------------------------------------------- login
 
+    /// When the login window last reported success (ms), and whether it
+    /// may close by itself on the logged-in ILIAS.
+    property real loggedInAt: 0
+    property bool autoClose: true
+    /// Logged in (the window found the ILIAS session): read on.
+    function loggedIn() {
+        loginWindow.close()
+        loggedInAt = Date.now()
+        message(qsTr("Bei ILIAS angemeldet"))
+        state = "idle"
+        if (queue.length) { status = ""; next() }
+        else refresh()
+    }
     function login() {
         if (loginPage) loginPage.url = baseUrl
         loginWindow.show()
@@ -116,6 +143,7 @@ Item {
     /// for the login again.
     function logout() {
         app.iliasLogout()
+        autoClose = true
         state = "login"
         status = qsTr("Abgemeldet")
     }
@@ -208,6 +236,8 @@ Item {
                         elide: Text.ElideRight
                     }
                     Button { text: qsTr("Abbrechen"); flat: true; onClicked: { loginWindow.close(); if (service.state === "login") service.status = qsTr("Nicht angemeldet") } }
+                    // If Atlas does not notice the login by itself.
+                    Button { text: qsTr("Angemeldet – Kurse zeigen"); highlighted: true; onClicked: { service.autoClose = true; service.loggedIn() } }
                 }
             }
             Loader {
@@ -224,23 +254,25 @@ Item {
         WebEngineView {
             id: loginView
             profile: service.profile
-            // Logged in when ILIAS shows a logout link: then read on.
+            // Logged in when the page is on ILIAS and is no login page (it
+            // links to the logout – any case: ILIAS 8+ says "doLogout" –, or
+            // has neither a password field nor a link to log in): read on.
             onLoadingChanged: (request) => {
-                if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus || !loginWindow.visible) return
+                if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus || !loginWindow.visible || !service.autoClose) return
                 let h = ""
                 try { h = new URL(loginView.url.toString()).host } catch (e) {}
                 if (h !== service.host) return
-                loginView.runJavaScript("!!document.querySelector('a[href*=\"logout\"]')", (inside) => {
-                    if (!inside) return
-                    loginWindow.close()
-                    service.message(qsTr("Bei ILIAS angemeldet"))
-                    service.state = "idle"
-                    if (service.queue.length) { service.status = ""; service.next() }
-                    else service.refresh()
-                })
+                loginView.runJavaScript(service.loggedInCheck, (inside) => { if (inside && loginWindow.visible) service.loggedIn() })
             }
         }
     }
+    readonly property string loggedInCheck: `(() => {
+        const login = (a) => a.includes('login.php') || a.includes('shib_login') || a.includes('cmd=showlogin');
+        const links = [...document.querySelectorAll('a[href], form[action]')]
+            .map(e => (e.getAttribute('href') || e.getAttribute('action') || '').toLowerCase());
+        if (links.some(a => a.includes('logout'))) return true;
+        return !login(location.href.toLowerCase()) && !document.querySelector('input[type=password i]') && !links.some(login);
+    })()`
     readonly property var loginPage: loginLoader.item
     readonly property alias loginVisible: loginWindow.visible
 }

@@ -287,6 +287,11 @@ QString webCookieHeader(const QString& address)
     return parts.join(QStringLiteral("; "));
 }
 
+QString webUserAgent()
+{
+    return cookieProfile ? cookieProfile->httpUserAgent() : QString();
+}
+
 void clearWebCookies()
 {
     if (cookieProfile)

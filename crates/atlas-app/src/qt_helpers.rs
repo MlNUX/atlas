@@ -56,6 +56,8 @@ pub mod ffi {
         unsafe fn watch_web_cookies(profile: *mut QObject) -> bool;
         #[cxx_name = "webCookieHeader"]
         fn web_cookie_header(url: &QString) -> QString;
+        #[cxx_name = "webUserAgent"]
+        fn web_user_agent() -> QString;
         #[cxx_name = "clearWebCookies"]
         fn clear_web_cookies();
         #[cxx_name = "postMouse"]

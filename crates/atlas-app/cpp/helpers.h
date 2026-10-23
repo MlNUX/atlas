@@ -64,6 +64,8 @@ void postMouse(QObject* window, int kind, double x, double y, int delayMs);
 bool watchWebCookies(QObject* profile);
 // The `Cookie` header the watched profile would send to `url`.
 QString webCookieHeader(const QString& url);
+// The user agent the watched profile's pages send ("" without one).
+QString webUserAgent();
 // Deletes all cookies of the watched profile (signs out everywhere).
 void clearWebCookies();
 

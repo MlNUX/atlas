@@ -1006,7 +1006,13 @@ im Editor, Mausrad im Editor unverändert).
 - **Anmeldung:** Die KIT-Anmeldung läuft über Shibboleth und braucht einen
   Browser. Atlas zeigt die Seite der Hochschule in einem eigenen Fenster
   mit einem dauerhaften Web-Profil (`atlas-ilias`); angemeldet ist man,
-  sobald ILIAS einen Abmelde-Link zeigt. Atlas sieht und speichert das
+  sobald eine ILIAS-Seite auf die Abmeldung verweist (gleich in welcher
+  Schreibweise – ab ILIAS 8 heißt sie `cmd=doLogout`) oder keine
+  Anmeldeseite ist (weder `login.php`/Shibboleth noch Passwortfeld noch
+  Anmelde-Link). Erkennt Atlas das nicht, schließt „Angemeldet – Kurse
+  zeigen“ das Fenster von Hand. Nimmt ILIAS die Sitzung danach nicht an,
+  bleibt das Fenster offen, statt sich im Kreis zu drehen. Die Abrufe
+  aus Rust senden die Browserkennung des Profils mit. Atlas sieht und speichert das
   Passwort nie, nur die Cookies der Sitzung liegen im Web-Profil.
   „Abmelden“ löscht sie.
 - **Einlesen und Laden in Rust** (`atlas_core::ilias`): Die Cookies des
