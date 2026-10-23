@@ -172,8 +172,8 @@ SplitView {
     }
 
     /// Opens a file. `where`:
-    ///   "preview"   – preview tab in the active split (single click)
-    ///   "tab"       – permanent tab in the active split
+    ///   "tab"       – tab in the active split ("preview" means the same;
+    ///                 there are no preview tabs outside the temporary split)
     ///   "split"     – permanent tab in a new split
     ///   "temporary" – the temporary split (created or reused)
     function open(path, line, where, state) {
@@ -193,9 +193,9 @@ SplitView {
         return tab
     }
 
-    /// Compatibility helper: `newPane` opens in a new split, otherwise preview.
+    /// Compatibility helper: `newPane` opens in a new split, otherwise a tab.
     function openFile(path, line, newPane) {
-        return open(path, line, newPane ? "split" : "preview")
+        return open(path, line, newPane ? "split" : "tab")
     }
 
     function clear() {
@@ -225,7 +225,7 @@ SplitView {
             for (const t of gs.tabs || []) {
                 const path = !t.path ? "" : t.path.startsWith("terminal:") || t.path.startsWith("calendar:") ? t.path : area.app.resolveDocument(t.path)
                 if (!path || t.transient) continue
-                g.openTab(path, t.line || 0, t.preview ? "preview" : "tab", t)
+                g.openTab(path, t.line || 0, "tab", t)
             }
             if (g.tabs.length === 0 && groupStates.length > 1) { closeGroup(g); continue }
             g.current = Math.max(0, Math.min(gs.current || 0, g.tabs.length - 1))

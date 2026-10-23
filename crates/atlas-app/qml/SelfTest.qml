@@ -624,6 +624,17 @@ Item {
                 check("Vorschau zeichnet nach dem Wiederzeigen neu", md.previewRepaint.count > test.repaints, test.repaints + " → " + md.previewRepaint.count)
             },
             () => {
+                // A single click opens a file for good: no preview tab that the
+                // next click would replace.
+                const g = editor.activeGroup
+                const before = g.tabs.length
+                const a = editor.open(path("notes/idee.md"), 0, "preview")
+                const b = editor.open(path("notes/wiki.md"), 0, "preview")
+                check("Einzelklick öffnet bleibende Tabs (keine Vorschau-Tabs)",
+                      g.tabs.indexOf(a) >= 0 && g.tabs.indexOf(b) >= 0 && !a.preview && !b.preview && g.tabs.length >= before + 1,
+                      names())
+            },
+            () => {
                 // An empty window has no close button and never stays as a split.
                 editor.restore({})
                 check("Leeres Fenster ohne Schließen-Knopf", editor.groups.length === 1 && !editor.groups[0].closeButton.visible)

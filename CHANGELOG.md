@@ -54,6 +54,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   stattdessen Word (pandoc → .docx), PDF gibt es eingebaut.
 - Einstellungsfenster scrollt auf kleinen Bildschirmen.
 
+### Geändert
+- Keine Vorschau-Tabs mehr: ein einfacher Klick auf eine Datei öffnet sie
+  als normalen Tab, der beim nächsten Klick nicht ersetzt wird (bisher erst
+  nach Doppelklick). Nur der temporäre Split der Schnellansicht wechselt
+  seinen Inhalt weiterhin.
+
 ## [1.1.0] – 2026-10-22
 
 Graph fürs ganze Projekt, Verknüpfungen und Ordner-Knoten, eine Session je

@@ -863,7 +863,7 @@ ApplicationWindow {
                             icons: app.placeIcons
                             fixedCount: app.fixedPlaceCount
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
-                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
+                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
                         }
                         ProjectTree {
                             id: projectTree
@@ -875,7 +875,7 @@ ApplicationWindow {
                             model: treeModel
                             projectName: app.projectName
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
-                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
+                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
                             onOpenProjectRequested: folderDialog.askProject()
                             onPinRequested: (path) => editor.open(path, 0, "tab")
                         }

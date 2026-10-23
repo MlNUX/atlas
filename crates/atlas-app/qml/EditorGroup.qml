@@ -49,9 +49,12 @@ Rectangle {
 
     function indexOfPath(path) { return tabs.findIndex(t => t.path === path) }
 
-    /// Opens `path` in this group. `mode`: "preview" replaces the current
-    /// preview tab, "tab" opens a permanent tab.
+    /// Opens `path` in this group as a permanent tab. Only the temporary
+    /// split (quick look) has a preview tab that the next file replaces
+    /// (`mode` "preview"); elsewhere there are no preview tabs – a single
+    /// click opens a file for good, like a double click.
     function openTab(path, line, mode, state) {
+        if (mode === "preview" && !group.temporary) mode = "tab"
         let index = indexOfPath(path)
         if (index >= 0) {
             if (mode !== "preview") tabs[index].preview = false
