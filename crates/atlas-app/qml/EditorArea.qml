@@ -251,9 +251,17 @@ SplitView {
         layoutChanged()
     }
 
-    /// Tabs showing deleted items show a notice instead of stale content.
+    /// Tabs of deleted files and folders close.
     function pathsRemoved(paths) {
-        for (const g of groups) g.pathsRemoved(paths)
+        for (const g of groups.slice()) g.pathsRemoved(paths)
+    }
+    // Files deleted outside Atlas: checked every two seconds (a few stat
+    // calls for the open tabs).
+    Timer {
+        interval: 2000
+        repeat: true
+        running: true
+        onTriggered: { for (const g of area.groups.slice()) g.closeVanished() }
     }
 
     /// Share of each split in the available space; kept when the area

@@ -49,6 +49,15 @@ Item {
     signal closeRequested()
 
     function refresh() { revision++ }
+    /// Edits not yet written to the file (text and Markdown tabs).
+    function hasUnsavedChanges() {
+        const v = viewer.item
+        const ed = v && v.editorItem ? v.editorItem : v
+        return !!ed && ed.modified === true
+    }
+    /// Shows a file or folder (not a terminal, the calendar or ILIAS).
+    readonly property bool onDisk: path.length > 0 && !path.startsWith("terminal:") && !path.startsWith("calendar:")
+        && !path.startsWith("ilias:") && kind !== "trash"
     /// Start directory of a terminal tab (`terminal:<dir>#<id>`).
     function terminalStartDir() { return path.slice(9, path.lastIndexOf("#") > 9 ? path.lastIndexOf("#") : path.length) }
 

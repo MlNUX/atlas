@@ -34,6 +34,8 @@ Dialog {
         try { extensionCount = JSON.parse(dialog.app.extensions()).length } catch (e) { extensionCount = 0 }
     }
     readonly property var calendar: dialog.actions ? dialog.actions.calendar : null
+    /// The calendars offered for new events (for the smoke test).
+    readonly property alias defaultCalendarChoices: defaultCalendarRow.choices
     /// Where the places come from, for the line under the switch.
     readonly property string placesText: !dialog.app.fileManagerPlaces ? qsTr("Feste Orte von Atlas")
         : dialog.app.fixedPlaceCount === 0 ? qsTr("Aus Dolphin: %1").arg(dialog.app.placeNames.join(", ") || qsTr("keine"))
@@ -340,6 +342,35 @@ Dialog {
                             detail: !dialog.calendar || !dialog.calendar.connected ? qsTr("Nicht verbunden – nur der lokale Projektkalender")
                                 : (dialog.calendar.google ? qsTr("Google · ") : qsTr("Nextcloud · ")) + (dialog.calendar.syncStatus || qsTr("Verbunden"))
                             onClicked: dialog.run(() => dialog.actions.calendarSync.openSettings())
+                        }
+                        // Where new events and tasks go.
+                        RowLayout {
+                            id: defaultCalendarRow
+                            readonly property var choices: {
+                                if (!dialog.calendar || dialog.calendar.revision < 0) return []
+                                try { return JSON.parse(dialog.calendar.calendars()).filter(c => c.writable && c.visible && !c.missing) } catch (e) { return [] }
+                            }
+                            readonly property var current: choices.find(c => c.isDefault) || null
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 40
+                            Layout.rightMargin: 12
+                            Layout.bottomMargin: 6
+                            spacing: 8
+                            Text { text: qsTr("Neue Termine in"); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
+                            ComboBox {
+                                id: defaultCalendarBox
+                                Layout.fillWidth: true
+                                model: defaultCalendarRow.choices
+                                textRole: "name"
+                                valueRole: "id"
+                                currentIndex: defaultCalendarRow.current ? defaultCalendarRow.choices.indexOf(defaultCalendarRow.current) : 0
+                                // For all projects; a project's own choice is replaced.
+                                onActivated: (index) => {
+                                    const projectChoice = defaultCalendarRow.choices.some(c => c.projectDefault)
+                                    dialog.calendar.setDefaultCalendar(defaultCalendarRow.choices[index].id, false)
+                                    if (projectChoice) dialog.calendar.setDefaultCalendar("", true)
+                                }
+                            }
                         }
                         LinkRow {
                             icon: "grid"

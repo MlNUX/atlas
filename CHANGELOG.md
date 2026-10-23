@@ -11,6 +11,8 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Neu
+- Einstellungen: **Kalender für neue Termine** direkt wählbar (bisher nur
+  über den Stern im Verbindungsdialog).
 - **ILIAS** (z. B. KIT) unter „Orte“: deine Favoriten vom Dashboard als
   Ordner mit allen Unterordnern, Sitzungen und Dateien. Ein
   Klick fragt nach dem Zielordner (vorgeschlagen: wo die Datei schon lag,
@@ -48,6 +50,15 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   ganz. Ein Radier-Zug lässt sich mit einem Strg+Z zurückholen.
 
 ### Behoben
+- Google-Kalender: neu angelegte Termine erschienen doppelt. Google legt
+  einen neuen Termin unter eigenem Namen ab und schickt kein ETag zurück;
+  die alte Kopie blieb im Cache. Jetzt gibt es je Termin nur einen Eintrag,
+  vorhandene Doppelte verschwinden beim nächsten Abgleich.
+- Gelöschte Dateien: ihr Tab schließt sich – beim Löschen in Atlas sofort,
+  bei Dateien, die außerhalb gelöscht wurden, nach höchstens zwei Sekunden
+  (Tabs mit ungespeicherten Änderungen bleiben offen).
+- „Checkliste als Aufgaben übernehmen“ erscheint nur noch bei
+  Markdown-Dateien mit Checkliste.
 - Markdown-Vorschau blieb nach einem Workspace-Wechsel schwarz, bis man
   scrollte. Jetzt zeigt sie beim Zurückkommen sofort ihren letzten Inhalt
   (Momentaufnahme beim Verlassen), bis Chromium neu gezeichnet hat – ohne
@@ -71,6 +82,7 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   hat – z. B. nachdem sie kürzer neu erzeugt wurde.
 
 ### Geändert
+- ILIAS steht als letzter Eintrag unter „Orte“.
 - Keine Vorschau-Tabs mehr: ein einfacher Klick auf eine Datei öffnet sie
   als normalen Tab, der beim nächsten Klick nicht ersetzt wird (bisher erst
   nach Doppelklick). Nur der temporäre Split der Schnellansicht wechselt

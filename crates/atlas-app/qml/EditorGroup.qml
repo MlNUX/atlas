@@ -171,8 +171,18 @@ Rectangle {
             else if (t.path.startsWith(from + "/")) t.path = to + t.path.slice(from.length)
         }
     }
+    /// Deleted in Atlas: their tabs close.
     function pathsRemoved(paths) {
-        for (const t of tabs) if (paths.some(r => t.path === r || t.path.startsWith(r + "/"))) t.refresh()
+        closeWhere(t => paths.some(r => t.path === r || t.path.startsWith(r + "/")))
+    }
+    /// Deleted outside Atlas (terminal, other programs): tabs whose file or
+    /// folder is gone close – unless they hold unsaved edits (the editor
+    /// then offers to save them again).
+    function closeVanished() {
+        closeWhere(t => t.onDisk && !group.app.exists(t.path) && !t.hasUnsavedChanges())
+    }
+    function closeWhere(test) {
+        for (let i = tabs.length - 1; i >= 0; i--) if (test(tabs[i])) closeTab(i)
     }
 
     /// Path segments for the breadcrumbs: inside the project relative to its

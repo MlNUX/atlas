@@ -231,6 +231,11 @@ pub mod qobject {
         #[cxx_name = "fileKind"]
         fn file_kind(self: &AppController, path: &QString) -> QString;
 
+        /// The Markdown file has a checklist (`- [ ] …`, outside code blocks).
+        #[qinvokable]
+        #[cxx_name = "hasChecklist"]
+        fn has_checklist(self: &AppController, path: &QString) -> bool;
+
         #[qinvokable]
         #[cxx_name = "fileName"]
         fn file_name(self: &AppController, path: &QString) -> QString;
@@ -1301,6 +1306,12 @@ impl qobject::AppController {
         let url = url.to_string();
         let Some(rest) = url.strip_prefix("file://") else { return qs(url) };
         qs(percent_decode(rest))
+    }
+
+    pub fn has_checklist(&self, path: &QString) -> bool {
+        let path = path_of(path);
+        file_kind(&path) == "markdown"
+            && std::fs::read_to_string(&path).is_ok_and(|text| !atlas_core::calendar::checklist_items(&text).is_empty())
     }
 
     pub fn file_kind(&self, path: &QString) -> QString {

@@ -929,6 +929,10 @@ pub(crate) mod tests {
         pub requests: Vec<String>,
         /// Google: access tokens currently valid (cleared = expired).
         pub tokens: Vec<String>,
+        /// Like Google: a new object is kept under a name made from its
+        /// UID (`…%40atlas.ics`), not the one it was PUT to, and the answer
+        /// has no ETag.
+        pub own_names: bool,
     }
 
     pub struct TestServer {
@@ -1113,13 +1117,20 @@ pub(crate) mod tests {
                 let cal = cal_of(path);
                 s.counter += 1;
                 let etag = format!("\"e{}\"", s.counter);
+                let own_names = s.own_names;
                 let Some((_, objects)) = s.calendars.get_mut(&cal) else { return (404, String::new(), String::new()) };
                 let existing = objects.get(path).map(|o| o.0.clone());
-                match (headers.get("if-match"), headers.get("if-none-match"), existing) {
+                match (headers.get("if-match"), headers.get("if-none-match"), existing.clone()) {
                     (Some(_), _, None) => return (404, String::new(), String::new()),
                     (Some(m), _, Some(e)) if *m != e => return (412, String::new(), String::new()),
                     (_, Some(_), Some(_)) => return (412, String::new(), String::new()),
                     _ => {}
+                }
+                if own_names && existing.is_none() {
+                    let uid = body.lines().find_map(|l| l.strip_prefix("UID:")).unwrap_or("x").trim().replace('@', "%40");
+                    objects.insert(format!("{cal}{uid}.ics"), (etag, body.to_owned()));
+                    s.puts += 1;
+                    return (201, String::new(), String::new());
                 }
                 objects.insert(path.to_owned(), (etag.clone(), body.to_owned()));
                 s.puts += 1;

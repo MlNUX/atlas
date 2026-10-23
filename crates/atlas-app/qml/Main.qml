@@ -204,7 +204,7 @@ ApplicationWindow {
             if (app.atlasDir && app.exists(current))
                 list.push({ name: qsTr("Verknüpfen mit …"), hint: app.fileName(current), run: () => app.requestRelate(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
-            if (app.fileKind(current) === "markdown")
+            if (app.hasChecklist(current))
                 list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
         }
         let sessions = []
@@ -583,7 +583,7 @@ ApplicationWindow {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
                 sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, relateDialog: relateDialog, settingsDialog: settingsDialog,
-                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector,
+                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector, placesList: placesList,
             })
             item.start()
         }
@@ -869,14 +869,14 @@ ApplicationWindow {
                     ColumnLayout {
                         spacing: 6
                         PlacesList {
-                            // ILIAS after Atlas' own places (if switched on).
+                            id: placesList
+                            // ILIAS as the last place (if switched on).
                             readonly property bool ilias: { try { return JSON.parse(app.iliasConfig).show_in_places !== false } catch (e) { return true } }
-                            readonly property int cut: app.fixedPlaceCount
                             Layout.fillWidth: true
-                            names: ilias ? app.placeNames.slice(0, cut).concat(["ILIAS"], app.placeNames.slice(cut)) : app.placeNames
-                            paths: ilias ? app.placePaths.slice(0, cut).concat(["ilias:"], app.placePaths.slice(cut)) : app.placePaths
-                            icons: ilias ? app.placeIcons.slice(0, cut).concat(["school"], app.placeIcons.slice(cut)) : app.placeIcons
-                            fixedCount: app.fixedPlaceCount + (ilias ? 1 : 0)
+                            names: ilias ? app.placeNames.concat(["ILIAS"]) : app.placeNames
+                            paths: ilias ? app.placePaths.concat(["ilias:"]) : app.placePaths
+                            icons: ilias ? app.placeIcons.concat(["school"]) : app.placeIcons
+                            fixedCount: app.fixedPlaceCount
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
                             onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
                         }

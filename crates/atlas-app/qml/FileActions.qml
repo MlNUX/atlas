@@ -497,7 +497,7 @@ Item {
         }
         MenuItem {
             text: qsTr("Checkliste als Aufgaben übernehmen …")
-            visible: menu.single && app.fileKind(menu.paths[0]) === "markdown"
+            visible: menu.single && app.hasChecklist(menu.paths[0])
             height: visible ? implicitHeight : 0
             onTriggered: calendarSync.importChecklist(menu.paths[0])
         }

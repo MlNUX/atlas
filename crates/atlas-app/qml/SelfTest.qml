@@ -28,6 +28,7 @@ Item {
     property var quickLook
     property var treeModel
     property var inspector
+    property var placesList
 
     property int failures: 0
     property int step: 0
@@ -58,6 +59,8 @@ Item {
     property int syncMid
     property var iliasOrga: null
     property string iliasRoot: ""
+    property string goneFile: ""
+    property bool goneOpened: false
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -882,6 +885,9 @@ Item {
                 inspector.graphWindow.close()
                 settingsDialog.open()
                 check("Einstellungen öffnen", settingsDialog.visible)
+                const cals = settingsDialog.defaultCalendarChoices
+                check("Einstellungen: Kalender für neue Termine wählbar", cals.length >= 1 && cals.some(c => c.isDefault),
+                      JSON.stringify(cals.map(c => c.name + (c.isDefault ? "★" : ""))))
                 app.fileManagerPlaces = false
                 check("Ausgeschaltet: feste Orte", app.fixedPlaceCount > 0 && app.placeNames.length === app.fixedPlaceCount
                       && app.placeNames.indexOf("Belege") < 0, app.placeNames.join(","))
@@ -975,7 +981,13 @@ Item {
                 fileActions.showMenu([path("notes/idee.md")], path("notes"))
                 const md = m.shownEntries()
                 m.close()
-                check("Kontextmenü Notiz: externer Editor", md.indexOf("Im Editor öffnen") >= 0 && md.indexOf("Checkliste als Aufgaben übernehmen …") >= 0, md.join(" | "))
+                check("Kontextmenü Notiz: externer Editor", md.indexOf("Im Editor öffnen") >= 0, md.join(" | "))
+                fileActions.showMenu([path("notes/todo.md")], path("notes"))
+                const withList = m.shownEntries()
+                m.close()
+                check("Kontextmenü: „Checkliste als Aufgaben“ nur bei einer Checkliste",
+                      withList.indexOf("Checkliste als Aufgaben übernehmen …") >= 0 && md.indexOf("Checkliste als Aufgaben übernehmen …") < 0,
+                      withList.join(" | ") + " // " + md.join(" | "))
                 fileActions.showMenu([], path("notes"))
                 const empty = m.shownEntries()
                 m.close()
@@ -1317,7 +1329,34 @@ Item {
                 fileActions.calendar.remove(test.modEvent)
             },
             () => {
+                // A file deleted while it is open: its tab closes.
+                test.goneFile = fileActions.ops.newFile(path("docs"), "weg.txt")
+                editor.open(test.goneFile, 0, "tab")
+            },
+            () => {
+                const open = (p) => editor.groups.some(g => g.tabs.some(t => t.path === p))
+                if (waitFor(() => open(test.goneFile))) return
+                check("Datei zum Löschen geöffnet", open(test.goneFile), test.goneFile)
+                fileActions.ops.moveToTrash([test.goneFile])
+            },
+            () => {
+                const open = (p) => editor.groups.some(g => g.tabs.some(t => t.path === p))
+                if (waitFor(() => !open(test.goneFile))) return
+                check("In den Papierkorb: ihr Tab schließt sich", !open(test.goneFile))
+                // Deleted elsewhere (the tab shows a file that is no longer there).
+                test.goneFile = path("docs/schon-weg.txt")
+                editor.open(test.goneFile, 0, "tab")
+                test.goneOpened = open(test.goneFile)
+            },
+            () => {
+                const open = (p) => editor.groups.some(g => g.tabs.some(t => t.path === p))
+                if (waitFor(() => !open(test.goneFile))) return
+                check("Außerhalb gelöscht: Tab schließt sich (ohne ungespeicherte Änderungen)", test.goneOpened && !open(test.goneFile),
+                      "geöffnet: " + test.goneOpened)
+            },
+            () => {
                 // ---- ILIAS (against scripts/ilias-mock.py): read the courses.
+                check("ILIAS ist der letzte Ort", placesList.paths[placesList.paths.length - 1] === "ilias:", placesList.names.join(" | "))
                 editor.open("ilias:", 0, "tab")
                 const il = fileActions.ilias
                 check("ILIAS-Tab offen", editor.activeTab.kind === "ilias" && !!editor.activeTab.viewerItem)
