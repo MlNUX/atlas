@@ -1012,7 +1012,12 @@ im Editor, Mausrad im Editor unverändert).
   Anmelde-Link). Erkennt Atlas das nicht, schließt „Angemeldet – Kurse
   zeigen“ das Fenster von Hand. Nimmt ILIAS die Sitzung danach nicht an,
   bleibt das Fenster offen, statt sich im Kreis zu drehen. Die Abrufe
-  aus Rust senden die Browserkennung des Profils mit. Atlas sieht und speichert das
+  aus Rust senden die Browserkennung des Profils mit. Weiterleitungen
+  folgt der Client selbst: mit den Cookies auf jedem Schritt (ureq ließ
+  den von Hand gesetzten `Cookie`-Kopf beim Weiterleiten fallen), nur an
+  den ILIAS-Rechner, und neue Cookies von ILIAS gelten für die weiteren
+  Abrufe. Nimmt ILIAS die Sitzung direkt nach der Anmeldung nicht an,
+  steht das als Fehler da, statt das Fenster erneut zu öffnen. Atlas sieht und speichert das
   Passwort nie, nur die Cookies der Sitzung liegen im Web-Profil.
   „Abmelden“ löscht sie.
 - **Einlesen und Laden in Rust** (`atlas_core::ilias`): Die Cookies des

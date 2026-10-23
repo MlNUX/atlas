@@ -80,10 +80,9 @@ Item {
                 // closing the window on its own again (no loop).
                 if (service.loggedInAt && Date.now() - service.loggedInAt < 60000) {
                     service.loggedInAt = 0
-                    service.autoClose = false
-                    service.state = "login"
-                    service.status = qsTr("ILIAS hat die Sitzung nicht angenommen – bitte erneut anmelden")
-                    service.login()
+                    service.state = "error"
+                    service.status = qsTr("Angemeldet, aber ILIAS lässt Atlas nicht lesen – Details im ILIAS-Protokoll")
+                    service.trace("Sitzung aus dem Anmeldefenster nicht angenommen (siehe GET-Zeilen oben)")
                     return
                 }
                 service.needLogin()

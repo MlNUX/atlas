@@ -63,9 +63,9 @@ pub fn debug_pages() -> PathBuf {
 
 static TRACE: Mutex<()> = Mutex::new(());
 
-/// Adds a line to the ILIAS log (and to the program's log at debug level).
+/// Adds a line to the ILIAS log (and to the program's log).
 pub fn trace(line: &str) {
-    log::debug!("ilias: {line}");
+    log::info!("ilias: {line}");
     if cfg!(test) {
         return;
     }
@@ -384,8 +384,13 @@ pub enum IliasError {
 pub struct Client {
     agent: ureq::Agent,
     base: Url,
-    cookies: String,
+    /// The session's cookies (name, value), sent to the ILIAS host only;
+    /// ILIAS may set new ones on the way.
+    cookies: Mutex<Vec<(String, String)>>,
 }
+
+/// Redirects followed per request at most.
+const MAX_HOPS: usize = 12;
 
 impl Client {
     /// `cookies`: the `Cookie` header of the logged-in session for the
@@ -398,6 +403,9 @@ impl Client {
             .tls_config(tls)
             .timeout_global(Some(Duration::from_secs(120)))
             .user_agent(if user_agent.is_empty() { "Atlas (ILIAS)" } else { user_agent })
+            // Redirects are followed by hand ([`Client::get`]): with the
+            // cookies on every hop, and to see where they lead.
+            .max_redirects(0)
             .build()
             .new_agent();
         trace(&format!(
@@ -405,20 +413,71 @@ impl Client {
             cookie_names(cookies),
             if user_agent.is_empty() { "Atlas" } else { user_agent }
         ));
-        Ok(Client { agent, base, cookies: cookies.to_owned() })
+        let cookies = cookies
+            .split(';')
+            .filter_map(|c| c.split_once('='))
+            .map(|(n, v)| (n.trim().to_owned(), v.trim().to_owned()))
+            .filter(|(n, _)| !n.is_empty())
+            .collect();
+        Ok(Client { agent, base, cookies: Mutex::new(cookies) })
     }
 
     pub fn base(&self) -> &Url {
         &self.base
     }
 
-    fn get(&self, url: &str) -> Result<ureq::http::Response<ureq::Body>, IliasError> {
+    fn cookie_header(&self) -> String {
+        let cookies = self.cookies.lock().unwrap_or_else(|e| e.into_inner());
+        cookies.iter().map(|(n, v)| format!("{n}={v}")).collect::<Vec<_>>().join("; ")
+    }
+
+    /// Takes over the cookies ILIAS sets (removed ones go).
+    fn take_cookies(&self, res: &ureq::http::Response<ureq::Body>) {
+        let mut cookies = self.cookies.lock().unwrap_or_else(|e| e.into_inner());
+        for header in res.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()) {
+            let mut parts = header.split(';');
+            let Some((name, value)) = parts.next().and_then(|p| p.split_once('=')) else { continue };
+            let (name, value) = (name.trim().to_owned(), value.trim().to_owned());
+            let gone =
+                value.is_empty() || value == "deleted" || parts.any(|p| p.trim().eq_ignore_ascii_case("max-age=0"));
+            cookies.retain(|(n, _)| *n != name);
+            trace(&format!("  Set-Cookie {name}{}", if gone { " (gelöscht)" } else { "" }));
+            if !gone {
+                cookies.push((name, value));
+            }
+        }
+    }
+
+    /// GET `url`, following redirects; the response and its address.
+    fn get(&self, url: &str) -> Result<(ureq::http::Response<ureq::Body>, Url), IliasError> {
+        let mut at = Url::parse(url).map_err(|e| IliasError::Other(format!("{e} ({url})")))?;
+        for _ in 0..MAX_HOPS {
+            let res = self.get_once(&at)?;
+            if at.host_str() == self.base.host_str() {
+                self.take_cookies(&res);
+            }
+            if !res.status().is_redirection() {
+                return Ok((res, at));
+            }
+            let Some(next) = res.headers().get("location").and_then(|v| v.to_str().ok()).and_then(|l| at.join(l).ok())
+            else {
+                return Ok((res, at));
+            };
+            trace(&format!("  {} {at} → {next}", res.status().as_u16()));
+            at = next;
+        }
+        Err(IliasError::Other(format!("zu viele Weiterleitungen ({url})")))
+    }
+
+    fn get_once(&self, url: &Url) -> Result<ureq::http::Response<ureq::Body>, IliasError> {
         let mut attempts = 0;
         loop {
             attempts += 1;
-            let mut req = self.agent.get(url);
-            if !self.cookies.is_empty() {
-                req = req.header("Cookie", &self.cookies);
+            let mut req = self.agent.get(url.as_str());
+            // The session belongs to ILIAS: not sent to other hosts.
+            let cookies = self.cookie_header();
+            if url.host_str() == self.base.host_str() && !cookies.is_empty() {
+                req = req.header("Cookie", &cookies);
             }
             match req.call() {
                 Ok(res) => return Ok(res),
@@ -438,9 +497,7 @@ impl Client {
 
     /// A page of the logged-in ILIAS: its HTML and final address.
     pub fn page(&self, url: &str) -> Result<(String, Url), IliasError> {
-        use ureq::ResponseExt;
-        let mut res = self.get(url)?;
-        let final_url = Url::parse(&res.get_uri().to_string()).unwrap_or_else(|_| self.base.clone());
+        let (mut res, final_url) = self.get(url)?;
         let html = res
             .body_mut()
             .with_config()
@@ -669,25 +726,21 @@ pub fn download(
     title: &str,
     progress: &dyn Fn(u64, Option<u64>),
 ) -> Result<PathBuf, IliasError> {
-    use ureq::ResponseExt;
     let io = |e: std::io::Error| IliasError::Other(e.to_string());
     trace(&format!("Download {url}"));
-    let mut res = client.get(url)?;
+    let (mut res, at) = client.get(url)?;
     let content_type = res.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_lowercase();
     let disposition = res.headers().get("content-disposition").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
     trace(&format!("  {} · {content_type} · {disposition}", res.status().as_u16()));
     if content_type.starts_with("text/html") && !disposition.to_lowercase().contains("attachment") {
         let html = res.body_mut().read_to_string().unwrap_or_default();
-        let at = Url::parse(&res.get_uri().to_string()).ok();
-        if let Some(at) = &at {
-            let (inside, why) = login_check(&Html::parse_document(&html), at);
-            trace(&format!(
-                "  HTML statt Datei von {at}: {}: {why} (Kopie: {})",
-                if inside { "angemeldet" } else { "NICHT angemeldet" },
-                dump(&html, at)
-            ));
-        }
-        if !at.as_ref().is_some_and(|u| u.host_str() == client.base.host_str() && logged_in(&html, u)) {
+        let (inside, why) = login_check(&Html::parse_document(&html), &at);
+        trace(&format!(
+            "  HTML statt Datei von {at}: {}: {why} (Kopie: {})",
+            if inside { "angemeldet" } else { "NICHT angemeldet" },
+            dump(&html, &at)
+        ));
+        if at.host_str() != client.base.host_str() || !inside {
             return Err(IliasError::Login);
         }
         return Err(IliasError::Other(format!("ILIAS hat für „{title}“ keine Datei geliefert")));
@@ -820,6 +873,14 @@ mod tests {
                 }
                 return (200, headers, format!("{title} Version {v}").into_bytes());
             }
+        }
+        // A redirect that renews the session cookie: followed with it.
+        if path.starts_with("/ilias.php?baseClass=ilDashboardGUI&cmd=jumpToMemberships") {
+            let headers = vec![
+                ("Location".to_owned(), "/ilias.php?baseClass=ilDashboardGUI&cmd=show".to_owned()),
+                ("Set-Cookie".to_owned(), "sid=1; Path=/; HttpOnly".to_owned()),
+            ];
+            return (302, headers, Vec::new());
         }
         if path.starts_with("/ilias.php?baseClass=ilDashboardGUI")
             || path.starts_with("/ilias.php?baseClass=ilmembershipoverviewgui")

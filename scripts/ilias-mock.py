@@ -134,6 +134,9 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ("/", "/index.php"):
             return self.redirect("/ilias.php?baseClass=ilDashboardGUI&cmd=show")
         target = (q.get("target") or [""])[0]
+        # Like ILIAS: some dashboard views redirect (and renew the cookie).
+        if url.path == "/ilias.php" and (q.get("cmd") or [""])[0] == "jumpToMemberships":
+            return self.redirect("/ilias.php?baseClass=ilDashboardGUI&cmd=show", [("Set-Cookie", "sid=1; Path=/; HttpOnly")])
         if url.path == "/ilias.php" and (q.get("baseClass") or [""])[0].lower() in ("ildashboardgui", "ilmembershipoverviewgui"):
             return self.send(200, page("Dashboard", [item("crs", "100"), item("grp", "200")]).encode())
         if url.path == "/ilias.php" and q.get("ref_id"):
