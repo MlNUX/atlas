@@ -422,9 +422,22 @@ fn in_navigation(a: ElementRef) -> bool {
         let el = e.value();
         // (Not `#mainspacekeeper`: in ILIAS it holds the whole content.)
         matches!(el.name(), "nav" | "header")
-            || el
-                .classes()
-                .any(|c| matches!(c, "breadcrumb" | "il-breadcrumbs" | "ilTabs" | "il-maincontrols" | "ilLocator"))
+            || el.classes().any(|c| {
+                matches!(
+                    c,
+                    "breadcrumb"
+                            | "il-breadcrumbs"
+                            | "ilTabs"
+                            | "ilSubTabs"
+                            | "il-maincontrols"
+                            | "il-mainbar"
+                            | "il-metabar"
+                            | "ilLocator"
+                            // Side blocks (news, calendar …) link other courses.
+                            | "ilBlock"
+                )
+            })
+            || matches!(el.id(), Some("il_right_col" | "il_left_col"))
     })
 }
 
@@ -661,72 +674,82 @@ pub struct Progress {
 
 /// Dashboard views that list the courses and groups one is a member of
 /// (ILIAS 7 to 9 name them differently).
-const DASHBOARDS: &[&str] = &[
-    "ilias.php?baseClass=ilDashboardGUI&cmd=jumpToMemberships",
-    "ilias.php?baseClass=ilmembershipoverviewgui",
-    "ilias.php?baseClass=ilDashboardGUI&cmd=jumpToSelectedItems",
-    "ilias.php?baseClass=ilDashboardGUI&cmd=show",
-];
+/// What is read: the favourites of the dashboard ("Favoriten") – the
+/// courses, groups, sessions, folders and files placed there.
+const FAVOURITES: &str = "ilias.php?baseClass=ilDashboardGUI&cmd=jumpToSelectedItems";
 const MAX_DEPTH: usize = 10;
+/// Pages read at most in one reading (a safety net).
+const MAX_PAGES: usize = 2000;
 const PARALLEL: usize = 4;
 
-/// Reads the courses and groups of the dashboard with everything in them
-/// (groups, sessions, folders, files), several pages at a time. Links to
-/// other courses inside a course are not followed.
+/// Reads the favourites of the dashboard with everything in them (groups,
+/// sessions, folders, files), several pages at a time. Nothing else is
+/// read: no other dashboard view, no side blocks, no links to other
+/// courses inside a course.
 pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec<Node>, IliasError> {
-    let mut courses = Vec::new();
-    let mut seen = HashSet::new();
-    for d in DASHBOARDS {
-        let url = client.base.join(d).map_err(|e| IliasError::Other(e.to_string()))?;
-        let (html, at) = match client.page(url.as_str()) {
-            Ok(p) => p,
-            Err(IliasError::Login) => {
-                trace("Abbruch: nicht angemeldet");
-                return Err(IliasError::Login);
-            }
-            Err(e) => {
-                trace(&format!("  Dashboard übersprungen: {e}"));
-                continue;
-            }
-        };
-        let found = objects(&html, &at);
-        trace(&format!("  Dashboard: {} (Kopie: {})", summary(&found), dump(&html, &at)));
-        if !found.iter().any(|o| o.kind == "crs" || o.kind == "grp") {
-            trace(&format!("    keine Kurse/Gruppen: {}", explain(&html, &at)));
+    let url = client.base.join(FAVOURITES).map_err(|e| IliasError::Other(e.to_string()))?;
+    let (html, at) = match client.page(url.as_str()) {
+        Ok(p) => p,
+        Err(IliasError::Login) => {
+            trace("Abbruch: nicht angemeldet");
+            return Err(IliasError::Login);
         }
-        for o in found {
-            if (o.kind == "crs" || o.kind == "grp") && seen.insert(o.key()) {
-                courses.push(o);
-            }
+        Err(e) => {
+            trace(&format!("Favoriten nicht lesbar: {e}"));
+            return Err(e);
         }
+    };
+    let mut courses = objects(&html, &at);
+    trace(&format!("  Favoriten: {} (Kopie: {})", summary(&courses), dump(&html, &at)));
+    if courses.is_empty() {
+        trace(&format!("    keine Favoriten erkannt: {}", explain(&html, &at)));
     }
     trace(&format!(
-        "Kurse und Gruppen: {}",
+        "Favoriten: {}",
         if courses.is_empty() {
             "keine".to_owned()
         } else {
             courses.iter().map(|c| format!("{} ({})", c.name, c.key())).collect::<Vec<_>>().join(" · ")
         }
     ));
-    progress(Progress { pages: 0, text: format!("{} Kurse", courses.len()) });
+    progress(Progress { pages: 0, text: format!("{} Favoriten", courses.len()) });
 
+    /// A container to read: key, address, depth, name, and the course it
+    /// belongs to.
+    struct Task {
+        key: String,
+        url: String,
+        depth: usize,
+        name: String,
+        course: String,
+    }
     struct Work {
-        queue: VecDeque<(String, String, usize, String)>,
+        queue: VecDeque<Task>,
         children: HashMap<String, Vec<Node>>,
         errors: HashMap<String, String>,
         visited: HashSet<String>,
         active: usize,
         pages: usize,
         login: bool,
+        /// Course key → pages read, files found.
+        per_course: HashMap<String, (usize, usize)>,
+        /// Containers left out because of MAX_PAGES.
+        skipped: usize,
     }
     let work = Mutex::new(Work {
-        queue: courses.iter().map(|c| (c.key(), c.url.clone(), 0, c.name.clone())).collect(),
+        queue: courses
+            .iter()
+            .filter(|c| c.is_container())
+            .map(|c| Task { key: c.key(), url: c.url.clone(), depth: 0, name: c.name.clone(), course: c.key() })
+            .collect(),
         children: HashMap::new(),
         errors: HashMap::new(),
         visited: courses.iter().map(Node::key).collect(),
         active: 0,
         pages: 0,
         login: false,
+        per_course: HashMap::new(),
+        skipped: 0,
     });
     let wake = Condvar::new();
     std::thread::scope(|s| {
@@ -749,37 +772,67 @@ pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec
                             w = wake.wait(w).unwrap();
                         }
                     };
-                    let (key, url, depth, name) = task;
-                    let result = client.page(&url);
+                    let result = client.page(&task.url);
                     let mut w = work.lock().unwrap();
                     w.active -= 1;
                     match result {
                         Ok((html, at)) => {
                             w.pages += 1;
                             let pages = w.pages;
-                            let found: Vec<Node> =
-                                objects(&html, &at).into_iter().filter(|o| o.kind != "crs" && o.key() != key).collect();
+                            let found: Vec<Node> = objects(&html, &at)
+                                .into_iter()
+                                .filter(|o| o.kind != "crs" && o.key() != task.key)
+                                .collect();
                             let mut kept = Vec::new();
+                            let mut queued = 0;
                             for o in found {
                                 if o.is_container() {
                                     // Each container once (it may be linked twice).
                                     if !w.visited.insert(o.key()) {
                                         continue;
                                     }
-                                    if depth < MAX_DEPTH {
-                                        w.queue.push_back((o.key(), o.url.clone(), depth + 1, o.name.clone()));
+                                    if task.depth >= MAX_DEPTH {
+                                        // (listed, not read)
+                                    } else if w.pages + w.queue.len() + w.active >= MAX_PAGES {
+                                        w.skipped += 1;
+                                    } else {
+                                        queued += 1;
+                                        w.queue.push_back(Task {
+                                            key: o.key(),
+                                            url: o.url.clone(),
+                                            depth: task.depth + 1,
+                                            name: o.name.clone(),
+                                            course: task.course.clone(),
+                                        });
                                     }
                                 }
                                 kept.push(o);
                             }
-                            w.children.insert(key, kept);
+                            let files = kept.iter().filter(|o| o.kind == "file").count();
+                            let entry = w.per_course.entry(task.course.clone()).or_default();
+                            entry.0 += 1;
+                            entry.1 += files;
+                            let detail = if kept.is_empty() {
+                                format!(" · leer: {}", explain(&html, &at))
+                            } else {
+                                String::new()
+                            };
+                            trace(&format!(
+                                "  {}{} ({}): {}, {queued} zum Lesen{detail}",
+                                "  ".repeat(task.depth),
+                                task.name,
+                                task.key,
+                                summary(&kept)
+                            ));
+                            w.children.insert(task.key, kept);
                             if pages.is_multiple_of(5) {
-                                progress(Progress { pages, text: name });
+                                progress(Progress { pages, text: task.name });
                             }
                         }
                         Err(IliasError::Login) => w.login = true,
                         Err(IliasError::Other(e)) => {
-                            w.errors.insert(key, e);
+                            trace(&format!("  {} ({}): Fehler {e}", task.name, task.key));
+                            w.errors.insert(task.key, e);
                         }
                     }
                     wake.notify_all();
@@ -791,6 +844,13 @@ pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec
     if w.login {
         trace("Abbruch: Sitzung unterwegs verloren");
         return Err(IliasError::Login);
+    }
+    for c in courses.iter().filter(|c| c.is_container()) {
+        let (pages, files) = w.per_course.get(&c.key()).copied().unwrap_or_default();
+        trace(&format!("Favorit {} ({}): {pages} Seiten, {files} Dateien", c.name, c.key()));
+    }
+    if w.skipped > 0 {
+        trace(&format!("Grenze von {MAX_PAGES} Seiten erreicht: {} Ordner nicht gelesen", w.skipped));
     }
     trace(&format!("Fertig: {} Seiten, {} Fehler", w.pages, w.errors.len()));
     fn build(node: &mut Node, w: &mut Work) {
@@ -1041,21 +1101,26 @@ mod tests {
                 return (200, headers, format!("{title} Version {v}").into_bytes());
             }
         }
-        // A redirect that renews the session cookie: followed with it.
-        if path.starts_with("/ilias.php?baseClass=ilDashboardGUI&cmd=jumpToMemberships") {
+        // Only the favourites are read; the membership views list more.
+        // Their address redirects and renews the session cookie: followed
+        // with it.
+        if path.starts_with("/ilias.php?baseClass=ilDashboardGUI&cmd=jumpToSelectedItems") {
             let headers = vec![
-                ("Location".to_owned(), "/ilias.php?baseClass=ilDashboardGUI&cmd=show".to_owned()),
+                ("Location".to_owned(), "/ilias.php?baseClass=ilDashboardGUI&cmd=showFavourites".to_owned()),
                 ("Set-Cookie".to_owned(), "sid=1; Path=/; HttpOnly".to_owned()),
             ];
             return (302, headers, Vec::new());
         }
+        if path.starts_with("/ilias.php?baseClass=ilDashboardGUI&cmd=showFavourites") {
+            return html(page_html(
+                "Favoriten",
+                &(item("crs", "100", "Höhere Mathematik I", 1) + &item("grp", "200", "Tutorium 3", 1)),
+            ));
+        }
         if path.starts_with("/ilias.php?baseClass=ilDashboardGUI")
             || path.starts_with("/ilias.php?baseClass=ilmembershipoverviewgui")
         {
-            return html(page_html(
-                "Dashboard",
-                &(item("crs", "100", "Höhere Mathematik I", 1) + &item("grp", "200", "Tutorium 3", 1)),
-            ));
+            return html(page_html("Meine Kurse", &item("crs", "500", "Kein Favorit", 1)));
         }
         let pages = [
             (
@@ -1064,6 +1129,8 @@ mod tests {
                     item("fold", "101", "Vorlesung", 1),
                     item("file", "102", "Organisatorisches", version),
                     item("sess", "103", "Sitzung 1", 1),
+                    // A side block (news) linking another course's folder.
+                    format!(r#"<div class="ilBlock">{}</div>"#, item("fold", "900", "Fremder Ordner", 1)),
                 ],
             ),
             (
@@ -1264,7 +1331,7 @@ mod tests {
         let client = Client::new(&mock.base, "lang=de; sid=1", "Mozilla/5.0 Test").unwrap();
         let messages = Mutex::new(Vec::new());
         let tree = scan(&client, &|p| messages.lock().unwrap().push(p.text)).unwrap();
-        assert_eq!(messages.lock().unwrap()[0], "2 Kurse");
+        assert_eq!(messages.lock().unwrap()[0], "2 Favoriten");
 
         fn outline(nodes: &[Node], depth: usize, out: &mut Vec<String>) {
             for n in nodes {

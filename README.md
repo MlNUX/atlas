@@ -35,7 +35,7 @@ verändert weder PDFs noch Notizen ungefragt.
 - **Projektkalender** mit Fristen aus Notizen und optionaler
   Synchronisierung mit Nextcloud (CalDAV) oder Google-Kalender
   ([Einrichtung](docs/google-kalender.md)).
-- **ILIAS** (z. B. KIT): Kurse des Dashboards als Ordner; ein Klick lädt
+- **ILIAS** (z. B. KIT): deine Favoriten als Ordner; ein Klick lädt
   eine Datei und öffnet sie, neue Versionen werden erkannt.
 - HTML-Dateien als Webseite anzeigen, Code mit Syntaxhervorhebung, Übergabe
   an deinen Editor.

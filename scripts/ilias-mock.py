@@ -6,8 +6,8 @@
 Usage: ilias-mock.py PORT
 
 Without the session cookie every page sends to /login.php (like the
-university's login); /dologin sets it. The dashboard lists a course and a
-group; containers hold folders, a session (linked by ref_id, recognisable
+university's login); /dologin sets it. The favourites list a course and a
+group ("Meine Kurse" lists another course, which must not be read); containers hold folders, a session (linked by ref_id, recognisable
 by its icon only) and files. Navigation and breadcrumbs link back up and
 must be ignored. Files download with a file name; /bump gives file 102 a
 new version.
@@ -42,6 +42,7 @@ NAMES = {
     "fold_101": "Vorlesung",
     "fold_105": "Übungen",
     "sess_103": "Sitzung 1: Einführung",
+    "crs_300": "Kein Favorit",
 }
 
 
@@ -134,9 +135,13 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ("/", "/index.php"):
             return self.redirect("/ilias.php?baseClass=ilDashboardGUI&cmd=show")
         target = (q.get("target") or [""])[0]
-        # Like ILIAS: some dashboard views redirect (and renew the cookie).
-        if url.path == "/ilias.php" and (q.get("cmd") or [""])[0] == "jumpToMemberships":
-            return self.redirect("/ilias.php?baseClass=ilDashboardGUI&cmd=show", [("Set-Cookie", "sid=1; Path=/; HttpOnly")])
+        # Like ILIAS: the favourites' address redirects (and renews the
+        # cookie). Only the favourites are read; "Meine Kurse" lists more.
+        cmd = (q.get("cmd") or [""])[0]
+        if url.path == "/ilias.php" and cmd == "jumpToSelectedItems":
+            return self.redirect("/ilias.php?baseClass=ilDashboardGUI&cmd=showFavourites", [("Set-Cookie", "sid=1; Path=/; HttpOnly")])
+        if url.path == "/ilias.php" and cmd in ("jumpToMemberships", "show") or (q.get("baseClass") or [""])[0].lower() == "ilmembershipoverviewgui":
+            return self.send(200, page("Meine Kurse", [item("crs", "300")]).encode())
         if url.path == "/ilias.php" and (q.get("baseClass") or [""])[0].lower() in ("ildashboardgui", "ilmembershipoverviewgui"):
             return self.send(200, page("Dashboard", [item("crs", "100"), item("grp", "200")]).encode())
         if url.path == "/ilias.php" and q.get("ref_id"):

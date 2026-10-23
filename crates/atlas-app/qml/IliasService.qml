@@ -67,7 +67,7 @@ Item {
         if (busy) return
         trace("Einlesen gestartet: " + baseUrl)
         state = "scanning"
-        status = qsTr("Lese Kurse von %1 …").arg(host)
+        status = qsTr("Lese Favoriten von %1 …").arg(host)
         app.iliasScan()
     }
     Connections {
@@ -92,7 +92,7 @@ Item {
             if (status === "error") { service.state = "error"; service.status = text; return }
             service.index = service.loadState("index", { courses: [] })
             service.state = "idle"
-            service.status = qsTr("%n Kurs(e) eingelesen", "", Number(text))
+            service.status = qsTr("%n Favorit(en) eingelesen", "", Number(text))
             service.revision++
         }
         function onIliasDownloadProgress(url, received, total) {
@@ -248,7 +248,7 @@ Item {
                     }
                     Button { text: qsTr("Abbrechen"); flat: true; onClicked: { loginWindow.close(); if (service.state === "login") service.status = qsTr("Nicht angemeldet") } }
                     // If Atlas does not notice the login by itself.
-                    Button { text: qsTr("Angemeldet – Kurse zeigen"); highlighted: true; onClicked: { service.trace("Knopf „Angemeldet“ gedrückt"); service.autoClose = true; service.loggedIn() } }
+                    Button { text: qsTr("Angemeldet – Favoriten zeigen"); highlighted: true; onClicked: { service.trace("Knopf „Angemeldet“ gedrückt"); service.autoClose = true; service.loggedIn() } }
                 }
             }
             Loader {

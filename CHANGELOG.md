@@ -11,8 +11,8 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Neu
-- **ILIAS** (z. B. KIT) unter „Orte“: die Kurse und Gruppen deines
-  Dashboards als Ordner mit allen Unterordnern, Sitzungen und Dateien. Ein
+- **ILIAS** (z. B. KIT) unter „Orte“: deine Favoriten vom Dashboard als
+  Ordner mit allen Unterordnern, Sitzungen und Dateien. Ein
   Klick lädt eine Datei in einen Download-Ordner deiner Wahl (je Kurs und
   Ordner ein Unterordner) und öffnet sie; zeigt ILIAS eine neue Version,
   steht „neue Version“ daneben und der Klick lädt sie neu. Anmelden im

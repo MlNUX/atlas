@@ -995,8 +995,9 @@ im Editor, Mausrad im Editor unverändert).
 
 ### Nachtrag – ILIAS-Ansicht
 
-- **Was:** „ILIAS“ unter „Orte“ (Tab `ilias:`) zeigt die Kurse und Gruppen
-  des Dashboards als Ordner, darin Ordner, Gruppen, Sitzungen und Dateien
+- **Was:** „ILIAS“ unter „Orte“ (Tab `ilias:`) zeigt die Favoriten des
+  Dashboards (`cmd=jumpToSelectedItems`) als Ordner, darin Ordner, Gruppen,
+  Sitzungen und Dateien
   (nur die Liste, nichts wird vorab geladen). Ein Klick auf eine Datei lädt
   sie nach `<Download-Ordner>/<Kurs>/<Ordner …>/<Dateiname>` und öffnet sie.
   ILIAS' Angaben zur Datei (Typ, Größe, Version, Datum) werden mit dem
@@ -1029,12 +1030,14 @@ im Editor, Mausrad im Editor unverändert).
   aus der `Cookies`-Datenbank des Profils (QtWebEngine speichert sie
   unverschlüsselt; ist sie gesperrt, aus einer sofort gelöschten Kopie mit
   Rechten 600). Atlas legt keine eigene Kopie der Sitzung an; die frischeren
-  gemeldeten Cookies gehen vor. Damit holt ein Thread die
-  Dashboard-Ansichten (ILIAS 7–9 heißen sie verschieden), dann mit vier
-  Seiten gleichzeitig jeden Container bis Tiefe 10, jeden nur einmal;
-  Kurse innerhalb von Kursen werden nicht verfolgt. Objekte erkennt
+  gemeldeten Cookies gehen vor. Damit holt ein Thread nur die Favoriten –
+  keine andere Dashboard-Ansicht –, dann mit vier Seiten gleichzeitig jeden
+  Container darin bis Tiefe 10, jeden nur einmal, höchstens 2000 Seiten.
+  Kurse innerhalb von Kursen und Links in Seitenblöcken (Neuigkeiten,
+  Kalender: `.ilBlock`, rechte und linke Spalte) werden nicht verfolgt; das
+  Protokoll nennt je Favorit Seiten und Dateien. Objekte erkennt
   `objects` an Permalinks (`target=fold_12`, `goto_…_fold_12.html`,
-  `/go/fold/12`) oder – bei `ref_id`-Links wie Sitzungen – am Typ-Symbol
+  `/go/fold/12`, `goto.php/fold/12`) oder – bei `ref_id`-Links wie Sitzungen – am Typ-Symbol
   des Listeneintrags; Links in Navigation, Reitern und Brotkrumen zählen
   nicht. Landet eine Seite auf einem anderen Rechner oder fehlt der
   Abmelde-Link, ist die Sitzung abgelaufen: das Anmeldefenster öffnet sich,

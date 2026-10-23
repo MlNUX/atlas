@@ -218,13 +218,13 @@ Dialog {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 3
-                                Text { text: qsTr("Kurse als Ordner unter „Orte“"); color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                                Text { text: qsTr("Favoriten als Ordner unter „Orte“"); color: Theme.textStrong; font.pixelSize: Theme.fontSize }
                                 Text {
                                     Layout.fillWidth: true
                                     wrapMode: Text.Wrap
                                     color: Theme.textMuted
                                     font.pixelSize: Theme.smallFontSize
-                                    text: qsTr("Die Kurse deines ILIAS-Dashboards mit Ordnern, Gruppen, Sitzungen und Dateien; ein Klick lädt eine Datei und öffnet sie. Atlas merkt sich nur die Anmeldung, nicht das Passwort.")
+                                    text: qsTr("Die Favoriten deines ILIAS-Dashboards mit Ordnern, Gruppen, Sitzungen und Dateien; ein Klick lädt eine Datei und öffnet sie. Atlas merkt sich nur die Anmeldung, nicht das Passwort.")
                                 }
                             }
                             Toggle {
@@ -423,7 +423,7 @@ Dialog {
         app: dialog.app
         parent: Overlay.overlay
         pickTitle: qsTr("Download-Ordner für ILIAS")
-        pickHint: qsTr("Darin legt Atlas pro Kurs einen Ordner an, mit derselben Struktur wie in ILIAS.")
+        pickHint: qsTr("Darin legt Atlas pro Favorit einen Ordner an, mit derselben Struktur wie in ILIAS.")
         pickButton: qsTr("Hier speichern")
         onChosen: (path) => dialog.app.setIliasConfig("download_dir", path)
     }

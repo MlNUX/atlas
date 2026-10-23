@@ -160,7 +160,7 @@ Rectangle {
                 BusyIndicator { Layout.preferredWidth: 22; Layout.preferredHeight: 22; running: !!root.service && (root.service.busy || !!root.service.current); visible: running }
                 IconButton {
                     iconName: "refresh"
-                    tip: qsTr("Kurse neu einlesen")
+                    tip: qsTr("Favoriten neu einlesen")
                     enabled: !!root.service && !root.service.busy
                     onClicked: root.service.refresh()
                 }
@@ -276,9 +276,9 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     text: !root.service ? "" : root.chain.length ? qsTr("Hier ist nichts.")
-                        : root.service.state === "login" ? qsTr("Bitte bei ILIAS anmelden – danach liest Atlas deine Kurse ein.")
-                        : root.service.busy ? qsTr("Kurse werden eingelesen …")
-                        : qsTr("Deine Kurse vom ILIAS-Dashboard erscheinen hier als Ordner, mit allen Dateien. Ein Klick auf eine Datei lädt sie herunter und öffnet sie.")
+                        : root.service.state === "login" ? qsTr("Bitte bei ILIAS anmelden – danach liest Atlas deine Favoriten ein.")
+                        : root.service.busy ? qsTr("Favoriten werden eingelesen …")
+                        : qsTr("Deine ILIAS-Favoriten erscheinen hier als Ordner, mit allen Dateien darin. Ein Klick auf eine Datei lädt sie herunter und öffnet sie.")
                     color: Theme.text
                     font.pixelSize: Theme.fontSize
                 }
@@ -286,7 +286,7 @@ Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     visible: !!root.service && !root.chain.length && !root.service.busy
                     highlighted: true
-                    text: root.service && root.service.state === "login" ? qsTr("Anmelden …") : qsTr("Kurse einlesen")
+                    text: root.service && root.service.state === "login" ? qsTr("Anmelden …") : qsTr("Favoriten einlesen")
                     onClicked: root.service.state === "login" ? root.service.login() : root.service.refresh()
                 }
             }
@@ -347,7 +347,7 @@ Rectangle {
         id: dirChooser
         app: root.app
         pickTitle: qsTr("Download-Ordner für ILIAS")
-        pickHint: qsTr("Darin legt Atlas pro Kurs einen Ordner an, mit derselben Struktur wie in ILIAS.")
+        pickHint: qsTr("Darin legt Atlas pro Favorit einen Ordner an, mit derselben Struktur wie in ILIAS.")
         pickButton: qsTr("Hier speichern")
         onChosen: (path) => {
             root.app.setIliasConfig("download_dir", path)

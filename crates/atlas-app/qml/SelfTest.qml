@@ -1323,7 +1323,7 @@ Item {
                 if (waitFor(() => !il.loginVisible && il.state === "idle" && il.index.courses.length > 0)) return
                 const names = (list) => (list || []).map(n => n.name).sort().join(" | ")
                 const course = il.index.courses.find(c => c.name === "Höhere Mathematik I")
-                check("ILIAS: nach der Anmeldung Kurse und Gruppen eingelesen", !il.loginVisible && names(il.index.courses) === "Höhere Mathematik I | Tutorium 3",
+                check("ILIAS: nach der Anmeldung nur die Favoriten eingelesen (nicht „Meine Kurse“)", !il.loginVisible && names(il.index.courses) === "Höhere Mathematik I | Tutorium 3",
                       il.state + " " + il.status + " " + names(il.index.courses))
                 check("ILIAS: Ordner, Datei und Sitzung im Kurs (ohne Navigation)", !!course && names(course.children) === "Organisatorisches | Sitzung 1: Einführung | Vorlesung",
                       course ? names(course.children) : "kein Kurs")
@@ -1331,7 +1331,7 @@ Item {
                 check("ILIAS: Sitzung am Symbol erkannt, mit Datei", !!sess && names(sess.children) === "Skript", JSON.stringify(sess))
                 const ilog = app.readTextFile(app.iliasDebugLog())
                 check("ILIAS: Protokoll mit Anmeldung, Seiten und Kursen, ohne Cookie-Werte",
-                      ilog.indexOf("Anmeldefenster: angemeldet") >= 0 && ilog.indexOf("Kurse und Gruppen: Höhere Mathematik I (crs100)") >= 0
+                      ilog.indexOf("Anmeldefenster: angemeldet") >= 0 && ilog.indexOf("Favoriten: Höhere Mathematik I (crs100)") >= 0 && ilog.indexOf("crs300") < 0
                       && ilog.indexOf("Cookies: sid") >= 0 && ilog.indexOf("sid=1") < 0, ilog.slice(-600))
                 const dbLine = ilog.split("\n").filter(l => l.indexOf("Cookie-Datenbank") >= 0).pop() || "keine Zeile"
                 check("ILIAS: Cookie-Datenbank des Web-Profils lesbar (für die Sitzung nach einem Neustart)",
