@@ -444,6 +444,10 @@ pub(crate) mod tests {
         assert_eq!(page.width, 300);
         assert_eq!(page.height, scaled_height((595.0, 842.0), 300));
         assert_eq!(page.bgra.len(), (page.width * page.height * 4) as usize);
+        // A page the document does not have: an error, not a Poppler
+        // assertion on stderr.
+        assert!(service.render_blocking(&path, 5, 100).is_err());
+        assert!(service.text_blocking(&path, 1).is_err());
         // Background is white, the text made some pixels dark.
         assert_eq!(&page.bgra[0..4], &[255, 255, 255, 255]);
         assert!(page.bgra.chunks(4).any(|px| px[0] < 128));

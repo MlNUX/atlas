@@ -53,6 +53,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   ohne LaTeX-Installation; die Vorlage für neue Aktionsdateien nutzt
   stattdessen Word (pandoc → .docx), PDF gibt es eingebaut.
 - Einstellungsfenster scrollt auf kleinen Bildschirmen.
+- Keine „Poppler-CRITICAL … poppler_document_get_page“-Meldungen mehr im
+  Terminal, wenn nach einer Seite gefragt wird, die die PDF (nicht mehr)
+  hat – z. B. nachdem sie kürzer neu erzeugt wurde.
 
 ### Geändert
 - Keine Vorschau-Tabs mehr: ein einfacher Klick auf eine Datei öffnet sie
