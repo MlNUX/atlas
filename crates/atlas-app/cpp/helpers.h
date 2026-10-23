@@ -62,7 +62,11 @@ void postMouse(QObject* window, int kind, double x, double y, int delayMs);
 // HTTP requests made from Rust with the same session (ILIAS): followed
 // from now on; false if `profile` is none.
 bool watchWebCookies(QObject* profile);
-// The `Cookie` header the watched profile would send to `url`.
+// Folder of the watched profile on disk ("" if it keeps nothing); its
+// `Cookies` database holds the cookies it read at start.
+QString webProfilePath();
+// The `Cookie` header (from cookies reported since the start) the watched
+// profile would send to `url`.
 QString webCookieHeader(const QString& url);
 // The watched profile's cookies for the log: name@domain/path, no values.
 QString webCookieSummary();

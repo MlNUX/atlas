@@ -1020,9 +1020,16 @@ im Editor, Mausrad im Editor unverändert).
   steht das als Fehler da, statt das Fenster erneut zu öffnen. Atlas sieht und speichert das
   Passwort nie, nur die Cookies der Sitzung liegen im Web-Profil.
   „Abmelden“ löscht sie.
-- **Einlesen und Laden in Rust** (`atlas_core::ilias`): Die Cookies des
-  Profils folgt `cpp/helpers.cpp` über `QWebEngineCookieStore` und gibt sie
-  als `Cookie`-Kopf für die ILIAS-Adresse weiter. Damit holt ein Thread die
+- **Einlesen und Laden in Rust** (`atlas_core::ilias`): Die Sitzung kommt
+  aus zwei Quellen. Was das Profil seit dem Start setzt, meldet
+  `QWebEngineCookieStore` (`cpp/helpers.cpp`). Was es beim Start von der
+  Platte las – nach einem Neustart die ganze Anmeldung –, meldet Qt 6.11
+  nicht: `loadAllCookies()` reicht Chromiums Antwort an einen leeren
+  Rückruf weiter. Diese Cookies liest `profile_cookies` deshalb nur lesend
+  aus der `Cookies`-Datenbank des Profils (QtWebEngine speichert sie
+  unverschlüsselt; ist sie gesperrt, aus einer sofort gelöschten Kopie mit
+  Rechten 600). Atlas legt keine eigene Kopie der Sitzung an; die frischeren
+  gemeldeten Cookies gehen vor. Damit holt ein Thread die
   Dashboard-Ansichten (ILIAS 7–9 heißen sie verschieden), dann mit vier
   Seiten gleichzeitig jeden Container bis Tiefe 10, jeden nur einmal;
   Kurse innerhalb von Kursen werden nicht verfolgt. Objekte erkennt

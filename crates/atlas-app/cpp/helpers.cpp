@@ -259,7 +259,9 @@ bool watchWebCookies(QObject* profile)
     QObject::connect(store, &QWebEngineCookieStore::cookieRemoved, qApp, [](const QNetworkCookie& c) {
         cookies.removeIf([&](const QNetworkCookie& o) { return o.hasSameIdentifier(c); });
     });
-    store->loadAllCookies();
+    // (Cookies the profile read from disk are not reported: Qt 6.11's
+    // loadAllCookies() discards the result. They are read from the
+    // profile's database instead, see atlas_core::ilias::profile_cookies.)
     return true;
 }
 
@@ -287,14 +289,24 @@ QString webCookieHeader(const QString& address)
     return parts.join(QStringLiteral("; "));
 }
 
+QString webProfilePath()
+{
+    return cookieProfile && !cookieProfile->isOffTheRecord() ? cookieProfile->persistentStoragePath() : QString();
+}
+
 QString webCookieSummary()
 {
     if (!cookieProfile)
         return QStringLiteral("kein Web-Profil");
+    const QString profile = QStringLiteral("„%1“%2 in %3 · %4 Cookies: ")
+                                .arg(cookieProfile->storageName(),
+                                     cookieProfile->isOffTheRecord() ? QStringLiteral(" (privat, nichts gespeichert)") : QString(),
+                                     cookieProfile->persistentStoragePath())
+                                .arg(cookies.size());
     QStringList parts;
     for (const QNetworkCookie& c : std::as_const(cookies))
         parts << QString::fromUtf8(c.name()) + '@' + c.domain() + c.path() + (c.isSecure() ? QStringLiteral(" (secure)") : QString());
-    return parts.isEmpty() ? QStringLiteral("keine Cookies im Web-Profil") : parts.join(QStringLiteral(", "));
+    return profile + (parts.isEmpty() ? QStringLiteral("keine") : parts.join(QStringLiteral(", ")));
 }
 
 QString webUserAgent()

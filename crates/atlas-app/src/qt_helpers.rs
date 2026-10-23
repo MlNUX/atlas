@@ -54,6 +54,8 @@ pub mod ffi {
         fn image_formats() -> QStringList;
         #[cxx_name = "watchWebCookies"]
         unsafe fn watch_web_cookies(profile: *mut QObject) -> bool;
+        #[cxx_name = "webProfilePath"]
+        fn web_profile_path() -> QString;
         #[cxx_name = "webCookieHeader"]
         fn web_cookie_header(url: &QString) -> QString;
         #[cxx_name = "webCookieSummary"]

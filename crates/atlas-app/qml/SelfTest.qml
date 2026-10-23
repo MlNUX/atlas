@@ -1333,6 +1333,9 @@ Item {
                 check("ILIAS: Protokoll mit Anmeldung, Seiten und Kursen, ohne Cookie-Werte",
                       ilog.indexOf("Anmeldefenster: angemeldet") >= 0 && ilog.indexOf("Kurse und Gruppen: Höhere Mathematik I (crs100)") >= 0
                       && ilog.indexOf("Cookies: sid") >= 0 && ilog.indexOf("sid=1") < 0, ilog.slice(-600))
+                const dbLine = ilog.split("\n").filter(l => l.indexOf("Cookie-Datenbank") >= 0).pop() || "keine Zeile"
+                check("ILIAS: Cookie-Datenbank des Web-Profils lesbar (für die Sitzung nach einem Neustart)",
+                      dbLine.indexOf("Cookie-Datenbank des Profils:") >= 0, dbLine)
                 const view = editor.activeTab.viewerItem
                 view.enter(course)
                 check("ILIAS: Ordner zuerst, dann Dateien", view.items.map(n => n.name).join(" | ") === "Sitzung 1: Einführung | Vorlesung | Organisatorisches",

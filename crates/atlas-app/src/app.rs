@@ -979,10 +979,11 @@ impl qobject::AppController {
     pub fn ilias_scan(&self) {
         use atlas_core::ilias::{self, IliasError};
         let base = Config::load().ilias.base_url;
-        let cookies = crate::qt_helpers::web_cookie_header(&qs(&base)).to_string();
+        let live = crate::qt_helpers::web_cookie_header(&qs(&base)).to_string();
+        let profile = PathBuf::from(crate::qt_helpers::web_profile_path().to_string());
         let agent = crate::qt_helpers::web_user_agent().to_string();
         ilias::trace_start("Einlesen");
-        ilias::trace(&format!("Web-Profil: {}", crate::qt_helpers::web_cookie_summary()));
+        ilias::trace(&format!("Web-Profil (seit dem Start gemeldet): {}", crate::qt_helpers::web_cookie_summary()));
         let thread = self.qt_thread();
         std::thread::spawn(move || {
             let progress = |p: ilias::Progress| {
@@ -993,6 +994,7 @@ impl qobject::AppController {
                 };
                 let _ = thread.queue(move |app| app.ilias_progress(qs(text)));
             };
+            let cookies = ilias::Url::parse(&base).map(|u| ilias::session_cookies(&profile, &u, &live)).unwrap_or(live);
             let result = ilias::Client::new(&base, &cookies, &agent)
                 .and_then(|client| ilias::scan(&client, &progress))
                 .and_then(|courses| {
@@ -1024,9 +1026,9 @@ impl qobject::AppController {
         use atlas_core::ilias::{self, IliasError};
         let config = Config::load().ilias;
         let address = if download.is_empty() { url.to_string() } else { download.to_string() };
-        let cookies = crate::qt_helpers::web_cookie_header(&qs(&address)).to_string();
+        let live = crate::qt_helpers::web_cookie_header(&qs(&address)).to_string();
+        let profile = PathBuf::from(crate::qt_helpers::web_profile_path().to_string());
         let agent = crate::qt_helpers::web_user_agent().to_string();
-        ilias::trace(&format!("Web-Profil: {}", crate::qt_helpers::web_cookie_summary()));
         let (url, title, info, segments) = (url.to_string(), title.to_string(), info.to_string(), segments.to_string());
         let thread = self.qt_thread();
         std::thread::spawn(move || {
@@ -1045,6 +1047,8 @@ impl qobject::AppController {
                 let other = |e: anyhow::Error| IliasError::Other(format!("{e:#}"));
                 let segments: Vec<String> = serde_json::from_str(&segments).map_err(|e| other(e.into()))?;
                 let dir = ilias::target_dir(Path::new(&config.download_dir), &segments).map_err(other)?;
+                let cookies =
+                    ilias::Url::parse(&address).map(|u| ilias::session_cookies(&profile, &u, &live)).unwrap_or(live);
                 let client = ilias::Client::new(&config.base_url, &cookies, &agent)?;
                 let path = ilias::download(&client, &address, &dir, &title, &progress)?;
                 ilias::record_download(&url, &path, &info).map_err(other)?;
