@@ -885,6 +885,18 @@ Item {
                 inspector.graphWindow.close()
                 settingsDialog.open()
                 check("Einstellungen öffnen", settingsDialog.visible)
+                // The ILIAS address: settable, checked, applied.
+                const field = settingsDialog.iliasAddressField
+                const before = JSON.parse(app.iliasConfig).base_url
+                field.text = "nicht da"
+                const invalid = !field.valid
+                field.text = "ilias.uni-beispiel.de"
+                settingsDialog.applyIliasAddress()
+                const after = JSON.parse(app.iliasConfig).base_url
+                check("Einstellungen: ILIAS-Adresse einstellbar (ohne https:// ergänzt, Ungültiges abgelehnt)",
+                      invalid && after === "https://ilias.uni-beispiel.de/" && fileActions.ilias.host === "ilias.uni-beispiel.de"
+                      && fileActions.ilias.index.courses.length === 0 && field.text === after, after + " · " + field.text)
+                app.setIliasConfig("base_url", before)
                 const cals = settingsDialog.defaultCalendarChoices
                 check("Einstellungen: Kalender für neue Termine wählbar", cals.length >= 1 && cals.some(c => c.isDefault),
                       JSON.stringify(cals.map(c => c.name + (c.isDefault ? "★" : ""))))

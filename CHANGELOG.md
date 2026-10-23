@@ -11,6 +11,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Neu
+- Einstellungen: **ILIAS-Adresse** für jede Hochschule einstellbar – mit
+  Prüfung, „Übernehmen“ und ergänztem `https://`; nach einem Wechsel
+  zeigt die Ansicht keine Favoriten des alten ILIAS mehr.
 - Einstellungen: **Kalender für neue Termine** direkt wählbar (bisher nur
   über den Stern im Verbindungsdialog).
 - **ILIAS** (z. B. KIT) unter „Orte“: deine Favoriten vom Dashboard als

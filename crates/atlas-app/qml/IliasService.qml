@@ -33,7 +33,20 @@ Item {
     readonly property string host: { try { return new URL(baseUrl).host } catch (e) { return "" } }
 
     /// {base_url, scanned (ms), courses: [{kind, id, name, url, info, children}]}
-    property var index: loadState("index", { courses: [] })
+    property var index: loadIndex()
+    /// The tree read last – only if it is of this ILIAS.
+    function loadIndex() {
+        const i = loadState("index", { courses: [] })
+        return i.base_url && i.base_url !== baseUrl ? { courses: [] } : i
+    }
+    // Another ILIAS: its favourites are read anew (after logging in there).
+    onBaseUrlChanged: {
+        index = loadIndex()
+        if (busy) return
+        state = "idle"
+        status = qsTr("Neue Adresse: %1").arg(host)
+        revision++
+    }
     /// url → {path, info, time}
     property var downloads: loadState("downloads", {})
     /// "idle", "scanning", "login" (login needed) or "error".
@@ -92,7 +105,7 @@ Item {
             }
             service.loggedInAt = 0
             if (status === "error") { service.state = "error"; service.status = text; return }
-            service.index = service.loadState("index", { courses: [] })
+            service.index = service.loadIndex()
             service.state = "idle"
             service.status = qsTr("%n Favorit(en) eingelesen", "", Number(text))
             service.revision++

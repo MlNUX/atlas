@@ -36,6 +36,9 @@ Dialog {
     readonly property var calendar: dialog.actions ? dialog.actions.calendar : null
     /// The calendars offered for new events (for the smoke test).
     readonly property alias defaultCalendarChoices: defaultCalendarRow.choices
+    /// The ILIAS address field and how to apply it (for the smoke test).
+    readonly property alias iliasAddressField: iliasAddress
+    function applyIliasAddress() { iliasCard.applyAddress() }
     /// Where the places come from, for the line under the switch.
     readonly property string placesText: !dialog.app.fileManagerPlaces ? qsTr("Feste Orte von Atlas")
         : dialog.app.fixedPlaceCount === 0 ? qsTr("Aus Dolphin: %1").arg(dialog.app.placeNames.join(", ") || qsTr("keine"))
@@ -206,6 +209,11 @@ Dialog {
                     id: iliasCard
                     implicitHeight: iliasColumn.implicitHeight + 24
                     readonly property var ilias: { try { return JSON.parse(dialog.app.iliasConfig) } catch (e) { return {} } }
+                    function applyAddress() {
+                        if (!iliasAddress.valid || !iliasAddress.changed) return
+                        dialog.app.setIliasConfig("base_url", iliasAddress.address)
+                        iliasAddress.text = Qt.binding(() => iliasCard.ilias.base_url || "")
+                    }
                     ColumnLayout {
                         id: iliasColumn
                         anchors.left: parent.left
@@ -235,17 +243,45 @@ Dialog {
                                 onToggled: dialog.app.setIliasConfig("show_in_places", checked ? "false" : "true")
                             }
                         }
+                        // The ILIAS of one's university: its start page.
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.leftMargin: 30
                             spacing: 8
                             Text { text: qsTr("Adresse"); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize; Layout.preferredWidth: 70 }
                             TextField {
+                                id: iliasAddress
                                 Layout.fillWidth: true
                                 text: iliasCard.ilias.base_url || ""
+                                placeholderText: "https://ilias.studium.kit.edu/"
                                 font.pixelSize: Theme.smallFontSize
-                                onEditingFinished: if (text.trim() && text.trim() !== iliasCard.ilias.base_url) dialog.app.setIliasConfig("base_url", text.trim())
+                                selectByMouse: true
+                                inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
+                                // http(s), with a host.
+                                readonly property string address: {
+                                    let t = text.trim()
+                                    if (t && !/^[a-z]+:\/\//i.test(t)) t = "https://" + t
+                                    return t
+                                }
+                                readonly property bool valid: { try { const u = new URL(address); return /^https?:$/.test(u.protocol) && u.host.length > 0 } catch (e) { return false } }
+                                readonly property bool changed: address.replace(/\/?$/, "/") !== (iliasCard.ilias.base_url || "")
+                                onAccepted: iliasCard.applyAddress()
                             }
+                            Button {
+                                text: qsTr("Übernehmen")
+                                enabled: iliasAddress.valid && iliasAddress.changed
+                                onClicked: iliasCard.applyAddress()
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 108
+                            wrapMode: Text.Wrap
+                            font.pixelSize: Theme.smallFontSize
+                            color: iliasAddress.text.trim() && !iliasAddress.valid ? Theme.error : Theme.textFaint
+                            text: iliasAddress.text.trim() && !iliasAddress.valid
+                                ? qsTr("Keine gültige Adresse – z. B. https://ilias.uni-beispiel.de/")
+                                : qsTr("Startseite des ILIAS deiner Hochschule. Nach einer Änderung meldest du dich dort an und liest die Favoriten neu ein.")
                         }
                         RowLayout {
                             Layout.fillWidth: true
