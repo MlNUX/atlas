@@ -350,7 +350,8 @@ fn page_title(doc: &Html) -> String {
 }
 
 /// Kind and ID of an ILIAS object link: from permalinks (`target=fold_12`,
-/// `goto_…_fold_12.html`, `/go/fold/12`) or, for other links with a
+/// `goto_…_fold_12.html`, `/go/fold/12`, `goto.php/fold/12`) or, for
+/// other links with a
 /// `ref_id`, from the type icon of the list item.
 fn classify(href: &str, icon: Option<&str>) -> Option<(String, String)> {
     static PATTERNS: std::sync::OnceLock<[Regex; 3]> = std::sync::OnceLock::new();
@@ -358,7 +359,8 @@ fn classify(href: &str, icon: Option<&str>) -> Option<(String, String)> {
         [
             Regex::new(r"(?i)[?&]target=(crs|grp|sess|fold|file)_(\d+)").unwrap(),
             Regex::new(r"(?i)goto_[^/?#]*?_(crs|grp|sess|fold|file)_(\d+)").unwrap(),
-            Regex::new(r"(?i)/go/(crs|grp|sess|fold|file)/(\d+)").unwrap(),
+            // `/go/crs/12` and, from ILIAS 9 on, `goto.php/crs/12`.
+            Regex::new(r"(?i)/go(?:to\.php)?/(crs|grp|sess|fold|file)/(\d+)").unwrap(),
         ]
     });
     let decoded = percent_decode(href);
@@ -418,8 +420,8 @@ fn clean(text: &str) -> String {
 fn in_navigation(a: ElementRef) -> bool {
     a.ancestors().filter_map(ElementRef::wrap).any(|e| {
         let el = e.value();
+        // (Not `#mainspacekeeper`: in ILIAS it holds the whole content.)
         matches!(el.name(), "nav" | "header")
-            || el.id() == Some("mainspacekeeper")
             || el
                 .classes()
                 .any(|c| matches!(c, "breadcrumb" | "il-breadcrumbs" | "ilTabs" | "il-maincontrols" | "ilLocator"))
@@ -689,6 +691,9 @@ pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec
         };
         let found = objects(&html, &at);
         trace(&format!("  Dashboard: {} (Kopie: {})", summary(&found), dump(&html, &at)));
+        if !found.iter().any(|o| o.kind == "crs" || o.kind == "grp") {
+            trace(&format!("    keine Kurse/Gruppen: {}", explain(&html, &at)));
+        }
         for o in found {
             if (o.kind == "crs" || o.kind == "grp") && seen.insert(o.key()) {
                 courses.push(o);
@@ -806,6 +811,49 @@ pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec
         build(c, &mut w);
     }
     Ok(courses)
+}
+
+/// Why a page yields no objects (for the log): which part of the page was
+/// read, how many links it has and why they were left out, with examples.
+pub fn explain(html: &str, page: &Url) -> String {
+    let doc = Html::parse_document(html);
+    let main = Selector::parse("#il_center_col, main, [role=main]").unwrap();
+    let links = Selector::parse("a[href]").unwrap();
+    let icon_sel = Selector::parse(r#"img[src*="icon_"]"#).unwrap();
+    let (root, part) = match doc.select(&main).next() {
+        Some(e) => {
+            (e, format!("<{}{}>", e.value().name(), e.value().id().map(|i| format!(" id={i}")).unwrap_or_default()))
+        }
+        None => (doc.root_element(), "ganze Seite".to_owned()),
+    };
+    let (mut total, mut nav, mut foreign, mut unknown) = (0, 0, 0, Vec::new());
+    for a in root.select(&links) {
+        total += 1;
+        if in_navigation(a) {
+            nav += 1;
+            continue;
+        }
+        let Some(href) = a.value().attr("href").and_then(|h| page.join(h).ok()) else { continue };
+        if href.host_str() != page.host_str() {
+            foreign += 1;
+            continue;
+        }
+        let icon = list_item(a).and_then(|i| i.select(&icon_sel).next()).and_then(|i| i.value().attr("src"));
+        if classify(href.as_str(), icon).is_none() {
+            let shown = format!("{}{}", href.path(), href.query().map(|q| format!("?{q}")).unwrap_or_default());
+            unknown.push(shown.chars().take(110).collect::<String>());
+        }
+    }
+    let all = doc.select(&links).count();
+    let mut examples = unknown.clone();
+    examples.sort();
+    examples.dedup();
+    examples.truncate(12);
+    format!(
+        "gelesen: {part} · {total} von {all} Links · {nav} in Navigation · {foreign} zu anderen Rechnern · {} nicht erkannt, z. B.: {}",
+        unknown.len(),
+        examples.join("  |  ")
+    )
 }
 
 /// What was found on a page, by kind (for the log).
@@ -1082,6 +1130,31 @@ mod tests {
             });
             Mock { base, version }
         }
+    }
+
+    #[test]
+    fn ilias9_dashboard_inside_mainspacekeeper() {
+        let page = Url::parse("https://ilias.example/ilias.php?baseClass=ilmembershipoverviewgui").unwrap();
+        let html = r#"<html><body><div id="mainspacekeeper"><main class="il-layout-page-content">
+            <div class="il-item il-std-item"><div class="il-item-icon"><img class="icon crs medium" src="./templates/default/images/standard/icon_crs.svg"></div>
+              <h4 class="il-item-title"><a href="https://ilias.example/goto.php/crs/2512345">Lineare Algebra</a></h4>
+              <div class="il-item-properties"><span class="il-item-property-value">WS 26/27</span></div></div>
+            <div class="il-item il-std-item"><img class="icon grp medium" src="./templates/default/images/standard/icon_grp.svg">
+              <h4 class="il-item-title"><a href="ilias.php?baseClass=ilrepositorygui&amp;ref_id=777">Übungsgruppe 4</a></h4></div>
+            </main></div></body></html>"#;
+        let found = objects(html, &page);
+        let keys: Vec<_> = found.iter().map(|o| (o.key(), o.name.as_str())).collect();
+        assert_eq!(keys, [("crs2512345".into(), "Lineare Algebra"), ("grp777".into(), "Übungsgruppe 4")]);
+        assert_eq!(found[0].info, "WS 26/27");
+        let why = explain(
+            "<html><body><main><a href='/ilias.php?cmdClass=x'>a</a><nav><a href='/n'>n</a></nav></main></body></html>",
+            &page,
+        );
+        assert!(
+            why.contains("gelesen: <main>") && why.contains("2 von 2 Links") && why.contains("1 in Navigation"),
+            "{why}"
+        );
+        assert!(why.contains("/ilias.php?cmdClass=x"), "{why}");
     }
 
     #[test]

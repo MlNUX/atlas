@@ -96,7 +96,7 @@ def page(title, items):
            '<ol class="breadcrumb"><li><a href="/ilias.php?baseClass=ilDashboardGUI">Dashboard</a></li>'
            '<li><a href="/goto.php?target=crs_100">Höhere Mathematik I</a></li></ol>')
     body = "".join(items)
-    return f'<!doctype html><html><head><meta charset="utf-8"><title>{title}</title></head><body>{nav}<div id="il_center_col"><h1>{title}</h1>{body}</div></body></html>'
+    return f'<!doctype html><html><head><meta charset="utf-8"><title>{title}</title></head><body>{nav}<div id="mainspacekeeper"><div id="il_center_col"><h1>{title}</h1>{body}</div></div></body></html>'
 
 
 class Handler(BaseHTTPRequestHandler):
