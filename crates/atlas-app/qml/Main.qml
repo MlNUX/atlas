@@ -155,7 +155,7 @@ ApplicationWindow {
     /// Actions of the universal bar (Ctrl+P, ">" for actions only).
     function paletteActions() {
         const current = editor.activeTab && editor.activeTab.path && !editor.activeTab.path.startsWith("terminal:")
-            && !editor.activeTab.path.startsWith("calendar:") ? editor.activeTab.path : ""
+            && !editor.activeTab.path.startsWith("calendar:") && !editor.activeTab.path.startsWith("ilias:") ? editor.activeTab.path : ""
         const dir = current ? fileActions.ops.parentDir(current) : app.projectRoot
         const list = [
             { name: qsTr("Session speichern"), hint: app.activeSessionName, run: () => { app.requestSaveAll(); saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) } },
@@ -204,7 +204,7 @@ ApplicationWindow {
             if (app.atlasDir && app.exists(current))
                 list.push({ name: qsTr("Verknüpfen mit …"), hint: app.fileName(current), run: () => app.requestRelate(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
-            if (app.fileKind(current) === "markdown")
+            if (app.hasChecklist(current))
                 list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
         }
         let sessions = []
@@ -290,6 +290,11 @@ ApplicationWindow {
     // operations in Atlas (bundled, it is re-read in the background).
     Timer { id: fileListTimer; interval: 300; onTriggered: app.refreshFileList() }
 
+    // Natural sorting switched in the settings: the tree sorts again.
+    Connections {
+        target: app
+        function onNaturalSortChanged() { treeModel.refresh() }
+    }
     ProjectTreeModel {
         id: treeModel
         root: app.projectRoot
@@ -495,6 +500,12 @@ ApplicationWindow {
     }
 
     // Test hooks (--screenshot / --quit-after).
+    // For "md-sync": line 30 of the editor in the middle, once laid out.
+    Timer {
+        id: syncShot
+        interval: 600
+        onTriggered: { const e = editor.activeTab.viewerItem.editorItem; e.scrollToExactLine(30, Math.round(e.viewHeight / 2)) }
+    }
     // `--screenshot-dialog NAME`: a dialog for design checks (fixed list).
     Timer {
         id: dialogTimer
@@ -509,7 +520,15 @@ ApplicationWindow {
                 "graph": () => inspector.graphWindow.show(file),
                 "actions": () => { window.inspectorWidth = 300; inspector.tab = 3 },
                 "md-edit": () => { if (editor.activeTab && editor.activeTab.viewerItem) editor.activeTab.viewerItem.mode = "split" },
+                "md-sync": () => {
+                    const v = editor.activeTab && editor.activeTab.viewerItem
+                    if (!v) return
+                    v.mode = "split"
+                    syncShot.start()
+                },
                 "html": () => fileActions.renderHtml(file),
+                "md-pdf": () => fileActions.markdownToPdf(file),
+                "pomodoro": () => { inspector.pomodoro.startPause(); inspector.pomodoro.endsAt = Date.now() + (17 * 60 + 42) * 1000; inspector.pomodoro.rounds = 2 },
                 "relate": () => app.requestRelate(file),
                 "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
                 "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },
@@ -564,7 +583,7 @@ ApplicationWindow {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
                 searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
                 sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, relateDialog: relateDialog, settingsDialog: settingsDialog,
-                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector,
+                projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector, placesList: placesList,
             })
             item.start()
         }
@@ -850,13 +869,16 @@ ApplicationWindow {
                     ColumnLayout {
                         spacing: 6
                         PlacesList {
+                            id: placesList
+                            // ILIAS as the last place (if switched on).
+                            readonly property bool ilias: { try { return JSON.parse(app.iliasConfig).show_in_places !== false } catch (e) { return true } }
                             Layout.fillWidth: true
-                            names: app.placeNames
-                            paths: app.placePaths
-                            icons: app.placeIcons
+                            names: ilias ? app.placeNames.concat(["ILIAS"]) : app.placeNames
+                            paths: ilias ? app.placePaths.concat(["ilias:"]) : app.placePaths
+                            icons: ilias ? app.placeIcons.concat(["school"]) : app.placeIcons
                             fixedCount: app.fixedPlaceCount
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
-                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
+                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
                         }
                         ProjectTree {
                             id: projectTree
@@ -868,7 +890,7 @@ ApplicationWindow {
                             model: treeModel
                             projectName: app.projectName
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
-                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "preview")
+                            onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
                             onOpenProjectRequested: folderDialog.askProject()
                             onPinRequested: (path) => editor.open(path, 0, "tab")
                         }

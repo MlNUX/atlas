@@ -165,6 +165,8 @@ Rectangle {
                 if (link.external) Qt.openUrlExternally(link.external)
                 else if (link.path && !link.broken) root.linkActivated(link.path, link.line || link.page, link.newTab, link.annot ? { annot: link.annot } : {})
             }
+            // Never stays black after a workspace switch (#2).
+            WebRepaint { id: webRepaint }
         }
     }
 }

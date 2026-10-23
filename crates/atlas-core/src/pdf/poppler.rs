@@ -29,6 +29,13 @@ impl PopplerBackend {
     }
 }
 
+/// Page `index` (0-based) if the document has it. poppler_document_get_page
+/// itself returns NULL for others but logs a critical warning each time –
+/// e.g. while a viewer still asks for pages of a PDF that got shorter.
+fn page_at(doc: &poppler::Document, index: i64) -> Option<poppler::Page> {
+    (0..i64::from(doc.n_pages())).contains(&index).then(|| doc.page(index as i32)).flatten()
+}
+
 impl Backend for PopplerBackend {
     fn open(&mut self, path: &Path) -> Result<Vec<(f64, f64)>> {
         self.docs.remove(path);
@@ -38,7 +45,7 @@ impl Backend for PopplerBackend {
 
     fn render(&mut self, path: &Path, page: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)> {
         let doc = self.doc(path)?;
-        let page = doc.page(page as i32).context("page out of range")?;
+        let page = page_at(doc, page as i64).context("page out of range")?;
         let size = page.size();
         let height_px = scaled_height(size, width_px);
         let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, width_px as i32, height_px as i32)?;
@@ -61,7 +68,7 @@ impl Backend for PopplerBackend {
 
     fn text(&mut self, path: &Path, page: usize) -> Result<String> {
         let doc = self.doc(path)?;
-        let page = doc.page(page as i32).context("page out of range")?;
+        let page = page_at(doc, page as i64).context("page out of range")?;
         Ok(page.text().map(|t| t.to_string()).unwrap_or_default())
     }
 
@@ -267,7 +274,7 @@ impl PopplerBackend {
         // precise enough for highlights.
         const SCALE: f64 = 4.0;
         let doc = self.doc(path)?;
-        let page = doc.page(page as i32).context("page out of range")?;
+        let page = page_at(doc, page as i64).context("page out of range")?;
         let mut rect = poppler::Rectangle::new();
         rect.set_x1(area[0]);
         rect.set_y1(area[1]);
@@ -366,7 +373,7 @@ pub(super) fn export_annotated(
     let doc_ptr: *mut ffi::PopplerDocument = doc.to_glib_none().0;
     let mut added = 0;
     for a in annotations {
-        let Some(page) = doc.page(a.page as i32 - 1) else { continue };
+        let Some(page) = page_at(&doc, i64::from(a.page) - 1) else { continue };
         let height = page.size().1;
         let page_ptr: *mut ffi::PopplerPage = page.to_glib_none().0;
         // Top-left points to PDF coordinates (origin bottom left).

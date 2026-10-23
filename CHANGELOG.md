@@ -10,6 +10,93 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+## [1.1.1] – 2026-10-23
+
+### Neu
+- **ILIAS** (z. B. KIT) unter „Orte“: deine Favoriten vom Dashboard als
+  Ordner mit allen Unterordnern, Sitzungen und Dateien. Ein Klick fragt
+  nach dem Zielordner (vorgeschlagen: wo die Datei schon lag, sonst der
+  zuletzt gewählte), lädt die Datei direkt dorthin und öffnet sie; ein
+  vergebener Name bekommt eine Nummer. Zeigt ILIAS eine neue Version, steht
+  „neue Version“ daneben und der Klick lädt sie neu. Anmelden im
+  eingebauten Fenster der Hochschule – Atlas merkt sich nur die Sitzung,
+  nie das Passwort. In den Einstellungen: die Adresse des ILIAS deiner
+  Hochschule (geprüft, `https://` wird ergänzt), der vorgeschlagene
+  Ordner und Abmelden. Ein Protokoll zur Fehlersuche öffnet sich aus der
+  ILIAS-Leiste (nur Cookie-Namen, nie Werte).
+- Einstellungen: **Kalender für neue Termine** direkt wählbar (bisher nur
+  über den Stern im Verbindungsdialog).
+- Kontextleiste: **Lernzeit** – ein Pomodoro-Timer fest am unteren Rand
+  (auf allen Reitern) mit Ring, Runden und Start/Pause, Neu beginnen,
+  Überspringen; 25 Min. lernen, 5 Min. Pause, nach vier Runden 15 Min.,
+  Längen einstellbar. Oben in der „Übersicht“ (so heißt der erste Reiter
+  jetzt) **Heute** mit den Terminen, Blöcken und Fristen des Tages und
+  **Aufgaben** zum Abhaken und Anlegen. Alle drei lassen sich in den
+  Einstellungen ein- und ausschalten.
+- Markdown → PDF eingebaut („Als PDF exportieren“ im Kontextmenü und in der
+  Kontextleiste): gesetzt wie die Vorschau mit Formeln, Diagrammen und
+  Code, auf hellem A4-Papier – ohne pandoc oder LaTeX.
+- TeX → PDF („Zu PDF übersetzen“ für .tex-Dateien): latexmk, sonst
+  pdflatex, im Terminal; Fehler bleiben sichtbar.
+- PDF: Pfeiltasten – hoch/runter scrollen, links/rechts blättern.
+- PDF-Anmerkungen rückgängig machen und wiederholen: Strg+Z,
+  Strg+Umschalt+Z oder Strg+Y und Knöpfe in der PDF-Leiste – für Zeichnen,
+  Markieren, Kommentare, Farben, Lesezeichen und Löschen
+  ([#6](https://github.com/MlNUX/atlas/issues/6)).
+- Natürliche Sortierung in Dateiansicht und Projektbaum: „2.pdf“ vor
+  „10.pdf“; schaltbar in den Einstellungen. Die zuletzt gewählte
+  Sortierung gilt für neue Ordneransichten
+  ([#5](https://github.com/MlNUX/atlas/issues/5)).
+- Schwung beim Touchpad-Scrollen: nach schnellem Wischen läuft die Ansicht
+  weiter und bremst ab (PDFs, Editor, Projektbaum, Ordner); Finger
+  auflegen hält sie an (Wayland-Haltegeste, z. B. Hyprland, KDE, GNOME);
+  schaltbar ([#4](https://github.com/MlNUX/atlas/issues/4)).
+- PDF-Radierer: neben dem Stift; wer damit über Striche fährt, löscht sie
+  ganz. Ein Radier-Zug lässt sich mit einem Strg+Z zurückholen.
+
+### Behoben
+- Google-Kalender: neu angelegte Termine erschienen doppelt. Google legt
+  einen neuen Termin unter eigenem Namen ab und schickt kein ETag zurück;
+  die alte Kopie blieb im Cache. Jetzt gibt es je Termin nur einen Eintrag,
+  vorhandene Doppelte verschwinden beim nächsten Abgleich.
+- Gelöschte Dateien: ihr Tab schließt sich – beim Löschen in Atlas sofort,
+  bei Dateien, die außerhalb gelöscht wurden, nach höchstens zwei Sekunden
+  (Tabs mit ungespeicherten Änderungen bleiben offen).
+- „Checkliste als Aufgaben übernehmen“ erscheint nur noch bei
+  Markdown-Dateien mit Checkliste.
+- Markdown-Vorschau blieb nach einem Workspace-Wechsel schwarz, bis man
+  scrollte. Jetzt zeigt sie beim Zurückkommen sofort ihren letzten Inhalt
+  (Momentaufnahme beim Verlassen), bis Chromium neu gezeichnet hat – ohne
+  schwarzes Aufblitzen ([#2](https://github.com/MlNUX/atlas/issues/2)).
+- Markdown-Vorschau zeigt keine „#“ mehr vor Überschriften
+  ([#3](https://github.com/MlNUX/atlas/issues/3)).
+- Markdown-Split: Scrollen in der Vorschau bewegt jetzt auch den Editor,
+  die Vorschau läuft im Gleichschritt mit (ohne Nachziehen und Ruckeln),
+  und in der Mitte der Ansicht steht derselbe Inhalt links und rechts auf
+  gleicher Höhe – auch direkt nach dem Öffnen und nach Größenänderungen.
+  Neurendern beim Tippen bewegt den Editor nicht mehr
+  ([#7](https://github.com/MlNUX/atlas/issues/7)).
+- PDF-Dunkelmodus ruckelte beim Ändern der Fenstergröße: Die Umkehrung
+  wird jetzt einmal beim Rendern gemacht statt bei jedem Neuzeichnen.
+- Die Beispielaktion „Markdown als PDF exportieren“ (pandoc) scheiterte
+  ohne LaTeX-Installation; die Vorlage für neue Aktionsdateien nutzt
+  stattdessen Word (pandoc → .docx), PDF gibt es eingebaut.
+- Einstellungsfenster scrollt auf kleinen Bildschirmen.
+- Ordneransicht: PDF-Vorschaubilder zeigen die erste Seite jetzt über
+  Atlas' eigene PDF-Darstellung. Qt's PDF-Bildplugin scheiterte an vielen
+  Dateien („Error decoding … Dieser Typ von Bilddaten wird nicht
+  unterstützt“) und zeigte dann nur das Symbol.
+- Keine „Poppler-CRITICAL … poppler_document_get_page“-Meldungen mehr im
+  Terminal, wenn nach einer Seite gefragt wird, die die PDF (nicht mehr)
+  hat – z. B. nachdem sie kürzer neu erzeugt wurde.
+
+### Geändert
+- ILIAS steht als letzter Eintrag unter „Orte“.
+- Keine Vorschau-Tabs mehr: ein einfacher Klick auf eine Datei öffnet sie
+  als normalen Tab, der beim nächsten Klick nicht ersetzt wird (bisher erst
+  nach Doppelklick). Nur der temporäre Split der Schnellansicht wechselt
+  seinen Inhalt weiterhin.
+
 ## [1.1.0] – 2026-10-22
 
 Graph fürs ganze Projekt, Verknüpfungen und Ordner-Knoten, eine Session je
@@ -128,6 +215,7 @@ Erste öffentliche Version.
 - Nix-Flake mit Paket, App, Overlay und Entwicklungsumgebung.
 - PKGBUILD für das AUR (`atlas-workspace`).
 
-[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.0...HEAD
+[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/MlNUX/atlas/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/MlNUX/atlas/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/MlNUX/atlas/releases/tag/v1.0.0

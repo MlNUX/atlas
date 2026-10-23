@@ -7,14 +7,15 @@
   --muted: #8a97ad; --accent: #3d8bfd; --link: #5aa2ff; --quote: #e0b33a; --error: #f2575f;
 }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
+/* No automatic scroll corrections when content grows (images, diagrams):
+   they were reported as scrolling and moved the editor in the split view. */
+html { overflow-anchor: none; }
 body { font: 15px/1.65 system-ui, "Inter", "Noto Sans", sans-serif; }
 main { max-width: 860px; margin: 0 auto; padding: 24px 32px 50vh; }
 h1, h2, h3, h4, h5, h6 { color: var(--strong); line-height: 1.25; margin: 1.5em 0 0.6em; font-weight: 600; }
 h1 { font-size: 1.75em; }
 h2 { font-size: 1.35em; }
-h1::before, h2::before { color: var(--accent); font-weight: 500; margin-right: 0.45em; }
-h1::before { content: "#"; }
-h2::before { content: "##"; }
+h1 { padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
 main > h1:first-child, .atlas-tags + h1 { margin-top: 0.4em; }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -86,3 +87,23 @@ a.line-marker { display: block; height: 0; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #22304a; border-radius: 5px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* Export as PDF (Markdown → PDF): light paper, no editor helpers. Code
+   blocks keep their dark look. */
+@page { size: A4; margin: 0; }
+table.print-frame { display: table; border-collapse: collapse; width: 100%; margin: 0; border: 0; }
+table.print-frame > * > tr > td { padding: 0; border: 0; background: none; }
+.page-space { height: 16mm; }
+@media print {
+  :root {
+    color-scheme: light;
+    --bg: #ffffff; --raised: #f1f3f6; --border: #d5dae2; --text: #1f2430; --strong: #0b0f17;
+    --muted: #5b6474; --accent: #2a6fd6; --link: #1f5fbf;
+  }
+  main { max-width: none; padding: 0 18mm; }
+  h1, h2, h3 { break-after: avoid; }
+  pre, blockquote, table:not(.print-frame), img, pre.mermaid { break-inside: avoid; }
+  a.broken::after { content: none; }
+  input.task { -webkit-print-color-adjust: exact; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

@@ -44,10 +44,26 @@ pub mod ffi {
         unsafe fn save_window_image(window: *mut QObject, path: &QString) -> bool;
         #[cxx_name = "sendWheel"]
         unsafe fn send_wheel(window: *mut QObject, x: f64, y: f64, delta: i32, flags: i32);
+        #[cxx_name = "sendKey"]
+        unsafe fn send_key(window: *mut QObject, key: i32, modifiers: i32);
+        #[cxx_name = "watchTouchpadHold"]
+        fn watch_touchpad_hold(on_hold: fn()) -> bool;
         #[cxx_name = "setOwner"]
         unsafe fn set_owner(object: *mut QObject, owner: *mut QObject);
         #[cxx_name = "imageFormats"]
         fn image_formats() -> QStringList;
+        #[cxx_name = "watchWebCookies"]
+        unsafe fn watch_web_cookies(profile: *mut QObject) -> bool;
+        #[cxx_name = "webProfilePath"]
+        fn web_profile_path() -> QString;
+        #[cxx_name = "webCookieHeader"]
+        fn web_cookie_header(url: &QString) -> QString;
+        #[cxx_name = "webCookieSummary"]
+        fn web_cookie_summary() -> QString;
+        #[cxx_name = "webUserAgent"]
+        fn web_user_agent() -> QString;
+        #[cxx_name = "clearWebCookies"]
+        fn clear_web_cookies();
         #[cxx_name = "postMouse"]
         unsafe fn post_mouse(window: *mut QObject, kind: i32, x: f64, y: f64, delay_ms: i32);
     }

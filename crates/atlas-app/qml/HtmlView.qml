@@ -159,6 +159,8 @@ Rectangle {
             Keys.onPressed: (event) => {
                 if (event.key === Qt.Key_F5) { web.reload(); event.accepted = true }
             }
+            // Never stays black after a workspace switch (#2).
+            WebRepaint { id: webRepaint }
         }
     }
 }

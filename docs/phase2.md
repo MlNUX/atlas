@@ -856,3 +856,211 @@ Umbenennung.
 Tests: Kern-Test mit einer von cairo erzeugten PDF (Web-Link und Sprung
 mit Position); Selbsttest mit Link-Annotationen in `zweite.pdf` (Sprung
 und URI, Fläche, Sprung zur Zielseite).
+
+### Nachtrag – Kontextleiste mit Modulen, PDF-Export, Pfeiltasten
+
+- **Module der Kontextleiste** (`ContextModules.qml`, oben in der
+  „Übersicht“): *Lernzeit* – Pomodoro mit Endzeitpunkt statt
+  Sekundenzähler (genau auch bei ruckelnder Oberfläche), vier Punkte für die
+  Runden, nach der vierten eine lange Pause; *Demnächst* – Vorkommen des
+  Kalenders und Fristen aus Notizen der nächsten sieben Tage, ohne
+  erledigte und vergangene, Klick öffnet die Woche mit dem Eintrag;
+  *Aufgaben* – noch nicht eingeplante, abhaken setzt den Status „done“,
+  Eingabefeld legt neue an. Schalter und Längen unter Einstellungen →
+  Kontextleiste (`[context]`); die Einstellungen scrollen jetzt, wenn das
+  Fenster klein ist.
+- **Markdown → PDF** (`MarkdownPdfExport.qml`): eine unsichtbare
+  Vorschauseite (durchsichtig neben dem Fenster – verborgene Seiten legt
+  Chromium nicht an) bekommt das HTML der Notiz, wartet auf Mermaid und
+  Schriften (`atlas.busy()`) und druckt mit `printToPdf`. Druckstil: helles
+  Papier, keine `#`-Marken. Qt druckt ohne Seitenränder und übergeht
+  `@page`; eine Tabelle, deren leerer Kopf und Fuß sich auf jeder Seite
+  wiederholen, ergibt die Ränder oben und unten. Gefunden: Chromium schreibt
+  nicht in Pfade mit `/../`.
+- Die alte Beispielaktion mit pandoc braucht `pdflatex`; fehlt es (z. B.
+  NixOS ohne TeX Live), bricht pandoc ab – vermutlich der gemeldete Fehler.
+- **TeX → PDF**: `latexmk -pdf -interaction=nonstopmode -file-line-error`,
+  ohne latexmk `pdflatex`, im Ordner der Datei im Terminal; ohne beides eine
+  klare Meldung.
+- **Pfeiltasten in PDFs:** hoch/runter 80 px, links/rechts blättern (bei
+  breiter Seite sie seitlich verschieben); die Seitenliste nimmt die Tasten
+  nicht mehr selbst.
+- **Dunkelmodus ohne Ruckeln:** Die Seite wird beim Rendern umgekehrt
+  (`max(255 − v, 0x26)` per Tabelle, auf dem Render-Thread); der Painter
+  kehrt nur noch übergangsweise um, bis nach dem Umschalten die neue Seite
+  da ist. Vorher liefen bei jeder Größenänderung zwei Füll-Durchgänge über
+  jede sichtbare Seite.
+
+Selbsttest: Pfeiltasten (über `sendKey`), Export einer Notiz als PDF,
+Module (Termin von morgen, neue und erledigte Aufgabe, Kalendermodul aus,
+Pomodoro-Phasenwechsel). TeX → PDF nur ohne TeX-Installation geprüft (die
+Meldung); latexmk/pdflatex selbst gibt es in der Testumgebung nicht.
+
+### Nachtrag – Lernzeit unten, Kalender nur für heute
+
+- Der Pomodoro-Timer ist eine eigene Komponente (`PomodoroTimer.qml`) am
+  unteren Rand der Kontextleiste, außerhalb der Reiter, damit er beim
+  Wechsel sichtbar bleibt und weiterläuft. Gestaltung: Ring mit dem
+  Fortschritt der Phase (Shape, Bogen), Zeit in Monospace, Phase und
+  Runden-Punkte, runder Start/Pause-Knopf in der Phasenfarbe (blau beim
+  Lernen, grün in der Pause), daneben Neu beginnen und Überspringen. Der
+  Hintergrund wird beim Laufen kräftiger.
+- Das Kalendermodul heißt „Heute“ und zeigt nur den Tag: ganztägige
+  Einträge zuerst, dann nach Uhrzeit mit Von–Bis; vorbei ist gedimmt, um
+  Mitternacht wechselt der Tag.
+
+Selbsttest: Termin von heute erscheint, der von morgen nicht; der Timer
+liegt auf einem anderen Reiter an der Unterkante; abschaltbar.
+
+### Nachtrag – Issues #2 bis #7
+
+- **#2 Schwarze Vorschau:** Nach einem Workspace-Wechsel (Hyprland) bekam
+  Qt von Chromium kein neues Bild, bis gescrollt wurde. `WebRepaint.qml`
+  in jeder Web-Ansicht fordert beim Aktivieren oder Zeigen des Fensters und
+  beim Wiederzeigen der Ansicht ein Bild an (kurze Deckkraft-Änderung).
+- **#3 `#` vor Überschriften:** war Absicht (CSS-`::before`), störte aber;
+  entfernt, h1 bekommt eine feine Linie.
+- **#5 Natürliche Sortierung:** `listing::compare_names` vergleicht
+  Ziffernfolgen nach Wert (beliebig lang, führende Nullen nachrangig), für
+  Dateiansicht und Projektbaum; prozessweiter Schalter aus `[files]`.
+  Die zuletzt gewählte Sortierung wird gespeichert und von neuen
+  Ordneransichten übernommen (Tabs aus der Session behalten ihre).
+- **#6 Rückgängig für PDF-Anmerkungen:** alle Änderungen laufen über
+  `addAnnot`/`updateAnnot`/`removeAnnot`; jeder Schritt speichert
+  Schnappschüsse (Anmerkung samt Gruppe, `PdfAnnotations.snapshot`) vor und
+  nach der Änderung, `restore` setzt sie mit gleicher ID zurück.
+  Markierungen über mehrere Seiten und Tippen in einem Kommentar (1,5 s)
+  sind je ein Schritt; bis zu 200 Schritte je PDF-Tab.
+- **#7 Split-Scrollen:** beide Seiten tauschen die oberste Zeile mit
+  Bruchteil aus (zwischen zwei Blockmarken interpoliert). Die Vorschau
+  gleitet pro Frame ein Stück zum Ziel; eigene Bewegungen meldet sie nicht
+  zurück, und Editorbewegungen kurz nach einer Vorschau-Meldung schickt
+  Atlas nicht zurück – keine Rückkopplung.
+- **#4 Touchpad-Schwung:** `TouchpadFling.qml` beobachtet die
+  Radereignisse (`blocking: false`, die Liste scrollt wie bisher), misst bei
+  Pixel-Schritten ohne ganze Raste die Geschwindigkeit der letzten 100 ms
+  und ruft nach 70 ms Ruhe `flick()`; ein neues Wischen bricht den Schwung
+  ab. Im PDF meldet der eigene Rad-Handler die Schritte. Gefunden: Ein
+  nicht angenommenes Ereignis eines WheelHandlers erreicht die Liste
+  darunter nicht – nur `blocking: false` lässt sie weiter scrollen.
+
+Selbsttest: neue Prüfungen für alle sechs Issues (Vorschau-Neuzeichnen,
+Überschriften ohne `#`, Sortierung an/aus und gemerkt, Rückgängig per
+Tastatur und Funktion, Scroll-Sync in beide Richtungen, Schwung im PDF und
+im Editor, Mausrad im Editor unverändert).
+
+### Nachtrag – Radierer, Schwung anhalten
+
+- **Radierer** (Werkzeug `erase` neben dem Stift): löscht ganze Striche.
+  Treffer: Abstand zwischen dem Weg des Radierers (von der letzten zur
+  aktuellen Mausposition) und jedem Abschnitt des Strichs, mit echtem
+  Schnitt-Test – fährt man quer über eine Linie, ohne einen ihrer Punkte zu
+  berühren, trifft er trotzdem. Radius 6 pt plus halbe Strichbreite; ein
+  Kreis zeigt ihn statt des Mauszeigers. Ein Zug ist ein Rückgängig-Schritt:
+  Schritte bestehen jetzt aus mehreren Teilen (`parts`).
+- **Schwung anhalten:** Qt meldet Touchpad-Scrollen nur, solange sich die
+  Finger bewegen; Auflegen ohne Bewegung kam nie an. libinput erkennt das
+  als Haltegeste, die Compositoren über `zwp_pointer_gestures_v1` Version 3
+  weitergeben – Qt 6.11 bindet davon nur Wischen und Zoomen.
+  `cpp/touchpad_hold.cpp` holt sich über
+  `QNativeInterface::QWaylandApplication` Display und Zeiger, bindet das
+  Protokoll auf einer eigenen Warteschlange (die Schnittstellen sind von
+  Hand beschrieben, ohne wayland-scanner) und meldet `hold begin` als
+  Signal `touchpadHeld`; jede Schwung-Ebene hält dann an. Unter X11 oder
+  ohne Version 3 bleibt es aus. Neue Abhängigkeit: libwayland-client
+  (ohnehin über Qt Wayland vorhanden). Gegen Sway (headless) geprüft: die
+  Geste wird angebunden; eine echte Fingerberührung gab es dort nicht.
+- **Schneller:** Schwung mit 1,6-facher Wischgeschwindigkeit; die
+  Höchstgeschwindigkeit wird nur für diesen Schwung angehoben, Mausräder
+  bleiben unverändert.
+
+### Nachtrag – Split-Scrollen nachgebessert (#7)
+
+- **Ruckeln:** Die Vorschau zog dem Editor mit einer eigenen Glättung nach;
+  der Editor scrollt aber schon animiert – doppelt geglättet hing sie
+  hinterher und holte ruckartig auf. Jetzt setzt sie ihre Position in jedem
+  Frame direkt. Dazu kamen zwei Rückkopplungen: Beim Neurendern stellte die
+  Vorschau ihre Scrollposition wieder her, und Chromiums Scroll Anchoring
+  verschob sie bei wachsendem Inhalt – beides galt als Scrollen durch den
+  Nutzer und zog den Editor mit. Das Wiederherstellen zählt jetzt als
+  eigene Bewegung, Scroll Anchoring ist aus (`overflow-anchor: none`).
+- **Gleiche Höhe:** Gemessen wurde an den Zeilenmarken vor jedem Block,
+  also über dessen Außenabstand, und mit 8 px Versatz – der Text stand
+  rechts tiefer. Jetzt zählt die Oberkante des Blocks selbst. Ausgerichtet
+  wird in der Mitte der Ansicht, wo man liest: Die Vorschau setzt größer
+  als der Editor, ganz gleich hoch über die ganze Höhe geht nicht; so
+  verteilt sich der Unterschied nach oben und unten. Neu abgeglichen wird
+  auch nach dem Öffnen im geteilten Modus, nach jedem Rendern und nach
+  Größenänderungen.
+
+### Nachtrag – ILIAS-Ansicht
+
+- **Was:** „ILIAS“ unter „Orte“ (Tab `ilias:`) zeigt die Favoriten des
+  Dashboards (`cmd=jumpToSelectedItems`) als Ordner, darin Ordner, Gruppen,
+  Sitzungen und Dateien
+  (nur die Liste, nichts wird vorab geladen). Ein Klick auf eine Datei fragt
+  jedes Mal nach dem Zielordner – vorgeschlagen wird der, in dem sie schon
+  lag, sonst der zuletzt gewählte (`[ilias] download_dir`) –, lädt sie
+  direkt dorthin, ohne die Ordnerstruktur aus ILIAS (ein vergebener Name
+  wird zu `Name (2).pdf`), und öffnet sie. Eine aktuelle, schon geladene
+  Datei öffnet ohne Nachfrage. GET-Abrufe werden bei Verbindungsfehlern
+  (vom Server geschlossene Keep-Alive-Verbindung) zweimal wiederholt.
+  ILIAS' Angaben zur Datei (Typ, Größe, Version, Datum) werden mit dem
+  Download gemerkt; ändern sie sich beim nächsten Einlesen, steht „neue
+  Version“ daneben, und der Klick lädt sie neu (die alte wird erst ersetzt,
+  wenn die neue vollständig ist).
+- **Anmeldung:** Die KIT-Anmeldung läuft über Shibboleth und braucht einen
+  Browser. Atlas zeigt die Seite der Hochschule in einem eigenen Fenster
+  mit einem dauerhaften Web-Profil (`atlas-ilias`); angemeldet ist man,
+  sobald eine ILIAS-Seite auf die Abmeldung verweist (gleich in welcher
+  Schreibweise – ab ILIAS 8 heißt sie `cmd=doLogout`) oder keine
+  Anmeldeseite ist (weder `login.php`/Shibboleth noch Passwortfeld noch
+  Anmelde-Link). Erkennt Atlas das nicht, schließt „Angemeldet – Kurse
+  zeigen“ das Fenster von Hand. Nimmt ILIAS die Sitzung danach nicht an,
+  bleibt das Fenster offen, statt sich im Kreis zu drehen. Die Abrufe
+  aus Rust senden die Browserkennung des Profils mit. Weiterleitungen
+  folgt der Client selbst: mit den Cookies auf jedem Schritt (ureq ließ
+  den von Hand gesetzten `Cookie`-Kopf beim Weiterleiten fallen), nur an
+  den ILIAS-Rechner, und neue Cookies von ILIAS gelten für die weiteren
+  Abrufe. Nimmt ILIAS die Sitzung direkt nach der Anmeldung nicht an,
+  steht das als Fehler da, statt das Fenster erneut zu öffnen. Atlas sieht und speichert das
+  Passwort nie, nur die Cookies der Sitzung liegen im Web-Profil.
+  „Abmelden“ löscht sie.
+- **Einlesen und Laden in Rust** (`atlas_core::ilias`): Die Sitzung kommt
+  aus zwei Quellen. Was das Profil seit dem Start setzt, meldet
+  `QWebEngineCookieStore` (`cpp/helpers.cpp`). Was es beim Start von der
+  Platte las – nach einem Neustart die ganze Anmeldung –, meldet Qt 6.11
+  nicht: `loadAllCookies()` reicht Chromiums Antwort an einen leeren
+  Rückruf weiter. Diese Cookies liest `profile_cookies` deshalb nur lesend
+  aus der `Cookies`-Datenbank des Profils (QtWebEngine speichert sie
+  unverschlüsselt; ist sie gesperrt, aus einer sofort gelöschten Kopie mit
+  Rechten 600). Atlas legt keine eigene Kopie der Sitzung an; die frischeren
+  gemeldeten Cookies gehen vor. Damit holt ein Thread nur die Favoriten –
+  keine andere Dashboard-Ansicht –, dann mit vier Seiten gleichzeitig jeden
+  Container darin bis Tiefe 10, jeden nur einmal, höchstens 2000 Seiten.
+  Kurse innerhalb von Kursen und Links in Seitenblöcken (Neuigkeiten,
+  Kalender: `.ilBlock`, rechte und linke Spalte) werden nicht verfolgt; das
+  Protokoll nennt je Favorit Seiten und Dateien. Objekte erkennt
+  `objects` an Permalinks (`target=fold_12`, `goto_…_fold_12.html`,
+  `/go/fold/12`, `goto.php/fold/12`), an der GUI-Klasse von
+  `ref_id`-Links (`cmdClass=ilObjFileGUI&cmd=sendfile` – so verlinkt KIT
+  Dateien – oder `ilObjFolderGUI`; Infoseiten zählen nicht), in der
+  Kachelansicht an Karten (`il-card`) oder – bei `ref_id`-Links wie Sitzungen – am Typ-Symbol
+  des Listeneintrags; Links in Navigation, Reitern und Brotkrumen zählen
+  nicht. Landet eine Seite auf einem anderen Rechner oder fehlt der
+  Abmelde-Link, ist die Sitzung abgelaufen: das Anmeldefenster öffnet sich,
+  danach geht es weiter. Downloads nehmen den Namen aus
+  `Content-Disposition` (auch `filename*`), sonst den Titel; jeder Name
+  wird zu einem sicheren Pfadteil (keine Schrägstriche, keine führenden
+  Punkte), der Pfad bleibt im Download-Ordner.
+- **Fehlersuche:** Der Knopf mit dem Dokument in der ILIAS-Leiste öffnet
+  `debug.log` (siehe [data-format.md](data-format.md)): was das
+  Anmeldefenster lud und wie es geprüft wurde, welche Cookies das Profil
+  hat (nur Namen), jede Seite mit Ziel, Titel und Anmelde-Urteil samt
+  Grund, was darauf gefunden wurde, und Downloads. Seiten, auf denen etwas
+  schiefging, liegen als HTML daneben.
+- **Tests:** `atlas-core` prüft Erkennung, Einlesen und Laden gegen einen
+  kleinen ILIAS im Test; der Smoke-Test meldet sich bei
+  `scripts/ilias-mock.py` an, liest ein, öffnet Ordner, lädt Dateien und
+  erkennt eine neue Version.
+

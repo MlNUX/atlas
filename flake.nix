@@ -83,6 +83,7 @@
           cairo
           glib
           fontconfig
+          wayland # touchpad hold gesture (stops momentum scrolling)
         ];
     in
     {

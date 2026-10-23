@@ -516,9 +516,10 @@ fn run_inner(store: &SyncStore, remote: &dyn Remote, calendars: &[String]) -> Re
             Write::Done(etag) => {
                 // Without an ETag in the answer, ask for it.
                 let etag = match (op.kind, etag) {
-                    (OpKind::Put, None) => {
-                        remote.etags(&op.calendar)?.and_then(|m| m.get(&op.href).cloned()).unwrap_or_default()
-                    }
+                    (OpKind::Put, None) => remote
+                        .etags(&op.calendar)?
+                        .and_then(|m| m.into_iter().find(|(h, _)| same_href(h, &op.href)).map(|(_, e)| e))
+                        .unwrap_or_default(),
                     (_, e) => e.unwrap_or_default(),
                 };
                 save(store, |s| {
@@ -591,13 +592,16 @@ fn run_inner(store: &SyncStore, remote: &dyn Remote, calendars: &[String]) -> Re
         let state = store.load();
         let cal = state.calendars.get(url).cloned().unwrap_or_default();
         let busy = |href: &str| state.queue.iter().any(|o| o.href == href);
+        // The cache's name for a server href (they may differ in escaping).
+        let known = |href: &str| cal.objects.keys().find(|k| same_href(k, href)).cloned();
         let changed: Vec<String> = etags
             .iter()
             .filter(|(href, etag)| {
-                let conflict = state.conflicts.iter().find(|c| c.href == **href);
+                let key = known(href).unwrap_or_else(|| (*href).clone());
+                let conflict = state.conflicts.iter().find(|c| c.href == key);
                 match conflict {
                     Some(c) => c.remote_etag.as_deref() != Some(etag.as_str()),
-                    None => !busy(href) && cal.objects.get(*href).is_none_or(|o| o.etag != **etag),
+                    None => !busy(&key) && cal.objects.get(&key).is_none_or(|o| o.etag != **etag),
                 }
             })
             .map(|(h, _)| h.clone())
@@ -606,11 +610,14 @@ fn run_inner(store: &SyncStore, remote: &dyn Remote, calendars: &[String]) -> Re
         save(store, |s| {
             let pending: Vec<String> = s.queue.iter().map(|o| o.href.clone()).collect();
             let cal = s.calendars.entry(url.clone()).or_default();
-            // Deleted on the server.
+            // Deleted on the server – or kept there under another name
+            // (Google renames new objects and sends no ETag, which left an
+            // entry without one behind: shown twice).
+            let on_server = |h: &str| etags.keys().any(|e| same_href(e, h));
             let gone: Vec<String> = cal
                 .objects
                 .iter()
-                .filter(|(h, o)| !o.etag.is_empty() && !etags.contains_key(*h) && !pending.contains(h))
+                .filter(|(h, _)| !on_server(h) && !pending.contains(h))
                 .map(|(h, _)| h.clone())
                 .collect();
             for h in &gone {
@@ -637,7 +644,13 @@ fn run_inner(store: &SyncStore, remote: &dyn Remote, calendars: &[String]) -> Re
                     continue;
                 }
                 let uid = parse_object(&o.data, url).first().map(|e| e.uid.clone()).unwrap_or_default();
-                cal.objects.insert(o.href, Cached { uid, etag: o.etag, data: o.data });
+                let key = cal.objects.keys().find(|k| same_href(k, &o.href)).cloned().unwrap_or(o.href);
+                // One entry per UID: an older copy under another name goes
+                // (unless a change of it is still on its way).
+                if !uid.is_empty() {
+                    cal.objects.retain(|k, c| *k == key || c.uid != uid || pending.contains(k));
+                }
+                cal.objects.insert(key, Cached { uid, etag: o.etag, data: o.data });
                 report.downloaded += 1;
             }
         })?;
@@ -673,6 +686,42 @@ mod tests {
     }
 
     const CAL: &str = "/remote.php/dav/calendars/minux/personal/";
+
+    #[test]
+    fn server_that_renames_new_objects_gives_no_duplicates() {
+        // Google keeps a new event under its own name and sends no ETag:
+        // the entry must not appear twice.
+        let server = TestServer::start();
+        server.state.lock().unwrap().own_names = true;
+        let url = format!("{}{CAL}", server.base);
+        let dir = tempfile::tempdir().unwrap();
+        let store = SyncStore::new(dir.path());
+        let client = Client::new(
+            Account { server: server.base.clone(), user: "minux".into(), dav_url: String::new() },
+            "geheim",
+            false,
+        );
+        let e = entry("Sprechstunde");
+        store.update(|s| s.local_put(&url, &e.uid, object_data(&[&e]))).unwrap();
+        run(&store, &client, std::slice::from_ref(&url)).unwrap();
+        run(&store, &client, std::slice::from_ref(&url)).unwrap();
+        let state = store.load();
+        let copies: Vec<_> = state.calendars[&url].objects.iter().filter(|(_, o)| o.uid == e.uid).collect();
+        assert_eq!(copies.len(), 1, "{copies:?}");
+        let (href, cached) = copies[0];
+        assert!(href.ends_with("%40atlas.ics") && !cached.etag.is_empty(), "{href} {cached:?}");
+        assert_eq!(server_titles(&server, CAL), ["Sprechstunde"]);
+
+        // A change goes to the server's name: still one, on both sides.
+        let mut changed = e.clone();
+        changed.title = "Sprechstunde (verschoben)".into();
+        store.update(|s| s.local_put(&url, &e.uid, object_data(&[&changed]))).unwrap();
+        run(&store, &client, std::slice::from_ref(&url)).unwrap();
+        let state = store.load();
+        assert_eq!(state.calendars[&url].objects.values().filter(|o| o.uid == e.uid).count(), 1);
+        assert_eq!(server_titles(&server, CAL), ["Sprechstunde (verschoben)"]);
+        assert!(state.queue.is_empty() && state.conflicts.is_empty());
+    }
 
     #[test]
     fn local_entry_appears_on_server_and_comes_back() {

@@ -1,6 +1,6 @@
 pkgbase = atlas-workspace
 	pkgdesc = File-centric desktop workspace with PDF, Markdown and terminal
-	pkgver = 1.1.0
+	pkgver = 1.1.1
 	pkgrel = 1
 	url = https://github.com/MlNUX/atlas
 	arch = x86_64
@@ -23,12 +23,13 @@ pkgbase = atlas-workspace
 	depends = cairo
 	depends = glib2
 	depends = fontconfig
+	depends = wayland
 	depends = ripgrep
 	depends = gcc-libs
 	depends = glibc
 	optdepends = xdg-utils: Dateien mit dem Standardprogramm öffnen
 	optdepends = systemd: App-Passwort des Kalenders verschlüsselt speichern (systemd-creds)
-	source = atlas-workspace-1.1.0.tar.gz::https://github.com/MlNUX/atlas/archive/refs/tags/v1.1.0.tar.gz
+	source = atlas-workspace-1.1.1.tar.gz::https://github.com/MlNUX/atlas/archive/refs/tags/v1.1.1.tar.gz
 	sha256sums = SKIP
 
 pkgname = atlas-workspace

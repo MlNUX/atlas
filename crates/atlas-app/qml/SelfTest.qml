@@ -28,6 +28,7 @@ Item {
     property var quickLook
     property var treeModel
     property var inspector
+    property var placesList
 
     property int failures: 0
     property int step: 0
@@ -45,6 +46,21 @@ Item {
     property real zoomBefore
     property int tabsBefore
     property string htmlProbe
+    property string mdPdf
+    property string modEvent
+    property string modTask
+    property string modTomorrow
+    property bool inspectorWasVisible
+    property int repaints
+    property real flingY
+    property real flingDirect
+    property int flings
+    property var erase: []
+    property int syncMid
+    property var iliasOrga: null
+    property string iliasRoot: ""
+    property string goneFile: ""
+    property bool goneOpened: false
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -598,8 +614,44 @@ Item {
             () => {
                 const md = editor.activeTab.viewerItem
                 check("… und wieder ab", md.editorItem.text.indexOf("- [ ] Gliederung") >= 0, md.editorItem.text)
+                // Shown again (here: back from the editor), the preview asks
+                // for a fresh frame instead of staying black (#2).
+                test.repaints = md.previewRepaint.count
+                md.mode = "edit"
+                md.mode = "preview"
+                // Headings without "#" markers (#3).
+                md.previewItem.runJavaScript("(() => { const h = document.querySelector('h1, h2'); return h ? getComputedStyle(h, '::before').content + '|' + h.textContent : 'keine' })()",
+                    (r) => check("Überschriften in der Vorschau ohne #", typeof r === "string" && r.startsWith("none|") && r.indexOf("#") < 0, r))
                 md.editorItem.save()
                 check("Abhaken gespeichert", app.readTextFile(path("notes/todo.md")).indexOf("- [x] Literatur sichten") >= 0)
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Vorschau zeichnet nach dem Wiederzeigen neu", md.previewRepaint.count > test.repaints, test.repaints + " → " + md.previewRepaint.count)
+                // Leaving the workspace: a snapshot of the preview …
+                md.previewRepaint.snapshot()
+            },
+            () => {
+                // … covers it at once when coming back, until Chromium painted.
+                const r = editor.activeTab.viewerItem.previewRepaint
+                check("Vorschau: Momentaufnahme beim Verlassen", r.hasSnapshot)
+                r.showCover()
+                check("Zurück: Momentaufnahme sofort sichtbar statt Schwarz", r.covering)
+            },
+            () => {
+                const r = editor.activeTab.viewerItem.previewRepaint
+                check("… und danach wieder die echte Vorschau", !r.covering)
+            },
+            () => {
+                // A single click opens a file for good: no preview tab that the
+                // next click would replace.
+                const g = editor.activeGroup
+                const before = g.tabs.length
+                const a = editor.open(path("notes/idee.md"), 0, "preview")
+                const b = editor.open(path("notes/wiki.md"), 0, "preview")
+                check("Einzelklick öffnet bleibende Tabs (keine Vorschau-Tabs)",
+                      g.tabs.indexOf(a) >= 0 && g.tabs.indexOf(b) >= 0 && !a.preview && !b.preview && g.tabs.length >= before + 1,
+                      names())
             },
             () => {
                 // An empty window has no close button and never stays as a split.
@@ -676,6 +728,18 @@ Item {
             () => {
                 check("Schnellansicht → im Split öffnen", !quickLook.visible && editor.activeTab && editor.activeTab.path === path("docs/umbenannt.pdf")
                       && editor.groups.every(g => g.tabs.length > 0), names())
+            },
+            () => {
+                // PDF previews come from Atlas' own PDF engine (Qt's image
+                // plugin fails on many PDFs and floods the log).
+                editor.open(path("docs"), 0, "tab")
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                const row = f.folderModel.rowOf(path("docs/umbenannt.pdf"))
+                const cell = row >= 0 ? f.activeView.itemAtIndex(row) : null
+                if (waitFor(() => !!cell && cell.pdfPreview)) return
+                check("Ordner: PDF-Vorschau mit der ersten Seite", !!cell && cell.pdfPreview, "Zeile " + row)
             },
             () => {
                 // Folder tab like Dolphin: icons, details, zoom, status bar.
@@ -821,6 +885,21 @@ Item {
                 inspector.graphWindow.close()
                 settingsDialog.open()
                 check("Einstellungen öffnen", settingsDialog.visible)
+                // The ILIAS address: settable, checked, applied.
+                const field = settingsDialog.iliasAddressField
+                const before = JSON.parse(app.iliasConfig).base_url
+                field.text = "nicht da"
+                const invalid = !field.valid
+                field.text = "ilias.uni-beispiel.de"
+                settingsDialog.applyIliasAddress()
+                const after = JSON.parse(app.iliasConfig).base_url
+                check("Einstellungen: ILIAS-Adresse einstellbar (ohne https:// ergänzt, Ungültiges abgelehnt)",
+                      invalid && after === "https://ilias.uni-beispiel.de/" && fileActions.ilias.host === "ilias.uni-beispiel.de"
+                      && fileActions.ilias.index.courses.length === 0 && field.text === after, after + " · " + field.text)
+                app.setIliasConfig("base_url", before)
+                const cals = settingsDialog.defaultCalendarChoices
+                check("Einstellungen: Kalender für neue Termine wählbar", cals.length >= 1 && cals.some(c => c.isDefault),
+                      JSON.stringify(cals.map(c => c.name + (c.isDefault ? "★" : ""))))
                 app.fileManagerPlaces = false
                 check("Ausgeschaltet: feste Orte", app.fixedPlaceCount > 0 && app.placeNames.length === app.fixedPlaceCount
                       && app.placeNames.indexOf("Belege") < 0, app.placeNames.join(","))
@@ -914,7 +993,13 @@ Item {
                 fileActions.showMenu([path("notes/idee.md")], path("notes"))
                 const md = m.shownEntries()
                 m.close()
-                check("Kontextmenü Notiz: externer Editor", md.indexOf("Im Editor öffnen") >= 0 && md.indexOf("Checkliste als Aufgaben übernehmen …") >= 0, md.join(" | "))
+                check("Kontextmenü Notiz: externer Editor", md.indexOf("Im Editor öffnen") >= 0, md.join(" | "))
+                fileActions.showMenu([path("notes/todo.md")], path("notes"))
+                const withList = m.shownEntries()
+                m.close()
+                check("Kontextmenü: „Checkliste als Aufgaben“ nur bei einer Checkliste",
+                      withList.indexOf("Checkliste als Aufgaben übernehmen …") >= 0 && md.indexOf("Checkliste als Aufgaben übernehmen …") < 0,
+                      withList.join(" | ") + " // " + md.join(" | "))
                 fileActions.showMenu([], path("notes"))
                 const empty = m.shownEntries()
                 m.close()
@@ -1035,6 +1120,368 @@ Item {
                 v.goToPage(0)
                 v.followLink(jump)
                 check("Link springt zur Zielseite", v.currentPage === 1, v.currentPage)
+            },
+            () => {
+                // Eraser: a drag over two strokes removes both, a third
+                // stays; one undo step brings both back.
+                const v = editor.activeTab.viewerItem
+                v.goToPage(0)
+                const line = (y) => v.addAnnot(JSON.stringify({ kind: "ink", page: 1, ink: [[[20, y], [200, y]]], color: "#ff6b6b", width: 2 }))
+                test.erase = [line(100), line(140), line(400)]
+                v.tool = "erase"
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                const paper = v.pagesView.itemAtIndex(0).paperItem
+                const at = (x, y) => paper.mapToItem(null, x * v.zoomScale, y * v.zoomScale)
+                const pts = [[0, 60, 80], [1, 60, 110], [1, 60, 150], [1, 60, 165], [2, 60, 170]]
+                pts.forEach((e, i) => { const q = at(e[1], e[2]); app.postMouse(window, e[0], q.x, q.y, 40 * (i + 1)) })
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                const store = v.annotationStore
+                const there = test.erase.map(id => !!store.annotation(id))
+                check("Radierer löscht die berührten Striche ganz", !there[0] && !there[1] && there[2], JSON.stringify(there))
+                const last = v.undoStack[v.undoStack.length - 1]
+                check("Radier-Zug ist ein Rückgängig-Schritt", !!last && last.type === "remove" && last.parts.length === 2)
+                v.undo()
+                check("Strg+Z holt beide Striche zurück", test.erase.every(id => !!store.annotation(id)))
+                v.tool = "select"
+                for (const id of test.erase) store.remove(id)
+            },
+            () => {
+                // Arrow keys: down scrolls, right/left turn pages.
+                const v = editor.activeTab.viewerItem
+                v.goToPage(0)
+                v.forceActiveFocus()
+                const y0 = v.pagesView.contentY
+                app.sendKey(window, Qt.Key_Down, 0)
+                check("Pfeil runter scrollt die PDF", v.pagesView.contentY > y0, y0 + " → " + v.pagesView.contentY)
+                app.sendKey(window, Qt.Key_Right, 0)
+                check("Pfeil rechts blättert weiter", v.currentPage === 1, v.currentPage)
+                app.sendKey(window, Qt.Key_Left, 0)
+                check("Pfeil links blättert zurück", v.currentPage === 0, v.currentPage)
+                // Undo and redo of annotations (#6).
+                const store = v.annotationStore
+                const n0 = store.count
+                const id = v.addAnnot(JSON.stringify({ kind: "ink", page: 1, ink: [[[10, 10], [40, 40]]], color: "#ff6b6b", width: 2 }))
+                check("Strich gezeichnet", store.count === n0 + 1)
+                app.sendKey(window, Qt.Key_Z, Qt.ControlModifier)
+                check("Strg+Z nimmt den Strich zurück", store.count === n0 && !store.annotation(id), store.count)
+                app.sendKey(window, Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier)
+                check("Strg+Umschalt+Z stellt ihn wieder her (gleiche ID)", store.count === n0 + 1 && !!store.annotation(id), store.count)
+                v.updateAnnot(id, JSON.stringify({ color: "#5ac8fa" }))
+                v.undo()
+                check("Rückgängig: Farbe wieder wie vorher", JSON.parse(store.annotation(id)).color === "#ff6b6b", store.annotation(id))
+                v.removeAnnot(id)
+                v.undo()
+                check("Rückgängig: Löschen zurückgenommen", !!store.annotation(id) && v.canRedo)
+                v.redo()
+                check("Wiederholen: wieder gelöscht", !store.annotation(id) && store.count === n0)
+                // Touchpad momentum (#4): a quick swipe glides on.
+                v.goToPage(0)
+                const tp = v.mapToItem(null, v.width / 2, v.height * 0.6)
+                test.flingY = v.pagesView.contentY
+                test.flings = v.fling.count
+                app.sendWheel(window, tp.x, tp.y, -40, 2 | 4 | 16)
+                for (let i = 0; i < 5; ++i) app.sendWheel(window, tp.x, tp.y, -40, 2 | 16)
+                test.flingDirect = v.pagesView.contentY - test.flingY
+                // Markdown → PDF with the preview (no pandoc).
+                test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
+                check("Markdown-PDF-Export startet", fileActions.markdownPdf.exportPdf(path("notes/idee.md"), test.mdPdf))
+            },
+            () => {
+                // The context bar is shown for the module checks below.
+                test.inspectorWasVisible = window.inspectorVisible
+                window.inspectorVisible = true
+                if (waitFor(() => !fileActions.markdownPdf.busy)) return
+            },
+            () => { if (waitFor(() => !fileActions.markdownPdf.busy)) return },
+            () => {
+                if (waitFor(() => !fileActions.markdownPdf.busy)) return
+                {
+                    const v = editor.activeTab.viewerItem
+                    check("Touchpad-Wischen läuft mit Schwung weiter", v.fling && v.fling.count === test.flings + 1
+                          && v.pagesView.contentY - test.flingY > test.flingDirect + 100,
+                          "direkt " + test.flingDirect + ", gesamt " + (v.pagesView.contentY - test.flingY))
+                }
+                check("Markdown als PDF exportiert", app.exists(test.mdPdf) && app.readTextFile(test.mdPdf).startsWith("%PDF"),
+                      fileActions.markdownPdf.busy ? "läuft noch" : app.readTextFile(test.mdPdf).slice(0, 8))
+                // Context bar modules: pomodoro, upcoming entries, tasks.
+                const m = inspector.modules
+                check("Module der Kontextleiste eingeschaltet", m.showCalendar && m.showTasks && inspector.pomodoro.visible)
+                const cal = fileActions.calendar
+                const now = new Date()
+                const day = m.isoDate(now)
+                const tomorrow = m.isoDate(new Date(now.getTime() + 86400000))
+                test.modEvent = cal.save(JSON.stringify({ kind: "event", title: "Modul-Termin", start: day + "T00:00", end: day + "T23:59" }))
+                test.modTomorrow = cal.save(JSON.stringify({ kind: "event", title: "Modul-Morgen", start: tomorrow + "T10:00", end: tomorrow + "T11:00" }))
+                test.modTask = cal.save(JSON.stringify({ kind: "task", title: "Modul-Aufgabe" }))
+                check("Heute zeigt den Termin von heute, nicht den von morgen",
+                      m.today.some(o => o.title === "Modul-Termin") && !m.today.some(o => o.title === "Modul-Morgen"), JSON.stringify(m.today.map(o => o.title)))
+                check("Aufgaben zeigen die neue Aufgabe", m.openTasks.some(o => o.title === "Modul-Aufgabe"))
+                cal.setStatus(test.modTask, "done")
+                check("Erledigte Aufgabe verschwindet", !m.openTasks.some(o => o.title === "Modul-Aufgabe"))
+                app.setContextModule("calendar", 0)
+                check("Kalendermodul abschaltbar", !m.showCalendar && JSON.parse(app.contextModules).calendar === false)
+                app.setContextModule("calendar", 1)
+                // Pomodoro at the bottom edge, on every tab.
+                const p = inspector.pomodoro
+                inspector.tab = 2
+                const bottom = p.mapToItem(inspector, 0, p.height).y
+                check("Pomodoro unten fixiert, auch auf anderen Reitern", p.visible && Math.abs(inspector.height - bottom - 10) < 3,
+                      bottom + " / " + inspector.height)
+                inspector.tab = 0
+                app.setContextModule("pomodoro", 0)
+                check("Pomodoro abschaltbar", !p.visible)
+                app.setContextModule("pomodoro", 1)
+                p.startPause()
+                check("Pomodoro läuft", p.running && p.phase === "work")
+                p.endsAt = Date.now()
+            },
+            () => {
+                const p = inspector.pomodoro
+                check("Pomodoro: nach dem Lernen kommt die Pause", !p.running && p.phase === "break" && p.rounds === 1 && p.remaining === 5 * 60,
+                      p.phase + " " + p.rounds + " " + p.remaining)
+                fileActions.calendar.remove(test.modTomorrow)
+                window.inspectorVisible = test.inspectorWasVisible
+                // Natural sorting (#5).
+                editor.open(app.projectRoot.replace(/\/[^/]+$/, "") + "/nummern", 0, "tab")
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                if (waitFor(() => f.folderModel && f.folderModel.count === 3)) return
+                const names = () => [0, 1, 2].map(i => f.folderModel.pathAt(i).replace(/.*\//, "")).join(" ")
+                check("Natürliche Sortierung: 2 vor 10", names() === "1.data.pdf 2.data.pdf 10.data.pdf", names())
+                app.naturalSort = false
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                const names = () => [0, 1, 2].map(i => f.folderModel.pathAt(i).replace(/.*\//, "")).join(" ")
+                if (waitFor(() => names() === "1.data.pdf 10.data.pdf 2.data.pdf")) return
+                check("Ohne natürliche Sortierung: nach Zeichen", names() === "1.data.pdf 10.data.pdf 2.data.pdf", names())
+                app.naturalSort = true
+                f.sortBy("size")
+                check("Gewählte Sortierung gemerkt", JSON.parse(app.folderSort).key === "size", app.folderSort)
+                f.sortBy("name")
+                // Scroll sync of the Markdown split view, both ways (#7).
+                editor.open(app.projectRoot.replace(/\/[^/]+$/, "") + "/lang.md", 0, "tab")
+                editor.activeTab.viewerItem.mode = "split"
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => md.pageReady)) return
+                test.syncMid = Math.round(Math.min(md.editorItem.viewHeight, md.previewItem.height) / 2)
+            },
+            () => {
+                // Opened in the split view: lined up at once, without scrolling.
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
+                    const e = md.editorItem.exactLineAt(test.syncMid)
+                    check("Split: nach dem Öffnen gleich ausgerichtet", Math.abs(line - e) < 1, "Vorschau " + line + ", Editor " + e)
+                    md.editorItem.scrollToExactLine(81, test.syncMid)
+                })
+            },
+            () => {
+                // Lined up in the middle of the view: the same line on both sides.
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
+                    check("Split: Vorschau folgt dem Editor, Mitte auf gleicher Höhe", Math.abs(line - 81) < 1, line)
+                    // The user scrolls the preview: the editor follows.
+                    md.previewItem.runJavaScript("window.scrollBy(0, -400)")
+                })
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
+                    const e = md.editorItem.exactLineAt(test.syncMid)
+                    check("Split: Editor folgt der Vorschau, Mitte auf gleicher Höhe", line < 78 && Math.abs(e - line) < 1, "Vorschau " + line + ", Editor " + e)
+                })
+            },
+            () => {
+                // Re-rendering the preview (after typing) leaves the editor where it is.
+                const md = editor.activeTab.viewerItem
+                test.flingY = md.editorItem.scrollY
+                md.render()
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Split: Neurendern der Vorschau bewegt den Editor nicht", Math.abs(md.editorItem.scrollY - test.flingY) < 1,
+                      test.flingY + " → " + md.editorItem.scrollY)
+            },
+            () => {
+                // Over the editor: the mouse wheel scrolls as before, a
+                // touchpad swipe glides on (#4).
+                const ed = editor.activeTab.viewerItem.editorItem
+                ed.scrollToExactLine(1)
+                const p = ed.mapToItem(null, ed.width / 2, ed.height / 2)
+                test.flingY = ed.scrollY
+                test.flings = ed.fling.count
+                app.sendWheel(window, p.x, p.y, -120, 0)
+            },
+            () => {
+                // (Qt animates wheel scrolling: checked a step later.)
+                const ed = editor.activeTab.viewerItem.editorItem
+                check("Editor: Mausrad scrollt weiter, ohne Schwung", ed.scrollY > test.flingY && ed.fling.count === test.flings,
+                      test.flingY + " → " + ed.scrollY)
+                const p = ed.mapToItem(null, ed.width / 2, ed.height / 2)
+                app.sendWheel(window, p.x, p.y, -30, 2 | 4 | 16)
+                for (let i = 0; i < 5; ++i) app.sendWheel(window, p.x, p.y, -30, 2 | 16)
+            },
+            () => {
+                const ed = editor.activeTab.viewerItem.editorItem
+                check("Editor: Touchpad-Schwung", ed.fling.count === test.flings + 1, ed.fling.count)
+                // Fingers put down on the touchpad (hold gesture) stop it.
+                const f = ed.fling.flickable
+                ed.scrollToExactLine(60)
+                f.flick(0, -4000)
+                const was = f.flicking
+                app.touchpadHeld()
+                check("Finger auflegen stoppt den Schwung", was && !f.flicking, was + " " + f.flicking)
+                fileActions.calendar.remove(test.modEvent)
+            },
+            () => {
+                // A file deleted while it is open: its tab closes.
+                test.goneFile = fileActions.ops.newFile(path("docs"), "weg.txt")
+                editor.open(test.goneFile, 0, "tab")
+            },
+            () => {
+                const open = (p) => editor.groups.some(g => g.tabs.some(t => t.path === p))
+                if (waitFor(() => open(test.goneFile))) return
+                check("Datei zum Löschen geöffnet", open(test.goneFile), test.goneFile)
+                fileActions.ops.moveToTrash([test.goneFile])
+            },
+            () => {
+                const open = (p) => editor.groups.some(g => g.tabs.some(t => t.path === p))
+                if (waitFor(() => !open(test.goneFile))) return
+                check("In den Papierkorb: ihr Tab schließt sich", !open(test.goneFile))
+                // Deleted elsewhere (the tab shows a file that is no longer there).
+                test.goneFile = path("docs/schon-weg.txt")
+                editor.open(test.goneFile, 0, "tab")
+                test.goneOpened = open(test.goneFile)
+            },
+            () => {
+                const open = (p) => editor.groups.some(g => g.tabs.some(t => t.path === p))
+                if (waitFor(() => !open(test.goneFile))) return
+                check("Außerhalb gelöscht: Tab schließt sich (ohne ungespeicherte Änderungen)", test.goneOpened && !open(test.goneFile),
+                      "geöffnet: " + test.goneOpened)
+            },
+            () => {
+                // ---- ILIAS (against scripts/ilias-mock.py): read the courses.
+                check("ILIAS ist der letzte Ort", placesList.paths[placesList.paths.length - 1] === "ilias:", placesList.names.join(" | "))
+                editor.open("ilias:", 0, "tab")
+                const il = fileActions.ilias
+                check("ILIAS-Tab offen", editor.activeTab.kind === "ilias" && !!editor.activeTab.viewerItem)
+                il.refresh()
+            },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => il.state === "login" && il.loginVisible)) return
+                check("ILIAS: ohne Sitzung wird nach der Anmeldung gefragt", il.state === "login" && il.loginVisible, il.state + " " + il.status)
+                // The user logs in on the page shown.
+                il.loginPage.runJavaScript("document.getElementById('login') && document.getElementById('login').click()")
+            },
+            () => { const il = fileActions.ilias; if (waitFor(() => !il.loginVisible && il.state === "idle" && il.index.courses.length > 0)) return },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => !il.loginVisible && il.state === "idle" && il.index.courses.length > 0)) return
+                const names = (list) => (list || []).map(n => n.name).sort().join(" | ")
+                const course = il.index.courses.find(c => c.name === "Höhere Mathematik I")
+                check("ILIAS: nach der Anmeldung nur die Favoriten eingelesen (nicht „Meine Kurse“)", !il.loginVisible && names(il.index.courses) === "Höhere Mathematik I | Tutorium 3",
+                      il.state + " " + il.status + " " + names(il.index.courses))
+                check("ILIAS: Ordner, Datei und Sitzung im Kurs (ohne Navigation)", !!course && names(course.children) === "Organisatorisches | Sitzung 1: Einführung | Vorlesung",
+                      course ? names(course.children) : "kein Kurs")
+                const sess = course && course.children.find(n => n.kind === "sess")
+                check("ILIAS: Sitzung am Symbol erkannt, mit Datei", !!sess && names(sess.children) === "Skript", JSON.stringify(sess))
+                const ilog = app.readTextFile(app.iliasDebugLog())
+                check("ILIAS: Protokoll mit Anmeldung, Seiten und Kursen, ohne Cookie-Werte",
+                      ilog.indexOf("Anmeldefenster: angemeldet") >= 0 && ilog.indexOf("Favoriten: Höhere Mathematik I (crs100)") >= 0 && ilog.indexOf("crs300") < 0
+                      && ilog.indexOf("Cookies: sid") >= 0 && ilog.indexOf("sid=1") < 0, ilog.slice(-600))
+                const dbLine = ilog.split("\n").filter(l => l.indexOf("Cookie-Datenbank") >= 0).pop() || "keine Zeile"
+                check("ILIAS: Cookie-Datenbank des Web-Profils lesbar (für die Sitzung nach einem Neustart)",
+                      dbLine.indexOf("Cookie-Datenbank des Profils:") >= 0, dbLine)
+                const view = editor.activeTab.viewerItem
+                view.enter(course)
+                check("ILIAS: Ordner zuerst, dann Dateien", view.items.map(n => n.name).join(" | ") === "Sitzung 1: Einführung | Vorlesung | Organisatorisches",
+                      view.items.map(n => n.name).join(" | "))
+                view.enter(view.items.find(n => n.name === "Vorlesung"))
+                view.enter(view.items.find(n => n.name === "Übungen"))
+                check("ILIAS: Dateien natürlich sortiert", view.items.map(n => n.name).join(" | ") === "Blatt 2 | Blatt 10", view.items.map(n => n.name).join(" | "))
+                test.iliasRoot = fileActions.ilias.downloadDir
+                view.activate(view.items[0])
+            },
+            () => {
+                // Every download asks for its folder; the last one is offered.
+                const chooser = editor.activeTab.viewerItem.downloadChooser
+                if (waitFor(() => chooser.visible)) return
+                check("ILIAS: Download fragt nach dem Zielordner (zuletzt gewählter vorgeschlagen)",
+                      chooser.visible && chooser.folderPath === test.iliasRoot && chooser.pickTitle.indexOf("Blatt 2") >= 0,
+                      chooser.folderPath + " · " + chooser.pickTitle)
+                chooser.chosen(test.iliasRoot, "")
+                chooser.close()
+            },
+            () => { if (waitFor(() => !fileActions.ilias.current && fileActions.ilias.fileState(editor.activeTab.viewerItem.items ? editor.activeTab.viewerItem.items[0] : {}) === "loaded")) return },
+            () => {
+                const il = fileActions.ilias
+                const target = test.iliasRoot + "/blatt02.pdf"
+                if (waitFor(() => editor.activeTab.path === target)) return
+                check("ILIAS: Datei landet direkt im gewählten Ordner und öffnet sich", app.exists(target) && editor.activeTab.path === target
+                      && !app.exists(test.iliasRoot + "/Höhere Mathematik I"),
+                      editor.activeTab.path + " / " + il.status)
+                // Opening it again: no question, no download.
+                editor.open("ilias:", 0, "tab")
+                const view = editor.activeTab.viewerItem
+                view.activate(view.items.find(n => n.name === "Blatt 2"))
+                check("ILIAS: geladene Datei öffnet ohne Nachfrage", !view.downloadChooser.visible && editor.activeTab.path === target, editor.activeTab.path)
+                // A second file, into another folder.
+                editor.open("ilias:", 0, "tab")
+                const v2 = editor.activeTab.viewerItem
+                v2.up(10)
+                v2.enter(il.index.courses.find(c => c.name === "Höhere Mathematik I"))
+                test.iliasOrga = v2.items.find(n => n.name === "Organisatorisches")
+                v2.activate(test.iliasOrga)
+            },
+            () => {
+                const chooser = editor.activeTab.viewerItem.downloadChooser
+                if (waitFor(() => chooser.visible)) return
+                chooser.chosen(test.iliasRoot + "/Mathe", "")
+                chooser.close()
+            },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => !il.current && il.fileState(test.iliasOrga) === "loaded")) return
+                check("ILIAS: zweite Datei im anderen Ordner", il.fileState(test.iliasOrga) === "loaded" && app.exists(test.iliasRoot + "/Mathe/orga.pdf"), il.status)
+                // ILIAS shows version 2 now.
+                const xhr = new XMLHttpRequest()
+                xhr.open("GET", il.baseUrl + "bump")
+                xhr.onreadystatechange = () => { if (xhr.readyState === XMLHttpRequest.DONE) il.refresh() }
+                xhr.send()
+            },
+            () => { const il = fileActions.ilias; if (waitFor(() => il.state === "idle" && il.status.indexOf("eingelesen") >= 0)) return },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => il.state === "idle")) return
+                const course = il.index.courses.find(c => c.name === "Höhere Mathematik I")
+                const orga = course.children.find(n => n.name === "Organisatorisches")
+                check("ILIAS: neue Version erkannt", il.fileState(orga) === "changed", il.fileState(orga) + " " + orga.info)
+                test.iliasOrga = orga
+                editor.open("ilias:", 0, "tab")
+                il.open(orga, [course.name])
+            },
+            () => {
+                // The new version: its earlier folder is offered.
+                const chooser = editor.activeTab.viewerItem.downloadChooser
+                if (waitFor(() => chooser.visible)) return
+                check("ILIAS: neue Version bietet den Ordner der alten an", chooser.folderPath === test.iliasRoot + "/Mathe", chooser.folderPath)
+                chooser.chosen(chooser.folderPath, "")
+                chooser.close()
+            },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => !il.current && il.fileState(test.iliasOrga) === "loaded")) return
+                const file = test.iliasRoot + "/Mathe/orga.pdf"
+                check("ILIAS: neue Version geladen und ersetzt die alte", il.fileState(test.iliasOrga) === "loaded"
+                      && app.readTextFile(file).indexOf("Version 2") >= 0 && !app.exists(test.iliasRoot + "/Mathe/orga (2).pdf"), il.status)
             },
             () => {
                 // The project folder cannot be collapsed: a click on it keeps the tree.

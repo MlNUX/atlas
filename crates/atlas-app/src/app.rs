@@ -59,6 +59,19 @@ pub mod qobject {
         #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
         /// PDFs in dark mode (inverted brightness); `[pdf] dark` in config.toml.
         #[qproperty(bool, pdf_dark, cxx_name = "pdfDark", READ, WRITE = set_pdf_dark, NOTIFY)]
+        /// Modules of the context bar (`[context]` in config.toml) as JSON:
+        /// {calendar, tasks, pomodoro, pomodoro_work, pomodoro_break,
+        /// pomodoro_long_break}; change with `setContextModule`.
+        #[qproperty(QString, context_modules, cxx_name = "contextModules", READ, NOTIFY)]
+        /// Numbers in file names by value (`[files] natural_sort`).
+        #[qproperty(bool, natural_sort, cxx_name = "naturalSort", READ, WRITE = set_natural_sort, NOTIFY)]
+        /// Momentum scrolling after touchpad swipes (`[files] touchpad_fling`).
+        #[qproperty(bool, touchpad_fling, cxx_name = "touchpadFling", READ, WRITE = set_touchpad_fling, NOTIFY)]
+        /// Last chosen order of folder views as JSON {key, ascending}
+        /// (`[files]`), the start for new views.
+        #[qproperty(QString, folder_sort, cxx_name = "folderSort", READ, NOTIFY)]
+        /// `[ilias]` as JSON {base_url, download_dir, show_in_places}.
+        #[qproperty(QString, ilias_config, cxx_name = "iliasConfig", READ, NOTIFY)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
@@ -85,6 +98,12 @@ pub mod qobject {
         #[qproperty(QStringList, untrusted_extensions, cxx_name = "untrustedExtensions", READ, NOTIFY)]
         type AppController = super::AppControllerRust;
 
+        /// Fingers came to rest on the touchpad (Wayland hold gesture):
+        /// momentum scrolling stops.
+        #[qsignal]
+        #[cxx_name = "touchpadHeld"]
+        fn touchpad_held(self: Pin<&mut AppController>);
+
         #[qsignal]
         #[cxx_name = "projectRootChanged"]
         fn project_root_changed(self: Pin<&mut AppController>);
@@ -96,6 +115,101 @@ pub mod qobject {
         #[cxx_name = "setFileManagerPlaces"]
         fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
+        fn set_natural_sort(self: Pin<&mut AppController>, on: bool);
+        fn set_touchpad_fling(self: Pin<&mut AppController>, on: bool);
+
+        /// Changes `[ilias]`: `base_url`, `download_dir` or
+        /// `show_in_places` ("true"/"false").
+        #[qinvokable]
+        #[cxx_name = "setIliasConfig"]
+        fn set_ilias_config(self: Pin<&mut AppController>, key: &QString, value: &QString);
+
+        /// ILIAS state file "index" or "downloads" ("" if there is none).
+        #[qinvokable]
+        #[cxx_name = "iliasLoad"]
+        fn ilias_load(self: &AppController, name: &QString) -> QString;
+
+        /// The web profile (QML WebEngineProfile) whose login session
+        /// reading and downloading use.
+        #[qinvokable]
+        #[cxx_name = "iliasUseProfile"]
+        unsafe fn ilias_use_profile(self: &AppController, profile: *mut QObject) -> bool;
+
+        /// Reads the dashboard's courses with everything in them, in the
+        /// background; then `iliasScanned` (the tree is in "index").
+        #[qinvokable]
+        #[cxx_name = "iliasScan"]
+        fn ilias_scan(self: &AppController);
+
+        /// Reading goes on: what is read now.
+        #[qsignal]
+        #[cxx_name = "iliasProgress"]
+        fn ilias_progress(self: Pin<&mut AppController>, text: QString);
+
+        /// Reading ended: `status` "ok" (with the number of courses),
+        /// "login" (log in again) or "error" (with the message).
+        #[qsignal]
+        #[cxx_name = "iliasScanned"]
+        fn ilias_scanned(self: Pin<&mut AppController>, status: QString, message: QString);
+
+        /// Downloads file `url` (ILIAS address; `download`: the address
+        /// sending the file) straight into folder `dir`, named as the server
+        /// says or else `title` (numbered if another file has that name; a
+        /// new version replaces its earlier download there); remembers it
+        /// with `info` in "downloads". Then `iliasDownloaded`.
+        #[qinvokable]
+        #[cxx_name = "iliasDownload"]
+        fn ilias_download(
+            self: &AppController,
+            url: &QString,
+            download: &QString,
+            title: &QString,
+            info: &QString,
+            dir: &QString,
+        );
+
+        #[qsignal]
+        #[cxx_name = "iliasDownloadProgress"]
+        fn ilias_download_progress(self: Pin<&mut AppController>, url: QString, received: f64, total: f64);
+
+        /// A download ended: `status` "ok" (with `path`), "login" or
+        /// "error" (with the message).
+        #[qsignal]
+        #[cxx_name = "iliasDownloaded"]
+        fn ilias_downloaded(
+            self: Pin<&mut AppController>,
+            url: QString,
+            path: QString,
+            status: QString,
+            message: QString,
+        );
+
+        /// Adds a line to the ILIAS log (`debug.log` in the ILIAS state
+        /// folder; e.g. what the login window saw).
+        #[qinvokable]
+        #[cxx_name = "iliasTrace"]
+        fn ilias_trace(self: &AppController, line: &QString);
+
+        /// The ILIAS log file.
+        #[qinvokable]
+        #[cxx_name = "iliasDebugLog"]
+        fn ilias_debug_log(self: &AppController) -> QString;
+
+        /// Signs out: forgets the web session (all its cookies).
+        #[qinvokable]
+        #[cxx_name = "iliasLogout"]
+        fn ilias_logout(self: &AppController);
+
+        /// Remembers the order chosen in a folder view for new views.
+        #[qinvokable]
+        #[cxx_name = "rememberFolderSort"]
+        fn remember_folder_sort(self: Pin<&mut AppController>, key: &QString, ascending: bool);
+
+        /// Switches a module of the context bar on or off (`calendar`,
+        /// `tasks`, `pomodoro`) or sets a pomodoro length in minutes.
+        #[qinvokable]
+        #[cxx_name = "setContextModule"]
+        fn set_context_module(self: Pin<&mut AppController>, key: &QString, value: i32);
 
         /// Reads the places again (also done when the file managers' files
         /// change).
@@ -116,6 +230,11 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "fileKind"]
         fn file_kind(self: &AppController, path: &QString) -> QString;
+
+        /// The Markdown file has a checklist (`- [ ] …`, outside code blocks).
+        #[qinvokable]
+        #[cxx_name = "hasChecklist"]
+        fn has_checklist(self: &AppController, path: &QString) -> bool;
 
         #[qinvokable]
         #[cxx_name = "fileName"]
@@ -557,6 +676,12 @@ pub mod qobject {
         #[cxx_name = "sendWheel"]
         unsafe fn send_wheel(self: &AppController, window: *mut QObject, x: f64, y: f64, delta: i32, flags: i32);
 
+        /// Sends a key press and release (Qt key code, modifier flags) to
+        /// the window's focus item; for the smoke test.
+        #[qinvokable]
+        #[cxx_name = "sendKey"]
+        unsafe fn send_key(self: &AppController, window: *mut QObject, key: i32, modifiers: i32);
+
         /// Makes `owner` responsible for deleting `object` (QObject parent),
         /// whatever its visual parent.
         #[qinvokable]
@@ -590,6 +715,11 @@ pub struct AppControllerRust {
     fixed_place_count: i32,
     file_manager_places: bool,
     pdf_dark: bool,
+    context_modules: QString,
+    natural_sort: bool,
+    touchpad_fling: bool,
+    folder_sort: QString,
+    ilias_config: QString,
     /// Watches the file managers' places files.
     places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
@@ -656,6 +786,11 @@ impl Default for AppControllerRust {
             fixed_place_count: 0,
             file_manager_places: Config::load().places.file_manager,
             pdf_dark: Config::load().pdf.dark,
+            context_modules: context_json(&Config::load().context),
+            natural_sort: Config::load().files.natural_sort,
+            touchpad_fling: Config::load().files.touchpad_fling,
+            folder_sort: folder_sort_json(&Config::load().files),
+            ilias_config: ilias_json(&Config::load().ilias),
             places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
@@ -690,8 +825,21 @@ impl Default for AppControllerRust {
     }
 }
 
+/// The application object's thread, for the touchpad hold callback.
+static HOLD_THREAD: std::sync::OnceLock<cxx_qt::CxxQtThread<qobject::AppController>> = std::sync::OnceLock::new();
+
+/// Called by the Wayland hold gesture (touchpad_hold.cpp).
+fn touchpad_held() {
+    if let Some(thread) = HOLD_THREAD.get() {
+        let _ = thread.queue(|app| app.touchpad_held());
+    }
+}
+
 impl cxx_qt::Initialize for qobject::AppController {
     fn initialize(mut self: Pin<&mut Self>) {
+        if HOLD_THREAD.set(self.qt_thread()).is_ok() {
+            crate::qt_helpers::watch_touchpad_hold(touchpad_held);
+        }
         self.as_mut().refresh_places();
         self.as_mut().watch_places();
         let cli = Cli::get();
@@ -772,6 +920,199 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().pdf_dark = on;
         self.as_mut().pdf_dark_changed();
+    }
+
+    pub fn set_natural_sort(mut self: Pin<&mut Self>, on: bool) {
+        if self.natural_sort == on {
+            return;
+        }
+        let mut config = Config::load().files;
+        config.natural_sort = on;
+        if let Err(err) = Config::save_files(&config) {
+            log::warn!("cannot save [files]: {err:#}");
+        }
+        atlas_core::listing::set_natural_sort(on);
+        self.as_mut().rust_mut().natural_sort = on;
+        // Views sort again when they see the change.
+        self.as_mut().natural_sort_changed();
+    }
+
+    pub fn set_touchpad_fling(mut self: Pin<&mut Self>, on: bool) {
+        if self.touchpad_fling == on {
+            return;
+        }
+        let mut config = Config::load().files;
+        config.touchpad_fling = on;
+        if let Err(err) = Config::save_files(&config) {
+            log::warn!("cannot save [files]: {err:#}");
+        }
+        self.as_mut().rust_mut().touchpad_fling = on;
+        self.as_mut().touchpad_fling_changed();
+    }
+
+    pub fn set_ilias_config(mut self: Pin<&mut Self>, key: &QString, value: &QString) {
+        let mut config = Config::load().ilias;
+        let value = value.to_string();
+        match key.to_string().as_str() {
+            "base_url" => {
+                let url = value.trim();
+                config.base_url = if url.ends_with('/') { url.to_owned() } else { format!("{url}/") };
+            }
+            "download_dir" => config.download_dir = value,
+            "show_in_places" => config.show_in_places = value == "true",
+            other => {
+                log::warn!("unknown ILIAS setting {other}");
+                return;
+            }
+        }
+        if let Err(err) = Config::save_ilias(&config) {
+            log::warn!("cannot save [ilias]: {err:#}");
+        }
+        self.as_mut().rust_mut().ilias_config = ilias_json(&config);
+        self.as_mut().ilias_config_changed();
+    }
+
+    pub fn ilias_load(&self, name: &QString) -> QString {
+        qs(atlas_core::ilias::load(&name.to_string()))
+    }
+
+    pub unsafe fn ilias_use_profile(&self, profile: *mut cxx_qt::QObject) -> bool {
+        // SAFETY: `profile` comes from QML and outlives this call.
+        unsafe { crate::qt_helpers::watch_web_cookies(profile) }
+    }
+
+    pub fn ilias_scan(&self) {
+        use atlas_core::ilias::{self, IliasError};
+        let base = Config::load().ilias.base_url;
+        let live = crate::qt_helpers::web_cookie_header(&qs(&base)).to_string();
+        let profile = PathBuf::from(crate::qt_helpers::web_profile_path().to_string());
+        let agent = crate::qt_helpers::web_user_agent().to_string();
+        ilias::trace_start("Einlesen");
+        ilias::trace(&format!("Web-Profil (seit dem Start gemeldet): {}", crate::qt_helpers::web_cookie_summary()));
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let progress = |p: ilias::Progress| {
+                let text = if p.pages == 0 {
+                    format!("Lese {} …", p.text)
+                } else {
+                    format!("Lese … {} Seiten ({})", p.pages, p.text)
+                };
+                let _ = thread.queue(move |app| app.ilias_progress(qs(text)));
+            };
+            let cookies = ilias::Url::parse(&base).map(|u| ilias::session_cookies(&profile, &u, &live)).unwrap_or(live);
+            let result = ilias::Client::new(&base, &cookies, &agent)
+                .and_then(|client| ilias::scan(&client, &progress))
+                .and_then(|courses| {
+                    let scanned = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    let index = serde_json::json!({ "base_url": base, "scanned": scanned, "courses": courses });
+                    ilias::save("index", &index.to_string()).map_err(|e| IliasError::Other(format!("{e:#}")))?;
+                    Ok(courses.len())
+                });
+            let (status, message) = match result {
+                Ok(n) => ("ok", n.to_string()),
+                Err(IliasError::Login) => ("login", String::new()),
+                Err(IliasError::Other(e)) => ("error", e),
+            };
+            let _ = thread.queue(move |app| app.ilias_scanned(qs(status), qs(message)));
+        });
+    }
+
+    pub fn ilias_download(&self, url: &QString, download: &QString, title: &QString, info: &QString, dir: &QString) {
+        use atlas_core::ilias::{self, IliasError};
+        let config = Config::load().ilias;
+        let address = if download.is_empty() { url.to_string() } else { download.to_string() };
+        let live = crate::qt_helpers::web_cookie_header(&qs(&address)).to_string();
+        let profile = PathBuf::from(crate::qt_helpers::web_profile_path().to_string());
+        let agent = crate::qt_helpers::web_user_agent().to_string();
+        let (url, title, info, dir) = (url.to_string(), title.to_string(), info.to_string(), dir.to_string());
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let last = std::sync::Mutex::new(std::time::Instant::now());
+            let progress = |received: u64, total: Option<u64>| {
+                let mut last = last.lock().unwrap();
+                if last.elapsed() < std::time::Duration::from_millis(100) {
+                    return;
+                }
+                *last = std::time::Instant::now();
+                let url = qs(&url);
+                let total = total.unwrap_or(0) as f64;
+                let _ = thread.queue(move |app| app.ilias_download_progress(url, received as f64, total));
+            };
+            let result = (|| {
+                let other = |e: anyhow::Error| IliasError::Other(format!("{e:#}"));
+                let dir = ilias::target_dir(Path::new(&dir), &[]).map_err(other)?;
+                let cookies =
+                    ilias::Url::parse(&address).map(|u| ilias::session_cookies(&profile, &u, &live)).unwrap_or(live);
+                let client = ilias::Client::new(&config.base_url, &cookies, &agent)?;
+                let previous = ilias::previous_download(&url);
+                let path = ilias::download(&client, &address, &dir, &title, previous.as_deref(), &progress)?;
+                ilias::record_download(&url, &path, &info).map_err(other)?;
+                Ok(path)
+            })();
+            let (path, status, message) = match result {
+                Ok(path) => (path.to_string_lossy().into_owned(), "ok", String::new()),
+                Err(IliasError::Login) => (String::new(), "login", String::new()),
+                Err(IliasError::Other(e)) => (String::new(), "error", e),
+            };
+            let _ = thread.queue(move |app| app.ilias_downloaded(qs(url), qs(path), qs(status), qs(message)));
+        });
+    }
+
+    pub fn ilias_trace(&self, line: &QString) {
+        atlas_core::ilias::trace(&line.to_string());
+    }
+
+    pub fn ilias_debug_log(&self) -> QString {
+        let path = atlas_core::ilias::debug_log();
+        if !path.exists() {
+            atlas_core::ilias::trace("(noch nichts protokolliert)");
+        }
+        qs(path.to_string_lossy())
+    }
+
+    pub fn ilias_logout(&self) {
+        atlas_core::ilias::trace("Abmelden: alle Cookies des Web-Profils gelöscht");
+        crate::qt_helpers::clear_web_cookies();
+    }
+
+    pub fn remember_folder_sort(mut self: Pin<&mut Self>, key: &QString, ascending: bool) {
+        let mut config = Config::load().files;
+        let key = key.to_string();
+        if config.sort_key == key && config.sort_ascending == ascending {
+            return;
+        }
+        config.sort_key = key;
+        config.sort_ascending = ascending;
+        if let Err(err) = Config::save_files(&config) {
+            log::warn!("cannot save [files]: {err:#}");
+        }
+        self.as_mut().rust_mut().folder_sort = folder_sort_json(&config);
+        self.as_mut().folder_sort_changed();
+    }
+
+    pub fn set_context_module(mut self: Pin<&mut Self>, key: &QString, value: i32) {
+        let mut config = Config::load().context;
+        let minutes = value.clamp(1, 180) as u32;
+        match key.to_string().as_str() {
+            "calendar" => config.calendar = value != 0,
+            "tasks" => config.tasks = value != 0,
+            "pomodoro" => config.pomodoro = value != 0,
+            "pomodoro_work" => config.pomodoro_work = minutes,
+            "pomodoro_break" => config.pomodoro_break = minutes,
+            "pomodoro_long_break" => config.pomodoro_long_break = minutes,
+            other => {
+                log::warn!("unknown context module {other}");
+                return;
+            }
+        }
+        if let Err(err) = Config::save_context(&config) {
+            log::warn!("cannot save [context]: {err:#}");
+        }
+        self.as_mut().rust_mut().context_modules = context_json(&config);
+        self.as_mut().context_modules_changed();
     }
 
     /// Dolphin or a GTK file manager changed its places: read them again.
@@ -965,6 +1306,12 @@ impl qobject::AppController {
         let url = url.to_string();
         let Some(rest) = url.strip_prefix("file://") else { return qs(url) };
         qs(percent_decode(rest))
+    }
+
+    pub fn has_checklist(&self, path: &QString) -> bool {
+        let path = path_of(path);
+        file_kind(&path) == "markdown"
+            && std::fs::read_to_string(&path).is_ok_and(|text| !atlas_core::calendar::checklist_items(&text).is_empty())
     }
 
     pub fn file_kind(&self, path: &QString) -> QString {
@@ -2285,6 +2632,12 @@ impl qobject::AppController {
     }
 
     /// # Safety
+    /// As for `save_window_image`.
+    pub unsafe fn send_key(&self, window: *mut cxx_qt::QObject, key: i32, modifiers: i32) {
+        unsafe { crate::qt_helpers::send_key(window, key, modifiers) }
+    }
+
+    /// # Safety
     /// Both must be null or live QObjects (passed from QML).
     pub unsafe fn set_owner(&self, object: *mut cxx_qt::QObject, owner: *mut cxx_qt::QObject) {
         unsafe { crate::qt_helpers::set_owner(object, owner) }
@@ -2321,16 +2674,19 @@ fn spawn_detached(command: &[String], dir: Option<&Path>) -> anyhow::Result<()> 
     Ok(())
 }
 
-/// Tabs that are no files: `terminal:<dir>#<n>` and `calendar:`.
+/// Tabs that are no files: `terminal:<dir>#<n>`, `calendar:` and `ilias:`.
 fn is_terminal_path(path: &Path) -> bool {
     let bytes = path.as_os_str().as_encoded_bytes();
-    bytes.starts_with(b"terminal:") || bytes.starts_with(b"calendar:")
+    bytes.starts_with(b"terminal:") || bytes.starts_with(b"calendar:") || bytes.starts_with(b"ilias:")
 }
 
 /// Coarse file type used to pick a viewer.
 pub fn file_kind(path: &Path) -> &'static str {
     if path.as_os_str().as_encoded_bytes().starts_with(b"calendar:") {
         return "calendar";
+    }
+    if path.as_os_str().as_encoded_bytes().starts_with(b"ilias:") {
+        return "ilias";
     }
     // Terminal tabs: `terminal:<start directory>#<id>`.
     if is_terminal_path(path) {
@@ -2376,6 +2732,22 @@ fn percent_decode(s: &str) -> String {
         }
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// `[ilias]` for QML.
+fn ilias_json(c: &atlas_core::config::IliasConfig) -> QString {
+    let json = serde_json::json!({ "base_url": c.base_url, "download_dir": c.download_dir, "show_in_places": c.show_in_places });
+    QString::from(json.to_string().as_str())
+}
+
+/// Order of new folder views for QML.
+fn folder_sort_json(f: &atlas_core::config::FilesConfig) -> QString {
+    QString::from(serde_json::json!({ "key": f.sort_key, "ascending": f.sort_ascending }).to_string().as_str())
+}
+
+/// `[context]` for QML.
+fn context_json(c: &atlas_core::config::ContextConfig) -> QString {
+    QString::from(serde_json::to_string(c).unwrap_or_else(|_| "{}".into()).as_str())
 }
 
 #[cfg(test)]

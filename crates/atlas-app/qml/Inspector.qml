@@ -14,11 +14,13 @@ Rectangle {
     required property AppController app
     required property var editor
     required property var actions
-    /// 0 = Anmerkungen (overview), 1 = Verknüpfungen, 2 = Graph,
+    /// 0 = Übersicht (modules, annotations, graph, actions), 1 = Verknüpfungen, 2 = Graph,
     /// 3 = Aktionen.
     property int tab: 0
     readonly property alias linksPanel: linksPanel
     readonly property alias tabBar: tabFlick
+    readonly property alias modules: contextModules
+    readonly property alias pomodoro: pomodoroTimer
 
     signal openRequested(string path, int line, string where, var state)
 
@@ -88,13 +90,22 @@ Rectangle {
         if (document && app.isRunnable(document))
             out.push({ icon: "play", name: qsTr("Ausführen"), enabled: true, tip: qsTr("Skript im Terminal starten (im Ordner des Skripts)"),
                        run: () => actions.runScript(document) })
+        if (document && actions.isMarkdown(document))
+            out.push({ icon: "export", name: qsTr("Als PDF exportieren"), enabled: !actions.markdownPdf.busy,
+                       note: qsTr("Export läuft …"),
+                       tip: qsTr("PDF neben der Notiz, gesetzt wie die Vorschau (Formeln, Diagramme)"),
+                       run: () => actions.markdownToPdf(document) })
+        if (document && actions.isTex(document))
+            out.push({ icon: "export", name: qsTr("Zu PDF übersetzen"), enabled: true,
+                       tip: qsTr("Mit latexmk (sonst pdflatex) im Terminal; die PDF entsteht neben der .tex-Datei"),
+                       run: () => actions.texToPdf(document) })
         if (document && actions.isHtml(document))
             out.push({ icon: "eye", name: qsTr("Als Webseite anzeigen"), enabled: true, tip: qsTr("HTML gerendert anzeigen (lädt beim Speichern neu)"),
                        run: () => actions.renderHtml(document) })
         if (document && app.atlasDir && app.exists(document))
             out.push({ icon: "link", name: qsTr("Verknüpfen mit …"), enabled: true, tip: qsTr("Mit einer anderen Datei verbinden, z. B. zwei PDFs (im Graph sichtbar)"),
                        run: () => app.requestRelate(document) })
-        if (kind === "markdown")
+        if (kind === "markdown" && app.hasChecklist(document))
             out.push({ icon: "check-square", name: qsTr("Checkliste als Aufgaben"), enabled: true, tip: qsTr("Punkte in den Kalender übernehmen"),
                        run: () => actions.calendarSync.importChecklist(document) })
         if (document)
@@ -152,7 +163,7 @@ Rectangle {
                     spacing: 2
                     Repeater {
                         id: tabRepeater
-                        model: [qsTr("Anmerkungen"), qsTr("Verknüpfungen"), qsTr("Graph"), qsTr("Aktionen")]
+                        model: [qsTr("Übersicht"), qsTr("Verknüpfungen"), qsTr("Graph"), qsTr("Aktionen")]
                         Item {
                             required property string modelData
                             required property int index
@@ -200,6 +211,17 @@ Rectangle {
                     width: overview.availableWidth
                     spacing: 10
                     Item { Layout.preferredHeight: 2 }
+                    // Today's entries and tasks (each can be switched off in
+                    // the settings).
+                    ContextModules {
+                        id: contextModules
+                        Layout.fillWidth: true
+                        visible: showCalendar || showTasks
+                        app: inspector.app
+                        actions: inspector.actions
+                    }
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border; visible: contextModules.visible }
+                    Label { Layout.leftMargin: 14; text: qsTr("Anmerkungen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
                     Repeater {
                         model: inspector.annotations.slice(0, 6)
                         AnnotationCard { }
@@ -308,6 +330,16 @@ Rectangle {
                     }
                 }
             }
+        }
+
+        // Pomodoro, fixed to the bottom edge on every tab.
+        PomodoroTimer {
+            id: pomodoroTimer
+            Layout.fillWidth: true
+            Layout.margins: 10
+            visible: pomodoroTimer.settings.pomodoro !== false
+            app: inspector.app
+            actions: inspector.actions
         }
     }
 

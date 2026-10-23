@@ -10,6 +10,8 @@
 #include <QtCore/QObject>
 #include <QtGui/QFont>
 
+#include "rust/cxx.h"
+
 namespace atlas {
 
 // Advance of one monospace cell, line height and ascent in logical pixels.
@@ -38,6 +40,11 @@ bool saveWindowImage(QObject* window, const QString& path);
 // Sends a wheel event (`delta` in eighths of a degree, 120 = one notch) at
 // (x, y), with Ctrl if `ctrl`; for the smoke test.
 void sendWheel(QObject* window, double x, double y, int delta, int flags);
+void sendKey(QObject* window, int key, int modifiers);
+
+// Calls `onHold` when fingers come to rest on the touchpad (Wayland hold
+// gesture, see touchpad_hold.cpp); false where that is not available.
+bool watchTouchpadHold(rust::Fn<void()> onHold);
 
 // File suffixes of the image formats Qt can read here (lower case).
 QStringList imageFormats();
@@ -50,5 +57,22 @@ void setOwner(QObject* object, QObject* owner);
 // kind 0 press, 1 move, 2 release. Used by the smoke test to drive real
 // drag-and-drop.
 void postMouse(QObject* window, int kind, double x, double y, int delayMs);
+
+// Cookies of a web profile (QML WebEngineProfile, passed as QObject), for
+// HTTP requests made from Rust with the same session (ILIAS): followed
+// from now on; false if `profile` is none.
+bool watchWebCookies(QObject* profile);
+// Folder of the watched profile on disk ("" if it keeps nothing); its
+// `Cookies` database holds the cookies it read at start.
+QString webProfilePath();
+// The `Cookie` header (from cookies reported since the start) the watched
+// profile would send to `url`.
+QString webCookieHeader(const QString& url);
+// The watched profile's cookies for the log: name@domain/path, no values.
+QString webCookieSummary();
+// The user agent the watched profile's pages send ("" without one).
+QString webUserAgent();
+// Deletes all cookies of the watched profile (signs out everywhere).
+void clearWebCookies();
 
 } // namespace atlas

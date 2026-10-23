@@ -23,6 +23,11 @@ ersetzt eine globale mit gleicher `id`. Fehlerhafte Einträge werden
 
 ## Format (Version 1)
 
+> Markdown → PDF und TeX → PDF sind eingebaut („Als PDF exportieren“,
+> „Zu PDF übersetzen“ im Kontextmenü und in der Kontextleiste). Das
+> Beispiel unten mit pandoc braucht zusätzlich eine LaTeX-Installation
+> (`pdflatex`); ohne sie bricht pandoc mit „pdflatex not found“ ab.
+
 ```yaml
 version: 1
 actions:

@@ -10,6 +10,7 @@
 #include <QtGui/QGuiApplication>
 #include <QtGui/QImage>
 #include <QtGui/QImageReader>
+#include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPointingDevice>
 #include <QtGui/QWindow>
@@ -27,7 +28,10 @@ Q_GUI_EXPORT void qt_handleMouseEvent(QWindow* window, const QPointF& local, con
 #include <QtWebEngineCore/QWebEngineUrlRequestJob>
 #include <QtWebEngineCore/QWebEngineUrlScheme>
 #include <QtWebEngineCore/QWebEngineUrlSchemeHandler>
+#include <QtWebEngineCore/QWebEngineCookieStore>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
+#include <QtCore/QDateTime>
+#include <QtNetwork/QNetworkCookie>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
 namespace atlas {
@@ -85,6 +89,18 @@ void sendWheel(QObject* window, double x, double y, int delta, int flags)
                       Qt::NoButton, (flags & 1) ? Qt::ControlModifier : Qt::NoModifier, phase, false,
                       Qt::MouseEventNotSynthesized, (flags & 16) ? &touchpad : QPointingDevice::primaryPointingDevice());
     QCoreApplication::sendEvent(w, &event);
+}
+
+void sendKey(QObject* window, int key, int modifiers)
+{
+    auto* w = qobject_cast<QWindow*>(window);
+    if (!w)
+        return;
+    const auto mods = Qt::KeyboardModifiers(modifiers);
+    QKeyEvent press(QEvent::KeyPress, key, mods);
+    QCoreApplication::sendEvent(w, &press);
+    QKeyEvent release(QEvent::KeyRelease, key, mods);
+    QCoreApplication::sendEvent(w, &release);
 }
 
 QStringList imageFormats()
@@ -216,6 +232,93 @@ void installWebSchemeHandler()
 {
     auto* handler = new AtlasSchemeHandler(qApp);
     QQuickWebEngineProfile::defaultProfile()->installUrlSchemeHandler("atlas", handler);
+}
+
+namespace {
+// The cookies of the watched profile, kept current by its cookie store.
+QPointer<QQuickWebEngineProfile> cookieProfile;
+QList<QNetworkCookie> cookies;
+}
+
+bool watchWebCookies(QObject* profile)
+{
+    auto* p = qobject_cast<QQuickWebEngineProfile*>(profile);
+    if (!p)
+        return false;
+    if (cookieProfile == p)
+        return true;
+    if (cookieProfile)
+        QObject::disconnect(cookieProfile->cookieStore(), nullptr, qApp, nullptr);
+    cookieProfile = p;
+    cookies.clear();
+    QWebEngineCookieStore* store = p->cookieStore();
+    QObject::connect(store, &QWebEngineCookieStore::cookieAdded, qApp, [](const QNetworkCookie& c) {
+        cookies.removeIf([&](const QNetworkCookie& o) { return o.hasSameIdentifier(c); });
+        cookies.append(c);
+    });
+    QObject::connect(store, &QWebEngineCookieStore::cookieRemoved, qApp, [](const QNetworkCookie& c) {
+        cookies.removeIf([&](const QNetworkCookie& o) { return o.hasSameIdentifier(c); });
+    });
+    // (Cookies the profile read from disk are not reported: Qt 6.11's
+    // loadAllCookies() discards the result. They are read from the
+    // profile's database instead, see atlas_core::ilias::profile_cookies.)
+    return true;
+}
+
+QString webCookieHeader(const QString& address)
+{
+    const QUrl url(address);
+    const QString host = url.host().toLower();
+    const QString path = url.path().isEmpty() ? QStringLiteral("/") : url.path();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    QStringList parts;
+    for (const QNetworkCookie& c : std::as_const(cookies)) {
+        QString domain = c.domain().toLower();
+        if (domain.startsWith('.'))
+            domain.remove(0, 1);
+        if (host != domain && !host.endsWith('.' + domain))
+            continue;
+        if (!c.path().isEmpty() && !path.startsWith(c.path()))
+            continue;
+        if (c.expirationDate().isValid() && c.expirationDate() < now)
+            continue;
+        if (c.isSecure() && url.scheme() != QLatin1String("https"))
+            continue;
+        parts << QString::fromUtf8(c.name()) + '=' + QString::fromUtf8(c.value());
+    }
+    return parts.join(QStringLiteral("; "));
+}
+
+QString webProfilePath()
+{
+    return cookieProfile && !cookieProfile->isOffTheRecord() ? cookieProfile->persistentStoragePath() : QString();
+}
+
+QString webCookieSummary()
+{
+    if (!cookieProfile)
+        return QStringLiteral("kein Web-Profil");
+    const QString profile = QStringLiteral("„%1“%2 in %3 · %4 Cookies: ")
+                                .arg(cookieProfile->storageName(),
+                                     cookieProfile->isOffTheRecord() ? QStringLiteral(" (privat, nichts gespeichert)") : QString(),
+                                     cookieProfile->persistentStoragePath())
+                                .arg(cookies.size());
+    QStringList parts;
+    for (const QNetworkCookie& c : std::as_const(cookies))
+        parts << QString::fromUtf8(c.name()) + '@' + c.domain() + c.path() + (c.isSecure() ? QStringLiteral(" (secure)") : QString());
+    return profile + (parts.isEmpty() ? QStringLiteral("keine") : parts.join(QStringLiteral(", ")));
+}
+
+QString webUserAgent()
+{
+    return cookieProfile ? cookieProfile->httpUserAgent() : QString();
+}
+
+void clearWebCookies()
+{
+    if (cookieProfile)
+        cookieProfile->cookieStore()->deleteAllCookies();
+    cookies.clear();
 }
 
 } // namespace atlas

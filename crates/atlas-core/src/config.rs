@@ -153,6 +153,101 @@ impl Default for PlacesConfig {
     }
 }
 
+/// `[ilias]`: the courses of an ILIAS dashboard as folders.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IliasConfig {
+    /// Start page of the ILIAS installation.
+    #[serde(default = "ilias_kit")]
+    pub base_url: String,
+    /// Where downloaded files go (asked on the first download).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub download_dir: String,
+    /// The „ILIAS“ entry under „Orte“.
+    #[serde(default = "enabled")]
+    pub show_in_places: bool,
+}
+
+fn ilias_kit() -> String {
+    "https://ilias.studium.kit.edu/".into()
+}
+
+impl Default for IliasConfig {
+    fn default() -> Self {
+        Self { base_url: ilias_kit(), download_dir: String::new(), show_in_places: true }
+    }
+}
+
+/// `[files]`: file views and scrolling.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FilesConfig {
+    /// Numbers in names by value: `2.pdf` before `10.pdf`.
+    #[serde(default = "enabled")]
+    pub natural_sort: bool,
+    /// Touchpad: content keeps gliding after a quick swipe (momentum).
+    #[serde(default = "enabled")]
+    pub touchpad_fling: bool,
+    /// Last chosen order, used by new folder views: name, size, modified
+    /// or kind.
+    #[serde(default = "sort_by_name")]
+    pub sort_key: String,
+    #[serde(default = "enabled")]
+    pub sort_ascending: bool,
+}
+
+fn sort_by_name() -> String {
+    "name".into()
+}
+
+impl Default for FilesConfig {
+    fn default() -> Self {
+        Self { natural_sort: true, touchpad_fling: true, sort_key: sort_by_name(), sort_ascending: true }
+    }
+}
+
+/// `[context]`: optional modules of the context bar.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextConfig {
+    /// Upcoming entries of the calendar.
+    #[serde(default = "enabled")]
+    pub calendar: bool,
+    /// Open tasks with a field for new ones.
+    #[serde(default = "enabled")]
+    pub tasks: bool,
+    /// Pomodoro timer for learning.
+    #[serde(default = "enabled")]
+    pub pomodoro: bool,
+    /// Minutes of work and of the short and long break.
+    #[serde(default = "pomodoro_work")]
+    pub pomodoro_work: u32,
+    #[serde(default = "pomodoro_short")]
+    pub pomodoro_break: u32,
+    #[serde(default = "pomodoro_long")]
+    pub pomodoro_long_break: u32,
+}
+
+fn pomodoro_work() -> u32 {
+    25
+}
+fn pomodoro_short() -> u32 {
+    5
+}
+fn pomodoro_long() -> u32 {
+    15
+}
+
+impl Default for ContextConfig {
+    fn default() -> Self {
+        Self {
+            calendar: true,
+            tasks: true,
+            pomodoro: true,
+            pomodoro_work: pomodoro_work(),
+            pomodoro_break: pomodoro_short(),
+            pomodoro_long_break: pomodoro_long(),
+        }
+    }
+}
+
 /// `[pdf]`: how PDFs are shown.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PdfConfig {
@@ -175,6 +270,12 @@ pub struct Config {
     pub places: PlacesConfig,
     #[serde(default)]
     pub pdf: PdfConfig,
+    #[serde(default)]
+    pub context: ContextConfig,
+    #[serde(default)]
+    pub files: FilesConfig,
+    #[serde(default)]
+    pub ilias: IliasConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -218,6 +319,21 @@ impl Config {
     /// Updates only the `[places]` table.
     pub fn save_places(places: &PlacesConfig) -> Result<()> {
         save_table(&config_file(), "places", places)
+    }
+
+    /// Updates only the `[ilias]` table.
+    pub fn save_ilias(ilias: &IliasConfig) -> Result<()> {
+        save_table(&config_file(), "ilias", ilias)
+    }
+
+    /// Updates only the `[files]` table.
+    pub fn save_files(files: &FilesConfig) -> Result<()> {
+        save_table(&config_file(), "files", files)
+    }
+
+    /// Updates only the `[context]` table.
+    pub fn save_context(context: &ContextConfig) -> Result<()> {
+        save_table(&config_file(), "context", context)
     }
 
     /// Updates only the `[pdf]` table.

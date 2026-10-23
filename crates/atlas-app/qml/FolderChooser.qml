@@ -22,6 +22,11 @@ Dialog {
     readonly property alias folders: folder
     readonly property alias pathBar: pathEdit
 
+    /// Texts for the mode "pick" (choose any folder, e.g. for downloads).
+    property string pickTitle: qsTr("Ordner wählen")
+    property string pickHint: ""
+    property string pickButton: qsTr("Diesen Ordner wählen")
+
     signal chosen(string path, string sessionName)
 
     function ask(newMode, startPath, name) {
@@ -80,14 +85,14 @@ Dialog {
                 Layout.preferredHeight: 36
                 radius: 10
                 color: Theme.accentSoft
-                Icon { anchors.centerIn: parent; name: root.mode === "session" ? "session" : "folder-open"; size: 20; color: Theme.accent }
+                Icon { anchors.centerIn: parent; name: root.mode === "session" ? "session" : root.mode === "pick" ? "downloads" : "folder-open"; size: 20; color: Theme.accent }
             }
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
                 Text {
                     Layout.fillWidth: true
-                    text: root.mode === "session" ? qsTr("Neue Session") : qsTr("Projektordner öffnen")
+                    text: root.mode === "session" ? qsTr("Neue Session") : root.mode === "pick" ? root.pickTitle : qsTr("Projektordner öffnen")
                     color: Theme.textStrong
                     font.pixelSize: 16
                     font.weight: Font.DemiBold
@@ -96,6 +101,7 @@ Dialog {
                     Layout.fillWidth: true
                     elide: Text.ElideRight
                     text: root.mode === "session" ? qsTr("Jeder Projektordner hat genau eine Session; gibt es sie schon, wird sie geöffnet.")
+                        : root.mode === "pick" ? root.pickHint
                         : qsTr("Atlas legt seine Daten im Unterordner .atlas des Projekts ab.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.smallFontSize
@@ -309,7 +315,7 @@ Dialog {
             }
             Button { text: qsTr("Abbrechen"); onClicked: root.close() }
             Button {
-                text: root.mode === "session" ? qsTr("Session öffnen") : qsTr("Ordner öffnen")
+                text: root.mode === "session" ? qsTr("Session öffnen") : root.mode === "pick" ? root.pickButton : qsTr("Ordner öffnen")
                 highlighted: true
                 enabled: !!root.chosenPath && !folder.error
                 onClicked: root.accept()

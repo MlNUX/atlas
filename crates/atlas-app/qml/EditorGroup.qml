@@ -49,16 +49,19 @@ Rectangle {
 
     function indexOfPath(path) { return tabs.findIndex(t => t.path === path) }
 
-    /// Opens `path` in this group. `mode`: "preview" replaces the current
-    /// preview tab, "tab" opens a permanent tab.
+    /// Opens `path` in this group as a permanent tab. Only the temporary
+    /// split (quick look) has a preview tab that the next file replaces
+    /// (`mode` "preview"); elsewhere there are no preview tabs – a single
+    /// click opens a file for good, like a double click.
     function openTab(path, line, mode, state) {
+        if (mode === "preview" && !group.temporary) mode = "tab"
         let index = indexOfPath(path)
         if (index >= 0) {
             if (mode !== "preview") tabs[index].preview = false
             if (line) tabs[index].reveal(line)
             if (state && state.annot) tabs[index].applyState({ annot: state.annot })
             if (state && state.processor) tabs[index].applyState({ processor: state.processor })
-            if (state && path.startsWith("calendar:") && Object.keys(state).length) tabs[index].applyState(state)
+            if (state && (path.startsWith("calendar:") || path.startsWith("ilias:")) && Object.keys(state).length) tabs[index].applyState(state)
             current = index
             changed()
             return tabs[index]
@@ -160,7 +163,7 @@ Rectangle {
         }
     }
 
-    function documents() { return tabs.map(t => t.path).filter(p => p.length > 0 && !p.startsWith("terminal:") && !p.startsWith("calendar:")) }
+    function documents() { return tabs.map(t => t.path).filter(p => p.length > 0 && !p.startsWith("terminal:") && !p.startsWith("calendar:") && !p.startsWith("ilias:")) }
 
     function pathMoved(from, to) {
         for (const t of tabs) {
@@ -168,14 +171,24 @@ Rectangle {
             else if (t.path.startsWith(from + "/")) t.path = to + t.path.slice(from.length)
         }
     }
+    /// Deleted in Atlas: their tabs close.
     function pathsRemoved(paths) {
-        for (const t of tabs) if (paths.some(r => t.path === r || t.path.startsWith(r + "/"))) t.refresh()
+        closeWhere(t => paths.some(r => t.path === r || t.path.startsWith(r + "/")))
+    }
+    /// Deleted outside Atlas (terminal, other programs): tabs whose file or
+    /// folder is gone close – unless they hold unsaved edits (the editor
+    /// then offers to save them again).
+    function closeVanished() {
+        closeWhere(t => t.onDisk && !group.app.exists(t.path) && !t.hasUnsavedChanges())
+    }
+    function closeWhere(test) {
+        for (let i = tabs.length - 1; i >= 0; i--) if (test(tabs[i])) closeTab(i)
     }
 
     /// Path segments for the breadcrumbs: inside the project relative to its
     /// root, otherwise from "/".
     function crumbs(path) {
-        if (!path || path.startsWith("terminal:") || path.startsWith("calendar:")) return []
+        if (!path || path.startsWith("terminal:") || path.startsWith("calendar:") || path.startsWith("ilias:")) return []
         const root = group.app.projectRoot
         const inside = root && (path === root || path.startsWith(root + "/"))
         const base = inside ? root : ""

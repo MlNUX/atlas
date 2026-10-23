@@ -35,6 +35,8 @@ verändert weder PDFs noch Notizen ungefragt.
 - **Projektkalender** mit Fristen aus Notizen und optionaler
   Synchronisierung mit Nextcloud (CalDAV) oder Google-Kalender
   ([Einrichtung](docs/google-kalender.md)).
+- **ILIAS** (z. B. KIT): deine Favoriten als Ordner; ein Klick lädt
+  eine Datei und öffnet sie, neue Versionen werden erkannt.
 - HTML-Dateien als Webseite anzeigen, Code mit Syntaxhervorhebung, Übergabe
   an deinen Editor.
 
@@ -58,7 +60,7 @@ Fest in einer NixOS-Konfiguration mit Flakes:
 ```nix
 # flake.nix des Systems
 {
-  inputs.atlas.url = "github:MlNUX/atlas/v1.1.0";
+  inputs.atlas.url = "github:MlNUX/atlas/v1.1.1";
   inputs.atlas.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs = { nixpkgs, atlas, ... }: {
@@ -94,7 +96,7 @@ und dort `makepkg -si` ausführen.
 
 Benötigt Rust ≥ 1.85, einen C++-Compiler, clang, pkg-config, Qt 6 (Base, Declarative, Wayland, SVG,
 Image Formats, WebEngine, WebChannel, Positioning), KF6 Syntax-Highlighting,
-poppler-glib, cairo und ripgrep.
+poppler-glib, cairo, libwayland-client und ripgrep.
 
 ```sh
 QMAKE=qmake6 cargo build --release -p atlas-app

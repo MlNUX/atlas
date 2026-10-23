@@ -364,6 +364,8 @@ pub struct PdfPageRust {
     page: i32,
     render_width: i32,
     inverted: bool,
+    /// Whether `image` was rendered for dark mode.
+    image_inverted: bool,
     rendered: bool,
     render_ms: i32,
     error: QString,
@@ -384,8 +386,14 @@ impl cxx_qt::Initialize for qobject::PdfPage {
         self.as_mut().on_source_changed(|p| p.schedule_render()).release();
         self.as_mut().on_page_changed(|p| p.schedule_render()).release();
         self.as_mut().on_render_width_changed(|p| p.schedule_render()).release();
-        // Only the way the page is drawn changes: no new render.
-        self.as_mut().on_inverted_changed(|p| p.update()).release();
+        // Shown at once by the painter, then rendered anew in the new mode
+        // (painting the conversion on every frame made resizing sluggish).
+        self.as_mut()
+            .on_inverted_changed(|mut p| {
+                p.as_mut().update();
+                p.schedule_render();
+            })
+            .release();
     }
 }
 
@@ -405,12 +413,17 @@ impl qobject::PdfPage {
         }
         let generation = self.generation;
         let thread = self.qt_thread();
-        PdfService::get().render(path, self.page as usize, width as u32, token, move |result| {
-            let _ = thread.queue(move |page| page.apply_render(generation, result));
+        let inverted = self.inverted;
+        PdfService::get().render(path, self.page as usize, width as u32, token, move |mut result| {
+            // Converted once here on the render thread, not on every paint.
+            if inverted && let Ok(page) = result.as_mut() {
+                page.darken();
+            }
+            let _ = thread.queue(move |page| page.apply_render(generation, inverted, result));
         });
     }
 
-    fn apply_render(mut self: Pin<&mut Self>, generation: u64, result: anyhow::Result<RenderedPage>) {
+    fn apply_render(mut self: Pin<&mut Self>, generation: u64, inverted: bool, result: anyhow::Result<RenderedPage>) {
         if generation != self.generation {
             return;
         }
@@ -429,6 +442,7 @@ impl qobject::PdfPage {
                 {
                     let mut this = self.as_mut().rust_mut();
                     this.image = Some(image);
+                    this.image_inverted = inverted;
                     this.render_ms = page.elapsed.as_millis() as i32;
                     this.rendered = true;
                     this.error = QString::default();
@@ -453,10 +467,10 @@ impl qobject::PdfPage {
         painter.as_mut().set_render_hint(cxx_qt_lib::QPainterRenderHint::SmoothPixmapTransform, true);
         let rect = QRect::new(0, 0, self.width().round() as i32, self.height().round() as i32);
         painter.as_mut().draw_image(&rect, image);
-        if self.inverted {
-            // Dark mode, done by the painter (Qt's SIMD raster ops) instead of
-            // per pixel in Rust: switching needs no new render. Difference
-            // with white inverts; Lighten lifts black paper to dark grey.
+        if self.inverted != self.image_inverted {
+            // Just switched, the new render is on its way: convert while
+            // painting (Difference with white inverts, Lighten lifts black
+            // paper to dark grey; the other way round it is near enough).
             let area = QRectF::new(0.0, 0.0, f64::from(rect.width()), f64::from(rect.height()));
             painter.as_mut().set_composition_mode(QPainterCompositionMode::CompositionMode_Difference);
             painter.as_mut().fill_rect(&area, &QColor::from_rgb(255, 255, 255));
