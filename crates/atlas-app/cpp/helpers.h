@@ -58,4 +58,13 @@ void setOwner(QObject* object, QObject* owner);
 // drag-and-drop.
 void postMouse(QObject* window, int kind, double x, double y, int delayMs);
 
+// Cookies of a web profile (QML WebEngineProfile, passed as QObject), for
+// HTTP requests made from Rust with the same session (ILIAS): followed
+// from now on; false if `profile` is none.
+bool watchWebCookies(QObject* profile);
+// The `Cookie` header the watched profile would send to `url`.
+QString webCookieHeader(const QString& url);
+// Deletes all cookies of the watched profile (signs out everywhere).
+void clearWebCookies();
+
 } // namespace atlas

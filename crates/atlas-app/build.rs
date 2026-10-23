@@ -77,6 +77,7 @@ fn main() {
     let builder = CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")
         .qt_module("QuickControls2")
+        .qt_module("Network")
         .qt_module("WebEngineCore")
         .qt_module("WebEngineQuick")
         .qrc_resources(web_resources())

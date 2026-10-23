@@ -52,6 +52,12 @@ pub mod ffi {
         unsafe fn set_owner(object: *mut QObject, owner: *mut QObject);
         #[cxx_name = "imageFormats"]
         fn image_formats() -> QStringList;
+        #[cxx_name = "watchWebCookies"]
+        unsafe fn watch_web_cookies(profile: *mut QObject) -> bool;
+        #[cxx_name = "webCookieHeader"]
+        fn web_cookie_header(url: &QString) -> QString;
+        #[cxx_name = "clearWebCookies"]
+        fn clear_web_cookies();
         #[cxx_name = "postMouse"]
         unsafe fn post_mouse(window: *mut QObject, kind: i32, x: f64, y: f64, delay_ms: i32);
     }

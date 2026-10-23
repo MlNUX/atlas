@@ -40,6 +40,8 @@ ureq = { version = "3", features = ["platform-verifier"] }
 chrono = "0.4"
 chrono-tz = "0.10"
 iana-time-zone = "0.1"
+scraper = "0.29.0"
+url = "2.5.8"
 
 [dev-dependencies]
 cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"] }

@@ -129,18 +129,65 @@ pub mod qobject {
         #[cxx_name = "iliasLoad"]
         fn ilias_load(self: &AppController, name: &QString) -> QString;
 
+        /// The web profile (QML WebEngineProfile) whose login session
+        /// reading and downloading use.
         #[qinvokable]
-        #[cxx_name = "iliasSave"]
-        fn ilias_save(self: &AppController, name: &QString, json: &QString) -> bool;
+        #[cxx_name = "iliasUseProfile"]
+        unsafe fn ilias_use_profile(self: &AppController, profile: *mut QObject) -> bool;
 
-        /// Where a download goes: the download folder, one folder per entry
-        /// of `segments` (JSON list: course, folders …), the file name the
-        /// server suggests or else `title`. Creates the folders and removes
-        /// an older download there (a new version replaces it). JSON
-        /// {path} or {error}.
+        /// Reads the dashboard's courses with everything in them, in the
+        /// background; then `iliasScanned` (the tree is in "index").
         #[qinvokable]
-        #[cxx_name = "iliasTarget"]
-        fn ilias_target(self: &AppController, segments: &QString, suggested: &QString, title: &QString) -> QString;
+        #[cxx_name = "iliasScan"]
+        fn ilias_scan(self: &AppController);
+
+        /// Reading goes on: what is read now.
+        #[qsignal]
+        #[cxx_name = "iliasProgress"]
+        fn ilias_progress(self: Pin<&mut AppController>, text: QString);
+
+        /// Reading ended: `status` "ok" (with the number of courses),
+        /// "login" (log in again) or "error" (with the message).
+        #[qsignal]
+        #[cxx_name = "iliasScanned"]
+        fn ilias_scanned(self: Pin<&mut AppController>, status: QString, message: QString);
+
+        /// Downloads file `url` (ILIAS address; `download`: the address
+        /// sending the file) into the download folder, one folder per entry
+        /// of `segments` (JSON list: course, folders …), named as the server
+        /// says or else `title`; remembers it with `info` in "downloads".
+        /// Then `iliasDownloaded`.
+        #[qinvokable]
+        #[cxx_name = "iliasDownload"]
+        fn ilias_download(
+            self: &AppController,
+            url: &QString,
+            download: &QString,
+            title: &QString,
+            info: &QString,
+            segments: &QString,
+        );
+
+        #[qsignal]
+        #[cxx_name = "iliasDownloadProgress"]
+        fn ilias_download_progress(self: Pin<&mut AppController>, url: QString, received: f64, total: f64);
+
+        /// A download ended: `status` "ok" (with `path`), "login" or
+        /// "error" (with the message).
+        #[qsignal]
+        #[cxx_name = "iliasDownloaded"]
+        fn ilias_downloaded(
+            self: Pin<&mut AppController>,
+            url: QString,
+            path: QString,
+            status: QString,
+            message: QString,
+        );
+
+        /// Signs out: forgets the web session (all its cookies).
+        #[qinvokable]
+        #[cxx_name = "iliasLogout"]
+        fn ilias_logout(self: &AppController);
 
         /// Remembers the order chosen in a folder view for new views.
         #[qinvokable]
@@ -913,27 +960,91 @@ impl qobject::AppController {
         qs(atlas_core::ilias::load(&name.to_string()))
     }
 
-    pub fn ilias_save(&self, name: &QString, json: &QString) -> bool {
-        atlas_core::ilias::save(&name.to_string(), &json.to_string())
-            .map_err(|err| log::warn!("cannot save ILIAS {name}: {err:#}"))
-            .is_ok()
+    pub unsafe fn ilias_use_profile(&self, profile: *mut cxx_qt::QObject) -> bool {
+        // SAFETY: `profile` comes from QML and outlives this call.
+        unsafe { crate::qt_helpers::watch_web_cookies(profile) }
     }
 
-    pub fn ilias_target(&self, segments: &QString, suggested: &QString, title: &QString) -> QString {
-        let result = (|| -> anyhow::Result<PathBuf> {
-            let segments: Vec<String> = serde_json::from_str(&segments.to_string())?;
-            let root = PathBuf::from(Config::load().ilias.download_dir);
-            let dir = atlas_core::ilias::target_dir(&root, &segments)?;
-            let file = dir.join(atlas_core::ilias::file_name(&suggested.to_string(), &title.to_string()));
-            if file.is_file() {
-                std::fs::remove_file(&file)?;
-            }
-            Ok(file)
-        })();
-        qs(match result {
-            Ok(path) => serde_json::json!({ "path": path }).to_string(),
-            Err(err) => serde_json::json!({ "error": format!("{err:#}") }).to_string(),
-        })
+    pub fn ilias_scan(&self) {
+        use atlas_core::ilias::{self, IliasError};
+        let base = Config::load().ilias.base_url;
+        let cookies = crate::qt_helpers::web_cookie_header(&qs(&base)).to_string();
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let progress = |p: ilias::Progress| {
+                let text = if p.pages == 0 {
+                    format!("Lese {} …", p.text)
+                } else {
+                    format!("Lese … {} Seiten ({})", p.pages, p.text)
+                };
+                let _ = thread.queue(move |app| app.ilias_progress(qs(text)));
+            };
+            let result = ilias::Client::new(&base, &cookies)
+                .and_then(|client| ilias::scan(&client, &progress))
+                .and_then(|courses| {
+                    let scanned = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    let index = serde_json::json!({ "base_url": base, "scanned": scanned, "courses": courses });
+                    ilias::save("index", &index.to_string()).map_err(|e| IliasError::Other(format!("{e:#}")))?;
+                    Ok(courses.len())
+                });
+            let (status, message) = match result {
+                Ok(n) => ("ok", n.to_string()),
+                Err(IliasError::Login) => ("login", String::new()),
+                Err(IliasError::Other(e)) => ("error", e),
+            };
+            let _ = thread.queue(move |app| app.ilias_scanned(qs(status), qs(message)));
+        });
+    }
+
+    pub fn ilias_download(
+        &self,
+        url: &QString,
+        download: &QString,
+        title: &QString,
+        info: &QString,
+        segments: &QString,
+    ) {
+        use atlas_core::ilias::{self, IliasError};
+        let config = Config::load().ilias;
+        let address = if download.is_empty() { url.to_string() } else { download.to_string() };
+        let cookies = crate::qt_helpers::web_cookie_header(&qs(&address)).to_string();
+        let (url, title, info, segments) = (url.to_string(), title.to_string(), info.to_string(), segments.to_string());
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let last = std::sync::Mutex::new(std::time::Instant::now());
+            let progress = |received: u64, total: Option<u64>| {
+                let mut last = last.lock().unwrap();
+                if last.elapsed() < std::time::Duration::from_millis(100) {
+                    return;
+                }
+                *last = std::time::Instant::now();
+                let url = qs(&url);
+                let total = total.unwrap_or(0) as f64;
+                let _ = thread.queue(move |app| app.ilias_download_progress(url, received as f64, total));
+            };
+            let result = (|| {
+                let other = |e: anyhow::Error| IliasError::Other(format!("{e:#}"));
+                let segments: Vec<String> = serde_json::from_str(&segments).map_err(|e| other(e.into()))?;
+                let dir = ilias::target_dir(Path::new(&config.download_dir), &segments).map_err(other)?;
+                let client = ilias::Client::new(&config.base_url, &cookies)?;
+                let path = ilias::download(&client, &address, &dir, &title, &progress)?;
+                ilias::record_download(&url, &path, &info).map_err(other)?;
+                Ok(path)
+            })();
+            let (path, status, message) = match result {
+                Ok(path) => (path.to_string_lossy().into_owned(), "ok", String::new()),
+                Err(IliasError::Login) => (String::new(), "login", String::new()),
+                Err(IliasError::Other(e)) => (String::new(), "error", e),
+            };
+            let _ = thread.queue(move |app| app.ilias_downloaded(qs(url), qs(path), qs(status), qs(message)));
+        });
+    }
+
+    pub fn ilias_logout(&self) {
+        crate::qt_helpers::clear_web_cookies();
     }
 
     pub fn remember_folder_sort(mut self: Pin<&mut Self>, key: &QString, ascending: bool) {

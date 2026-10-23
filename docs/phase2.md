@@ -992,3 +992,40 @@ im Editor, Mausrad im Editor unverändert).
   verteilt sich der Unterschied nach oben und unten. Neu abgeglichen wird
   auch nach dem Öffnen im geteilten Modus, nach jedem Rendern und nach
   Größenänderungen.
+
+### Nachtrag – ILIAS-Ansicht
+
+- **Was:** „ILIAS“ unter „Orte“ (Tab `ilias:`) zeigt die Kurse und Gruppen
+  des Dashboards als Ordner, darin Ordner, Gruppen, Sitzungen und Dateien
+  (nur die Liste, nichts wird vorab geladen). Ein Klick auf eine Datei lädt
+  sie nach `<Download-Ordner>/<Kurs>/<Ordner …>/<Dateiname>` und öffnet sie.
+  ILIAS' Angaben zur Datei (Typ, Größe, Version, Datum) werden mit dem
+  Download gemerkt; ändern sie sich beim nächsten Einlesen, steht „neue
+  Version“ daneben, und der Klick lädt sie neu (die alte wird erst ersetzt,
+  wenn die neue vollständig ist).
+- **Anmeldung:** Die KIT-Anmeldung läuft über Shibboleth und braucht einen
+  Browser. Atlas zeigt die Seite der Hochschule in einem eigenen Fenster
+  mit einem dauerhaften Web-Profil (`atlas-ilias`); angemeldet ist man,
+  sobald ILIAS einen Abmelde-Link zeigt. Atlas sieht und speichert das
+  Passwort nie, nur die Cookies der Sitzung liegen im Web-Profil.
+  „Abmelden“ löscht sie.
+- **Einlesen und Laden in Rust** (`atlas_core::ilias`): Die Cookies des
+  Profils folgt `cpp/helpers.cpp` über `QWebEngineCookieStore` und gibt sie
+  als `Cookie`-Kopf für die ILIAS-Adresse weiter. Damit holt ein Thread die
+  Dashboard-Ansichten (ILIAS 7–9 heißen sie verschieden), dann mit vier
+  Seiten gleichzeitig jeden Container bis Tiefe 10, jeden nur einmal;
+  Kurse innerhalb von Kursen werden nicht verfolgt. Objekte erkennt
+  `objects` an Permalinks (`target=fold_12`, `goto_…_fold_12.html`,
+  `/go/fold/12`) oder – bei `ref_id`-Links wie Sitzungen – am Typ-Symbol
+  des Listeneintrags; Links in Navigation, Reitern und Brotkrumen zählen
+  nicht. Landet eine Seite auf einem anderen Rechner oder fehlt der
+  Abmelde-Link, ist die Sitzung abgelaufen: das Anmeldefenster öffnet sich,
+  danach geht es weiter. Downloads nehmen den Namen aus
+  `Content-Disposition` (auch `filename*`), sonst den Titel; jeder Name
+  wird zu einem sicheren Pfadteil (keine Schrägstriche, keine führenden
+  Punkte), der Pfad bleibt im Download-Ordner.
+- **Tests:** `atlas-core` prüft Erkennung, Einlesen und Laden gegen einen
+  kleinen ILIAS im Test; der Smoke-Test meldet sich bei
+  `scripts/ilias-mock.py` an, liest ein, öffnet Ordner, lädt Dateien und
+  erkennt eine neue Version.
+

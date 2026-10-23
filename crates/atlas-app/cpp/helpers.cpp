@@ -28,7 +28,10 @@ Q_GUI_EXPORT void qt_handleMouseEvent(QWindow* window, const QPointF& local, con
 #include <QtWebEngineCore/QWebEngineUrlRequestJob>
 #include <QtWebEngineCore/QWebEngineUrlScheme>
 #include <QtWebEngineCore/QWebEngineUrlSchemeHandler>
+#include <QtWebEngineCore/QWebEngineCookieStore>
 #include <QtWebEngineQuick/QQuickWebEngineProfile>
+#include <QtCore/QDateTime>
+#include <QtNetwork/QNetworkCookie>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
 namespace atlas {
@@ -229,6 +232,66 @@ void installWebSchemeHandler()
 {
     auto* handler = new AtlasSchemeHandler(qApp);
     QQuickWebEngineProfile::defaultProfile()->installUrlSchemeHandler("atlas", handler);
+}
+
+namespace {
+// The cookies of the watched profile, kept current by its cookie store.
+QPointer<QQuickWebEngineProfile> cookieProfile;
+QList<QNetworkCookie> cookies;
+}
+
+bool watchWebCookies(QObject* profile)
+{
+    auto* p = qobject_cast<QQuickWebEngineProfile*>(profile);
+    if (!p)
+        return false;
+    if (cookieProfile == p)
+        return true;
+    if (cookieProfile)
+        QObject::disconnect(cookieProfile->cookieStore(), nullptr, qApp, nullptr);
+    cookieProfile = p;
+    cookies.clear();
+    QWebEngineCookieStore* store = p->cookieStore();
+    QObject::connect(store, &QWebEngineCookieStore::cookieAdded, qApp, [](const QNetworkCookie& c) {
+        cookies.removeIf([&](const QNetworkCookie& o) { return o.hasSameIdentifier(c); });
+        cookies.append(c);
+    });
+    QObject::connect(store, &QWebEngineCookieStore::cookieRemoved, qApp, [](const QNetworkCookie& c) {
+        cookies.removeIf([&](const QNetworkCookie& o) { return o.hasSameIdentifier(c); });
+    });
+    store->loadAllCookies();
+    return true;
+}
+
+QString webCookieHeader(const QString& address)
+{
+    const QUrl url(address);
+    const QString host = url.host().toLower();
+    const QString path = url.path().isEmpty() ? QStringLiteral("/") : url.path();
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    QStringList parts;
+    for (const QNetworkCookie& c : std::as_const(cookies)) {
+        QString domain = c.domain().toLower();
+        if (domain.startsWith('.'))
+            domain.remove(0, 1);
+        if (host != domain && !host.endsWith('.' + domain))
+            continue;
+        if (!c.path().isEmpty() && !path.startsWith(c.path()))
+            continue;
+        if (c.expirationDate().isValid() && c.expirationDate() < now)
+            continue;
+        if (c.isSecure() && url.scheme() != QLatin1String("https"))
+            continue;
+        parts << QString::fromUtf8(c.name()) + '=' + QString::fromUtf8(c.value());
+    }
+    return parts.join(QStringLiteral("; "));
+}
+
+void clearWebCookies()
+{
+    if (cookieProfile)
+        cookieProfile->cookieStore()->deleteAllCookies();
+    cookies.clear();
 }
 
 } // namespace atlas

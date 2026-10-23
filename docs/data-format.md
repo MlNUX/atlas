@@ -224,6 +224,9 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 | `$XDG_CONFIG_HOME/atlas/config.toml` | Einstellungen (siehe unten) |
 | `$XDG_CONFIG_HOME/atlas/actions.yaml` | eigene Aktionen für alle Projekte ([actions.md](actions.md)) |
 | `$XDG_CONFIG_HOME/atlas/extensions/` | installierte Erweiterungen ([extensions.md](extensions.md)) |
+| `$XDG_STATE_HOME/atlas/ilias/index.json` | eingelesene ILIAS-Kurse: `{"base_url", "scanned": ms, "courses": [Knoten]}`; Knoten `{kind: crs\|grp\|sess\|fold\|file, id, name, url, info, download?, children?, error?}` |
+| `$XDG_STATE_HOME/atlas/ilias/downloads.json` | geladene ILIAS-Dateien: ILIAS-Adresse → `{path, info, time}`; anderes `info` als im Index = neue Version |
+| `$XDG_DATA_HOME/atlas/…/QtWebEngine/atlas-ilias/` | Web-Profil der ILIAS-Anmeldung (Cookies der Sitzung, kein Passwort) |
 | `$XDG_STATE_HOME/atlas/trusted-extensions.json` | freigegebene Projekt-Erweiterungen: Ordner → BLAKE3 des Manifests |
 
 `ATLAS_STATE_DIR` und `ATLAS_CONFIG_DIR` ersetzen die beiden Ordner (Tests).
@@ -260,6 +263,11 @@ pomodoro_long_break = 15                         # lange Pause nach vier Runden
 
 [pdf]
 dark = true                                      # Dunkelmodus: Farben umgekehrt (Mond in der PDF-Leiste)
+
+[ilias]                                          # ILIAS unter „Orte“ – ohne Passwort
+base_url = "https://ilias.studium.kit.edu/"      # Standard: KIT
+download_dir = "/home/minux/Uni/ILIAS"           # wohin Dateien geladen werden (wird beim ersten Laden erfragt)
+show_in_places = true
 
 [calendar]                                       # Nextcloud/CalDAV oder Google – ohne Passwort
 provider = ""                                    # "" = Nextcloud/CalDAV, "google" = Google (siehe google-kalender.md)

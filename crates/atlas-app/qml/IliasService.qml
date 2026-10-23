@@ -8,18 +8,18 @@ import QtQuick.Window
 import QtWebEngine
 import Atlas
 
-// ILIAS behind the scenes: the web session, reading the course tree and
+// ILIAS behind the scenes: the login, reading the course tree and
 // downloads. One instance (in FileActions); the view is IliasView.qml.
 //
-// - A persistent web profile keeps the login (cookies, also Shibboleth's
-//   session cookies); Atlas never sees the password.
-// - Reading: a hidden page of the ILIAS site gets web/ilias.js injected,
-//   which fetches the dashboard and the containers with the session and
-//   reports the tree. The tree and the downloads are stored as JSON in the
-//   state directory (`app.iliasSave`).
-// - A file is downloaded through the same session into the chosen folder
-//   (one folder per course, group, session and folder on the way) and
-//   opened; it is downloaded again when ILIAS shows a new version.
+// - The login happens in a web view with a persistent profile (cookies,
+//   also Shibboleth's session cookies); Atlas never sees the password.
+// - Reading and downloading run in Rust (atlas_core::ilias, through
+//   `app.iliasScan` / `app.iliasDownload`) with that profile's session
+//   cookies. The tree and the downloads are JSON files in the state
+//   directory (`app.iliasLoad`).
+// - A file goes into the chosen folder (one folder per course, group,
+//   session and folder on the way) and is opened; it is downloaded again
+//   when ILIAS shows a new version.
 Item {
     id: service
     required property AppController app
@@ -35,10 +35,10 @@ Item {
     property var index: loadState("index", { courses: [] })
     /// url → {path, info, time}
     property var downloads: loadState("downloads", {})
-    /// "idle", "connecting", "scanning", "login" (login needed) or "error".
+    /// "idle", "scanning", "login" (login needed) or "error".
     property string state: "idle"
     property string status: ""
-    readonly property bool busy: state === "connecting" || state === "scanning"
+    readonly property bool busy: state === "scanning"
     /// The download running now: {item, segments, received, total} or null.
     property var current: null
     property var queue: []
@@ -58,42 +58,44 @@ Item {
     /// Reads the dashboard's courses again (asks for the login if needed).
     function refresh() {
         if (busy) return
-        state = "connecting"
-        status = qsTr("Verbinde mit %1 …").arg(host)
-        crawler.url = "about:blank"
-        crawler.url = baseUrl
-        connectTimeout.restart()
-    }
-    Timer {
-        id: connectTimeout
-        interval: 45000
-        onTriggered: if (service.state === "connecting") { service.state = "error"; service.status = qsTr("ILIAS antwortet nicht") }
-    }
-    function onCrawlerLoaded(ok) {
-        if (state !== "connecting") return
-        connectTimeout.stop()
-        let url
-        try { url = new URL(crawler.url.toString()) } catch (e) { url = null }
-        if (!ok) { state = "error"; status = qsTr("ILIAS nicht erreichbar (%1)").arg(host); return }
-        // Sent to the university's login (Shibboleth) or to ILIAS' own one.
-        if (!url || url.host !== host) { needLogin(); return }
         state = "scanning"
-        status = qsTr("Lese Kurse …")
-        crawler.runJavaScript("atlasIlias.scan(" + JSON.stringify(baseUrl) + ")")
+        status = qsTr("Lese Kurse von %1 …").arg(host)
+        app.iliasScan()
     }
-    function onCrawlerMessage(text) {
-        if (!text.startsWith("atlas:ilias:")) return
-        let m
-        try { m = JSON.parse(text.slice(12)) } catch (e) { return }
-        if (m.type === "progress") status = m.pages ? qsTr("Lese … %1 Seiten (%2)").arg(m.pages).arg(m.text) : qsTr("Lese %1 …").arg(m.text)
-        else if (m.type === "login") needLogin()
-        else if (m.type === "error") { state = "error"; status = m.message }
-        else if (m.type === "done") {
-            index = { base_url: baseUrl, scanned: Date.now(), courses: m.courses }
-            app.iliasSave("index", JSON.stringify(index))
-            state = "idle"
-            status = qsTr("%n Kurs(e) eingelesen", "", m.courses.length)
-            revision++
+    Connections {
+        target: service.app
+        function onIliasProgress(text) { if (service.busy) service.status = text }
+        function onIliasScanned(status, text) {
+            if (status === "login") { service.needLogin(); return }
+            if (status === "error") { service.state = "error"; service.status = text; return }
+            service.index = service.loadState("index", { courses: [] })
+            service.state = "idle"
+            service.status = qsTr("%n Kurs(e) eingelesen", "", Number(text))
+            service.revision++
+        }
+        function onIliasDownloadProgress(url, received, total) {
+            if (service.current && service.current.item.url === url)
+                service.current = Object.assign({}, service.current, { received: received, total: total })
+        }
+        function onIliasDownloaded(url, path, status, text) {
+            if (!service.current || service.current.item.url !== url) return
+            const job = service.current
+            if (status === "login") {
+                // Again after the login.
+                service.queue = [job].concat(service.queue)
+                service.current = null
+                service.needLogin()
+                return
+            }
+            if (status === "ok") {
+                service.downloads = service.loadState("downloads", {})
+                service.finish(qsTr("„%1“ geladen").arg(job.item.name))
+                service.openLocal(path)
+            } else {
+                const failed = qsTr("Download von „%1“ fehlgeschlagen: %2").arg(job.item.name).arg(text)
+                service.finish(failed)
+                service.message(failed)
+            }
         }
     }
     function needLogin() {
@@ -110,9 +112,10 @@ Item {
         loginWindow.raise()
         loginWindow.requestActivate()
     }
-    /// Signs out of ILIAS (the next reading asks for the login again).
+    /// Signs out of ILIAS: the session is forgotten, the next reading asks
+    /// for the login again.
     function logout() {
-        crawler.runJavaScript("(() => { const a = document.querySelector('a[href*=\"logout\"]'); if (a) location.href = a.href; })()")
+        app.iliasLogout()
         state = "login"
         status = qsTr("Abgemeldet")
     }
@@ -150,62 +153,14 @@ Item {
         current = Object.assign({ received: 0, total: 0 }, queue[0])
         queue = queue.slice(1)
         status = qsTr("Lade „%1“ …").arg(current.item.name)
-        downloadTimeout.restart()
-        downloader.url = "about:blank"
-        downloader.url = current.item.download || current.item.url
+        const item = current.item
+        app.iliasDownload(item.url, item.download || "", item.name, item.info || "", JSON.stringify(current.segments || []))
     }
-    function finish(ok, text) {
-        downloadTimeout.stop()
+    function finish(text) {
         if (text) status = text
         current = null
         revision++
         next()
-    }
-    Timer {
-        id: downloadTimeout
-        interval: 60000
-        onTriggered: if (service.current) service.finish(false, qsTr("Download von „%1“ kam nicht").arg(service.current.item.name))
-    }
-    function onDownloadRequested(download) {
-        if (!current) { download.cancel(); return }
-        const job = current
-        const target = JSON.parse(app.iliasTarget(JSON.stringify(job.segments), download.suggestedFileName, job.item.name))
-        if (target.error) { download.cancel(); finish(false, target.error); message(target.error); return }
-        const cut = target.path.lastIndexOf("/")
-        download.downloadDirectory = target.path.slice(0, cut)
-        download.downloadFileName = target.path.slice(cut + 1)
-        downloadTimeout.stop()
-        download.receivedBytesChanged.connect(() => {
-            if (service.current === job) service.current = Object.assign({}, job, { received: download.receivedBytes, total: download.totalBytes })
-        })
-        download.isFinishedChanged.connect(() => {
-            if (!download.isFinished) return
-            if (download.state === WebEngineDownloadRequest.DownloadCompleted) {
-                const d = Object.assign({}, service.downloads)
-                d[job.item.url] = { path: target.path, info: job.item.info || "", time: Date.now() }
-                service.downloads = d
-                app.iliasSave("downloads", JSON.stringify(d))
-                service.finish(true, qsTr("„%1“ geladen").arg(job.item.name))
-                service.openLocal(target.path)
-            } else {
-                service.finish(false, qsTr("Download von „%1“ abgebrochen").arg(job.item.name))
-            }
-        })
-        download.accept()
-    }
-    function onDownloaderLoaded(ok) {
-        // A page instead of a file: the session expired (login page) or
-        // ILIAS shows the file's info page.
-        if (!current || !ok) return
-        const url = downloader.url.toString()
-        if (url === "about:blank") return
-        let h = ""
-        try { h = new URL(url).host } catch (e) {}
-        if (h !== host) { const job = current; queue = [job].concat(queue); current = null; downloadTimeout.stop(); needLogin(); return }
-        downloader.runJavaScript("!!document.querySelector('a[href*=\"logout\"]')", (inside) => {
-            if (!service.current) return
-            if (!inside) { const job = service.current; service.queue = [job].concat(service.queue); service.current = null; downloadTimeout.stop(); service.needLogin() }
-        })
     }
 
     // ------------------------------------------------------------ the web
@@ -217,52 +172,12 @@ Item {
         // the login survives a restart.
         persistentCookiesPolicy: WebEngineProfile.ForcePersistentCookies
     }
-    // (Ready only once the prototype is complete; web views are created
-    // after that – a view given no profile crashes.)
+    // (Ready only once the prototype is complete; the login view is
+    // created after that – a view given no profile crashes.)
     property var profile: null
-    Component.onCompleted: profile = profilePrototype.instance()
-    readonly property var crawler: crawlerLoader.item
-    readonly property var downloader: downloaderLoader.item
-    Connections {
-        target: service.profile
-        function onDownloadRequested(download) { service.onDownloadRequested(download) }
-    }
-
-    Loader {
-        id: crawlerLoader
-        active: !!service.profile
-        sourceComponent: WebEngineView {
-            visible: false
-            width: 800
-            height: 600
-            profile: service.profile
-            settings.javascriptCanOpenWindows: false
-            userScripts.collection: [{
-                name: "atlasIlias",
-                sourceUrl: Qt.resolvedUrl("qrc:/atlas/web/ilias.js"),
-                injectionPoint: WebEngineScript.DocumentReady,
-                worldId: WebEngineScript.MainWorld
-            }]
-            onLoadingChanged: (request) => {
-                if (request.status === WebEngineLoadingInfo.LoadSucceededStatus) service.onCrawlerLoaded(true)
-                else if (request.status === WebEngineLoadingInfo.LoadFailedStatus) service.onCrawlerLoaded(false)
-            }
-            onJavaScriptConsoleMessage: (level, text) => service.onCrawlerMessage(text)
-        }
-    }
-    Loader {
-        id: downloaderLoader
-        active: !!service.profile
-        sourceComponent: WebEngineView {
-            visible: false
-            width: 800
-            height: 600
-            profile: service.profile
-            settings.javascriptCanOpenWindows: false
-            onLoadingChanged: (request) => {
-                if (request.status === WebEngineLoadingInfo.LoadSucceededStatus) service.onDownloaderLoaded(true)
-            }
-        }
+    Component.onCompleted: {
+        profile = profilePrototype.instance()
+        app.iliasUseProfile(profile)
     }
 
     // The university's login page, in Atlas' own window.
@@ -320,7 +235,7 @@ Item {
                     loginWindow.close()
                     service.message(qsTr("Bei ILIAS angemeldet"))
                     service.state = "idle"
-                    if (service.queue.length) service.next()
+                    if (service.queue.length) { service.status = ""; service.next() }
                     else service.refresh()
                 })
             }

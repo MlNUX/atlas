@@ -11,6 +11,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Neu
+- **ILIAS** (z. B. KIT) unter „Orte“: die Kurse und Gruppen deines
+  Dashboards als Ordner mit allen Unterordnern, Sitzungen und Dateien. Ein
+  Klick lädt eine Datei in einen Download-Ordner deiner Wahl (je Kurs und
+  Ordner ein Unterordner) und öffnet sie; zeigt ILIAS eine neue Version,
+  steht „neue Version“ daneben und der Klick lädt sie neu. Anmelden im
+  eingebauten Fenster der Hochschule – Atlas merkt sich nur die Sitzung,
+  nie das Passwort. Adresse, Ordner und Abmelden in den Einstellungen.
 - Kontextleiste: **Lernzeit** – ein Pomodoro-Timer fest am unteren Rand
   (auf allen Reitern) mit Ring, Runden und Start/Pause, Neu beginnen,
   Überspringen; 25 Min. lernen, 5 Min. Pause, nach vier Runden 15 Min.,
