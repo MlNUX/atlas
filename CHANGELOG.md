@@ -41,7 +41,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Behoben
 - Markdown-Vorschau blieb nach einem Workspace-Wechsel schwarz, bis man
-  scrollte ([#2](https://github.com/MlNUX/atlas/issues/2)).
+  scrollte. Jetzt zeigt sie beim Zurückkommen sofort ihren letzten Inhalt
+  (Momentaufnahme beim Verlassen), bis Chromium neu gezeichnet hat – ohne
+  schwarzes Aufblitzen ([#2](https://github.com/MlNUX/atlas/issues/2)).
 - Markdown-Vorschau zeigt keine „#“ mehr vor Überschriften
   ([#3](https://github.com/MlNUX/atlas/issues/3)).
 - Markdown-Split: Scrollen in der Vorschau bewegt jetzt auch den Editor,

@@ -623,6 +623,19 @@ Item {
             () => {
                 const md = editor.activeTab.viewerItem
                 check("Vorschau zeichnet nach dem Wiederzeigen neu", md.previewRepaint.count > test.repaints, test.repaints + " → " + md.previewRepaint.count)
+                // Leaving the workspace: a snapshot of the preview …
+                md.previewRepaint.snapshot()
+            },
+            () => {
+                // … covers it at once when coming back, until Chromium painted.
+                const r = editor.activeTab.viewerItem.previewRepaint
+                check("Vorschau: Momentaufnahme beim Verlassen", r.hasSnapshot)
+                r.showCover()
+                check("Zurück: Momentaufnahme sofort sichtbar statt Schwarz", r.covering)
+            },
+            () => {
+                const r = editor.activeTab.viewerItem.previewRepaint
+                check("… und danach wieder die echte Vorschau", !r.covering)
             },
             () => {
                 // A single click opens a file for good: no preview tab that the
