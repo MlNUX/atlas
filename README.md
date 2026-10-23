@@ -151,14 +151,24 @@ scripts/smoke-test.sh                 # Oberflächentest (offscreen)
 nix flake check                       # Paket bauen, Tests, Formatierung
 ```
 
-Aufbau: `crates/atlas-core` (Rust ohne Qt: Dateibaum, Watcher, Suche, PDF,
-Anmerkungen, Notizen, Terminal, Kalender) und `crates/atlas-app`
-(Qt 6/QML-Oberfläche über [cxx-qt](https://github.com/KDAB/cxx-qt)).
+Aufbau:
 
-Hintergrund: [Produktkonzept](CONCEPT.md) · [Phasen](PHASES.md) ·
-[Kalender](CALENDAR.md) · Berichte zu [Phase 0](docs/phase0.md),
-[Phase 1](docs/phase1.md) und [Phase 2](docs/phase2.md) ·
-[Design-Entwürfe](docs/design.md) · [Änderungen](CHANGELOG.md).
+| Ordner | Inhalt |
+|---|---|
+| `crates/atlas-core` | Rust ohne Qt: Dateibaum, Watcher, Suche, PDF, Anmerkungen, Notizen, Terminal, Kalender, ILIAS |
+| `crates/atlas-app` | Qt 6/QML-Oberfläche über [cxx-qt](https://github.com/KDAB/cxx-qt) (`qml/`, `src/`, `cpp/`, `web/` für die Markdown-Vorschau) |
+| `docs/` | Anleitungen; `concept/` Konzept und Entwürfe, `development/` Phasenberichte ([Übersicht](docs/README.md)) |
+| `data/` | Desktop-Eintrag und Symbol |
+| `packaging/arch/` | AUR-Paket (PKGBUILD) |
+| `scripts/` | Oberflächentest und ILIAS-Testserver |
+
+Hintergrund: [Produktkonzept](docs/concept/product.md) ·
+[Phasen](docs/concept/phases.md) · [Kalender](docs/concept/calendar.md) ·
+Berichte zu [Phase 0](docs/development/phase0.md),
+[Phase 1](docs/development/phase1.md) und
+[Phase 2](docs/development/phase2.md) ·
+[Design-Entwürfe](docs/concept/design.md) · [Änderungen](CHANGELOG.md) ·
+[Übersicht aller Dokumente](docs/README.md).
 
 Fehler und Wünsche gerne als [Issue](https://github.com/MlNUX/atlas/issues).
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Project calendar: appointments, work blocks, deadlines and unscheduled
-//! tasks, linked with project files and named sessions (see CALENDAR.md).
+//! tasks, linked with project files and named sessions (see docs/concept/calendar.md).
 //!
 //! Local entries live in `.atlas/calendar/events.ics` (iCalendar); Atlas
 //! specific links are stored as `X-ATLAS-*` properties and, keyed by the

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! PDF rendering (Poppler, chosen in Phase 0, see docs/phase0.md).
+//! PDF rendering (Poppler, chosen in Phase 0, see docs/development/phase0.md).
 //!
 //! The library is not thread safe in the way the UI needs, so a worker
 //! thread ("actor") owns it and all open documents. Requests are queued; the

@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Phase 1 – Funktionsfähiger Kern: Fortschritt
 
-Umsetzung in der Reihenfolge aus [PHASES.md](../PHASES.md); nach jedem
+Umsetzung in der Reihenfolge aus [Phasenkonzept](../concept/phases.md); nach jedem
 Schritt ein Commit und ein Zwischenstand.
 
 ## Entscheidungen zu Beginn (2026-10-18)
@@ -359,7 +359,7 @@ Ordnergröße berechnet, Besitzer/Gruppe korrekt angezeigt.
   Formatierung (`rustfmt`).
 - **Arch**: Entwurf `packaging/arch/PKGBUILD` (Abhängigkeiten aus den
   offiziellen Paketen, `qmake6`, gebündelte Web-Lizenzen). Noch nicht auf Arch
-  gebaut – das ist laut PHASES.md erst gegen Ende der Beta vorgesehen.
+  gebaut – das ist laut Phasenkonzept erst gegen Ende der Beta vorgesehen.
 - **Tests**: 73 Kern-Tests (darunter Papierkorb-Integration, Bash/Zsh/Fish,
   atomares Speichern, Konflikte, Linkumschreibung) und
   `scripts/smoke-test.sh`: startet Atlas offscreen mit `--self-test` gegen ein
@@ -371,13 +371,13 @@ Ordnergröße berechnet, Besitzer/Gruppe korrekt angezeigt.
   ASCII-Pfade mit schneller Vorprüfung: 11–40 ms bei 200 000, wenige ms bei
   üblichen Projekten (`cargo run --release -p atlas-core --example
   finder_bench`).
-- **Dokumentation**: [shortcuts.md](shortcuts.md) (Tastenkürzel),
-  [data-format.md](data-format.md) (alle von Atlas erzeugten Dateien und
+- **Dokumentation**: [shortcuts.md](../shortcuts.md) (Tastenkürzel),
+  [data-format.md](../data-format.md) (alle von Atlas erzeugten Dateien und
   Formate).
 
 ## Abnahme Phase 1
 
-| Kriterium (PHASES.md) | Stand | Nachweis |
+| Kriterium (Phasenkonzept) | Stand | Nachweis |
 |---|---|---|
 | Projektordner ohne Einrichtung öffnen und wiederverwenden | ✅ | `atlas ORDNER`, letzter Ordner aus `app.json`; `.atlas/` wird bei Bedarf angelegt |
 | Lokales PDF in höchstens zwei Interaktionen | ✅ | Klick im Explorer = Vorschau-Tab (1), Doppelklick heftet an |

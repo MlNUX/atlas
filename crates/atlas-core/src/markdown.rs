@@ -3,7 +3,7 @@
 
 //! Markdown: rendering for the preview, links, tags and link rewriting.
 //!
-//! Link syntax (see PHASES.md, Phase 1 § 4):
+//! Link syntax (see docs/concept/phases.md, Phase 1 § 4):
 //! - a leading `/` is the project root: `[Parser](/src/parser.rs#L120)`
 //! - other relative links are relative to the Markdown file
 //! - `#L120` / `#L120-L145` address code lines, `#page=8` PDF pages,

@@ -8,7 +8,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 Stand: 2026-10-18 · Version 0.0.1 · Plattform: NixOS 26.11, Hyprland (Wayland), Qt 6.11.2, Rust 1.98
 
 Dieses Dokument hält fest, was in Phase 0 gebaut wurde, welche technischen
-Fragen aus [PHASES.md](../PHASES.md) beantwortet sind und wie die
+Fragen aus [Phasenkonzept](../concept/phases.md) beantwortet sind und wie die
 Abnahmekriterien geprüft wurden.
 
 ## Architektur
@@ -106,7 +106,7 @@ i7-8550U, 1600 px Breite; `paper.pdf` ist das generierte Testdokument, die
 | tug2005.pdf | Poppler | 19 | 69.1 | 431.1 | 846.5 | 5.8 |
 | tug2005.pdf | PDFium | 19 | 1.5 | 102.4 | 167.0 | 0.3 |
 
-Bewertung nach den Kriterien aus PHASES.md:
+Bewertung nach den Kriterien aus dem Phasenkonzept:
 
 | Kriterium | Poppler (poppler-glib + cairo) | PDFium (pdfium-render) |
 |---|---|---|
@@ -138,7 +138,7 @@ durch einen Test abgesichert, der für beide Engines die Kanalreihenfolge prüft
 
 ## Datenmodell
 
-Umgesetzt nach dem festgelegten Datenmodell aus PHASES.md (`atlas_core::project`):
+Umgesetzt nach dem festgelegten Datenmodell aus dem Phasenkonzept (`atlas_core::project`):
 
 ```text
 Projektarbeit/
@@ -180,7 +180,7 @@ Projektarbeit/
 - `--no-session` öffnet ein Projekt, ohne `.atlas/` anzulegen; ist der Ordner
   schreibgeschützt, läuft Atlas ohne Speichern weiter und zeigt den Grund in
   der Statusleiste.
-- Offen laut CONCEPT.md: die genaue Aufteilung zwischen versionierbaren,
+- Offen laut Produktkonzept: die genaue Aufteilung zwischen versionierbaren,
   gerätespezifischen und rekonstruierbaren Dateien (z. B. ob `sessions/` oder
   `metadata.sqlite` in Git gehören). Atlas legt derzeit keine `.gitignore` an.
 

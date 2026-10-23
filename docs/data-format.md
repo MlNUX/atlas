@@ -178,7 +178,7 @@ Aufgaben, die Markdown-Datei bleibt dabei unverändert.
 Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 `[calendar] default` aus `config.toml`, sonst der Projektkalender.
 
-**`cache/sync.json`** (Nextcloud, siehe [Phase-2-Bericht](phase2.md)):
+**`cache/sync.json`** (Nextcloud, siehe [Phase-2-Bericht](development/phase2.md)):
 
 ```json
 {
