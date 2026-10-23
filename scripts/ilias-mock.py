@@ -28,6 +28,8 @@ FILES = {
     "201": ("Gruppeneinteilung", "gruppen.pdf"),
 }
 
+KIT_STYLE = {"106", "107"}
+
 # container key -> list of (kind, id) children
 TREE = {
     "crs_100": [("fold", "101"), ("file", "102"), ("sess", "103")],
@@ -74,8 +76,11 @@ def item(kind, oid):
         title, _ = FILES[oid]
         version = state["version"] if oid == "102" else 1
         href = f"/goto.php?target=file_{oid}_download&client_id=test"
+        # As at KIT: some files only by GUI class, without permalink or icon.
+        if oid in KIT_STYLE:
+            href = f"/ilias.php?baseClass=ilrepositorygui&amp;cmdNode=xu:ng&amp;cmdClass=ilObjFileGUI&amp;cmd=sendfile&amp;ref_id={oid}"
         props = f'<div class="il_ItemProperties"><span class="il_ItemProperty">pdf</span> <span class="il_ItemProperty">1 KB</span> <span class="il_ItemProperty">Version: {version}</span></div>'
-        icon = "icon_file.svg"
+        icon = "icon_file.svg" if oid not in KIT_STYLE else "tile.png"
     elif kind == "sess":
         title = NAMES[f"sess_{oid}"]
         href = f"/ilias.php?ref_id={oid}&cmdClass=ilobjsessiongui&baseClass=ilrepositorygui"
@@ -148,6 +153,11 @@ class Handler(BaseHTTPRequestHandler):
             key = f"sess_{q['ref_id'][0]}"
             if key in TREE:
                 return self.send(200, page(NAMES[key], [item(k, i) for k, i in TREE[key]]).encode())
+        if url.path == "/ilias.php" and (q.get("cmd") or [""])[0] == "sendfile":
+            oid = (q.get("ref_id") or [""])[0]
+            if oid in FILES:
+                return self.send(200, pdf(f"{FILES[oid][0]} Version 1"), "application/pdf",
+                                 [("Content-Disposition", f'attachment; filename="{FILES[oid][1]}"')])
         if url.path == "/goto.php" and target:
             if target.startswith("file_") and target.endswith("_download"):
                 oid = target[5:-9]

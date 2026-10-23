@@ -350,7 +350,8 @@ fn page_title(doc: &Html) -> String {
 }
 
 /// Kind and ID of an ILIAS object link: from permalinks (`target=fold_12`,
-/// `goto_…_fold_12.html`, `/go/fold/12`, `goto.php/fold/12`) or, for
+/// `goto_…_fold_12.html`, `/go/fold/12`, `goto.php/fold/12`), from the
+/// GUI class of `ref_id` links (`cmdClass=ilObjFolderGUI`) or, for
 /// other links with a
 /// `ref_id`, from the type icon of the list item.
 fn classify(href: &str, icon: Option<&str>) -> Option<(String, String)> {
@@ -370,6 +371,20 @@ fn classify(href: &str, icon: Option<&str>) -> Option<(String, String)> {
         }
     }
     let ref_id = Regex::new(r"(?i)[?&]ref_id=(\d+)").unwrap().captures(&decoded)?;
+    // `ilias.php?…&cmdClass=ilObjFileGUI&cmd=sendfile&ref_id=12`: the GUI
+    // class names the type (KIT links files and folders like this).
+    if let Some(class) =
+        Regex::new(r"(?i)[?&]cmdClass=ilObj(Course|Group|Session|Folder|File)GUI\b").unwrap().captures(&decoded)
+    {
+        let kind = match class[1].to_lowercase().as_str() {
+            "course" => "crs",
+            "group" => "grp",
+            "session" => "sess",
+            "folder" => "fold",
+            _ => "file",
+        };
+        return Some((kind.to_owned(), ref_id[1].to_owned()));
+    }
     let kind = Regex::new(r"(?i)icon_(crs|grp|sess|fold|file)\b").unwrap().captures(icon?)?;
     Some((kind[1].to_lowercase(), ref_id[1].to_owned()))
 }
@@ -441,12 +456,38 @@ fn in_navigation(a: ElementRef) -> bool {
     })
 }
 
-/// The list item a link belongs to (title, icon and properties are there).
+/// The list item a link belongs to (title, icon and properties are there):
+/// a row of the list view or a card of the tile view.
 fn list_item(a: ElementRef) -> Option<ElementRef> {
     a.ancestors().filter_map(ElementRef::wrap).find(|e| {
         let el = e.value();
         matches!(el.name(), "li" | "tr")
-            || el.classes().any(|c| matches!(c, "il_ContainerListItem" | "il-std-item" | "il-item" | "ilObjListRow"))
+            || el.classes().any(|c| {
+                matches!(c, "il_ContainerListItem" | "il-std-item" | "il-item" | "ilObjListRow" | "il-card" | "card")
+            })
+    })
+}
+
+/// The type icon of a list item, as `icon_<kind>`: from the image file
+/// (`icon_fold.svg`) or, in ILIAS 9, its classes (`icon fold medium`).
+fn item_icon(item: ElementRef) -> Option<String> {
+    let images = Selector::parse("img").unwrap();
+    let kind = Regex::new(r"(?i)icon_(crs|grp|sess|fold|file)\b").unwrap();
+    item.select(&images).find_map(|img| {
+        let el = img.value();
+        if let Some(src) = el.attr("src").filter(|s| kind.is_match(s)) {
+            return Some(src.to_owned());
+        }
+        let classes: Vec<&str> = el.classes().collect();
+        classes
+            .contains(&"icon")
+            .then(|| {
+                classes
+                    .iter()
+                    .find(|c| matches!(**c, "crs" | "grp" | "sess" | "fold" | "file"))
+                    .map(|k| format!("icon_{k}"))
+            })
+            .flatten()
     })
 }
 
@@ -456,8 +497,7 @@ pub fn objects(html: &str, page: &Url) -> Vec<Node> {
     let doc = Html::parse_document(html);
     let main = Selector::parse("#il_center_col, main, [role=main]").unwrap();
     let links = Selector::parse("a[href]").unwrap();
-    let icon_sel = Selector::parse(r#"img[src*="icon_"]"#).unwrap();
-    let title_sel = Selector::parse(".il_ContainerItemTitle, .il-item-title").unwrap();
+    let title_sel = Selector::parse(".il_ContainerItemTitle, .il-item-title, .card-title").unwrap();
     let props_sel = Selector::parse(".il_ItemProperties, .il-item-properties").unwrap();
     let root = doc.select(&main).next().unwrap_or_else(|| doc.root_element());
     let mut out = Vec::new();
@@ -471,8 +511,8 @@ pub fn objects(html: &str, page: &Url) -> Vec<Node> {
             continue;
         }
         let item = list_item(a);
-        let icon = item.and_then(|i| i.select(&icon_sel).next()).and_then(|i| i.value().attr("src"));
-        let Some((kind, id)) = classify(href.as_str(), icon) else { continue };
+        let icon = item.and_then(item_icon);
+        let Some((kind, id)) = classify(href.as_str(), icon.as_deref()) else { continue };
         let title = item.and_then(|i| i.select(&title_sel).next()).map(|t| t.text().collect::<String>());
         let name = clean(&title.unwrap_or_else(|| a.text().collect()));
         let name = if name.is_empty() { clean(a.value().attr("title").unwrap_or_default()) } else { name };
@@ -879,7 +919,6 @@ pub fn explain(html: &str, page: &Url) -> String {
     let doc = Html::parse_document(html);
     let main = Selector::parse("#il_center_col, main, [role=main]").unwrap();
     let links = Selector::parse("a[href]").unwrap();
-    let icon_sel = Selector::parse(r#"img[src*="icon_"]"#).unwrap();
     let (root, part) = match doc.select(&main).next() {
         Some(e) => {
             (e, format!("<{}{}>", e.value().name(), e.value().id().map(|i| format!(" id={i}")).unwrap_or_default()))
@@ -898,8 +937,8 @@ pub fn explain(html: &str, page: &Url) -> String {
             foreign += 1;
             continue;
         }
-        let icon = list_item(a).and_then(|i| i.select(&icon_sel).next()).and_then(|i| i.value().attr("src"));
-        if classify(href.as_str(), icon).is_none() {
+        let icon = list_item(a).and_then(item_icon);
+        if classify(href.as_str(), icon.as_deref()).is_none() {
             let shown = format!("{}{}", href.path(), href.query().map(|q| format!("?{q}")).unwrap_or_default());
             unknown.push(shown.chars().take(110).collect::<String>());
         }
@@ -1225,6 +1264,22 @@ mod tests {
     }
 
     #[test]
+    fn tile_view_cards() {
+        let page = Url::parse("https://ilias.example/ilias.php?baseClass=ilrepositorygui&ref_id=10").unwrap();
+        let html = r#"<html><body><div id="il_center_col">
+            <div class="il-card thumbnail"><a href="ilias.php?baseClass=ilrepositorygui&amp;ref_id=11"><img src="./data/tile.png"></a>
+              <div class="card-body"><div class="il-card-repository-head"><img class="icon fold medium" src="./assets/images/standard/icon_x.svg"></div>
+              <h5 class="card-title"><a href="ilias.php?baseClass=ilrepositorygui&amp;ref_id=11">Übungsblätter</a></h5></div></div>
+            <div class="il-card thumbnail"><div class="card-body"><img src="./templates/default/images/standard/icon_file.svg">
+              <h5 class="card-title"><a href="ilias.php?baseClass=ilrepositorygui&amp;cmd=sendfile&amp;ref_id=12">Skript</a></h5></div></div>
+            </div></body></html>"#;
+        let found = objects(html, &page);
+        let keys: Vec<_> = found.iter().map(|o| (o.key(), o.name.as_str())).collect();
+        assert_eq!(keys, [("fold11".into(), "Übungsblätter"), ("file12".into(), "Skript")]);
+        assert!(found[1].download.as_deref().unwrap().contains("cmd=sendfile"));
+    }
+
+    #[test]
     fn links_are_classified() {
         assert_eq!(classify("https://x/goto.php?target=fold_12&client_id=k", None), Some(("fold".into(), "12".into())));
         assert_eq!(classify("https://x/goto_produktiv_crs_7.html", None), Some(("crs".into(), "7".into())));
@@ -1236,6 +1291,12 @@ mod tests {
         );
         assert_eq!(classify("https://x/ilias.php?ref_id=3", Some("/img/icon_tst.svg")), None);
         assert_eq!(classify("https://x/ilias.php?ref_id=3", None), None);
+        let kit = "https://x/ilias.php?baseClass=ilrepositorygui&cmdNode=xu:ng&cmdClass=ilObjFileGUI&cmd=sendfile&ref_id=2938639";
+        assert_eq!(classify(kit, None), Some(("file".into(), "2938639".into())));
+        let fold = "https://x/ilias.php?baseClass=ilrepositorygui&cmdNode=xu:nl&cmdClass=ilobjfoldergui&ref_id=3042915&item_ref_id=0";
+        assert_eq!(classify(fold, None), Some(("fold".into(), "3042915".into())));
+        let info = "https://x/ilias.php?baseClass=ilrepositorygui&cmdNode=xu:nl:f6&cmdClass=ilinfoscreengui&cmd=showSummary&ref_id=3";
+        assert_eq!(classify(info, None), None, "info page is no object");
         assert_eq!(percent_decode("a%20b%zz%4"), "a b%zz%4");
     }
 

@@ -1037,7 +1037,10 @@ im Editor, Mausrad im Editor unverändert).
   Kalender: `.ilBlock`, rechte und linke Spalte) werden nicht verfolgt; das
   Protokoll nennt je Favorit Seiten und Dateien. Objekte erkennt
   `objects` an Permalinks (`target=fold_12`, `goto_…_fold_12.html`,
-  `/go/fold/12`, `goto.php/fold/12`) oder – bei `ref_id`-Links wie Sitzungen – am Typ-Symbol
+  `/go/fold/12`, `goto.php/fold/12`), an der GUI-Klasse von
+  `ref_id`-Links (`cmdClass=ilObjFileGUI&cmd=sendfile` – so verlinkt KIT
+  Dateien – oder `ilObjFolderGUI`; Infoseiten zählen nicht), in der
+  Kachelansicht an Karten (`il-card`) oder – bei `ref_id`-Links wie Sitzungen – am Typ-Symbol
   des Listeneintrags; Links in Navigation, Reitern und Brotkrumen zählen
   nicht. Landet eine Seite auf einem anderen Rechner oder fehlt der
   Abmelde-Link, ist die Sitzung abgelaufen: das Anmeldefenster öffnet sich,
