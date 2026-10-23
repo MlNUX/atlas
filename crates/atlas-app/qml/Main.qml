@@ -500,6 +500,12 @@ ApplicationWindow {
     }
 
     // Test hooks (--screenshot / --quit-after).
+    // For "md-sync": line 30 of the editor in the middle, once laid out.
+    Timer {
+        id: syncShot
+        interval: 600
+        onTriggered: { const e = editor.activeTab.viewerItem.editorItem; e.scrollToExactLine(30, Math.round(e.viewHeight / 2)) }
+    }
     // `--screenshot-dialog NAME`: a dialog for design checks (fixed list).
     Timer {
         id: dialogTimer
@@ -514,6 +520,12 @@ ApplicationWindow {
                 "graph": () => inspector.graphWindow.show(file),
                 "actions": () => { window.inspectorWidth = 300; inspector.tab = 3 },
                 "md-edit": () => { if (editor.activeTab && editor.activeTab.viewerItem) editor.activeTab.viewerItem.mode = "split" },
+                "md-sync": () => {
+                    const v = editor.activeTab && editor.activeTab.viewerItem
+                    if (!v) return
+                    v.mode = "split"
+                    syncShot.start()
+                },
                 "html": () => fileActions.renderHtml(file),
                 "md-pdf": () => fileActions.markdownToPdf(file),
                 "pomodoro": () => { inspector.pomodoro.startPause(); inspector.pomodoro.endsAt = Date.now() + (17 * 60 + 42) * 1000; inspector.pomodoro.rounds = 2 },

@@ -62,53 +62,52 @@ window.atlas = (function () {
 
     function markers() { return Array.from(document.querySelectorAll("a.line-marker")); }
 
-    // Source line at the top of the view, with a fraction between two
-    // blocks (scroll sync with the editor, #7).
-    const TOP = 8;
-    function exactTopLine() {
+    // Source line at the top edge of the view, with a fraction between two
+    // blocks (scroll sync with the editor, #7). A block counts from the top
+    // of its box, not from the marker before it: the marker sits above the
+    // block's margin, which put the preview's text lower than the editor's.
+    function anchorTop(marker) {
+        const block = marker.nextElementSibling;
+        return (block && !block.classList.contains("line-marker") ? block : marker).getBoundingClientRect().top;
+    }
+    /// Source line (fractional) at height `y` of the view.
+    function exactLineAt(y) {
         const list = markers();
         if (!list.length) return 1;
         let i = 0;
-        while (i + 1 < list.length && list[i + 1].getBoundingClientRect().top <= TOP) i++;
+        while (i + 1 < list.length && anchorTop(list[i + 1]) <= y) i++;
         const a = list[i], b = list[i + 1];
-        const la = +a.dataset.line, ya = a.getBoundingClientRect().top;
-        if (ya > TOP || !b) return la;
-        const lb = +b.dataset.line, yb = b.getBoundingClientRect().top;
-        return yb > ya ? la + (lb - la) * Math.min(1, (TOP - ya) / (yb - ya)) : la;
+        const la = +a.dataset.line, ya = anchorTop(a);
+        if (ya > y || !b) return la;
+        const lb = +b.dataset.line, yb = anchorTop(b);
+        return yb > ya ? la + (lb - la) * Math.min(1, (y - ya) / (yb - ya)) : la;
     }
+    function exactTopLine() { return exactLineAt(0); }
     function topLine() { return Math.floor(exactTopLine()); }
-    /// Page offset that shows source line `line` (fractional) at the top.
+    /// Page offset that puts source line `line` (fractional) at the top edge.
     function offsetOf(line) {
         const list = markers();
         if (!list.length) return 0;
         let i = 0;
         while (i + 1 < list.length && +list[i + 1].dataset.line <= line) i++;
         const a = list[i], b = list[i + 1];
-        const la = +a.dataset.line, ya = a.getBoundingClientRect().top + window.scrollY;
-        if (!b || line <= la) return ya - TOP;
-        const lb = +b.dataset.line, yb = b.getBoundingClientRect().top + window.scrollY;
-        return ya + (yb - ya) * (line - la) / (lb - la) - TOP;
+        const la = +a.dataset.line, ya = anchorTop(a) + window.scrollY;
+        if (!b || line <= la) return ya;
+        const lb = +b.dataset.line, yb = anchorTop(b) + window.scrollY;
+        return ya + (yb - ya) * (line - la) / (lb - la);
     }
 
-    // Smooth following: each frame covers a part of the way to the target,
-    // a new target just redirects. Own movements are not reported back.
-    let target = null;
+    // Following the editor: set in step with it every frame (the editor
+    // already scrolls smoothly – a second smoothing here lagged and caught
+    // up in jerks). Movements made for the editor are not reported back.
     let ownScroll = -1;
-    function animate() {
-        if (target === null) return;
+    /// Puts source line `line` at height `at` of the view (default: top).
+    function follow(line, at) {
         const max = document.documentElement.scrollHeight - window.innerHeight;
-        const goal = Math.max(0, Math.min(max, target));
-        const y = window.scrollY;
-        const next = Math.abs(goal - y) < 1 ? goal : y + (goal - y) * 0.35;
-        ownScroll = Math.round(next);
-        window.scrollTo(0, next);
-        if (next === goal) { target = null; return; }
-        requestAnimationFrame(animate);
-    }
-    function follow(line) {
-        const running = target !== null;
-        target = offsetOf(line);
-        if (!running) requestAnimationFrame(animate);
+        const y = Math.max(0, Math.min(max, offsetOf(line) - (at || 0)));
+        if (Math.abs(y - window.scrollY) < 0.5) return;
+        ownScroll = y;
+        window.scrollTo(0, y);
     }
 
     document.addEventListener("click", (ev) => {
@@ -141,15 +140,15 @@ window.atlas = (function () {
     let scrollPending = false;
     window.addEventListener("scroll", () => {
         if (!reportScroll) return;
-        if (Math.abs(window.scrollY - ownScroll) <= 1) return;
-        target = null;
+        if (ownScroll >= 0 && Math.abs(window.scrollY - ownScroll) <= 1) { ownScroll = -1; return; }
         ownScroll = -1;
         if (scrollPending) return;
         scrollPending = true;
         requestAnimationFrame(() => {
             scrollPending = false;
-            const exact = exactTopLine();
-            post("scroll", { line: Math.floor(exact), exact: exact, y: window.scrollY });
+            // The middle of the view is where content lines up with the editor.
+            const mid = Math.round(window.innerHeight / 2);
+            post("scroll", { line: topLine(), exact: exactLineAt(mid), at: mid, y: window.scrollY });
         });
     });
 
@@ -170,6 +169,9 @@ window.atlas = (function () {
                 .catch(() => {})
                 .then(() => document.fonts.ready)
                 .then(() => { busy = false; });
+            // Restoring the position is no scrolling by the user (it would
+            // drag the editor along in the split view).
+            ownScroll = y;
             window.scrollTo(0, y);
         },
         scrollToLine(line) {
@@ -186,6 +188,7 @@ window.atlas = (function () {
         /// Follows the editor smoothly to source line `line` (fractional).
         follow,
         exactTopLine,
+        exactLineAt,
         scrollToAnchor,
         busy() { return busy; },
         // For the PDF export: Qt prints without page margins and ignores

@@ -7,6 +7,9 @@
   --muted: #8a97ad; --accent: #3d8bfd; --link: #5aa2ff; --quote: #e0b33a; --error: #f2575f;
 }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
+/* No automatic scroll corrections when content grows (images, diagrams):
+   they were reported as scrolling and moved the editor in the split view. */
+html { overflow-anchor: none; }
 body { font: 15px/1.65 system-ui, "Inter", "Noto Sans", sans-serif; }
 main { max-width: 860px; margin: 0 auto; padding: 24px 32px 50vh; }
 h1, h2, h3, h4, h5, h6 { color: var(--strong); line-height: 1.25; margin: 1.5em 0 0.6em; font-weight: 600; }

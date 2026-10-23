@@ -973,3 +973,22 @@ im Editor, Mausrad im Editor unverändert).
 - **Schneller:** Schwung mit 1,6-facher Wischgeschwindigkeit; die
   Höchstgeschwindigkeit wird nur für diesen Schwung angehoben, Mausräder
   bleiben unverändert.
+
+### Nachtrag – Split-Scrollen nachgebessert (#7)
+
+- **Ruckeln:** Die Vorschau zog dem Editor mit einer eigenen Glättung nach;
+  der Editor scrollt aber schon animiert – doppelt geglättet hing sie
+  hinterher und holte ruckartig auf. Jetzt setzt sie ihre Position in jedem
+  Frame direkt. Dazu kamen zwei Rückkopplungen: Beim Neurendern stellte die
+  Vorschau ihre Scrollposition wieder her, und Chromiums Scroll Anchoring
+  verschob sie bei wachsendem Inhalt – beides galt als Scrollen durch den
+  Nutzer und zog den Editor mit. Das Wiederherstellen zählt jetzt als
+  eigene Bewegung, Scroll Anchoring ist aus (`overflow-anchor: none`).
+- **Gleiche Höhe:** Gemessen wurde an den Zeilenmarken vor jedem Block,
+  also über dessen Außenabstand, und mit 8 px Versatz – der Text stand
+  rechts tiefer. Jetzt zählt die Oberkante des Blocks selbst. Ausgerichtet
+  wird in der Mitte der Ansicht, wo man liest: Die Vorschau setzt größer
+  als der Editor, ganz gleich hoch über die ganze Höhe geht nicht; so
+  verteilt sich der Unterschied nach oben und unten. Neu abgeglichen wird
+  auch nach dem Öffnen im geteilten Modus, nach jedem Rendern und nach
+  Größenänderungen.

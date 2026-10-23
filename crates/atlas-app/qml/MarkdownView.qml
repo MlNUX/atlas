@@ -23,11 +23,22 @@ Rectangle {
     property int previewLine: 1
     /// When the editor last moved because the preview was scrolled (no echo).
     property real syncedFromPreview: 0
+    onModeChanged: if (mode === "split" && pageReady) followTimer.restart()
+    // Resized (window, split divider): the middle moved, line up again.
+    Connections {
+        target: editor
+        function onViewHeightChanged() { if (root.mode === "split" && root.pageReady) followTimer.restart() }
+    }
     // Coalesces editor scroll steps into one message per frame.
     Timer {
         id: followTimer
         interval: 0
-        onTriggered: web.runJavaScript("atlas.follow(" + editor.exactTopLine() + ")")
+        // Lined up in the middle of the view, where one reads: the preview
+        // sets type larger, so heights differ further up and down.
+        onTriggered: {
+            const mid = Math.round(Math.min(editor.viewHeight, web.height) / 2)
+            web.runJavaScript("atlas.follow(" + editor.exactLineAt(mid) + "," + mid + ")")
+        }
     }
     property real previewY: 0
     property var repairs: []
@@ -81,6 +92,8 @@ Rectangle {
         const result = JSON.parse(root.app.renderMarkdown(editor.text, root.source))
         root.info = result
         web.runJavaScript("atlas.set(" + JSON.stringify(result.html) + ")")
+        // New content: line up with the editor again.
+        if (root.mode === "split") followTimer.restart()
     }
 
     function followLink(link) {
@@ -255,7 +268,7 @@ Rectangle {
                         // Split view: the editor follows the preview (#7).
                         if (root.mode === "split" && s.exact) {
                             root.syncedFromPreview = Date.now()
-                            editor.scrollToExactLine(s.exact)
+                            editor.scrollToExactLine(s.exact, s.at || 0)
                         }
                     } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
                 }

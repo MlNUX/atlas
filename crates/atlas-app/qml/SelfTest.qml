@@ -55,6 +55,7 @@ Item {
     property real flingDirect
     property int flings
     property var erase: []
+    property int syncMid
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -1219,22 +1220,43 @@ Item {
             () => {
                 const md = editor.activeTab.viewerItem
                 if (waitFor(() => md.pageReady)) return
-                md.editorItem.scrollToExactLine(81)
+                test.syncMid = Math.round(Math.min(md.editorItem.viewHeight, md.previewItem.height) / 2)
             },
             () => {
+                // Opened in the split view: lined up at once, without scrolling.
                 const md = editor.activeTab.viewerItem
-                md.previewItem.runJavaScript("atlas.exactTopLine()", (line) => {
-                    check("Split: Vorschau folgt dem Editor", Math.abs(line - 81) < 3, line)
+                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
+                    const e = md.editorItem.exactLineAt(test.syncMid)
+                    check("Split: nach dem Öffnen gleich ausgerichtet", Math.abs(line - e) < 1, "Vorschau " + line + ", Editor " + e)
+                    md.editorItem.scrollToExactLine(81, test.syncMid)
+                })
+            },
+            () => {
+                // Lined up in the middle of the view: the same line on both sides.
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
+                    check("Split: Vorschau folgt dem Editor, Mitte auf gleicher Höhe", Math.abs(line - 81) < 1, line)
                     // The user scrolls the preview: the editor follows.
                     md.previewItem.runJavaScript("window.scrollBy(0, -400)")
                 })
             },
             () => {
                 const md = editor.activeTab.viewerItem
-                md.previewItem.runJavaScript("atlas.exactTopLine()", (line) => {
-                    const e = md.editorItem.exactTopLine()
-                    check("Split: Editor folgt der Vorschau", line < 78 && Math.abs(e - line) < 3, "Vorschau " + line + ", Editor " + e)
+                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
+                    const e = md.editorItem.exactLineAt(test.syncMid)
+                    check("Split: Editor folgt der Vorschau, Mitte auf gleicher Höhe", line < 78 && Math.abs(e - line) < 1, "Vorschau " + line + ", Editor " + e)
                 })
+            },
+            () => {
+                // Re-rendering the preview (after typing) leaves the editor where it is.
+                const md = editor.activeTab.viewerItem
+                test.flingY = md.editorItem.scrollY
+                md.render()
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Split: Neurendern der Vorschau bewegt den Editor nicht", Math.abs(md.editorItem.scrollY - test.flingY) < 1,
+                      test.flingY + " → " + md.editorItem.scrollY)
             },
             () => {
                 // Over the editor: the mouse wheel scrolls as before, a

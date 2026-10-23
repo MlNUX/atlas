@@ -45,7 +45,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - Markdown-Vorschau zeigt keine „#“ mehr vor Überschriften
   ([#3](https://github.com/MlNUX/atlas/issues/3)).
 - Markdown-Split: Scrollen in der Vorschau bewegt jetzt auch den Editor,
-  und die Vorschau folgt dem Editor weich statt in Sprüngen
+  die Vorschau läuft im Gleichschritt mit (ohne Nachziehen und Ruckeln),
+  und in der Mitte der Ansicht steht derselbe Inhalt links und rechts auf
+  gleicher Höhe – auch direkt nach dem Öffnen und nach Größenänderungen.
+  Neurendern beim Tippen bewegt den Editor nicht mehr
   ([#7](https://github.com/MlNUX/atlas/issues/7)).
 - PDF-Dunkelmodus ruckelte beim Ändern der Fenstergröße: Die Umkehrung
   wird jetzt einmal beim Rendern gemacht statt bei jedem Neuzeichnen.
