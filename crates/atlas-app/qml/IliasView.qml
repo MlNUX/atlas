@@ -165,6 +165,11 @@ Rectangle {
                     onClicked: root.service.refresh()
                 }
                 IconButton {
+                    iconName: "file-text"
+                    tip: qsTr("ILIAS-Protokoll öffnen (Fehlersuche)")
+                    onClicked: root.service.openLog()
+                }
+                IconButton {
                     iconName: "downloads"
                     tip: root.service && root.service.downloadDir ? qsTr("Download-Ordner: %1 (ändern …)").arg(root.service.downloadDir) : qsTr("Download-Ordner wählen …")
                     onClicked: root.chooseDir()

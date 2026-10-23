@@ -184,6 +184,17 @@ pub mod qobject {
             message: QString,
         );
 
+        /// Adds a line to the ILIAS log (`debug.log` in the ILIAS state
+        /// folder; e.g. what the login window saw).
+        #[qinvokable]
+        #[cxx_name = "iliasTrace"]
+        fn ilias_trace(self: &AppController, line: &QString);
+
+        /// The ILIAS log file.
+        #[qinvokable]
+        #[cxx_name = "iliasDebugLog"]
+        fn ilias_debug_log(self: &AppController) -> QString;
+
         /// Signs out: forgets the web session (all its cookies).
         #[qinvokable]
         #[cxx_name = "iliasLogout"]
@@ -970,6 +981,8 @@ impl qobject::AppController {
         let base = Config::load().ilias.base_url;
         let cookies = crate::qt_helpers::web_cookie_header(&qs(&base)).to_string();
         let agent = crate::qt_helpers::web_user_agent().to_string();
+        ilias::trace_start("Einlesen");
+        ilias::trace(&format!("Web-Profil: {}", crate::qt_helpers::web_cookie_summary()));
         let thread = self.qt_thread();
         std::thread::spawn(move || {
             let progress = |p: ilias::Progress| {
@@ -1013,6 +1026,7 @@ impl qobject::AppController {
         let address = if download.is_empty() { url.to_string() } else { download.to_string() };
         let cookies = crate::qt_helpers::web_cookie_header(&qs(&address)).to_string();
         let agent = crate::qt_helpers::web_user_agent().to_string();
+        ilias::trace(&format!("Web-Profil: {}", crate::qt_helpers::web_cookie_summary()));
         let (url, title, info, segments) = (url.to_string(), title.to_string(), info.to_string(), segments.to_string());
         let thread = self.qt_thread();
         std::thread::spawn(move || {
@@ -1045,7 +1059,20 @@ impl qobject::AppController {
         });
     }
 
+    pub fn ilias_trace(&self, line: &QString) {
+        atlas_core::ilias::trace(&line.to_string());
+    }
+
+    pub fn ilias_debug_log(&self) -> QString {
+        let path = atlas_core::ilias::debug_log();
+        if !path.exists() {
+            atlas_core::ilias::trace("(noch nichts protokolliert)");
+        }
+        qs(path.to_string_lossy())
+    }
+
     pub fn ilias_logout(&self) {
+        atlas_core::ilias::trace("Abmelden: alle Cookies des Web-Profils gelöscht");
         crate::qt_helpers::clear_web_cookies();
     }
 

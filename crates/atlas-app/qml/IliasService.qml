@@ -52,12 +52,20 @@ Item {
         try { return JSON.parse(app.iliasLoad(name) || "null") || fallback } catch (e) { return fallback }
     }
     function message(text) { if (actions) actions.showMessage(text) }
+    /// A line in the ILIAS log (and on the console).
+    function trace(text) {
+        console.log("ilias:", text)
+        app.iliasTrace(text)
+    }
+    /// Opens the ILIAS log in a tab.
+    function openLog() { openLocal(app.iliasDebugLog()) }
 
     // ------------------------------------------------------------ reading
 
     /// Reads the dashboard's courses again (asks for the login if needed).
     function refresh() {
         if (busy) return
+        trace("Einlesen gestartet: " + baseUrl)
         state = "scanning"
         status = qsTr("Lese Kurse von %1 …").arg(host)
         app.iliasScan()
@@ -66,6 +74,7 @@ Item {
         target: service.app
         function onIliasProgress(text) { if (service.busy) service.status = text }
         function onIliasScanned(status, text) {
+            service.trace("Einlesen beendet: " + status + (text ? " – " + text : ""))
             if (status === "login") {
                 // Right after a login: ILIAS did not take the session – no
                 // closing the window on its own again (no loop).
@@ -92,6 +101,7 @@ Item {
                 service.current = Object.assign({}, service.current, { received: received, total: total })
         }
         function onIliasDownloaded(url, path, status, text) {
+            service.trace("Download beendet: " + status + " " + (path || text))
             if (!service.current || service.current.item.url !== url) return
             const job = service.current
             if (status === "login") {
@@ -126,6 +136,7 @@ Item {
     property bool autoClose: true
     /// Logged in (the window found the ILIAS session): read on.
     function loggedIn() {
+        trace("Anmeldefenster: angemeldet – schließe und lese ein")
         loginWindow.close()
         loggedInAt = Date.now()
         message(qsTr("Bei ILIAS angemeldet"))
@@ -134,6 +145,7 @@ Item {
         else refresh()
     }
     function login() {
+        trace("Anmeldefenster geöffnet: " + baseUrl)
         if (loginPage) loginPage.url = baseUrl
         loginWindow.show()
         loginWindow.raise()
@@ -237,7 +249,7 @@ Item {
                     }
                     Button { text: qsTr("Abbrechen"); flat: true; onClicked: { loginWindow.close(); if (service.state === "login") service.status = qsTr("Nicht angemeldet") } }
                     // If Atlas does not notice the login by itself.
-                    Button { text: qsTr("Angemeldet – Kurse zeigen"); highlighted: true; onClicked: { service.autoClose = true; service.loggedIn() } }
+                    Button { text: qsTr("Angemeldet – Kurse zeigen"); highlighted: true; onClicked: { service.trace("Knopf „Angemeldet“ gedrückt"); service.autoClose = true; service.loggedIn() } }
                 }
             }
             Loader {
@@ -258,11 +270,18 @@ Item {
             // links to the logout – any case: ILIAS 8+ says "doLogout" –, or
             // has neither a password field nor a link to log in): read on.
             onLoadingChanged: (request) => {
-                if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus || !loginWindow.visible || !service.autoClose) return
+                const names = ["gestartet", "gestoppt", "geladen", "fehlgeschlagen"]
+                if (loginWindow.visible)
+                    service.trace("Anmeldefenster: " + (names[request.status] || request.status) + " " + request.url
+                                  + (request.errorString ? " (" + request.errorString + ")" : ""))
+                if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus || !loginWindow.visible) return
                 let h = ""
                 try { h = new URL(loginView.url.toString()).host } catch (e) {}
-                if (h !== service.host) return
-                loginView.runJavaScript(service.loggedInCheck, (inside) => { if (inside && loginWindow.visible) service.loggedIn() })
+                if (h !== service.host) { service.trace("  anderer Rechner (" + h + ") als ILIAS (" + service.host + ")"); return }
+                loginView.runJavaScript(service.loggedInCheck, (r) => {
+                    service.trace("  Prüfung: " + JSON.stringify(r))
+                    if (r && r.inside && loginWindow.visible && service.autoClose) service.loggedIn()
+                })
             }
         }
     }
@@ -270,8 +289,14 @@ Item {
         const login = (a) => a.includes('login.php') || a.includes('shib_login') || a.includes('cmd=showlogin');
         const links = [...document.querySelectorAll('a[href], form[action]')]
             .map(e => (e.getAttribute('href') || e.getAttribute('action') || '').toLowerCase());
-        if (links.some(a => a.includes('logout'))) return true;
-        return !login(location.href.toLowerCase()) && !document.querySelector('input[type=password i]') && !links.some(login);
+        const r = { title: document.title, links: links.length };
+        const out = links.find(a => a.includes('logout'));
+        if (out) return Object.assign(r, { inside: true, why: 'Abmelde-Link ' + out });
+        if (login(location.href.toLowerCase())) return Object.assign(r, { inside: false, why: 'Adresse ist eine Anmeldeseite' });
+        if (document.querySelector('input[type=password i]')) return Object.assign(r, { inside: false, why: 'Passwortfeld' });
+        const inLink = links.find(login);
+        if (inLink) return Object.assign(r, { inside: false, why: 'Anmelde-Link ' + inLink });
+        return Object.assign(r, { inside: true, why: 'keine Anmeldeseite' });
     })()`
     readonly property var loginPage: loginLoader.item
     readonly property alias loginVisible: loginWindow.visible

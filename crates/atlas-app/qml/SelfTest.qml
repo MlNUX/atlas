@@ -1329,6 +1329,10 @@ Item {
                       course ? names(course.children) : "kein Kurs")
                 const sess = course && course.children.find(n => n.kind === "sess")
                 check("ILIAS: Sitzung am Symbol erkannt, mit Datei", !!sess && names(sess.children) === "Skript", JSON.stringify(sess))
+                const ilog = app.readTextFile(app.iliasDebugLog())
+                check("ILIAS: Protokoll mit Anmeldung, Seiten und Kursen, ohne Cookie-Werte",
+                      ilog.indexOf("Anmeldefenster: angemeldet") >= 0 && ilog.indexOf("Kurse und Gruppen: Höhere Mathematik I (crs100)") >= 0
+                      && ilog.indexOf("Cookies: sid") >= 0 && ilog.indexOf("sid=1") < 0, ilog.slice(-600))
                 const view = editor.activeTab.viewerItem
                 view.enter(course)
                 check("ILIAS: Ordner zuerst, dann Dateien", view.items.map(n => n.name).join(" | ") === "Sitzung 1: Einführung | Vorlesung | Organisatorisches",

@@ -287,6 +287,16 @@ QString webCookieHeader(const QString& address)
     return parts.join(QStringLiteral("; "));
 }
 
+QString webCookieSummary()
+{
+    if (!cookieProfile)
+        return QStringLiteral("kein Web-Profil");
+    QStringList parts;
+    for (const QNetworkCookie& c : std::as_const(cookies))
+        parts << QString::fromUtf8(c.name()) + '@' + c.domain() + c.path() + (c.isSecure() ? QStringLiteral(" (secure)") : QString());
+    return parts.isEmpty() ? QStringLiteral("keine Cookies im Web-Profil") : parts.join(QStringLiteral(", "));
+}
+
 QString webUserAgent()
 {
     return cookieProfile ? cookieProfile->httpUserAgent() : QString();

@@ -46,6 +46,74 @@ pub fn save(name: &str, json: &str) -> Result<()> {
     crate::paths::write_atomic(&path, json.as_bytes())
 }
 
+// --------------------------------------------------------------- the log
+
+/// The ILIAS log (`debug.log`): every page fetched, where it led, whether
+/// it counted as logged in and why, what was found on it. Cookie values
+/// are never written, only their names.
+pub fn debug_log() -> PathBuf {
+    state_dir().join("debug.log")
+}
+
+/// Copies of pages kept for the log (dashboards, pages without login or
+/// without objects), from the last reading.
+pub fn debug_pages() -> PathBuf {
+    state_dir().join("debug")
+}
+
+static TRACE: Mutex<()> = Mutex::new(());
+
+/// Adds a line to the ILIAS log (and to the program's log at debug level).
+pub fn trace(line: &str) {
+    log::debug!("ilias: {line}");
+    if cfg!(test) {
+        return;
+    }
+    let _guard = TRACE.lock().unwrap_or_else(|e| e.into_inner());
+    let path = debug_log();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // Long logs start over.
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 4 * 1024 * 1024) {
+        let _ = std::fs::remove_file(&path);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{} {line}", chrono::Local::now().format("%H:%M:%S%.3f"));
+    }
+}
+
+/// Starts the log of a new reading (call before [`scan`]): a header line,
+/// no old page copies.
+pub fn trace_start(what: &str) {
+    let _ = std::fs::remove_dir_all(debug_pages());
+    trace(&format!("==== {what} ({})", chrono::Local::now().format("%Y-%m-%d")));
+    trace(&format!("Seitenkopien in {}", debug_pages().display()));
+}
+
+/// Keeps a copy of a page for the log; returns its file name.
+fn dump(html: &str, url: &Url) -> String {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    if cfg!(test) {
+        return String::new();
+    }
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tail: String = url.as_str().rsplit('/').next().unwrap_or_default().chars().take(60).collect();
+    let name = format!("{n:03}-{}.html", safe_segment(&tail).replace([' ', '?', '&', '='], "_"));
+    let dir = debug_pages();
+    if std::fs::create_dir_all(&dir).is_ok() {
+        let _ = std::fs::write(dir.join(&name), html);
+    }
+    name
+}
+
+/// Only the names of the cookies in a `Cookie` header.
+pub fn cookie_names(header: &str) -> String {
+    let names: Vec<&str> =
+        header.split(';').filter_map(|c| c.split('=').next()).map(str::trim).filter(|n| !n.is_empty()).collect();
+    if names.is_empty() { "keine".to_owned() } else { names.join(", ") }
+}
+
 /// A name from ILIAS as one path segment: no slashes or control
 /// characters, not "." or "..", no leading dots (hidden files), at most
 /// 120 characters.
@@ -129,20 +197,37 @@ impl Node {
 /// page (address `login.php` or Shibboleth, a password field, or a link to
 /// log in – ILIAS shows one to visitors).
 pub fn logged_in(html: &str, at: &Url) -> bool {
-    let doc = Html::parse_document(html);
+    login_check(&Html::parse_document(html), at).0
+}
+
+/// [`logged_in`] with the reason, for the log.
+fn login_check(doc: &Html, at: &Url) -> (bool, String) {
     let targets = Selector::parse("a[href], form[action]").unwrap();
     let addresses: Vec<String> = doc
         .select(&targets)
         .filter_map(|e| e.value().attr("href").or(e.value().attr("action")))
         .map(str::to_lowercase)
         .collect();
-    if addresses.iter().any(|a| a.contains("logout")) {
-        return true;
+    if let Some(a) = addresses.iter().find(|a| a.contains("logout")) {
+        return (true, format!("Abmelde-Link {a}"));
     }
     let login = |a: &str| a.contains("login.php") || a.contains("shib_login") || a.contains("cmd=showlogin");
-    let path = at.as_str().to_lowercase();
+    if login(&at.as_str().to_lowercase()) {
+        return (false, "Adresse ist eine Anmeldeseite".into());
+    }
     let password = Selector::parse(r#"input[type="password" i]"#).unwrap();
-    !(login(&path) || doc.select(&password).next().is_some() || addresses.iter().any(|a| login(a)))
+    if doc.select(&password).next().is_some() {
+        return (false, "Seite hat ein Passwortfeld".into());
+    }
+    if let Some(a) = addresses.iter().find(|a| login(a)) {
+        return (false, format!("Seite verlinkt die Anmeldung ({a})"));
+    }
+    (true, "keine Anmeldeseite (kein Abmelde-Link gefunden)".into())
+}
+
+fn page_title(doc: &Html) -> String {
+    let sel = Selector::parse("title").unwrap();
+    doc.select(&sel).next().map(|t| clean(&t.text().collect::<String>())).unwrap_or_default()
 }
 
 /// Kind and ID of an ILIAS object link: from permalinks (`target=fold_12`,
@@ -315,6 +400,11 @@ impl Client {
             .user_agent(if user_agent.is_empty() { "Atlas (ILIAS)" } else { user_agent })
             .build()
             .new_agent();
+        trace(&format!(
+            "Client: {base} · Cookies: {} · Browserkennung: {}",
+            cookie_names(cookies),
+            if user_agent.is_empty() { "Atlas" } else { user_agent }
+        ));
         Ok(Client { agent, base, cookies: cookies.to_owned() })
     }
 
@@ -335,9 +425,13 @@ impl Client {
                 // A signal (e.g. a finished terminal program) interrupted the read.
                 Err(ureq::Error::Io(e)) if e.kind() == std::io::ErrorKind::Interrupted && attempts < 4 => continue,
                 Err(ureq::Error::StatusCode(code)) => {
+                    trace(&format!("GET {url} → HTTP {code}"));
                     return Err(IliasError::Other(format!("ILIAS antwortet mit {code} ({url})")));
                 }
-                Err(e) => return Err(IliasError::Other(format!("{e} ({url})"))),
+                Err(e) => {
+                    trace(&format!("GET {url} → Fehler: {e}"));
+                    return Err(IliasError::Other(format!("{e} ({url})")));
+                }
             }
         }
     }
@@ -353,8 +447,27 @@ impl Client {
             .limit(32 * 1024 * 1024)
             .read_to_string()
             .map_err(|e| IliasError::Other(e.to_string()))?;
+        let doc = Html::parse_document(&html);
+        let (inside, why) = login_check(&doc, &final_url);
+        let moved = if final_url.as_str() == url { String::new() } else { format!(" → {final_url}") };
+        trace(&format!(
+            "GET {url}{moved} · {} · {} kB · „{}“ · {}: {why}",
+            res.status().as_u16(),
+            html.len() / 1024,
+            page_title(&doc),
+            if inside { "angemeldet" } else { "NICHT angemeldet" }
+        ));
         // Sent elsewhere (the university's login) or to ILIAS' login.
-        if final_url.host_str() != self.base.host_str() || !logged_in(&html, &final_url) {
+        if final_url.host_str() != self.base.host_str() {
+            trace(&format!(
+                "  anderer Rechner als {} – Anmeldung nötig (Kopie: {})",
+                self.base,
+                dump(&html, &final_url)
+            ));
+            return Err(IliasError::Login);
+        }
+        if !inside {
+            trace(&format!("  Kopie: {}", dump(&html, &final_url)));
             return Err(IliasError::Login);
         }
         Ok((html, final_url))
@@ -389,15 +502,31 @@ pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec
         let url = client.base.join(d).map_err(|e| IliasError::Other(e.to_string()))?;
         let (html, at) = match client.page(url.as_str()) {
             Ok(p) => p,
-            Err(IliasError::Login) => return Err(IliasError::Login),
-            Err(_) => continue,
+            Err(IliasError::Login) => {
+                trace("Abbruch: nicht angemeldet");
+                return Err(IliasError::Login);
+            }
+            Err(e) => {
+                trace(&format!("  Dashboard übersprungen: {e}"));
+                continue;
+            }
         };
-        for o in objects(&html, &at) {
+        let found = objects(&html, &at);
+        trace(&format!("  Dashboard: {} (Kopie: {})", summary(&found), dump(&html, &at)));
+        for o in found {
             if (o.kind == "crs" || o.kind == "grp") && seen.insert(o.key()) {
                 courses.push(o);
             }
         }
     }
+    trace(&format!(
+        "Kurse und Gruppen: {}",
+        if courses.is_empty() {
+            "keine".to_owned()
+        } else {
+            courses.iter().map(|c| format!("{} ({})", c.name, c.key())).collect::<Vec<_>>().join(" · ")
+        }
+    ));
     progress(Progress { pages: 0, text: format!("{} Kurse", courses.len()) });
 
     struct Work {
@@ -479,8 +608,10 @@ pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec
     });
     let mut w = work.into_inner().unwrap();
     if w.login {
+        trace("Abbruch: Sitzung unterwegs verloren");
         return Err(IliasError::Login);
     }
+    trace(&format!("Fertig: {} Seiten, {} Fehler", w.pages, w.errors.len()));
     fn build(node: &mut Node, w: &mut Work) {
         if !node.is_container() {
             return;
@@ -499,6 +630,21 @@ pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec
         build(c, &mut w);
     }
     Ok(courses)
+}
+
+/// What was found on a page, by kind (for the log).
+fn summary(found: &[Node]) -> String {
+    if found.is_empty() {
+        return "nichts gefunden".to_owned();
+    }
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    for o in found {
+        match counts.iter_mut().find(|(k, _)| *k == o.kind) {
+            Some((_, n)) => *n += 1,
+            None => counts.push((o.kind.clone(), 1)),
+        }
+    }
+    counts.iter().map(|(k, n)| format!("{n}× {k}")).collect::<Vec<_>>().join(", ")
 }
 
 /// File name from a `Content-Disposition` header (RFC 6266/5987).
@@ -525,12 +671,22 @@ pub fn download(
 ) -> Result<PathBuf, IliasError> {
     use ureq::ResponseExt;
     let io = |e: std::io::Error| IliasError::Other(e.to_string());
+    trace(&format!("Download {url}"));
     let mut res = client.get(url)?;
     let content_type = res.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_lowercase();
     let disposition = res.headers().get("content-disposition").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+    trace(&format!("  {} · {content_type} · {disposition}", res.status().as_u16()));
     if content_type.starts_with("text/html") && !disposition.to_lowercase().contains("attachment") {
         let html = res.body_mut().read_to_string().unwrap_or_default();
         let at = Url::parse(&res.get_uri().to_string()).ok();
+        if let Some(at) = &at {
+            let (inside, why) = login_check(&Html::parse_document(&html), at);
+            trace(&format!(
+                "  HTML statt Datei von {at}: {}: {why} (Kopie: {})",
+                if inside { "angemeldet" } else { "NICHT angemeldet" },
+                dump(&html, at)
+            ));
+        }
         if !at.as_ref().is_some_and(|u| u.host_str() == client.base.host_str() && logged_in(&html, u)) {
             return Err(IliasError::Login);
         }
@@ -563,6 +719,7 @@ pub fn download(
     file.sync_all().map_err(io)?;
     drop(file);
     std::fs::rename(&part, &target).map_err(io)?;
+    trace(&format!("  gespeichert: {} ({received} Bytes)", target.display()));
     Ok(target)
 }
 

@@ -226,6 +226,8 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 | `$XDG_CONFIG_HOME/atlas/extensions/` | installierte Erweiterungen ([extensions.md](extensions.md)) |
 | `$XDG_STATE_HOME/atlas/ilias/index.json` | eingelesene ILIAS-Kurse: `{"base_url", "scanned": ms, "courses": [Knoten]}`; Knoten `{kind: crs\|grp\|sess\|fold\|file, id, name, url, info, download?, children?, error?}` |
 | `$XDG_STATE_HOME/atlas/ilias/downloads.json` | geladene ILIAS-Dateien: ILIAS-Adresse → `{path, info, time}`; anderes `info` als im Index = neue Version |
+| `$XDG_STATE_HOME/atlas/ilias/debug.log` | ILIAS-Protokoll zur Fehlersuche: Anmeldefenster, jede abgerufene Seite mit Weiterleitung und Anmelde-Urteil samt Grund, Funde, Downloads; von Cookies nur die Namen (höchstens 4 MB) |
+| `$XDG_STATE_HOME/atlas/ilias/debug/` | Kopien der Dashboard-Seiten und auffälliger Seiten (nicht angemeldet, nichts gefunden) des letzten Einlesens |
 | `$XDG_DATA_HOME/atlas/…/QtWebEngine/atlas-ilias/` | Web-Profil der ILIAS-Anmeldung (Cookies der Sitzung, kein Passwort) |
 | `$XDG_STATE_HOME/atlas/trusted-extensions.json` | freigegebene Projekt-Erweiterungen: Ordner → BLAKE3 des Manifests |
 

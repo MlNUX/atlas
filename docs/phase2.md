@@ -1030,6 +1030,12 @@ im Editor, Mausrad im Editor unverändert).
   `Content-Disposition` (auch `filename*`), sonst den Titel; jeder Name
   wird zu einem sicheren Pfadteil (keine Schrägstriche, keine führenden
   Punkte), der Pfad bleibt im Download-Ordner.
+- **Fehlersuche:** Der Knopf mit dem Dokument in der ILIAS-Leiste öffnet
+  `debug.log` (siehe [data-format.md](data-format.md)): was das
+  Anmeldefenster lud und wie es geprüft wurde, welche Cookies das Profil
+  hat (nur Namen), jede Seite mit Ziel, Titel und Anmelde-Urteil samt
+  Grund, was darauf gefunden wurde, und Downloads. Seiten, auf denen etwas
+  schiefging, liegen als HTML daneben.
 - **Tests:** `atlas-core` prüft Erkennung, Einlesen und Laden gegen einen
   kleinen ILIAS im Test; der Smoke-Test meldet sich bei
   `scripts/ilias-mock.py` an, liest ein, öffnet Ordner, lädt Dateien und
