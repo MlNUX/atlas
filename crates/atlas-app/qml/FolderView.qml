@@ -195,6 +195,7 @@ Rectangle {
     /// Icon of an entry: images show themselves (like Dolphin's previews).
     /// Only formats Qt can read here get a preview (e.g. WebP needs the
     /// qtimageformats plugin); others keep their icon.
+    function isPdf(name) { return /\.pdf$/i.test(name) }
     function isImage(name) {
         const dot = name.lastIndexOf(".")
         return dot > 0 && !!root.app && root.app.imageFormats.indexOf(name.slice(dot + 1).toLowerCase()) >= 0
@@ -494,6 +495,8 @@ Rectangle {
 
                 delegate: Item {
                     id: cell
+                    /// The PDF preview is drawn (for the smoke test).
+                    readonly property bool pdfPreview: !!pdfThumb.item && pdfThumb.item.ready
                     required property int index
                     required property string name
                     required property bool isDir
@@ -524,32 +527,55 @@ Rectangle {
                         height: root.iconSize
                         Icon {
                             anchors.centerIn: parent
-                            visible: !thumb.visible
+                            visible: !thumb.visible && !cell.pdfPreview
                             name: cell.icon[0]
                             size: root.iconSize
                             color: cell.isHidden ? Theme.textFaint : cell.icon[1]
                             opacity: cell.isHidden ? 0.7 : 1
                         }
-                        // Qt's PDF image plugin renders pages transparent:
-                        // give them their paper back, like a sheet.
-                        Rectangle {
-                            visible: thumb.visible && /\.pdf$/i.test(cell.name)
-                            anchors.centerIn: parent
-                            width: thumb.paintedWidth + 2
-                            height: thumb.paintedHeight + 2
-                            color: "white"
-                            border.color: Theme.border
-                        }
                         Image {
                             id: thumb
                             anchors.fill: parent
                             visible: status === Image.Ready
-                            source: !cell.isDir && root.iconSize >= 48 && root.isImage(cell.name) ? "file://" + cell.path : ""
+                            source: !cell.isDir && root.iconSize >= 48 && !root.isPdf(cell.name) && root.isImage(cell.name) ? "file://" + cell.path : ""
                             sourceSize.width: root.iconSize * 2
                             sourceSize.height: root.iconSize * 2
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             smooth: true
+                        }
+                        // PDFs: the first page, rendered by Atlas' own PDF engine
+                        // (Qt's PDF image plugin fails on many files), as a
+                        // sheet of paper.
+                        Loader {
+                            id: pdfThumb
+                            anchors.fill: parent
+                            active: !cell.isDir && root.iconSize >= 48 && root.isPdf(cell.name)
+                            sourceComponent: Item {
+                                readonly property bool ready: page.rendered && fit > 0
+                                readonly property real pw: doc.pageCount > 0 ? doc.pageWidth(0) : 0
+                                readonly property real ph: doc.pageCount > 0 ? doc.pageHeight(0) : 0
+                                readonly property real fit: pw > 0 && ph > 0 ? Math.min(width / pw, height / ph) : 0
+                                PdfDocument { id: doc; source: cell.path }
+                                Rectangle {
+                                    visible: parent.ready
+                                    anchors.centerIn: parent
+                                    width: page.width + 2
+                                    height: page.height + 2
+                                    color: "white"
+                                    border.color: Theme.border
+                                }
+                                PdfPage {
+                                    id: page
+                                    anchors.centerIn: parent
+                                    width: Math.round(parent.pw * parent.fit)
+                                    height: Math.round(parent.ph * parent.fit)
+                                    visible: parent.ready
+                                    source: parent.fit > 0 ? cell.path : ""
+                                    page: 0
+                                    renderWidth: Math.round(root.iconSize * 2)
+                                }
+                            }
                         }
                         Text {
                             visible: cell.isSymlink

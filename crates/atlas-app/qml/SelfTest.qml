@@ -727,6 +727,18 @@ Item {
                       && editor.groups.every(g => g.tabs.length > 0), names())
             },
             () => {
+                // PDF previews come from Atlas' own PDF engine (Qt's image
+                // plugin fails on many PDFs and floods the log).
+                editor.open(path("docs"), 0, "tab")
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                const row = f.folderModel.rowOf(path("docs/umbenannt.pdf"))
+                const cell = row >= 0 ? f.activeView.itemAtIndex(row) : null
+                if (waitFor(() => !!cell && cell.pdfPreview)) return
+                check("Ordner: PDF-Vorschau mit der ersten Seite", !!cell && cell.pdfPreview, "Zeile " + row)
+            },
+            () => {
                 // Folder tab like Dolphin: icons, details, zoom, status bar.
                 editor.open(path("notes"), 0, "tab")
             },
