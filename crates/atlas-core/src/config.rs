@@ -153,6 +153,30 @@ impl Default for PlacesConfig {
     }
 }
 
+/// `[ilias]`: the courses of an ILIAS dashboard as folders.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IliasConfig {
+    /// Start page of the ILIAS installation.
+    #[serde(default = "ilias_kit")]
+    pub base_url: String,
+    /// Where downloaded files go (asked on the first download).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub download_dir: String,
+    /// The „ILIAS“ entry under „Orte“.
+    #[serde(default = "enabled")]
+    pub show_in_places: bool,
+}
+
+fn ilias_kit() -> String {
+    "https://ilias.studium.kit.edu/".into()
+}
+
+impl Default for IliasConfig {
+    fn default() -> Self {
+        Self { base_url: ilias_kit(), download_dir: String::new(), show_in_places: true }
+    }
+}
+
 /// `[files]`: file views and scrolling.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilesConfig {
@@ -250,6 +274,8 @@ pub struct Config {
     pub context: ContextConfig,
     #[serde(default)]
     pub files: FilesConfig,
+    #[serde(default)]
+    pub ilias: IliasConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -293,6 +319,11 @@ impl Config {
     /// Updates only the `[places]` table.
     pub fn save_places(places: &PlacesConfig) -> Result<()> {
         save_table(&config_file(), "places", places)
+    }
+
+    /// Updates only the `[ilias]` table.
+    pub fn save_ilias(ilias: &IliasConfig) -> Result<()> {
+        save_table(&config_file(), "ilias", ilias)
     }
 
     /// Updates only the `[files]` table.

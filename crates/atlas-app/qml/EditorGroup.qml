@@ -61,7 +61,7 @@ Rectangle {
             if (line) tabs[index].reveal(line)
             if (state && state.annot) tabs[index].applyState({ annot: state.annot })
             if (state && state.processor) tabs[index].applyState({ processor: state.processor })
-            if (state && path.startsWith("calendar:") && Object.keys(state).length) tabs[index].applyState(state)
+            if (state && (path.startsWith("calendar:") || path.startsWith("ilias:")) && Object.keys(state).length) tabs[index].applyState(state)
             current = index
             changed()
             return tabs[index]
@@ -163,7 +163,7 @@ Rectangle {
         }
     }
 
-    function documents() { return tabs.map(t => t.path).filter(p => p.length > 0 && !p.startsWith("terminal:") && !p.startsWith("calendar:")) }
+    function documents() { return tabs.map(t => t.path).filter(p => p.length > 0 && !p.startsWith("terminal:") && !p.startsWith("calendar:") && !p.startsWith("ilias:")) }
 
     function pathMoved(from, to) {
         for (const t of tabs) {
@@ -178,7 +178,7 @@ Rectangle {
     /// Path segments for the breadcrumbs: inside the project relative to its
     /// root, otherwise from "/".
     function crumbs(path) {
-        if (!path || path.startsWith("terminal:") || path.startsWith("calendar:")) return []
+        if (!path || path.startsWith("terminal:") || path.startsWith("calendar:") || path.startsWith("ilias:")) return []
         const root = group.app.projectRoot
         const inside = root && (path === root || path.startsWith(root + "/"))
         const base = inside ? root : ""

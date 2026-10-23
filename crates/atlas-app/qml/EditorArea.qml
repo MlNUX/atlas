@@ -223,7 +223,7 @@ SplitView {
         for (const gs of groupStates) {
             const g = addGroup(groups.length, gs.temporary)
             for (const t of gs.tabs || []) {
-                const path = !t.path ? "" : t.path.startsWith("terminal:") || t.path.startsWith("calendar:") ? t.path : area.app.resolveDocument(t.path)
+                const path = !t.path ? "" : t.path.startsWith("terminal:") || t.path.startsWith("calendar:") || t.path.startsWith("ilias:") ? t.path : area.app.resolveDocument(t.path)
                 if (!path || t.transient) continue
                 g.openTab(path, t.line || 0, "tab", t)
             }

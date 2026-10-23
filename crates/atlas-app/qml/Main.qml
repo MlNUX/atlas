@@ -155,7 +155,7 @@ ApplicationWindow {
     /// Actions of the universal bar (Ctrl+P, ">" for actions only).
     function paletteActions() {
         const current = editor.activeTab && editor.activeTab.path && !editor.activeTab.path.startsWith("terminal:")
-            && !editor.activeTab.path.startsWith("calendar:") ? editor.activeTab.path : ""
+            && !editor.activeTab.path.startsWith("calendar:") && !editor.activeTab.path.startsWith("ilias:") ? editor.activeTab.path : ""
         const dir = current ? fileActions.ops.parentDir(current) : app.projectRoot
         const list = [
             { name: qsTr("Session speichern"), hint: app.activeSessionName, run: () => { app.requestSaveAll(); saveSession(); app.flushSession(); fileActions.showMessage(qsTr("Session gespeichert")) } },
@@ -869,11 +869,14 @@ ApplicationWindow {
                     ColumnLayout {
                         spacing: 6
                         PlacesList {
+                            // ILIAS after Atlas' own places (if switched on).
+                            readonly property bool ilias: { try { return JSON.parse(app.iliasConfig).show_in_places !== false } catch (e) { return true } }
+                            readonly property int cut: app.fixedPlaceCount
                             Layout.fillWidth: true
-                            names: app.placeNames
-                            paths: app.placePaths
-                            icons: app.placeIcons
-                            fixedCount: app.fixedPlaceCount
+                            names: ilias ? app.placeNames.slice(0, cut).concat(["ILIAS"], app.placeNames.slice(cut)) : app.placeNames
+                            paths: ilias ? app.placePaths.slice(0, cut).concat(["ilias:"], app.placePaths.slice(cut)) : app.placePaths
+                            icons: ilias ? app.placeIcons.slice(0, cut).concat(["school"], app.placeIcons.slice(cut)) : app.placeIcons
+                            fixedCount: app.fixedPlaceCount + (ilias ? 1 : 0)
                             currentPath: editor.activeTab ? editor.activeTab.path : ""
                             onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
                         }

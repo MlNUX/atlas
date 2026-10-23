@@ -98,6 +98,14 @@ Item {
     }
     readonly property alias markdownPdf: markdownPdf
 
+    // ILIAS courses as folders (tab `ilias:`).
+    IliasService {
+        id: iliasService
+        app: actions.app
+        actions: actions
+    }
+    readonly property alias ilias: iliasService
+
     /// TeX → PDF in the terminal (errors stay visible): latexmk if
     /// installed (runs BibTeX/Biber and repeats as needed), else pdflatex.
     function texToPdf(path) {

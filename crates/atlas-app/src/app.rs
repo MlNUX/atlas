@@ -70,6 +70,8 @@ pub mod qobject {
         /// Last chosen order of folder views as JSON {key, ascending}
         /// (`[files]`), the start for new views.
         #[qproperty(QString, folder_sort, cxx_name = "folderSort", READ, NOTIFY)]
+        /// `[ilias]` as JSON {base_url, download_dir, show_in_places}.
+        #[qproperty(QString, ilias_config, cxx_name = "iliasConfig", READ, NOTIFY)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
@@ -115,6 +117,30 @@ pub mod qobject {
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
         fn set_natural_sort(self: Pin<&mut AppController>, on: bool);
         fn set_touchpad_fling(self: Pin<&mut AppController>, on: bool);
+
+        /// Changes `[ilias]`: `base_url`, `download_dir` or
+        /// `show_in_places` ("true"/"false").
+        #[qinvokable]
+        #[cxx_name = "setIliasConfig"]
+        fn set_ilias_config(self: Pin<&mut AppController>, key: &QString, value: &QString);
+
+        /// ILIAS state file "index" or "downloads" ("" if there is none).
+        #[qinvokable]
+        #[cxx_name = "iliasLoad"]
+        fn ilias_load(self: &AppController, name: &QString) -> QString;
+
+        #[qinvokable]
+        #[cxx_name = "iliasSave"]
+        fn ilias_save(self: &AppController, name: &QString, json: &QString) -> bool;
+
+        /// Where a download goes: the download folder, one folder per entry
+        /// of `segments` (JSON list: course, folders …), the file name the
+        /// server suggests or else `title`. Creates the folders and removes
+        /// an older download there (a new version replaces it). JSON
+        /// {path} or {error}.
+        #[qinvokable]
+        #[cxx_name = "iliasTarget"]
+        fn ilias_target(self: &AppController, segments: &QString, suggested: &QString, title: &QString) -> QString;
 
         /// Remembers the order chosen in a folder view for new views.
         #[qinvokable]
@@ -630,6 +656,7 @@ pub struct AppControllerRust {
     natural_sort: bool,
     touchpad_fling: bool,
     folder_sort: QString,
+    ilias_config: QString,
     /// Watches the file managers' places files.
     places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
@@ -700,6 +727,7 @@ impl Default for AppControllerRust {
             natural_sort: Config::load().files.natural_sort,
             touchpad_fling: Config::load().files.touchpad_fling,
             folder_sort: folder_sort_json(&Config::load().files),
+            ilias_config: ilias_json(&Config::load().ilias),
             places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
@@ -857,6 +885,55 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().touchpad_fling = on;
         self.as_mut().touchpad_fling_changed();
+    }
+
+    pub fn set_ilias_config(mut self: Pin<&mut Self>, key: &QString, value: &QString) {
+        let mut config = Config::load().ilias;
+        let value = value.to_string();
+        match key.to_string().as_str() {
+            "base_url" => {
+                let url = value.trim();
+                config.base_url = if url.ends_with('/') { url.to_owned() } else { format!("{url}/") };
+            }
+            "download_dir" => config.download_dir = value,
+            "show_in_places" => config.show_in_places = value == "true",
+            other => {
+                log::warn!("unknown ILIAS setting {other}");
+                return;
+            }
+        }
+        if let Err(err) = Config::save_ilias(&config) {
+            log::warn!("cannot save [ilias]: {err:#}");
+        }
+        self.as_mut().rust_mut().ilias_config = ilias_json(&config);
+        self.as_mut().ilias_config_changed();
+    }
+
+    pub fn ilias_load(&self, name: &QString) -> QString {
+        qs(atlas_core::ilias::load(&name.to_string()))
+    }
+
+    pub fn ilias_save(&self, name: &QString, json: &QString) -> bool {
+        atlas_core::ilias::save(&name.to_string(), &json.to_string())
+            .map_err(|err| log::warn!("cannot save ILIAS {name}: {err:#}"))
+            .is_ok()
+    }
+
+    pub fn ilias_target(&self, segments: &QString, suggested: &QString, title: &QString) -> QString {
+        let result = (|| -> anyhow::Result<PathBuf> {
+            let segments: Vec<String> = serde_json::from_str(&segments.to_string())?;
+            let root = PathBuf::from(Config::load().ilias.download_dir);
+            let dir = atlas_core::ilias::target_dir(&root, &segments)?;
+            let file = dir.join(atlas_core::ilias::file_name(&suggested.to_string(), &title.to_string()));
+            if file.is_file() {
+                std::fs::remove_file(&file)?;
+            }
+            Ok(file)
+        })();
+        qs(match result {
+            Ok(path) => serde_json::json!({ "path": path }).to_string(),
+            Err(err) => serde_json::json!({ "error": format!("{err:#}") }).to_string(),
+        })
     }
 
     pub fn remember_folder_sort(mut self: Pin<&mut Self>, key: &QString, ascending: bool) {
@@ -2449,16 +2526,19 @@ fn spawn_detached(command: &[String], dir: Option<&Path>) -> anyhow::Result<()> 
     Ok(())
 }
 
-/// Tabs that are no files: `terminal:<dir>#<n>` and `calendar:`.
+/// Tabs that are no files: `terminal:<dir>#<n>`, `calendar:` and `ilias:`.
 fn is_terminal_path(path: &Path) -> bool {
     let bytes = path.as_os_str().as_encoded_bytes();
-    bytes.starts_with(b"terminal:") || bytes.starts_with(b"calendar:")
+    bytes.starts_with(b"terminal:") || bytes.starts_with(b"calendar:") || bytes.starts_with(b"ilias:")
 }
 
 /// Coarse file type used to pick a viewer.
 pub fn file_kind(path: &Path) -> &'static str {
     if path.as_os_str().as_encoded_bytes().starts_with(b"calendar:") {
         return "calendar";
+    }
+    if path.as_os_str().as_encoded_bytes().starts_with(b"ilias:") {
+        return "ilias";
     }
     // Terminal tabs: `terminal:<start directory>#<id>`.
     if is_terminal_path(path) {
@@ -2504,6 +2584,12 @@ fn percent_decode(s: &str) -> String {
         }
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// `[ilias]` for QML.
+fn ilias_json(c: &atlas_core::config::IliasConfig) -> QString {
+    let json = serde_json::json!({ "base_url": c.base_url, "download_dir": c.download_dir, "show_in_places": c.show_in_places });
+    QString::from(json.to_string().as_str())
 }
 
 /// Order of new folder views for QML.

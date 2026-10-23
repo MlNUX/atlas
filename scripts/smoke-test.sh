@@ -166,6 +166,18 @@ echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"
 
 export ATLAS_STATE_DIR="$work/state" ATLAS_CONFIG_DIR="$work/config"
+
+# A stand-in for ILIAS on a free port (scripts/ilias-mock.py).
+ilias_port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+python3 scripts/ilias-mock.py "$ilias_port" &
+ilias_pid=$!
+trap 'kill $ilias_pid 2>/dev/null; rm -rf "$work"' EXIT
+mkdir -p "$work/ilias"
+cat >> "$work/config/config.toml" <<TOML
+[ilias]
+base_url = "http://127.0.0.1:$ilias_port/"
+download_dir = "$work/ilias"
+TOML
 # Own XDG data/config: file manager places (and the trash) never touch the
 # user's.
 export XDG_DATA_HOME="$work/xdg-data" XDG_CONFIG_HOME="$work/xdg-config"

@@ -23,6 +23,8 @@ const QML_FILES: &[&str] = &[
     "qml/FileActions.qml",
     "qml/FolderView.qml",
     "qml/Icon.qml",
+    "qml/IliasService.qml",
+    "qml/IliasView.qml",
     "qml/IconButton.qml",
     "qml/Inspector.qml",
     "qml/MarkdownView.qml",

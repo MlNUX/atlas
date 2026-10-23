@@ -198,6 +198,76 @@ Dialog {
                     }
                 }
 
+                SectionLabel { text: qsTr("ILIAS"); Layout.topMargin: 10 }
+                Card {
+                    Layout.fillWidth: true
+                    id: iliasCard
+                    implicitHeight: iliasColumn.implicitHeight + 24
+                    readonly property var ilias: { try { return JSON.parse(dialog.app.iliasConfig) } catch (e) { return {} } }
+                    ColumnLayout {
+                        id: iliasColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 12
+                            Icon { Layout.alignment: Qt.AlignTop; name: "school"; size: 18; color: Theme.accent }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                Text { text: qsTr("Kurse als Ordner unter „Orte“"); color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                                Text {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.Wrap
+                                    color: Theme.textMuted
+                                    font.pixelSize: Theme.smallFontSize
+                                    text: qsTr("Die Kurse deines ILIAS-Dashboards mit Ordnern, Gruppen, Sitzungen und Dateien; ein Klick lädt eine Datei und öffnet sie. Atlas merkt sich nur die Anmeldung, nicht das Passwort.")
+                                }
+                            }
+                            Toggle {
+                                Layout.alignment: Qt.AlignVCenter
+                                checked: iliasCard.ilias.show_in_places !== false
+                                onToggled: dialog.app.setIliasConfig("show_in_places", checked ? "false" : "true")
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 30
+                            spacing: 8
+                            Text { text: qsTr("Adresse"); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize; Layout.preferredWidth: 70 }
+                            TextField {
+                                Layout.fillWidth: true
+                                text: iliasCard.ilias.base_url || ""
+                                font.pixelSize: Theme.smallFontSize
+                                onEditingFinished: if (text.trim() && text.trim() !== iliasCard.ilias.base_url) dialog.app.setIliasConfig("base_url", text.trim())
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 30
+                            spacing: 8
+                            Text { text: qsTr("Downloads"); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize; Layout.preferredWidth: 70 }
+                            Text {
+                                Layout.fillWidth: true
+                                text: iliasCard.ilias.download_dir || qsTr("Wird beim ersten Download gefragt")
+                                color: Theme.text
+                                font.pixelSize: Theme.smallFontSize
+                                elide: Text.ElideMiddle
+                            }
+                            Button { text: qsTr("Ändern …"); flat: true; onClicked: iliasDirChooser.ask("pick", iliasCard.ilias.download_dir || "", "") }
+                            Button {
+                                text: qsTr("Abmelden")
+                                flat: true
+                                enabled: !!dialog.actions && !!dialog.actions.ilias
+                                onClicked: dialog.actions.ilias.logout()
+                            }
+                        }
+                    }
+                }
+
                 SectionLabel { text: qsTr("Kontextleiste"); Layout.topMargin: 10 }
                 Card {
                     Layout.fillWidth: true
@@ -346,6 +416,16 @@ Dialog {
             Behavior on x { NumberAnimation { duration: 120 } }
         }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: toggle.toggled() }
+    }
+
+    FolderChooser {
+        id: iliasDirChooser
+        app: dialog.app
+        parent: Overlay.overlay
+        pickTitle: qsTr("Download-Ordner für ILIAS")
+        pickHint: qsTr("Darin legt Atlas pro Kurs einen Ordner an, mit derselben Struktur wie in ILIAS.")
+        pickButton: qsTr("Hier speichern")
+        onChosen: (path) => dialog.app.setIliasConfig("download_dir", path)
     }
 
     /// A module of the context bar with its switch (and extra controls).

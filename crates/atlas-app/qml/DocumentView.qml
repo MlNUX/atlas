@@ -29,6 +29,7 @@ Item {
         || (kind === "binary" && JSON.parse(app.processorsFor(path)).some(p => p.auto))
     readonly property string title: kind === "trash" ? qsTr("Papierkorb")
         : kind === "calendar" ? qsTr("Kalender")
+        : kind === "ilias" ? "ILIAS"
         : kind === "terminal" ? (viewer.item && viewer.item.title ? viewer.item.title : qsTr("Terminal"))
         : path ? app.fileName(path) : qsTr("Leer")
     property var pendingState: ({})
@@ -108,6 +109,7 @@ Item {
             : view.kind === "dir" ? folderComponent
             : view.kind === "terminal" ? terminalComponent
             : view.kind === "calendar" ? calendarComponent
+            : view.kind === "ilias" ? iliasComponent
             : view.processor === "atlas:html" && view.kind !== "missing" ? htmlComponent
             : view.processed && view.kind !== "missing" ? processedComponent
             : view.kind === "pdf" ? pdfComponent
@@ -164,6 +166,14 @@ Item {
             actions: view.actions
             onOpenRequested: (path, line, newPane, state) => view.openRequested(path, line, newPane ? "split" : "tab", state)
             onSessionRequested: (name) => { if (view.actions) view.actions.sessionRequested(name) }
+        }
+    }
+    Component {
+        id: iliasComponent
+        // `ilias:`; the open course and folders are the tab's state.
+        IliasView {
+            app: view.app
+            actions: view.actions
         }
     }
     Component {

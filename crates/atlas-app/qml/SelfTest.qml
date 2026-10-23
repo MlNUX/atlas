@@ -56,6 +56,7 @@ Item {
     property int flings
     property var erase: []
     property int syncMid
+    property var iliasOrga: null
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -1301,6 +1302,83 @@ Item {
                 app.touchpadHeld()
                 check("Finger auflegen stoppt den Schwung", was && !f.flicking, was + " " + f.flicking)
                 fileActions.calendar.remove(test.modEvent)
+            },
+            () => {
+                // ---- ILIAS (against scripts/ilias-mock.py): read the courses.
+                editor.open("ilias:", 0, "tab")
+                const il = fileActions.ilias
+                check("ILIAS-Tab offen", editor.activeTab.kind === "ilias" && !!editor.activeTab.viewerItem)
+                il.refresh()
+            },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => il.state === "login" && il.loginVisible)) return
+                check("ILIAS: ohne Sitzung wird nach der Anmeldung gefragt", il.state === "login" && il.loginVisible, il.state + " " + il.status)
+                // The user logs in on the page shown.
+                il.loginPage.runJavaScript("document.getElementById('login') && document.getElementById('login').click()")
+            },
+            () => { const il = fileActions.ilias; if (waitFor(() => !il.loginVisible && il.state === "idle" && il.index.courses.length > 0)) return },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => !il.loginVisible && il.state === "idle" && il.index.courses.length > 0)) return
+                const names = (list) => (list || []).map(n => n.name).sort().join(" | ")
+                const course = il.index.courses.find(c => c.name === "Höhere Mathematik I")
+                check("ILIAS: nach der Anmeldung Kurse und Gruppen eingelesen", !il.loginVisible && names(il.index.courses) === "Höhere Mathematik I | Tutorium 3",
+                      il.state + " " + il.status + " " + names(il.index.courses))
+                check("ILIAS: Ordner, Datei und Sitzung im Kurs (ohne Navigation)", !!course && names(course.children) === "Organisatorisches | Sitzung 1: Einführung | Vorlesung",
+                      course ? names(course.children) : "kein Kurs")
+                const sess = course && course.children.find(n => n.kind === "sess")
+                check("ILIAS: Sitzung am Symbol erkannt, mit Datei", !!sess && names(sess.children) === "Skript", JSON.stringify(sess))
+                const view = editor.activeTab.viewerItem
+                view.enter(course)
+                check("ILIAS: Ordner zuerst, dann Dateien", view.items.map(n => n.name).join(" | ") === "Sitzung 1: Einführung | Vorlesung | Organisatorisches",
+                      view.items.map(n => n.name).join(" | "))
+                view.enter(view.items.find(n => n.name === "Vorlesung"))
+                view.enter(view.items.find(n => n.name === "Übungen"))
+                check("ILIAS: Dateien natürlich sortiert", view.items.map(n => n.name).join(" | ") === "Blatt 2 | Blatt 10", view.items.map(n => n.name).join(" | "))
+                view.activate(view.items[0])
+            },
+            () => { if (waitFor(() => !fileActions.ilias.current && fileActions.ilias.fileState(editor.activeTab.viewerItem.items ? editor.activeTab.viewerItem.items[0] : {}) === "loaded")) return },
+            () => {
+                const il = fileActions.ilias
+                const target = il.downloadDir + "/Höhere Mathematik I/Vorlesung/Übungen/blatt02.pdf"
+                if (waitFor(() => editor.activeTab.path === target)) return
+                check("ILIAS: Klick lädt die Datei in den Kursordner und öffnet sie", app.exists(target) && editor.activeTab.path === target,
+                      editor.activeTab.path + " / " + il.status)
+                // A file that gets a new version in ILIAS.
+                editor.open("ilias:", 0, "tab")
+                const view = editor.activeTab.viewerItem
+                view.up(10)
+                view.enter(il.index.courses.find(c => c.name === "Höhere Mathematik I"))
+                test.iliasOrga = view.items.find(n => n.name === "Organisatorisches")
+                view.activate(test.iliasOrga)
+            },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => !il.current && il.fileState(test.iliasOrga) === "loaded")) return
+                check("ILIAS: zweite Datei geladen", il.fileState(test.iliasOrga) === "loaded")
+                // ILIAS shows version 2 now.
+                const xhr = new XMLHttpRequest()
+                xhr.open("GET", il.baseUrl + "bump")
+                xhr.onreadystatechange = () => { if (xhr.readyState === XMLHttpRequest.DONE) il.refresh() }
+                xhr.send()
+            },
+            () => { const il = fileActions.ilias; if (waitFor(() => il.state === "idle" && il.status.indexOf("eingelesen") >= 0)) return },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => il.state === "idle")) return
+                const course = il.index.courses.find(c => c.name === "Höhere Mathematik I")
+                const orga = course.children.find(n => n.name === "Organisatorisches")
+                check("ILIAS: neue Version erkannt", il.fileState(orga) === "changed", il.fileState(orga) + " " + orga.info)
+                test.iliasOrga = orga
+                il.open(orga, [course.name])
+            },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => !il.current && il.fileState(test.iliasOrga) === "loaded")) return
+                const file = il.downloadDir + "/Höhere Mathematik I/orga.pdf"
+                check("ILIAS: neue Version geladen und ersetzt die alte", il.fileState(test.iliasOrga) === "loaded"
+                      && app.readTextFile(file).indexOf("Version 2") >= 0, il.status)
             },
             () => {
                 // The project folder cannot be collapsed: a click on it keeps the tree.
