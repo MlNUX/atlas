@@ -10,20 +10,22 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+## [1.1.1] – 2026-10-23
+
 ### Neu
-- Einstellungen: **ILIAS-Adresse** für jede Hochschule einstellbar – mit
-  Prüfung, „Übernehmen“ und ergänztem `https://`; nach einem Wechsel
-  zeigt die Ansicht keine Favoriten des alten ILIAS mehr.
+- **ILIAS** (z. B. KIT) unter „Orte“: deine Favoriten vom Dashboard als
+  Ordner mit allen Unterordnern, Sitzungen und Dateien. Ein Klick fragt
+  nach dem Zielordner (vorgeschlagen: wo die Datei schon lag, sonst der
+  zuletzt gewählte), lädt die Datei direkt dorthin und öffnet sie; ein
+  vergebener Name bekommt eine Nummer. Zeigt ILIAS eine neue Version, steht
+  „neue Version“ daneben und der Klick lädt sie neu. Anmelden im
+  eingebauten Fenster der Hochschule – Atlas merkt sich nur die Sitzung,
+  nie das Passwort. In den Einstellungen: die Adresse des ILIAS deiner
+  Hochschule (geprüft, `https://` wird ergänzt), der vorgeschlagene
+  Ordner und Abmelden. Ein Protokoll zur Fehlersuche öffnet sich aus der
+  ILIAS-Leiste (nur Cookie-Namen, nie Werte).
 - Einstellungen: **Kalender für neue Termine** direkt wählbar (bisher nur
   über den Stern im Verbindungsdialog).
-- **ILIAS** (z. B. KIT) unter „Orte“: deine Favoriten vom Dashboard als
-  Ordner mit allen Unterordnern, Sitzungen und Dateien. Ein
-  Klick fragt nach dem Zielordner (vorgeschlagen: wo die Datei schon lag,
-  sonst der zuletzt gewählte), lädt die Datei direkt dorthin und öffnet
-  sie; ein vergebener Name bekommt eine Nummer. Zeigt ILIAS eine neue
-  Version, steht „neue Version“ daneben und der Klick lädt sie neu. Anmelden im
-  eingebauten Fenster der Hochschule – Atlas merkt sich nur die Sitzung,
-  nie das Passwort. Adresse, Ordner und Abmelden in den Einstellungen.
 - Kontextleiste: **Lernzeit** – ein Pomodoro-Timer fest am unteren Rand
   (auf allen Reitern) mit Ring, Runden und Start/Pause, Neu beginnen,
   Überspringen; 25 Min. lernen, 5 Min. Pause, nach vier Runden 15 Min.,
@@ -80,6 +82,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   ohne LaTeX-Installation; die Vorlage für neue Aktionsdateien nutzt
   stattdessen Word (pandoc → .docx), PDF gibt es eingebaut.
 - Einstellungsfenster scrollt auf kleinen Bildschirmen.
+- Ordneransicht: PDF-Vorschaubilder zeigen die erste Seite jetzt über
+  Atlas' eigene PDF-Darstellung. Qt's PDF-Bildplugin scheiterte an vielen
+  Dateien („Error decoding … Dieser Typ von Bilddaten wird nicht
+  unterstützt“) und zeigte dann nur das Symbol.
 - Keine „Poppler-CRITICAL … poppler_document_get_page“-Meldungen mehr im
   Terminal, wenn nach einer Seite gefragt wird, die die PDF (nicht mehr)
   hat – z. B. nachdem sie kürzer neu erzeugt wurde.
@@ -209,6 +215,7 @@ Erste öffentliche Version.
 - Nix-Flake mit Paket, App, Overlay und Entwicklungsumgebung.
 - PKGBUILD für das AUR (`atlas-workspace`).
 
-[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.0...HEAD
+[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/MlNUX/atlas/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/MlNUX/atlas/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/MlNUX/atlas/releases/tag/v1.0.0
