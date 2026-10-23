@@ -948,3 +948,28 @@ Selbsttest: neue Prüfungen für alle sechs Issues (Vorschau-Neuzeichnen,
 Überschriften ohne `#`, Sortierung an/aus und gemerkt, Rückgängig per
 Tastatur und Funktion, Scroll-Sync in beide Richtungen, Schwung im PDF und
 im Editor, Mausrad im Editor unverändert).
+
+### Nachtrag – Radierer, Schwung anhalten
+
+- **Radierer** (Werkzeug `erase` neben dem Stift): löscht ganze Striche.
+  Treffer: Abstand zwischen dem Weg des Radierers (von der letzten zur
+  aktuellen Mausposition) und jedem Abschnitt des Strichs, mit echtem
+  Schnitt-Test – fährt man quer über eine Linie, ohne einen ihrer Punkte zu
+  berühren, trifft er trotzdem. Radius 6 pt plus halbe Strichbreite; ein
+  Kreis zeigt ihn statt des Mauszeigers. Ein Zug ist ein Rückgängig-Schritt:
+  Schritte bestehen jetzt aus mehreren Teilen (`parts`).
+- **Schwung anhalten:** Qt meldet Touchpad-Scrollen nur, solange sich die
+  Finger bewegen; Auflegen ohne Bewegung kam nie an. libinput erkennt das
+  als Haltegeste, die Compositoren über `zwp_pointer_gestures_v1` Version 3
+  weitergeben – Qt 6.11 bindet davon nur Wischen und Zoomen.
+  `cpp/touchpad_hold.cpp` holt sich über
+  `QNativeInterface::QWaylandApplication` Display und Zeiger, bindet das
+  Protokoll auf einer eigenen Warteschlange (die Schnittstellen sind von
+  Hand beschrieben, ohne wayland-scanner) und meldet `hold begin` als
+  Signal `touchpadHeld`; jede Schwung-Ebene hält dann an. Unter X11 oder
+  ohne Version 3 bleibt es aus. Neue Abhängigkeit: libwayland-client
+  (ohnehin über Qt Wayland vorhanden). Gegen Sway (headless) geprüft: die
+  Geste wird angebunden; eine echte Fingerberührung gab es dort nicht.
+- **Schneller:** Schwung mit 1,6-facher Wischgeschwindigkeit; die
+  Höchstgeschwindigkeit wird nur für diesen Schwung angehoben, Mausräder
+  bleiben unverändert.

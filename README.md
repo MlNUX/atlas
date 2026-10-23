@@ -94,7 +94,7 @@ und dort `makepkg -si` ausführen.
 
 Benötigt Rust ≥ 1.85, einen C++-Compiler, clang, pkg-config, Qt 6 (Base, Declarative, Wayland, SVG,
 Image Formats, WebEngine, WebChannel, Positioning), KF6 Syntax-Highlighting,
-poppler-glib, cairo und ripgrep.
+poppler-glib, cairo, libwayland-client und ripgrep.
 
 ```sh
 QMAKE=qmake6 cargo build --release -p atlas-app

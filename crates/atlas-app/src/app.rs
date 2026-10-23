@@ -96,6 +96,12 @@ pub mod qobject {
         #[qproperty(QStringList, untrusted_extensions, cxx_name = "untrustedExtensions", READ, NOTIFY)]
         type AppController = super::AppControllerRust;
 
+        /// Fingers came to rest on the touchpad (Wayland hold gesture):
+        /// momentum scrolling stops.
+        #[qsignal]
+        #[cxx_name = "touchpadHeld"]
+        fn touchpad_held(self: Pin<&mut AppController>);
+
         #[qsignal]
         #[cxx_name = "projectRootChanged"]
         fn project_root_changed(self: Pin<&mut AppController>);
@@ -728,8 +734,21 @@ impl Default for AppControllerRust {
     }
 }
 
+/// The application object's thread, for the touchpad hold callback.
+static HOLD_THREAD: std::sync::OnceLock<cxx_qt::CxxQtThread<qobject::AppController>> = std::sync::OnceLock::new();
+
+/// Called by the Wayland hold gesture (touchpad_hold.cpp).
+fn touchpad_held() {
+    if let Some(thread) = HOLD_THREAD.get() {
+        let _ = thread.queue(|app| app.touchpad_held());
+    }
+}
+
 impl cxx_qt::Initialize for qobject::AppController {
     fn initialize(mut self: Pin<&mut Self>) {
+        if HOLD_THREAD.set(self.qt_thread()).is_ok() {
+            crate::qt_helpers::watch_touchpad_hold(touchpad_held);
+        }
         self.as_mut().refresh_places();
         self.as_mut().watch_places();
         let cli = Cli::get();

@@ -456,6 +456,7 @@ Rectangle {
                 visible: list.visible
                 flickable: list
                 active: !root.app || root.app.touchpadFling
+                app: root.app
             }
 
             // ---- icons view
@@ -613,6 +614,7 @@ Rectangle {
                 visible: grid.visible
                 flickable: grid
                 active: !root.app || root.app.touchpadFling
+                app: root.app
             }
 
             // Ctrl+wheel zooms the icons, like in Dolphin.

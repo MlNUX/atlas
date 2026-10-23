@@ -72,7 +72,7 @@ fn main() {
     let module = QmlModule::new("Atlas")
         .qml_files(QML_FILES.iter().map(QmlFile::from))
         .qml_file(QmlFile::from("qml/Theme.qml").singleton(true));
-    CxxQtBuilder::new_qml_module(module)
+    let builder = CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")
         .qt_module("QuickControls2")
         .qt_module("WebEngineCore")
@@ -81,7 +81,34 @@ fn main() {
         .qrc_resources(style_resources())
         .files(RUST_BRIDGES.iter().copied())
         .cpp_file("cpp/helpers.cpp")
-        .build();
+        .cpp_file("cpp/touchpad_hold.cpp");
+    // SAFETY: only adds include paths to the C++ compiler.
+    let builder = unsafe {
+        builder.cc_builder(|cc| {
+            // Wayland client headers for the touchpad hold gesture.
+            if let Ok(out) = Command::new("pkg-config").args(["--cflags-only-I", "wayland-client"]).output()
+                && out.status.success()
+            {
+                for flag in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+                    cc.flag(flag);
+                }
+            }
+        })
+    };
+    builder.build();
+    if let Ok(out) = Command::new("pkg-config").args(["--libs", "wayland-client"]).output()
+        && out.status.success()
+    {
+        for flag in String::from_utf8_lossy(&out.stdout).split_whitespace() {
+            if let Some(dir) = flag.strip_prefix("-L") {
+                println!("cargo::rustc-link-search=native={dir}");
+                // Found at run time too (dev shell; packages use the system's).
+                println!("cargo::rustc-link-arg-bins=-Wl,-rpath,{dir}");
+            } else if let Some(lib) = flag.strip_prefix("-l") {
+                println!("cargo::rustc-link-lib={lib}");
+            }
+        }
+    }
 
     // Qt is linked from the directory qmake reports. Record it as RPATH so
     // the binary runs from the dev shell without LD_LIBRARY_PATH; the Nix

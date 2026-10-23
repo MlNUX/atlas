@@ -33,8 +33,11 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Sortierung gilt für neue Ordneransichten
   ([#5](https://github.com/MlNUX/atlas/issues/5)).
 - Schwung beim Touchpad-Scrollen: nach schnellem Wischen läuft die Ansicht
-  weiter und bremst ab (PDFs, Editor, Projektbaum, Ordner); schaltbar
-  ([#4](https://github.com/MlNUX/atlas/issues/4)).
+  weiter und bremst ab (PDFs, Editor, Projektbaum, Ordner); Finger
+  auflegen hält sie an (Wayland-Haltegeste, z. B. Hyprland, KDE, GNOME);
+  schaltbar ([#4](https://github.com/MlNUX/atlas/issues/4)).
+- PDF-Radierer: neben dem Stift; wer damit über Striche fährt, löscht sie
+  ganz. Ein Radier-Zug lässt sich mit einem Strg+Z zurückholen.
 
 ### Behoben
 - Markdown-Vorschau blieb nach einem Workspace-Wechsel schwarz, bis man

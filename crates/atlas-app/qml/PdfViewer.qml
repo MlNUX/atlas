@@ -52,7 +52,8 @@ Rectangle {
     property int currentHit: -1
     property int searchMs: 0
 
-    // Annotation tools: "select" (text), "ink" (freehand), "note" (comment pin).
+    // Annotation tools: "select" (text), "ink" (freehand), "erase" (removes
+    // whole strokes), "note" (comment pin).
     property string tool: "select"
     readonly property var markColors: ["#ffd400", "#7bd88f", "#5ac8fa", "#ff7eb6", "#ff6b6b"]
     property string markColor: markColors[0]
@@ -278,16 +279,23 @@ Rectangle {
     /// Changes of the same annotation within this time count as one step
     /// (e.g. typing a comment).
     readonly property int mergeMs: 1500
+    /// Removals with the same batch (one eraser drag) are one step.
+    property string eraseBatch: ""
 
+    /// A step: {type, parts: [{id, before, after}], group, batch, time}.
     function record(step) {
         const last = undoStack[undoStack.length - 1]
-        if (step.type === "update" && last && last.type === "update" && last.id === step.id && step.time - last.time < mergeMs) {
-            last.after = step.after
+        const part = step.parts[0]
+        if (step.type === "update" && last && last.type === "update" && last.parts[0].id === part.id && step.time - last.time < mergeMs) {
+            last.parts[0].after = part.after
             last.time = step.time
             undoStack = undoStack.slice()
         } else if (step.type === "add" && step.group && last && last.type === "add" && last.group === step.group) {
             // Markup over several pages: one step.
-            last.after = step.after
+            last.parts[0].after = part.after
+            undoStack = undoStack.slice()
+        } else if (step.type === "remove" && step.batch && last && last.type === "remove" && last.batch === step.batch) {
+            last.parts.push(part)
             undoStack = undoStack.slice()
         } else {
             undoStack = undoStack.concat([step]).slice(-200)
@@ -296,19 +304,20 @@ Rectangle {
     }
     function addAnnot(json) {
         const id = notes.add(json)
-        if (id) record({ type: "add", id: id, group: JSON.parse(json).group || "", before: "[]", after: notes.snapshot(id), time: Date.now() })
+        if (id) record({ type: "add", group: JSON.parse(json).group || "", time: Date.now(),
+                         parts: [{ id: id, before: "[]", after: notes.snapshot(id) }] })
         return id
     }
     function updateAnnot(id, patch) {
         const before = notes.snapshot(id)
         const ok = notes.update(id, patch)
-        if (ok) record({ type: "update", id: id, before: before, after: notes.snapshot(id), time: Date.now() })
+        if (ok) record({ type: "update", time: Date.now(), parts: [{ id: id, before: before, after: notes.snapshot(id) }] })
         return ok
     }
     function removeAnnot(id) {
         const before = notes.snapshot(id)
         const ok = notes.remove(id)
-        if (ok) record({ type: "remove", id: id, before: before, after: "[]", time: Date.now() })
+        if (ok) record({ type: "remove", batch: eraseBatch, time: Date.now(), parts: [{ id: id, before: before, after: "[]" }] })
         return ok
     }
     /// Brings the state `snapshot` back; "[]" means the annotation is gone.
@@ -325,7 +334,7 @@ Rectangle {
         if (!canUndo) return
         const step = undoStack[undoStack.length - 1]
         undoStack = undoStack.slice(0, -1)
-        applySnapshot(step.id, step.before, step.after)
+        for (const p of step.parts.slice().reverse()) applySnapshot(p.id, p.before, p.after)
         redoStack = redoStack.concat([step])
         message(step.type === "add" ? qsTr("Rückgängig: hinzugefügt") : step.type === "remove" ? qsTr("Rückgängig: gelöscht") : qsTr("Rückgängig: geändert"))
     }
@@ -333,8 +342,47 @@ Rectangle {
         if (!canRedo) return
         const step = redoStack[redoStack.length - 1]
         redoStack = redoStack.slice(0, -1)
-        applySnapshot(step.id, step.after, step.before)
+        for (const p of step.parts) applySnapshot(p.id, p.after, p.before)
         undoStack = undoStack.concat([step])
+    }
+
+    // ---------------------------------------------------------- eraser
+    // The eraser removes whole strokes: every ink annotation it touches
+    // on its way. One drag is one undo step.
+
+    /// Eraser radius in points.
+    readonly property real eraserRadius: 6
+    function distToSegment(px, py, ax, ay, bx, by) {
+        const dx = bx - ax, dy = by - ay
+        const len = dx * dx + dy * dy
+        const t = len > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len)) : 0
+        return Math.hypot(px - ax - t * dx, py - ay - t * dy)
+    }
+    /// Distance between the segments a–b and c–d (0 if they cross).
+    function segmentDistance(ax, ay, bx, by, cx, cy, dx, dy) {
+        const cross = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px)
+        const d1 = cross(ax, ay, bx, by, cx, cy), d2 = cross(ax, ay, bx, by, dx, dy)
+        const d3 = cross(cx, cy, dx, dy, ax, ay), d4 = cross(cx, cy, dx, dy, bx, by)
+        if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0
+        return Math.min(distToSegment(ax, ay, cx, cy, dx, dy), distToSegment(bx, by, cx, cy, dx, dy),
+                        distToSegment(cx, cy, ax, ay, bx, by), distToSegment(dx, dy, ax, ay, bx, by))
+    }
+    /// Whether the eraser moving from (x0, y0) to (x, y) touches stroke `a`.
+    function eraserHits(a, x0, y0, x, y) {
+        const r = eraserRadius + (a.width || 2) / 2
+        for (const s of a.ink) {
+            if (s.length === 1 && distToSegment(s[0][0], s[0][1], x0, y0, x, y) <= r) return true
+            for (let i = 1; i < s.length; ++i)
+                if (segmentDistance(x0, y0, x, y, s[i - 1][0], s[i - 1][1], s[i][0], s[i][1]) <= r) return true
+        }
+        return false
+    }
+    /// Erases the strokes on page `page` (0-based) along the eraser's way.
+    function eraseAlong(page, x0, y0, x, y) {
+        let n = 0
+        for (const a of (annotsByPage[page + 1] || []))
+            if (a.kind === "ink" && eraserHits(a, x0, y0, x, y) && removeAnnot(a.id)) n++
+        return n
     }
 
     /// Turns the current selection into text markup; returns the first ID.
@@ -648,6 +696,13 @@ Rectangle {
                         MenuItem { text: qsTr("Mittel"); onTriggered: root.inkWidth = 2 }
                         MenuItem { text: qsTr("Breit"); onTriggered: root.inkWidth = 4 }
                     }
+                }
+                IconButton {
+                    iconName: "eraser"
+                    tip: qsTr("Radierer: ganze Striche löschen (über sie fahren)")
+                    checkable: true
+                    checked: root.tool === "erase"
+                    onClicked: { root.tool = root.tool === "erase" ? "select" : "erase"; root.clearSelection() }
                 }
                 IconButton {
                     glyph: "🗨"
@@ -1009,6 +1064,7 @@ Rectangle {
                     flickable: pages
                     handleWheel: false
                     active: !root.app || root.app.touchpadFling
+                    app: root.app
                 }
                 // Plain wheel: scroll faster than the list would (a few lines
                 // per notch felt sluggish on long documents). Touchpads keep
@@ -1193,12 +1249,18 @@ Rectangle {
                             preventStealing: true
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             hoverEnabled: true
-                            cursorShape: root.tool === "ink" || root.tool === "note" ? Qt.CrossCursor
+                            cursorShape: root.tool === "erase" ? Qt.BlankCursor
+                                : root.tool === "ink" || root.tool === "note" ? Qt.CrossCursor
                                 : hoveredAnnotation || hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
                             property var pressPoint: null
                             property bool moved: false
                             property var hoveredAnnotation: null
                             property var hoveredLink: null
+                            /// Last eraser position (points) and strokes erased in this drag.
+                            property var erasePoint: null
+                            property int erased: 0
+                            /// Pointer position for the eraser circle.
+                            property point hoverPos: Qt.point(-100, -100)
                             ToolTip.visible: !!hoveredLink && !!hoveredLink.uri && !pressed
                             ToolTip.text: hoveredLink ? hoveredLink.uri : ""
                             ToolTip.delay: 400
@@ -1207,6 +1269,15 @@ Rectangle {
                             }
                             onPositionChanged: (mouse) => {
                                 const vp = mapToItem(pages, mouse.x, mouse.y)
+                                hoverPos = Qt.point(mouse.x, mouse.y)
+                                if (root.tool === "erase") {
+                                    if (pressed && erasePoint) {
+                                        const p = pointOf(mouse)
+                                        erased += root.eraseAlong(pageDelegate.index, erasePoint.x, erasePoint.y, p.x, p.y)
+                                        erasePoint = p
+                                    }
+                                    return
+                                }
                                 if (!pressed) {
                                     if (root.tool === "select") {
                                         hoveredAnnotation = root.annotationAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
@@ -1236,6 +1307,12 @@ Rectangle {
                                 pressPoint = { vx: mouse.x, vy: mouse.y, page: p.page, x: p.x, y: p.y }
                                 moved = false
                                 if (mouse.button === Qt.RightButton) return
+                                if (root.tool === "erase") {
+                                    root.eraseBatch = Date.now().toString(36)
+                                    erasePoint = p
+                                    erased = root.eraseAlong(p.page, p.x, p.y, p.x, p.y)
+                                    return
+                                }
                                 if (root.tool === "select") {
                                     selectionMenu.close()
                                     if (!(mouse.modifiers & Qt.ShiftModifier) || !root.dragStart) {
@@ -1254,6 +1331,13 @@ Rectangle {
                                     const hit = root.annotationAt(p.page, p.x, p.y)
                                     if (hit) annotPopup.show(hit.id, mapToItem(root, mouse.x, mouse.y))
                                     else if (root.selection.length) selectionMenu.showAt(mapToItem(root, mouse.x, mouse.y))
+                                    return
+                                }
+                                if (root.tool === "erase") {
+                                    root.eraseBatch = ""
+                                    erasePoint = null
+                                    if (erased > 0) root.message(qsTr("%n Strich(e) gelöscht – Strg+Z holt sie zurück", "", erased))
+                                    erased = 0
                                     return
                                 }
                                 if (root.tool === "ink") {
@@ -1293,6 +1377,19 @@ Rectangle {
                                 root.requestSelection()
                                 selectionMenu.showAt(mapToItem(root, mouse.x, mouse.y))
                             }
+                        }
+                        // The eraser under the pointer.
+                        Rectangle {
+                            readonly property real size: Math.max(10, 2 * root.eraserRadius * root.zoomScale)
+                            visible: root.tool === "erase" && pageMouse.containsMouse
+                            x: pageMouse.hoverPos.x - size / 2
+                            y: pageMouse.hoverPos.y - size / 2
+                            width: size
+                            height: size
+                            radius: size / 2
+                            color: Qt.rgba(1, 1, 1, pageMouse.pressed ? 0.35 : 0.2)
+                            border.color: "#80000000"
+                            border.width: 1
                         }
                     }
                 }

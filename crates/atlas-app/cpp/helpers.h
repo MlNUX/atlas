@@ -10,6 +10,8 @@
 #include <QtCore/QObject>
 #include <QtGui/QFont>
 
+#include "rust/cxx.h"
+
 namespace atlas {
 
 // Advance of one monospace cell, line height and ascent in logical pixels.
@@ -39,6 +41,10 @@ bool saveWindowImage(QObject* window, const QString& path);
 // (x, y), with Ctrl if `ctrl`; for the smoke test.
 void sendWheel(QObject* window, double x, double y, int delta, int flags);
 void sendKey(QObject* window, int key, int modifiers);
+
+// Calls `onHold` when fingers come to rest on the touchpad (Wayland hold
+// gesture, see touchpad_hold.cpp); false where that is not available.
+bool watchTouchpadHold(rust::Fn<void()> onHold);
 
 // File suffixes of the image formats Qt can read here (lower case).
 QStringList imageFormats();

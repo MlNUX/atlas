@@ -597,6 +597,7 @@ Rectangle {
                 anchors.fill: flick
                 flickable: flick
                 active: root.app.touchpadFling
+                app: root.app
             }
             Timer {
                 id: completionTimer

@@ -54,6 +54,7 @@ Item {
     property real flingY
     property real flingDirect
     property int flings
+    property var erase: []
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -1058,6 +1059,34 @@ Item {
                 check("Link springt zur Zielseite", v.currentPage === 1, v.currentPage)
             },
             () => {
+                // Eraser: a drag over two strokes removes both, a third
+                // stays; one undo step brings both back.
+                const v = editor.activeTab.viewerItem
+                v.goToPage(0)
+                const line = (y) => v.addAnnot(JSON.stringify({ kind: "ink", page: 1, ink: [[[20, y], [200, y]]], color: "#ff6b6b", width: 2 }))
+                test.erase = [line(100), line(140), line(400)]
+                v.tool = "erase"
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                const paper = v.pagesView.itemAtIndex(0).paperItem
+                const at = (x, y) => paper.mapToItem(null, x * v.zoomScale, y * v.zoomScale)
+                const pts = [[0, 60, 80], [1, 60, 110], [1, 60, 150], [1, 60, 165], [2, 60, 170]]
+                pts.forEach((e, i) => { const q = at(e[1], e[2]); app.postMouse(window, e[0], q.x, q.y, 40 * (i + 1)) })
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                const store = v.annotationStore
+                const there = test.erase.map(id => !!store.annotation(id))
+                check("Radierer löscht die berührten Striche ganz", !there[0] && !there[1] && there[2], JSON.stringify(there))
+                const last = v.undoStack[v.undoStack.length - 1]
+                check("Radier-Zug ist ein Rückgängig-Schritt", !!last && last.type === "remove" && last.parts.length === 2)
+                v.undo()
+                check("Strg+Z holt beide Striche zurück", test.erase.every(id => !!store.annotation(id)))
+                v.tool = "select"
+                for (const id of test.erase) store.remove(id)
+            },
+            () => {
                 // Arrow keys: down scrolls, right/left turn pages.
                 const v = editor.activeTab.viewerItem
                 v.goToPage(0)
@@ -1218,6 +1247,13 @@ Item {
             () => {
                 const ed = editor.activeTab.viewerItem.editorItem
                 check("Editor: Touchpad-Schwung", ed.fling.count === test.flings + 1, ed.fling.count)
+                // Fingers put down on the touchpad (hold gesture) stop it.
+                const f = ed.fling.flickable
+                ed.scrollToExactLine(60)
+                f.flick(0, -4000)
+                const was = f.flicking
+                app.touchpadHeld()
+                check("Finger auflegen stoppt den Schwung", was && !f.flicking, was + " " + f.flicking)
                 fileActions.calendar.remove(test.modEvent)
             },
             () => {

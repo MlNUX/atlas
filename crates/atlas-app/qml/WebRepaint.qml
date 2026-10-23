@@ -37,7 +37,7 @@ Item {
         onTriggered: {
             if (!repaint.view || !repaint.view.visible) return
             repaint.count += 1
-            repaint.view.runJavaScript("(() => { const s = document.documentElement.style; s.opacity = '0.999'; "
+            repaint.view.runJavaScript("(() => { const e = document.documentElement; if (!e) return; const s = e.style; s.opacity = '0.999'; "
                 + "requestAnimationFrame(() => requestAnimationFrame(() => { s.opacity = ''; })); })()")
         }
     }

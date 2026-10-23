@@ -23,6 +23,7 @@ pkgbase = atlas-workspace
 	depends = cairo
 	depends = glib2
 	depends = fontconfig
+	depends = wayland
 	depends = ripgrep
 	depends = gcc-libs
 	depends = glibc

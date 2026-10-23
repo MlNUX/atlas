@@ -46,6 +46,8 @@ pub mod ffi {
         unsafe fn send_wheel(window: *mut QObject, x: f64, y: f64, delta: i32, flags: i32);
         #[cxx_name = "sendKey"]
         unsafe fn send_key(window: *mut QObject, key: i32, modifiers: i32);
+        #[cxx_name = "watchTouchpadHold"]
+        fn watch_touchpad_hold(on_hold: fn()) -> bool;
         #[cxx_name = "setOwner"]
         unsafe fn set_owner(object: *mut QObject, owner: *mut QObject);
         #[cxx_name = "imageFormats"]

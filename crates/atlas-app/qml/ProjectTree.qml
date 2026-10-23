@@ -342,6 +342,7 @@ Rectangle {
             anchors.fill: parent
             flickable: list
             active: !root.actions || !root.actions.app || root.actions.app.touchpadFling
+            app: root.actions ? root.actions.app : null
         }
 
         Button {

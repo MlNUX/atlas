@@ -21,6 +21,11 @@ Item {
     property bool handleWheel: true
     /// How often a fling was started (for the smoke test).
     property int count: 0
+    /// AppController: its touchpadHeld signal (fingers put down, Wayland
+    /// hold gesture) stops the momentum.
+    property var app: null
+    /// Momentum relative to the swipe speed.
+    readonly property real boost: 1.6
 
     /// Recent steps: {t, dx, dy} in pixels (content moves by -d).
     property var samples: []
@@ -39,6 +44,12 @@ Item {
     function stop() {
         endTimer.stop()
         samples = []
+        flickable.cancelFlick()
+    }
+    Connections {
+        target: fling.app
+        ignoreUnknownSignals: true
+        function onTouchpadHeld() { fling.stop() }
     }
 
     // No step for a moment: the fingers left the touchpad.
@@ -54,10 +65,15 @@ Item {
             const span = Math.max(s[s.length - 1].t - s[0].t, 8 * (s.length - 1)) / 1000
             let dx = 0, dy = 0
             for (const p of s) { dx += p.dx; dy += p.dy }
-            const vx = dx / span, vy = dy / span
-            if (Math.abs(vx) < 200 && Math.abs(vy) < 200) return
+            const vx = dx / span * fling.boost, vy = dy / span * fling.boost
+            if (Math.abs(vx) < 300 && Math.abs(vy) < 300) return
             fling.count += 1
-            fling.flickable.flick(vx, vy)
+            // A higher limit only for this fling: mouse wheels stay as they are.
+            const f = fling.flickable
+            const limit = f.maximumFlickVelocity
+            f.maximumFlickVelocity = 8000
+            f.flick(vx, vy)
+            f.maximumFlickVelocity = limit
         }
     }
 
@@ -72,6 +88,8 @@ Item {
         acceptedModifiers: Qt.NoModifier
         onWheel: (event) => {
             if (fling.isTouchpad(event)) fling.sample(event.pixelDelta.x, event.pixelDelta.y)
+            // Any other step (e.g. the start of a new gesture) ends a fling.
+            else if (fling.flickable.flicking) fling.stop()
         }
     }
 }
