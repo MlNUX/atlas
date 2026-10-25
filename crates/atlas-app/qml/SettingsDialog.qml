@@ -39,6 +39,9 @@ Dialog {
     /// The ILIAS address field and how to apply it (for the smoke test).
     readonly property alias iliasAddressField: iliasAddress
     function applyIliasAddress() { iliasCard.applyAddress() }
+    /// The login fields (for the smoke test).
+    function rememberIliasLogin(user, password) { iliasUser.text = user; iliasPassword.text = password; iliasCard.rememberLogin() }
+    readonly property string iliasLoginMessage: iliasCard.loginMessage
     /// Where the places come from, for the line under the switch.
     readonly property string placesText: !dialog.app.fileManagerPlaces ? qsTr("Feste Orte von Atlas")
         : dialog.app.fixedPlaceCount === 0 ? qsTr("Aus Dolphin: %1").arg(dialog.app.placeNames.join(", ") || qsTr("keine"))
@@ -209,6 +212,25 @@ Dialog {
                     id: iliasCard
                     implicitHeight: iliasColumn.implicitHeight + 24
                     readonly property var ilias: { try { return JSON.parse(dialog.app.iliasConfig) } catch (e) { return {} } }
+                    property string loginMessage: ""
+                    property bool loginFailed: false
+                    property bool storing: false
+                    function rememberLogin() {
+                        if (!iliasUser.text.trim() || !iliasPassword.text || storing) return
+                        storing = true
+                        loginMessage = qsTr("Verschlüssele …")
+                        loginFailed = false
+                        dialog.app.iliasRememberLogin(iliasUser.text.trim(), iliasPassword.text)
+                        iliasPassword.text = ""
+                    }
+                    Connections {
+                        target: dialog.app
+                        function onIliasLoginStored(ok, message) {
+                            iliasCard.storing = false
+                            iliasCard.loginFailed = !ok
+                            iliasCard.loginMessage = message
+                        }
+                    }
                     function applyAddress() {
                         if (!iliasAddress.valid || !iliasAddress.changed) return
                         dialog.app.setIliasConfig("base_url", iliasAddress.address)
@@ -282,6 +304,64 @@ Dialog {
                             text: iliasAddress.text.trim() && !iliasAddress.valid
                                 ? qsTr("Keine gültige Adresse – z. B. https://ilias.uni-beispiel.de/")
                                 : qsTr("Startseite des ILIAS deiner Hochschule. Nach einer Änderung meldest du dich dort an und liest die Favoriten neu ein.")
+                        }
+                        // The university login, remembered only encrypted.
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 30
+                            spacing: 8
+                            Text { text: qsTr("Anmeldung"); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize; Layout.preferredWidth: 70 }
+                            Text {
+                                visible: iliasCard.ilias.login_saved === true
+                                Layout.fillWidth: true
+                                text: qsTr("%1 · Passwort verschlüsselt gespeichert (systemd-creds)").arg(iliasCard.ilias.user || "")
+                                color: Theme.text
+                                font.pixelSize: Theme.smallFontSize
+                                elide: Text.ElideRight
+                            }
+                            Button {
+                                visible: iliasCard.ilias.login_saved === true
+                                text: qsTr("Vergessen")
+                                flat: true
+                                onClicked: { dialog.app.iliasForgetLogin(); iliasCard.loginMessage = qsTr("Anmeldung vergessen") }
+                            }
+                            TextField {
+                                id: iliasUser
+                                visible: iliasCard.ilias.login_saved !== true
+                                Layout.preferredWidth: 140
+                                text: iliasCard.ilias.user || ""
+                                placeholderText: qsTr("Benutzername")
+                                font.pixelSize: Theme.smallFontSize
+                                selectByMouse: true
+                            }
+                            TextField {
+                                id: iliasPassword
+                                visible: iliasCard.ilias.login_saved !== true
+                                Layout.fillWidth: true
+                                echoMode: TextInput.Password
+                                placeholderText: qsTr("Passwort")
+                                font.pixelSize: Theme.smallFontSize
+                                onAccepted: iliasCard.rememberLogin()
+                            }
+                            Button {
+                                visible: iliasCard.ilias.login_saved !== true
+                                text: qsTr("Merken")
+                                enabled: iliasUser.text.trim().length > 0 && iliasPassword.text.length > 0 && !iliasCard.storing
+                                onClicked: iliasCard.rememberLogin()
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 108
+                            wrapMode: Text.Wrap
+                            font.pixelSize: Theme.smallFontSize
+                            color: iliasCard.loginFailed ? Theme.error : Theme.textFaint
+                            text: iliasCard.loginMessage
+                                || (iliasCard.ilias.login_saved === true
+                                    ? (iliasCard.ilias.login_host
+                                        ? qsTr("Wird nur auf %1 eingesetzt, wenn die Sitzung abgelaufen ist.").arg(iliasCard.ilias.login_host)
+                                        : qsTr("Bei der nächsten Anmeldung fragt Atlas einmal, auf welcher Seite es die Daten einsetzen darf."))
+                                    : qsTr("Optional: Atlas meldet dich dann selbst an. Das Passwort wird nur verschlüsselt mit systemd-creds gespeichert, sonst gar nicht."))
                         }
                         RowLayout {
                             Layout.fillWidth: true

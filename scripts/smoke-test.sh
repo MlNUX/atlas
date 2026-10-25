@@ -173,6 +173,18 @@ python3 scripts/ilias-mock.py "$ilias_port" &
 ilias_pid=$!
 trap 'kill $ilias_pid 2>/dev/null; rm -rf "$work"' EXIT
 mkdir -p "$work/ilias"
+# Stands in for systemd-creds (ROT13), for the remembered ILIAS login.
+cat > "$work/fake-creds" <<'SH'
+#!/bin/sh
+[ "$1" = --user ] || exit 9
+case "$2" in
+  encrypt) tr a-z n-za-m > "$5" ;;
+  decrypt) tr a-z n-za-m < "$4" ;;
+  *) exit 8 ;;
+esac
+SH
+chmod +x "$work/fake-creds"
+export ATLAS_SYSTEMD_CREDS="$work/fake-creds"
 cat >> "$work/config/config.toml" <<TOML
 [ilias]
 base_url = "http://127.0.0.1:$ilias_port/"

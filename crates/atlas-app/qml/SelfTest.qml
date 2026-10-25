@@ -1372,14 +1372,24 @@ Item {
                 editor.open("ilias:", 0, "tab")
                 const il = fileActions.ilias
                 check("ILIAS-Tab offen", editor.activeTab.kind === "ilias" && !!editor.activeTab.viewerItem)
-                il.refresh()
+                // The university login, remembered (fake systemd-creds).
+                settingsDialog.rememberIliasLogin("uxtest", "geheim")
+            },
+            () => {
+                const saved = () => JSON.parse(app.iliasConfig).login_saved === true
+                if (waitFor(saved)) return
+                const cred = app.readTextFile(app.stateDir() + "/secrets/ilias.cred")
+                check("ILIAS: Anmeldung nur verschlüsselt gespeichert", saved() && cred.length > 0 && cred.indexOf("geheim") < 0
+                      && !app.exists(app.stateDir() + "/secrets/ilias.secret") && app.readTextFile(app.configDir() + "/config.toml").indexOf("geheim") < 0,
+                      settingsDialog.iliasLoginMessage)
+                fileActions.ilias.refresh()
             },
             () => {
                 const il = fileActions.ilias
-                if (waitFor(() => il.state === "login" && il.loginVisible)) return
+                if (waitFor(() => il.state === "login" && il.loginVisible && il.offerHost !== "")) return
                 check("ILIAS: ohne Sitzung wird nach der Anmeldung gefragt", il.state === "login" && il.loginVisible, il.state + " " + il.status)
-                // The user logs in on the page shown.
-                il.loginPage.runJavaScript("document.getElementById('login') && document.getElementById('login').click()")
+                check("ILIAS: fragt einmal, ob die Anmeldung auf dieser Seite eingesetzt werden darf", il.offerHost === il.host, il.offerHost)
+                il.allowLoginHere()
             },
             () => { const il = fileActions.ilias; if (waitFor(() => !il.loginVisible && il.state === "idle" && il.index.courses.length > 0)) return },
             () => {
@@ -1482,6 +1492,19 @@ Item {
                 const file = test.iliasRoot + "/Mathe/orga.pdf"
                 check("ILIAS: neue Version geladen und ersetzt die alte", il.fileState(test.iliasOrga) === "loaded"
                       && app.readTextFile(file).indexOf("Version 2") >= 0 && !app.exists(test.iliasRoot + "/Mathe/orga (2).pdf"), il.status)
+            },
+            () => {
+                // Signed out: the next login uses the remembered data by itself.
+                const il = fileActions.ilias
+                il.logout()
+                il.refresh()
+            },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => !il.loginVisible && il.state === "idle" && il.status.indexOf("eingelesen") >= 0)) return
+                check("ILIAS: nach dem Abmelden ohne Zutun wieder angemeldet (gespeicherte Anmeldung)",
+                      !il.loginVisible && il.state === "idle" && il.filledOn === il.host && JSON.parse(app.iliasConfig).login_host === il.host,
+                      il.state + " " + il.status + " · " + il.filledOn)
             },
             () => {
                 // The project folder cannot be collapsed: a click on it keeps the tree.

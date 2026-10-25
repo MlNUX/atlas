@@ -165,6 +165,14 @@ pub struct IliasConfig {
     /// The „ILIAS“ entry under „Orte“.
     #[serde(default = "enabled")]
     pub show_in_places: bool,
+    /// User name of the university login (the password is kept encrypted
+    /// with systemd-creds, never here).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user: String,
+    /// The login page's host the user allowed Atlas to fill in (e.g.
+    /// `idp.scc.kit.edu`); no other page gets the password.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub login_host: String,
 }
 
 fn ilias_kit() -> String {
@@ -173,7 +181,13 @@ fn ilias_kit() -> String {
 
 impl Default for IliasConfig {
     fn default() -> Self {
-        Self { base_url: ilias_kit(), download_dir: String::new(), show_in_places: true }
+        Self {
+            base_url: ilias_kit(),
+            download_dir: String::new(),
+            show_in_places: true,
+            user: String::new(),
+            login_host: String::new(),
+        }
     }
 }
 

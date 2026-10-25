@@ -195,6 +195,45 @@ pub mod qobject {
         #[cxx_name = "iliasDebugLog"]
         fn ilias_debug_log(self: &AppController) -> QString;
 
+        /// Remembers the university login for ILIAS: the user name in
+        /// `[ilias]`, the password only encrypted with systemd-creds
+        /// (otherwise nothing). Then `iliasLoginStored`.
+        #[qinvokable]
+        #[cxx_name = "iliasRememberLogin"]
+        fn ilias_remember_login(self: &AppController, user: &QString, password: &QString);
+
+        #[qsignal]
+        #[cxx_name = "iliasLoginStored"]
+        fn ilias_login_stored(self: Pin<&mut AppController>, ok: bool, message: QString);
+
+        /// Forgets the remembered login (password and allowed login page).
+        #[qinvokable]
+        #[cxx_name = "iliasForgetLogin"]
+        fn ilias_forget_login(self: Pin<&mut AppController>);
+
+        /// Decrypts the remembered login, in the background; then
+        /// `iliasLoginReady` (empty password if none or on failure).
+        #[qinvokable]
+        #[cxx_name = "iliasFetchLogin"]
+        fn ilias_fetch_login(self: &AppController);
+
+        #[qsignal]
+        #[cxx_name = "iliasLoginReady"]
+        fn ilias_login_ready(self: Pin<&mut AppController>, user: QString, password: QString, error: QString);
+
+        /// Atlas' state folder (`$XDG_STATE_HOME/atlas`) and config folder.
+        #[qinvokable]
+        #[cxx_name = "stateDir"]
+        fn state_dir(self: &AppController) -> QString;
+        #[qinvokable]
+        #[cxx_name = "configDir"]
+        fn config_dir(self: &AppController) -> QString;
+
+        /// Re-reads `[ilias]` into `iliasConfig`.
+        #[qinvokable]
+        #[cxx_name = "reloadIliasConfig"]
+        fn reload_ilias_config(self: Pin<&mut AppController>);
+
         /// Signs out: forgets the web session (all its cookies).
         #[qinvokable]
         #[cxx_name = "iliasLogout"]
@@ -960,6 +999,7 @@ impl qobject::AppController {
             }
             "download_dir" => config.download_dir = value,
             "show_in_places" => config.show_in_places = value == "true",
+            "login_host" => config.login_host = value.trim().to_lowercase(),
             other => {
                 log::warn!("unknown ILIAS setting {other}");
                 return;
@@ -1071,6 +1111,74 @@ impl qobject::AppController {
             atlas_core::ilias::trace("(noch nichts protokolliert)");
         }
         qs(path.to_string_lossy())
+    }
+
+    pub fn ilias_remember_login(&self, user: &QString, password: &QString) {
+        let (user, password) = (user.to_string().trim().to_owned(), password.to_string());
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = (|| -> anyhow::Result<()> {
+                if user.is_empty() {
+                    anyhow::bail!("Benutzername fehlt");
+                }
+                ilias_secret().store_encrypted(&password)?;
+                let mut config = Config::load().ilias;
+                config.user = user;
+                Config::save_ilias(&config)
+            })();
+            let (ok, message) = match result {
+                Ok(()) => (true, "Anmeldung verschlüsselt gespeichert (systemd-creds)".to_owned()),
+                Err(err) => (false, format!("{err:#}")),
+            };
+            atlas_core::ilias::trace(&format!("Anmeldedaten merken: {message}"));
+            let _ = thread.queue(move |mut app| {
+                app.as_mut().reload_ilias_config();
+                app.ilias_login_stored(ok, qs(message));
+            });
+        });
+    }
+
+    pub fn ilias_forget_login(mut self: Pin<&mut Self>) {
+        if let Err(err) = ilias_secret().forget() {
+            log::warn!("cannot forget the ILIAS login: {err:#}");
+        }
+        let mut config = Config::load().ilias;
+        config.login_host.clear();
+        if let Err(err) = Config::save_ilias(&config) {
+            log::warn!("cannot save [ilias]: {err:#}");
+        }
+        atlas_core::ilias::trace("Anmeldedaten vergessen");
+        self.as_mut().reload_ilias_config();
+    }
+
+    pub fn ilias_fetch_login(&self) {
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let user = Config::load().ilias.user;
+            let (password, error) = match ilias_secret().load() {
+                Ok(Some((p, atlas_core::secret::Kind::Encrypted))) => (p, String::new()),
+                Ok(Some(_)) => (String::new(), "nicht verschlüsselt gespeichert".to_owned()),
+                Ok(None) => (String::new(), String::new()),
+                Err(err) => (String::new(), format!("{err:#}")),
+            };
+            if !error.is_empty() {
+                atlas_core::ilias::trace(&format!("Anmeldedaten nicht lesbar: {error}"));
+            }
+            let _ = thread.queue(move |app| app.ilias_login_ready(qs(user), qs(password), qs(error)));
+        });
+    }
+
+    pub fn state_dir(&self) -> QString {
+        qs(atlas_core::paths::state_root().to_string_lossy())
+    }
+
+    pub fn config_dir(&self) -> QString {
+        qs(atlas_core::config::config_dir().to_string_lossy())
+    }
+
+    pub fn reload_ilias_config(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().ilias_config = ilias_json(&Config::load().ilias);
+        self.as_mut().ilias_config_changed();
     }
 
     pub fn ilias_logout(&self) {
@@ -2735,8 +2843,17 @@ fn percent_decode(s: &str) -> String {
 }
 
 /// `[ilias]` for QML.
+/// The remembered university login for ILIAS (encrypted only).
+fn ilias_secret() -> atlas_core::secret::SecretStore {
+    atlas_core::secret::SecretStore::default_for("ilias")
+}
+
 fn ilias_json(c: &atlas_core::config::IliasConfig) -> QString {
-    let json = serde_json::json!({ "base_url": c.base_url, "download_dir": c.download_dir, "show_in_places": c.show_in_places });
+    let saved = ilias_secret().kind() == Some(atlas_core::secret::Kind::Encrypted);
+    let json = serde_json::json!({
+        "base_url": c.base_url, "download_dir": c.download_dir, "show_in_places": c.show_in_places,
+        "user": c.user, "login_host": c.login_host, "login_saved": saved && !c.user.is_empty(),
+    });
     QString::from(json.to_string().as_str())
 }
 

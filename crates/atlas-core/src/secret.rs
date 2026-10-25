@@ -59,9 +59,14 @@ impl SecretStore {
         Self { dir: dir.into(), name, creds: "systemd-creds".into() }
     }
 
-    /// The default place: `<state>/secrets/`.
+    /// The default place: `<state>/secrets/`. `ATLAS_SYSTEMD_CREDS` replaces
+    /// the `systemd-creds` program (tests).
     pub fn default_for(name: &str) -> Self {
-        Self::new(crate::paths::state_root().join("secrets"), name)
+        let store = Self::new(crate::paths::state_root().join("secrets"), name);
+        match std::env::var("ATLAS_SYSTEMD_CREDS") {
+            Ok(program) if !program.is_empty() => store.with_creds_program(&program),
+            _ => store,
+        }
     }
 
     pub fn with_creds_program(mut self, program: &str) -> Self {
@@ -106,6 +111,18 @@ impl SecretStore {
         let other = if kind == Kind::Encrypted { self.file_path() } else { self.encrypted_path() };
         remove_if_exists(&other)?;
         Ok(kind)
+    }
+
+    /// Remembers `secret` only encrypted (`systemd-creds`); without it,
+    /// nothing is stored (for passwords too valuable for a plain file, like
+    /// the university login).
+    pub fn store_encrypted(&self, secret: &str) -> Result<()> {
+        if secret.is_empty() || secret.contains('\n') {
+            bail!("ungültiges Passwort");
+        }
+        create_private_dir(&self.dir)?;
+        self.encrypt(secret).context("systemd-creds kann hier nicht verschlüsseln – nichts gespeichert")?;
+        remove_if_exists(&self.file_path())
     }
 
     fn encrypt(&self, secret: &str) -> Result<()> {
@@ -344,6 +361,21 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().contains("tmp"))
             .collect();
         assert!(leftovers.is_empty());
+    }
+
+    #[test]
+    fn encrypted_only_stores_nothing_without_systemd_creds() {
+        let dir = tempfile::tempdir().unwrap();
+        let broken = dir.path().join("kaputt");
+        let store = SecretStore::new(dir.path().join("secrets"), "ilias").with_creds_program(&broken.to_string_lossy());
+        assert!(store.store_encrypted("geheim").is_err());
+        assert_eq!(store.kind(), None, "no plain file as a fallback");
+
+        let creds = fake_creds(dir.path());
+        let store = SecretStore::new(dir.path().join("secrets"), "ilias").with_creds_program(&creds);
+        store.store_encrypted("geheim").unwrap();
+        assert_eq!(store.kind(), Some(Kind::Encrypted));
+        assert_eq!(store.load().unwrap(), Some(("geheim".to_owned(), Kind::Encrypted)));
     }
 
     #[test]
