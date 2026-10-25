@@ -66,6 +66,30 @@ impl Backend for PopplerBackend {
         Ok((width_px, height_px, bgra))
     }
 
+    fn clip_png(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64, out: &Path) -> Result<()> {
+        let doc = self.doc(path)?;
+        let page = page_at(doc, page as i64).context("page out of range")?;
+        let (x0, x1) = (area[0].min(area[2]), area[0].max(area[2]));
+        let (y0, y1) = (area[1].min(area[3]), area[1].max(area[3]));
+        let (w, h) = (((x1 - x0) * scale).ceil() as i32, ((y1 - y0) * scale).ceil() as i32);
+        if w < 2 || h < 2 || w > 8000 || h > 8000 {
+            anyhow::bail!("Bereich zu klein oder zu groß ({w}×{h} Pixel)");
+        }
+        let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, w, h)?;
+        {
+            let cr = cairo::Context::new(&surface)?;
+            cr.set_source_rgb(1.0, 1.0, 1.0);
+            cr.paint()?;
+            cr.scale(scale, scale);
+            cr.translate(-x0, -y0);
+            page.render(&cr);
+        }
+        surface.flush();
+        let mut file = std::fs::File::create(out).with_context(|| format!("cannot write {}", out.display()))?;
+        surface.write_to_png(&mut file).map_err(|e| anyhow::anyhow!("PNG: {e}"))?;
+        Ok(())
+    }
+
     fn text(&mut self, path: &Path, page: usize) -> Result<String> {
         let doc = self.doc(path)?;
         let page = page_at(doc, page as i64).context("page out of range")?;

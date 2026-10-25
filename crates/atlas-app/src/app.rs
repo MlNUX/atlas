@@ -221,6 +221,24 @@ pub mod qobject {
         #[cxx_name = "iliasLoginReady"]
         fn ilias_login_ready(self: Pin<&mut AppController>, user: QString, password: QString, error: QString);
 
+        /// Recognizes the formula in `area` (JSON `[x0, y0, x1, y1]`,
+        /// points) of `page` (0-based) of PDF `path` as LaTeX with pix2tex,
+        /// in the background; then `latexRecognized` with `request`.
+        #[qinvokable]
+        #[cxx_name = "latexFromPdf"]
+        fn latex_from_pdf(self: &AppController, request: i32, path: &QString, page: i32, area: &QString);
+
+        /// `latex` (tidied) or `error` for `request`.
+        #[qsignal]
+        #[cxx_name = "latexRecognized"]
+        fn latex_recognized(self: Pin<&mut AppController>, request: i32, latex: QString, error: QString);
+
+        /// Whether the pix2tex worker has been started already (later
+        /// recognitions are quick).
+        #[qinvokable]
+        #[cxx_name = "latexOcrWarm"]
+        fn latex_ocr_warm(self: &AppController) -> bool;
+
         /// Atlas' state folder (`$XDG_STATE_HOME/atlas`) and config folder.
         #[qinvokable]
         #[cxx_name = "stateDir"]
@@ -1166,6 +1184,45 @@ impl qobject::AppController {
             }
             let _ = thread.queue(move |app| app.ilias_login_ready(qs(user), qs(password), qs(error)));
         });
+    }
+
+    pub fn latex_from_pdf(&self, request: i32, path: &QString, page: i32, area: &QString) {
+        let thread = self.qt_thread();
+        let Ok([x0, y0, x1, y1]) = serde_json::from_str::<[f64; 4]>(&area.to_string()) else {
+            log::warn!("latexFromPdf: bad area {area}");
+            return;
+        };
+        let dir = atlas_core::paths::state_root().join("cache").join("latex-ocr");
+        let _ = std::fs::create_dir_all(&dir);
+        let out = dir.join(format!("{}-{request}.png", std::process::id()));
+        // About 290 dpi: pix2tex scales the picture down itself.
+        let scale = 4.0;
+        atlas_core::pdf::PdfService::get().clip_png(
+            path_of(path),
+            page.max(0) as usize,
+            [x0, y0, x1, y1],
+            scale,
+            out,
+            move |result| {
+                // The recognition takes a while: not on the PDF thread.
+                std::thread::spawn(move || {
+                    let outcome = result.and_then(|png| {
+                        let latex = atlas_core::latex_ocr::recognize(&png);
+                        let _ = std::fs::remove_file(&png);
+                        latex
+                    });
+                    let (latex, error) = match outcome {
+                        Ok(l) => (atlas_core::latex_ocr::tidy(&l), String::new()),
+                        Err(e) => (String::new(), format!("{e:#}")),
+                    };
+                    let _ = thread.queue(move |app| app.latex_recognized(request, qs(latex), qs(error)));
+                });
+            },
+        );
+    }
+
+    pub fn latex_ocr_warm(&self) -> bool {
+        atlas_core::latex_ocr::is_running()
     }
 
     pub fn state_dir(&self) -> QString {

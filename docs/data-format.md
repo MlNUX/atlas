@@ -226,6 +226,7 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 | `$XDG_CONFIG_HOME/atlas/extensions/` | installierte Erweiterungen ([extensions.md](extensions.md)) |
 | `$XDG_STATE_HOME/atlas/ilias/index.json` | eingelesene ILIAS-Kurse: `{"base_url", "scanned": ms, "courses": [Knoten]}`; Knoten `{kind: crs\|grp\|sess\|fold\|file, id, name, url, info, download?, children?, error?}` |
 | `$XDG_STATE_HOME/atlas/ilias/downloads.json` | geladene ILIAS-Dateien: ILIAS-Adresse → `{path, info, time}`; anderes `info` als im Index = neue Version |
+| `$XDG_STATE_HOME/atlas/secrets/ilias.cred` | Passwort der Hochschul-Anmeldung für ILIAS, nur verschlüsselt mit `systemd-creds --user` (ohne systemd-creds wird es nicht gespeichert) |
 | `$XDG_STATE_HOME/atlas/ilias/debug.log` | ILIAS-Protokoll zur Fehlersuche: Anmeldefenster, jede abgerufene Seite mit Weiterleitung und Anmelde-Urteil samt Grund, Funde, Downloads; von Cookies nur die Namen (höchstens 4 MB) |
 | `$XDG_STATE_HOME/atlas/ilias/debug/` | Kopien der Dashboard-Seiten und auffälliger Seiten (nicht angemeldet, nichts gefunden) des letzten Einlesens |
 | `$XDG_DATA_HOME/atlas/…/QtWebEngine/atlas-ilias/` | Web-Profil der ILIAS-Anmeldung (Cookies der Sitzung, kein Passwort) |
@@ -265,11 +266,14 @@ pomodoro_long_break = 15                         # lange Pause nach vier Runden
 
 [pdf]
 dark = true                                      # Dunkelmodus: Farben umgekehrt (Mond in der PDF-Leiste)
+latex_ocr_python = ""                            # Python mit pix2tex für „Formel als LaTeX“ (leer: ~/.local/share/atlas/pix2tex, sonst python3; latex-ocr.md)
 
 [ilias]                                          # ILIAS unter „Orte“ – ohne Passwort
 base_url = "https://ilias.studium.kit.edu/"      # Standard: KIT
 download_dir = "/home/minux/Uni/ILIAS"           # zuletzt gewählter Zielordner, beim nächsten Download vorgeschlagen
 show_in_places = true
+user = "uxxxx"                                   # Benutzername der Hochschul-Anmeldung (das Passwort steht nie hier)
+login_host = "idp.scc.kit.edu"                   # einzige Seite, auf der Atlas die gespeicherte Anmeldung einsetzt
 
 [calendar]                                       # Nextcloud/CalDAV oder Google – ohne Passwort
 provider = ""                                    # "" = Nextcloud/CalDAV, "google" = Google (siehe google-kalender.md)

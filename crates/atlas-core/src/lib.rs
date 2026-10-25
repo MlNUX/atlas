@@ -17,6 +17,7 @@ pub mod finder;
 pub mod fs_tree;
 pub mod identity;
 pub mod ilias;
+pub mod latex_ocr;
 pub mod listing;
 pub mod markdown;
 pub mod notes;

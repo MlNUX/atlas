@@ -420,6 +420,47 @@ Rectangle {
         message(qsTr("Text kopiert"))
     }
 
+    // ------------------------------------------------- formula as LaTeX
+    // A box dragged over a formula (tool "latex") or the selected text goes
+    // as a picture to pix2tex (local, see docs/latex-ocr.md); the LaTeX is
+    // copied and shown to check and edit.
+    /// The box being dragged: {page, x0, y0, x1, y1} (points) or null.
+    property var latexBox: null
+    property int latexRequest: 0
+    /// The result window's state (for the smoke test).
+    readonly property bool latexShown: latexPopup.visible
+    readonly property bool latexBusy: latexPopup.busy
+    readonly property string latexText: latexPopup.latex
+    readonly property string latexError: latexPopup.error
+    function recognizeLatex(page, x0, y0, x1, y1) {
+        if (!root.app) return
+        latexRequest++
+        latexPopup.start(root.app.latexOcrWarm())
+        root.app.latexFromPdf(latexRequest, root.source, page, JSON.stringify([x0, y0, x1, y1]))
+    }
+    /// The selected text's box on its first page, with a little margin.
+    function recognizeSelection() {
+        const s = selection[0]
+        if (!s || !s.rects.length) return
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+        for (const r of s.rects) {
+            x0 = Math.min(x0, r[0]); y0 = Math.min(y0, r[1])
+            x1 = Math.max(x1, r[0] + r[2]); y1 = Math.max(y1, r[1] + r[3])
+        }
+        recognizeLatex(s.page, x0 - 3, y0 - 3, x1 + 3, y1 + 3)
+    }
+    Connections {
+        target: root.app
+        function onLatexRecognized(request, latex, error) {
+            if (request !== root.latexRequest) return
+            latexPopup.finish(latex, error)
+            if (latex) {
+                root.app.copyToClipboard(latex)
+                root.message(qsTr("LaTeX kopiert"))
+            }
+        }
+    }
+
     function toggleBookmark() {
         const page = currentPage + 1
         const existing = (annotsByPage[page] || []).find(a => a.kind === "bookmark")
@@ -710,6 +751,13 @@ Rectangle {
                     checkable: true
                     checked: root.tool === "note"
                     onClicked: { root.tool = root.tool === "note" ? "select" : "note"; root.clearSelection() }
+                }
+                IconButton {
+                    glyph: "∑"
+                    tip: qsTr("Formel als LaTeX: Rahmen um die Formel ziehen (pix2tex, lokal)")
+                    checkable: true
+                    checked: root.tool === "latex"
+                    onClicked: { root.tool = root.tool === "latex" ? "select" : "latex"; root.clearSelection() }
                 }
                 IconButton {
                     iconName: "undo"
@@ -1203,6 +1251,18 @@ Rectangle {
                                 color: "#5a3399ff"
                             }
                         }
+                        // The box for "formula as LaTeX".
+                        Rectangle {
+                            readonly property var b: root.latexBox
+                            visible: !!b && b.page === pageDelegate.index
+                            x: b ? Math.min(b.x0, b.x1) * root.zoomScale : 0
+                            y: b ? Math.min(b.y0, b.y1) * root.zoomScale : 0
+                            width: b ? Math.abs(b.x1 - b.x0) * root.zoomScale : 0
+                            height: b ? Math.abs(b.y1 - b.y0) * root.zoomScale : 0
+                            color: "#223399ff"
+                            border.color: Theme.accent
+                            border.width: 1.5
+                        }
                         // Freehand stroke being drawn.
                         Shape {
                             visible: root.strokePage === pageDelegate.index && root.stroke.length > 1
@@ -1250,7 +1310,7 @@ Rectangle {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             hoverEnabled: true
                             cursorShape: root.tool === "erase" ? Qt.BlankCursor
-                                : root.tool === "ink" || root.tool === "note" ? Qt.CrossCursor
+                                : root.tool === "ink" || root.tool === "note" || root.tool === "latex" ? Qt.CrossCursor
                                 : hoveredAnnotation || hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
                             property var pressPoint: null
                             property bool moved: false
@@ -1292,6 +1352,9 @@ Rectangle {
                                     root.dragging = true
                                     const p = root.pointAt(vp.x, vp.y)
                                     if (p) { root.dragEnd = p; root.requestSelection() }
+                                } else if (root.tool === "latex" && root.latexBox) {
+                                    const p = pointOf(mouse)
+                                    root.latexBox = Object.assign({}, root.latexBox, { x1: p.x, y1: p.y })
                                 } else if (root.tool === "ink") {
                                     root.dragging = true
                                     const p = root.pointAt(vp.x, vp.y)
@@ -1322,6 +1385,8 @@ Rectangle {
                                 } else if (root.tool === "ink") {
                                     root.strokePage = p.page
                                     root.stroke = [[p.x, p.y]]
+                                } else if (root.tool === "latex") {
+                                    root.latexBox = { page: p.page, x0: p.x, y0: p.y, x1: p.x, y1: p.y }
                                 }
                             }
                             onReleased: (mouse) => {
@@ -1345,6 +1410,13 @@ Rectangle {
                                         root.addAnnot(JSON.stringify({ kind: "ink", page: root.strokePage + 1, ink: [root.stroke], color: root.inkColor, width: root.inkWidth }))
                                     root.stroke = []
                                     root.strokePage = -1
+                                    return
+                                }
+                                if (root.tool === "latex") {
+                                    const b = root.latexBox
+                                    root.latexBox = null
+                                    if (b && Math.abs(b.x1 - b.x0) > 4 && Math.abs(b.y1 - b.y0) > 4)
+                                        root.recognizeLatex(b.page, b.x0, b.y0, b.x1, b.y1)
                                     return
                                 }
                                 if (root.tool === "note") {
@@ -1484,6 +1556,77 @@ Rectangle {
             }
             IconButton { glyph: qsTr("❝ Zitat"); tip: qsTr("Markieren und als Zitat in eine Notiz übernehmen (Strg+Q)"); onClicked: root.quoteSelection() }
             IconButton { glyph: "⧉"; tip: qsTr("Text kopieren (Strg+C)"); onClicked: { root.copySelection(); selectionMenu.close() } }
+            IconButton { glyph: "∑"; tip: qsTr("Als LaTeX erkennen und kopieren (pix2tex)"); onClicked: { root.recognizeSelection(); selectionMenu.close() } }
+        }
+    }
+
+    // ---- the recognized LaTeX: to check, edit and copy
+    Popup {
+        id: latexPopup
+        property bool busy: false
+        property string error: ""
+        property bool firstStart: false
+        readonly property alias latex: latexField.text
+        function start(warm) {
+            busy = true
+            error = ""
+            firstStart = !warm
+            latexField.text = ""
+            open()
+        }
+        function finish(text, err) {
+            busy = false
+            error = err
+            latexField.text = text
+        }
+        x: Math.round((root.width - width) / 2)
+        y: 56
+        width: Math.min(root.width - 40, 560)
+        padding: 12
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle { color: Theme.header; border.color: Theme.border; radius: 8 }
+        contentItem: ColumnLayout {
+            spacing: 8
+            RowLayout {
+                spacing: 8
+                Text { text: "∑"; color: Theme.accent; font.pixelSize: Theme.fontSize + 2 }
+                Text {
+                    Layout.fillWidth: true
+                    text: latexPopup.busy
+                        ? (latexPopup.firstStart ? qsTr("Erkenne Formel … (pix2tex startet, beim ersten Mal kann das dauern)") : qsTr("Erkenne Formel …"))
+                        : latexPopup.error ? qsTr("Keine Formel erkannt") : qsTr("LaTeX – kopiert, hier noch änderbar")
+                    color: Theme.textStrong
+                    font.pixelSize: Theme.fontSize
+                    elide: Text.ElideRight
+                }
+                BusyIndicator { running: latexPopup.busy; visible: running; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
+            }
+            Text {
+                visible: latexPopup.error !== ""
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Theme.error
+                font.pixelSize: Theme.smallFontSize
+                text: latexPopup.error + (/pix2tex|python|starten|No module/i.test(latexPopup.error)
+                    ? "\n" + qsTr("pix2tex muss installiert sein – Anleitung: docs/latex-ocr.md") : "")
+            }
+            TextArea {
+                id: latexField
+                visible: !latexPopup.busy && !latexPopup.error
+                Layout.fillWidth: true
+                wrapMode: TextEdit.Wrap
+                selectByMouse: true
+                font.family: "monospace"
+                font.pixelSize: Theme.fontSize
+            }
+            RowLayout {
+                visible: !latexPopup.busy && !latexPopup.error
+                spacing: 6
+                Item { Layout.fillWidth: true }
+                Button { text: qsTr("$…$ kopieren"); flat: true; onClicked: { root.app.copyToClipboard("$" + latexField.text + "$"); root.message(qsTr("Mit $…$ kopiert")) } }
+                Button { text: qsTr("$$…$$ kopieren"); flat: true; onClicked: { root.app.copyToClipboard("$$\n" + latexField.text + "\n$$"); root.message(qsTr("Mit $$…$$ kopiert")) } }
+                Button { text: qsTr("Kopieren"); highlighted: true; onClicked: { root.app.copyToClipboard(latexField.text); latexPopup.close(); root.message(qsTr("LaTeX kopiert")) } }
+            }
         }
     }
 

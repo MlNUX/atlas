@@ -13,6 +13,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 | [actions.md](actions.md) | eigene Aktionen (`actions.yaml`) |
 | [extensions.md](extensions.md) | Erweiterungen (`extension.yaml`) |
 | [google-kalender.md](google-kalender.md) | Google-Kalender einrichten |
+| [latex-ocr.md](latex-ocr.md) | Formeln aus PDFs als LaTeX (pix2tex einrichten) |
 | [data-format.md](data-format.md) | alle Dateien, die Atlas anlegt, und `config.toml` |
 
 ## Konzept (`concept/`)

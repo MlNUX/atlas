@@ -185,7 +185,35 @@ esac
 SH
 chmod +x "$work/fake-creds"
 export ATLAS_SYSTEMD_CREDS="$work/fake-creds"
+# Stands in for pix2tex ("Formel als LaTeX"): a venv with a fake pix2tex
+# and PIL – the real worker script runs; the answer gives the picture's
+# size, so the test sees which area arrived at which resolution.
+python3 -m venv --without-pip "$work/pix2tex"
+site=$("$work/pix2tex/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
+mkdir -p "$site/pix2tex" "$site/PIL"
+: > "$site/pix2tex/__init__.py"
+: > "$site/PIL/__init__.py"
+cat > "$site/pix2tex/cli.py" <<'PY'
+class LatexOCR:
+    def __call__(self, img):
+        return "\\frac {a} {b} ^ {%d}" % img.width
+PY
+cat > "$site/PIL/Image.py" <<'PY'
+import builtins, struct
+class _Picture:
+    def __init__(self, path):
+        with builtins.open(path, "rb") as f:
+            data = f.read(24)
+        if data[:8] != b"\x89PNG\r\n\x1a\n":
+            raise ValueError("kein PNG")
+        self.width, self.height = struct.unpack(">II", data[16:24])
+def open(path):
+    return _Picture(path)
+PY
 cat >> "$work/config/config.toml" <<TOML
+[pdf]
+latex_ocr_python = "$work/pix2tex/bin/python"
+
 [ilias]
 base_url = "http://127.0.0.1:$ilias_port/"
 download_dir = "$work/ilias"

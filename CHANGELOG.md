@@ -10,6 +10,23 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Neu
+- **Formel als LaTeX**: In PDFs mit ∑ einen Rahmen um eine Formel ziehen
+  (oder markierten Text über ∑ im Auswahlmenü) – Atlas erkennt sie mit
+  pix2tex auf deinem Rechner, kopiert den LaTeX-Code und zeigt ihn zum
+  Prüfen, auch als `$…$`/`$$…$$`. pix2tex wird einmal eingerichtet
+  ([docs/latex-ocr.md](docs/latex-ocr.md)).
+- **ILIAS-Anmeldung merken**: Benutzername und Passwort der Hochschule in
+  den Einstellungen speichern – das Passwort nur verschlüsselt mit
+  systemd-creds, sonst gar nicht. Läuft die Sitzung ab, meldet Atlas dich
+  selbst wieder an; eingesetzt wird nur auf der einmal bestätigten
+  Anmeldeseite (z. B. idp.scc.kit.edu) und nur ein Versuch, damit ein
+  falsches Passwort nicht in einer Schleife landet.
+
+### Geändert
+- Repository aufgeräumt: Konzept und Entwürfe unter `docs/concept/`,
+  Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
+
 ## [1.1.1] – 2026-10-23
 
 ### Neu

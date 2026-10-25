@@ -1150,6 +1150,28 @@ Item {
                 for (const id of test.erase) store.remove(id)
             },
             () => {
+                // Formula as LaTeX: a box dragged with the ∑ tool goes to
+                // pix2tex (here a stand-in that answers with the picture's
+                // width: 50 pt at 4 px/pt = 200).
+                const v = editor.activeTab.viewerItem
+                v.goToPage(0)
+                v.tool = "latex"
+                const paper = v.pagesView.itemAtIndex(0).paperItem
+                const at = (x, y) => paper.mapToItem(null, x * v.zoomScale, y * v.zoomScale)
+                const a = at(72, 130), b = at(97, 145), c = at(122, 160)
+                app.postMouse(window, 0, a.x, a.y, 30)
+                app.postMouse(window, 1, b.x, b.y, 60)
+                app.postMouse(window, 2, c.x, c.y, 90)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.latexShown && !v.latexBusy)) return
+                check("Formel als LaTeX: Rahmen aufziehen erkennt die Formel (pix2tex)",
+                      v.latexShown && v.latexText === "\\frac{a}{b}^{200}" && !v.latexError, v.latexText + " · " + v.latexError)
+                check("Formel als LaTeX: Werkzeug bleibt aktiv, kein Rahmen übrig", v.tool === "latex" && v.latexBox === null)
+                v.tool = "select"
+            },
+            () => {
                 // Arrow keys: down scrolls, right/left turn pages.
                 const v = editor.activeTab.viewerItem
                 v.goToPage(0)

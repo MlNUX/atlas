@@ -268,6 +268,10 @@ pub struct PdfConfig {
     /// Dark mode: pages with inverted brightness (hues are kept).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dark: bool,
+    /// Python with pix2tex for „Formel als LaTeX“ (empty: the venv
+    /// `$XDG_DATA_HOME/atlas/pix2tex`, else `python3`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub latex_ocr_python: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
