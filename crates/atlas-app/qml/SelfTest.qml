@@ -61,6 +61,8 @@ Item {
     property string iliasRoot: ""
     property string goneFile: ""
     property bool goneOpened: false
+    property var zoomPoint: null
+    property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -595,6 +597,32 @@ Item {
                 check("Sessionliste mit Umfang", sessions.length >= 1 && sessions.every(s => s.tabs >= 0 && s.splits >= 0 && !!s.kind), JSON.stringify(sessions))
                 sessionMenu.clicked()
                 check("Sessionfenster öffnet", sessionMenu.sessions.length === sessions.length)
+            },
+            () => {
+                // Zooming on page 2: the spot under the mouse stays (it used
+                // to drift with the gaps between pages – the pages scrolled).
+                const v = editor.activeTab.viewerItem
+                v.zoom = 1
+                v.goToPage(1)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                test.zoomPoint = v.mapToItem(null, v.width / 2, v.height * 0.5)
+                const q = v.mapFromItem(null, test.zoomPoint.x, test.zoomPoint.y)
+                const vp = v.pagesView.mapFromItem(v, q.x, q.y)
+                test.zoomAnchor = v.pointAt(vp.x, vp.y)
+                for (let i = 0; i < 6; i++) app.sendWheel(window, test.zoomPoint.x, test.zoomPoint.y, 120, true)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                const q = v.mapFromItem(null, test.zoomPoint.x, test.zoomPoint.y)
+                const vp = v.pagesView.mapFromItem(v, q.x, q.y)
+                const now = v.pointAt(vp.x, vp.y)
+                const a = test.zoomAnchor
+                check("Strg+Mausrad auf Seite 2: die Stelle unter der Maus bleibt (kein Wegscrollen)",
+                      !!a && !!now && now.page === a.page && Math.abs(now.y - a.y) < 1 && Math.abs(now.x - a.x) < 1 && v.zoomScale > 1.6,
+                      JSON.stringify(a) + " → " + JSON.stringify(now) + " · Zoom " + v.zoomScale)
+                v.zoom = 1
             },
             () => {
                 // Task list checkboxes in the preview toggle the source line.

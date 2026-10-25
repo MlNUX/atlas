@@ -28,6 +28,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - Repository aufgeräumt: Konzept und Entwürfe unter `docs/concept/`,
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 
+### Behoben
+- **PDF:** Strg+Mausrad scrollte beim Zoomen die Seiten weg; jetzt bleibt
+  die Stelle unter dem Mauszeiger stehen, auch auf späteren Seiten.
+
 ## [1.1.1] – 2026-10-23
 
 ### Neu

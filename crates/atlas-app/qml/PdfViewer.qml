@@ -1084,24 +1084,47 @@ Rectangle {
                         event.accepted = true
                         const steps = root.wheelSteps(event)
                         if (!steps) return
-                        // The point under the mouse in page coordinates: pages are
-                        // centred in the content, so a page narrower than the view
-                        // must not move sideways (it jumped and slid back before).
+                        // The spot under the mouse stays: remembered as page and
+                        // place on that page – not as a distance from the top of
+                        // the document, which drifts (the gaps between pages do
+                        // not grow with the zoom, and the list only estimates the
+                        // positions of pages it has not laid out). Pages are
+                        // centred in the content, so a page narrower than the
+                        // view must not move sideways either.
+                        pagesFling.stop()
+                        pages.cancelFlick()
+                        // The handler lives in the list's content: its event
+                        // position includes the scroll position. In view
+                        // coordinates (counting the scroll position twice made
+                        // the pages run away – the further down, the more).
+                        const at = pages.mapFromItem(pages.contentItem, event.x, event.y)
                         const before = root.zoomScale
                         const offset = (z) => (pages.contentWidth - doc.maxPageWidth * z) / 2
-                        const px = (pages.contentX - pages.originX + event.x - offset(before)) / before
-                        const top = pages.contentY - pages.originY + event.y - pages.topMargin
+                        const px = (pages.contentX - pages.originX + at.x - offset(before)) / before
+                        const cy = pages.contentY + at.y
+                        let index = pages.indexAt(pages.contentWidth / 2, cy)
+                        if (index < 0) index = pages.indexAt(pages.contentWidth / 2, cy - pages.spacing)
+                        if (index < 0) index = root.currentPage
+                        const item = pages.itemAtIndex(index)
+                        // Place on the page as a fraction of its height (in the gap
+                        // below a page: a little over 1).
+                        const along = item && item.height > 0 ? (cy - item.y) / item.height : 0
                         root.zoomBy(Math.pow(1.1, steps))
-                        const k = root.zoomScale / before
                         const place = () => {
                             const maxX = Math.max(0, pages.contentWidth - pages.width)
-                            const x = offset(root.zoomScale) + px * root.zoomScale - event.x
+                            const x = offset(root.zoomScale) + px * root.zoomScale - at.x
                             pages.contentX = Math.max(0, Math.min(maxX, x)) + pages.originX
-                            const y = top * k + pages.topMargin - event.y
-                            pages.contentY = Math.max(0, Math.min(Math.max(0, pages.contentHeight - pages.height), y)) + pages.originY
+                            // The pages at the new size, laid out now.
+                            pages.forceLayout()
+                            const now = pages.itemAtIndex(index)
+                            if (!now) return
+                            const y = now.y + along * now.height - at.y
+                            const minY = pages.originY - pages.topMargin
+                            const maxY = Math.max(minY, pages.originY + pages.contentHeight + pages.bottomMargin - pages.height)
+                            pages.contentY = Math.max(minY, Math.min(maxY, y))
                         }
                         // At once (no frame at the old position), and again after
-                        // the list laid its pages out at the new size.
+                        // the list settled (pages above may have been measured anew).
                         place()
                         Qt.callLater(place)
                         event.accepted = true
