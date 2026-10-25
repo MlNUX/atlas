@@ -172,10 +172,25 @@ Rectangle {
         id: doc
         source: root.source
         onStatusChanged: if (status === "ready") Qt.callLater(root.restore)
-        onTextReady: (page, text, ms) => {
+        onTextReady: (page, text, ms, formulas) => {
+            textPopup.page = page
             textPopup.title = qsTr("Text von Seite %1 (%2 ms)").arg(page + 1).arg(ms)
             textPopup.text = text
+            textPopup.busy = formulas > 0
+            textPopup.status = formulas > 0
+                ? qsTr("%n Formel(n) gefunden – werden als LaTeX erkannt …", "", formulas) : ""
+            textPopup.error = ""
             textPopup.open()
+        }
+        onFormulaProgress: (page, text) => {
+            if (page === textPopup.page && textPopup.busy) textPopup.status = text
+        }
+        onFormulaText: (page, text, error) => {
+            if (page !== textPopup.page || !textPopup.busy) return
+            textPopup.busy = false
+            textPopup.text = text
+            textPopup.error = error
+            textPopup.status = error ? "" : qsTr("Formeln als LaTeX ($…$) – bitte prüfen")
         }
         onSearchFinished: (query, hitsJson, ms) => {
             if (query !== root.searchQuery) return
@@ -804,7 +819,7 @@ Rectangle {
                 IconButton { glyph: "↓"; tip: qsTr("Nächster Treffer (F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(1) }
                 IconButton {
                     glyph: "T"
-                    tip: qsTr("Text der aktuellen Seite")
+                    tip: qsTr("Text der aktuellen Seite, Formeln als LaTeX")
                     enabled: doc.status === "ready"
                     onClicked: doc.extractText(root.currentPage)
                 }
@@ -1637,7 +1652,7 @@ Rectangle {
                 color: Theme.error
                 font.pixelSize: Theme.smallFontSize
                 text: latexPopup.error + (/Download|github|ONNX Runtime/i.test(latexPopup.error)
-                    ? "\n" + qsTr("Beim ersten Mal lädt Atlas das Formelmodell aus dem Netz (etwa 100 MB) – mehr in docs/latex-ocr.md") : "")
+                    ? "\n" + qsTr("Beim ersten Mal lädt Atlas das Formelmodell aus dem Netz (etwa 170 MB) – mehr in docs/latex-ocr.md") : "")
             }
             TextArea {
                 id: latexField
@@ -1807,10 +1822,23 @@ Rectangle {
         Label { id: exportErrorLabel; width: parent.width; wrapMode: Text.Wrap }
     }
 
+    // Text of a page (button "T"), formulas as LaTeX once recognised.
+    readonly property alias pageTextShown: textPopup.visible
+    readonly property alias pageText: textPopup.text
+    readonly property alias pageTextBusy: textPopup.busy
+    readonly property alias pageTextError: textPopup.error
+    function showPageText(page) { doc.extractText(page) }
+    function hidePageText() { textPopup.close() }
+
     Popup {
         id: textPopup
+        property int page: -1
         property string title
         property string text
+        property string status
+        property string error
+        property bool busy: false
+        onClosed: busy = false
         anchors.centerIn: Overlay.overlay
         width: Math.min(700, root.Window.width - 80)
         height: Math.min(520, root.Window.height - 80)
@@ -1818,7 +1846,31 @@ Rectangle {
         background: Rectangle { color: Theme.editor; border.color: Theme.border; radius: 6 }
         ColumnLayout {
             anchors.fill: parent
-            Label { text: textPopup.title; color: Theme.textStrong; font.bold: true }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: textPopup.title; color: Theme.textStrong; font.bold: true; Layout.fillWidth: true }
+                Button {
+                    text: qsTr("Kopieren")
+                    flat: true
+                    onClicked: { root.app.copyToClipboard(textPopup.text); root.message(qsTr("Text kopiert")) }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                visible: textPopup.status !== "" || textPopup.error !== ""
+                BusyIndicator { running: textPopup.busy; visible: running; Layout.preferredWidth: 18; Layout.preferredHeight: 18 }
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    font.pixelSize: Theme.smallFontSize
+                    color: textPopup.error ? Theme.warn : Theme.textMuted
+                    text: textPopup.error
+                        ? qsTr("Formeln nicht als LaTeX: %1").arg(textPopup.error)
+                          + (/Download|github|ONNX Runtime/i.test(textPopup.error)
+                             ? "\n" + qsTr("Beim ersten Mal lädt Atlas das Formelmodell aus dem Netz (etwa 170 MB) – mehr in docs/latex-ocr.md") : "")
+                        : textPopup.status
+                }
+            }
             ScrollView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true

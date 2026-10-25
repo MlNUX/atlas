@@ -1199,41 +1199,18 @@ impl qobject::AppController {
             log::warn!("latexFromPdf: bad area {area}");
             return;
         };
-        // About 290 dpi; the model scales the picture itself.
-        let scale = 4.0;
-        atlas_core::pdf::PdfService::get().clip_gray(
+        atlas_core::pdf::PdfService::get().formula_clip(
             path_of(path),
             page.max(0) as usize,
             [x0, y0, x1, y1],
-            scale,
             move |result| {
                 // The recognition takes a while: not on the PDF thread.
                 std::thread::spawn(move || {
-                    use atlas_core::latex_ocr;
                     let outcome = result.and_then(|(w, h, pixels)| {
-                        let dir = latex_ocr::model_dir();
-                        if !latex_ocr::models_present(&dir) {
-                            let last =
-                                std::sync::Mutex::new(std::time::Instant::now() - std::time::Duration::from_secs(1));
-                            latex_ocr::download_models(&dir, &|file, received, total| {
-                                let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
-                                if last.elapsed() < std::time::Duration::from_millis(250) {
-                                    return;
-                                }
-                                *last = std::time::Instant::now();
-                                let mb = |b: u64| b as f64 / 1_048_576.0;
-                                let text = match total {
-                                    Some(t) => format!(
-                                        "Lade das Formelmodell (einmalig): {file} {:.0} von {:.0} MB",
-                                        mb(received),
-                                        mb(t)
-                                    ),
-                                    None => format!("Lade das Formelmodell (einmalig): {file} {:.0} MB", mb(received)),
-                                };
-                                let _ = thread.queue(move |app| app.latex_progress(request, qs(text)));
-                            })?;
-                        }
-                        latex_ocr::recognize_gray(w, h, pixels)
+                        ensure_latex_models(&|text| {
+                            let _ = thread.queue(move |app| app.latex_progress(request, qs(text)));
+                        })?;
+                        atlas_core::latex_ocr::recognize_gray(w, h, pixels).map(|t| atlas_core::pdf::formulas::tidy(&t))
                     });
                     let (latex, error) = match outcome {
                         Ok(l) => (l, String::new()),
@@ -2946,6 +2923,30 @@ fn folder_sort_json(f: &atlas_core::config::FilesConfig) -> QString {
 /// `[context]` for QML.
 fn context_json(c: &atlas_core::config::ContextConfig) -> QString {
     QString::from(serde_json::to_string(c).unwrap_or_else(|_| "{}".into()).as_str())
+}
+
+/// Downloads the formula model the first time (see
+/// [`atlas_core::latex_ocr`]), telling `progress` about it now and then.
+pub(crate) fn ensure_latex_models(progress: &dyn Fn(String)) -> anyhow::Result<()> {
+    use atlas_core::latex_ocr;
+    use std::time::{Duration, Instant};
+    let dir = latex_ocr::model_dir();
+    if latex_ocr::models_present(&dir) {
+        return Ok(());
+    }
+    let last = std::sync::Mutex::new(Instant::now() - Duration::from_secs(1));
+    latex_ocr::download_models(&dir, &|file, received, total| {
+        let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
+        if last.elapsed() < Duration::from_millis(250) {
+            return;
+        }
+        *last = Instant::now();
+        let mb = |b: u64| b as f64 / 1_048_576.0;
+        progress(match total {
+            Some(t) => format!("Lade das Formelmodell (einmalig): {file} {:.0} von {:.0} MB", mb(received), mb(t)),
+            None => format!("Lade das Formelmodell (einmalig): {file} {:.0} MB", mb(received)),
+        });
+    })
 }
 
 #[cfg(test)]

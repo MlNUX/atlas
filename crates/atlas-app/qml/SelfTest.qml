@@ -1200,6 +1200,20 @@ Item {
                 v.tool = "select"
             },
             () => {
+                // Text of a page ("T"): the formula "x = y" in CMMI/CMR on
+                // page 2 comes as LaTeX from the (test) model.
+                const v = editor.activeTab.viewerItem
+                v.showPageText(1)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.pageTextShown && !v.pageTextBusy && v.pageText.indexOf("$") >= 0)) return
+                check("Text der Seite: Formel als LaTeX eingesetzt, übriger Text bleibt",
+                      v.pageText.indexOf("Formel $\\frac{a}{b}$") >= 0 && v.pageText.indexOf("Seite zwei Text") >= 0 && !v.pageTextError,
+                      JSON.stringify(v.pageText) + " · " + v.pageTextError)
+                v.hidePageText()
+            },
+            () => {
                 // Arrow keys: down scrolls, right/left turn pages.
                 const v = editor.activeTab.viewerItem
                 v.goToPage(0)

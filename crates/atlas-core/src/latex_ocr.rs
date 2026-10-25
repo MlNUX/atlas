@@ -6,7 +6,7 @@
 //! export of [RapidLaTeXOCR](https://github.com/RapidAI/RapidLaTeXOCR), run
 //! with ONNX Runtime – no Python, nothing leaves the machine.
 //!
-//! - The model files (about 100 MB) are downloaded once on first use into
+//! - The model files (about 170 MB) are downloaded once on first use into
 //!   `$XDG_DATA_HOME/atlas/latex-ocr/` (`ATLAS_LATEX_OCR_MODELS` replaces
 //!   the folder, for tests).
 //! - ONNX Runtime is loaded at run time: `ORT_DYLIB_PATH`, else the library

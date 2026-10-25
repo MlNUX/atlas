@@ -11,6 +11,7 @@
 //! Rendered pages are BGRA, premultiplied, 4 bytes per pixel, rows without
 //! padding – i.e. `QImage::Format_ARGB32_Premultiplied` on little endian.
 
+pub mod formulas;
 mod poppler;
 
 use std::collections::HashMap;
@@ -132,6 +133,8 @@ trait Backend {
     /// `page` at `scale` pixels per point on white, in greyscale: width,
     /// height, one byte per pixel.
     fn clip_gray(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)>;
+    /// The characters of the text of `page` with rectangle and font.
+    fn glyphs(&mut self, path: &Path, page: usize) -> Result<Vec<formulas::Glyph>>;
     fn close(&mut self, path: &Path);
 }
 
@@ -305,6 +308,54 @@ impl PdfService {
         }));
     }
 
+    /// The text of `page` with its formulas (see [`formulas`]), each
+    /// formula cut out in greyscale at the size the formula model reads best
+    /// (an empty picture if that failed).
+    pub fn page_formulas(
+        &self,
+        path: PathBuf,
+        page: usize,
+        done: impl FnOnce(Result<(formulas::PageText, Vec<(u32, u32, Vec<u8>)>)>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&path)
+                && let Err(err) = backend.open(&path)
+            {
+                return done(Err(err));
+            }
+            let text = match backend.glyphs(&path, page) {
+                Ok(glyphs) => formulas::PageText::new(glyphs),
+                Err(err) => return done(Err(err)),
+            };
+            let clips = (0..text.formulas.len())
+                .map(|i| {
+                    backend.clip_gray(&path, page, text.clip_area(i), text.clip_scale(i)).unwrap_or((0, 0, Vec::new()))
+                })
+                .collect();
+            done(Ok((text, clips)))
+        }));
+    }
+
+    /// Cuts out `area` of `page` (a box drawn around a formula) for the
+    /// formula model, at the size it reads best for the text in there.
+    pub fn formula_clip(
+        &self,
+        path: PathBuf,
+        page: usize,
+        area: [f64; 4],
+        done: impl FnOnce(Result<(u32, u32, Vec<u8>)>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&path)
+                && let Err(err) = backend.open(&path)
+            {
+                return done(Err(err));
+            }
+            let size = backend.glyphs(&path, page).ok().and_then(|g| formulas::font_size_in(&g, area));
+            done(backend.clip_gray(&path, page, area, formulas::scale_for(size.unwrap_or(12.0))))
+        }));
+    }
+
     /// Reads the outline (table of contents).
     pub fn outline(&self, path: PathBuf, done: impl FnOnce(Result<Vec<OutlineItem>>) + Send + 'static) {
         self.submit(Box::new(move |backend, _| done(backend.outline(&path))));
@@ -415,16 +466,22 @@ pub(crate) mod tests {
     /// tests need no fixtures.
     pub(crate) fn sample_pdf() -> Vec<u8> {
         // A red square in the bottom left corner and a line of text.
-        let content = b"1 0 0 rg 0 0 100 100 re f 0 g BT /F1 24 Tf 72 720 Td (Hello Atlas) Tj ET";
-        let objects = [
+        pdf_with("1 0 0 rg 0 0 100 100 re f 0 g BT /F1 24 Tf 72 720 Td (Hello Atlas) Tj ET", &["Helvetica"])
+    }
+
+    /// One page (A4) with `content`, fonts `/F1`, `/F2`, … named `fonts`
+    /// (Type 1, not embedded).
+    pub(crate) fn pdf_with(content: &str, fonts: &[&str]) -> Vec<u8> {
+        let refs: String = (0..fonts.len()).map(|i| format!("/F{} {} 0 R ", i + 1, i + 5)).collect();
+        let mut objects = vec![
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R \
-             /Resources << /Font << /F1 5 0 R >> >> >>"
-                .to_string(),
-            format!("<< /Length {} >>\nstream\n{}\nendstream", content.len(), std::str::from_utf8(content).unwrap()),
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << {refs}>> >> >>"
+            ),
+            format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len()),
         ];
+        objects.extend(fonts.iter().map(|f| format!("<< /Type /Font /Subtype /Type1 /BaseFont /{f} >>")));
         let mut out = b"%PDF-1.4\n".to_vec();
         let mut offsets = Vec::new();
         for (i, obj) in objects.iter().enumerate() {
@@ -480,6 +537,66 @@ pub(crate) mod tests {
         assert_eq!(&page.bgra[row + 8..row + 12], &[0, 0, 255, 255], "output must be BGRA");
         let text = service.text_blocking(&path, 0).unwrap();
         assert!(text.contains("Hello Atlas"), "text: {text:?}");
+    }
+
+    /// By hand, with the real formula model:
+    /// `ATLAS_FORMULA_PDF=folie.pdf ATLAS_LATEX_OCR_MODELS=… cargo test -p atlas-core -- --ignored --nocapture page_text_with_real_model`
+    #[test]
+    #[ignore]
+    fn page_text_with_real_model() {
+        let path = PathBuf::from(std::env::var("ATLAS_FORMULA_PDF").expect("ATLAS_FORMULA_PDF"));
+        let page: usize = std::env::var("ATLAS_FORMULA_PAGE").ok().and_then(|p| p.parse().ok()).unwrap_or(0);
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        PdfService::get().page_formulas(path, page, move |r| {
+            let _ = tx.send(r);
+        });
+        let (text, clips) = rx.recv().unwrap().unwrap();
+        println!("--- Text ---\n{}", text.plain());
+        if std::env::var("ATLAS_FORMULA_GLYPHS").is_ok() {
+            for g in &text.glyphs {
+                println!("{:?} {:?} {:.1} {:?}", g.ch, g.rect.map(|v| v.round()), g.size, g.font);
+            }
+        }
+        let mut latex = Vec::new();
+        for (i, (w, h, pixels)) in clips.into_iter().enumerate() {
+            if let Ok(dir) = std::env::var("ATLAS_FORMULA_DUMP") {
+                let mut pgm = format!("P5 {w} {h} 255\n").into_bytes();
+                pgm.extend_from_slice(&pixels);
+                std::fs::write(format!("{dir}/formel-{i}.pgm"), pgm).unwrap();
+            }
+            let started = Instant::now();
+            let tex = crate::latex_ocr::recognize_gray(w, h, pixels);
+            println!("Formel {i} {:?} {w}×{h} ({} ms): {tex:?}", text.formulas[i].rect, started.elapsed().as_millis());
+            latex.push(tex.ok());
+        }
+        println!("--- Mit LaTeX ---\n{}", text.with_latex(&latex));
+    }
+
+    #[test]
+    fn finds_formulas_by_their_fonts_and_cuts_them_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("formula.pdf");
+        // "Fläche x = y2 gesamt" with x, y in CMMI10 and = 2 in CMR10.
+        let content = "BT /F1 12 Tf 1 0 0 1 72 720 Tm (Flaeche) Tj /F2 12 Tf 1 0 0 1 122 720 Tm (x) Tj \
+                       /F3 12 Tf 1 0 0 1 132 720 Tm (=) Tj /F2 12 Tf 1 0 0 1 142 720 Tm (y) Tj \
+                       /F3 8 Tf 1 0 0 1 149 725 Tm (2) Tj /F1 12 Tf 1 0 0 1 159 720 Tm (gesamt) Tj ET";
+        std::fs::write(&path, pdf_with(content, &["Helvetica", "CMMI10", "CMR10"])).unwrap();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        PdfService::get().page_formulas(path.clone(), 0, move |r| {
+            let _ = tx.send(r);
+        });
+        let (text, clips) = rx.recv().unwrap().unwrap();
+        let fonts: Vec<_> = text.glyphs.iter().map(|g| (g.ch, g.font.clone())).collect();
+        assert!(text.plain().contains("Flaeche"), "{:?}", text.plain());
+        assert_eq!(text.formulas.len(), 1, "{fonts:?} {:?}", text.formulas);
+        let f = &text.formulas[0];
+        // Origin top left: the line sits about 110 points from the top.
+        assert!(f.rect[1] > 90.0 && f.rect[3] < 130.0 && f.rect[0] > 100.0, "{:?}", f.rect);
+        assert_eq!(clips.len(), 1);
+        let (w, h, pixels) = &clips[0];
+        assert!(*w > 20 && *h > 15 && pixels.iter().any(|&p| p < 128), "{w}×{h}");
+        let latex = text.with_latex(&[Some("x = y^2".into())]);
+        assert_eq!(latex, "Flaeche $x = y^2$ gesamt", "{:?}", text.plain());
     }
 }
 

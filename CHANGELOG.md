@@ -15,7 +15,7 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   (oder markierten Text über ∑ im Auswahlmenü) – Atlas erkennt sie auf
   deinem Rechner mit dem eingebauten pix2tex-Modell (ONNX Runtime, ohne
   Python), kopiert den LaTeX-Code und zeigt ihn zum Prüfen, auch als
-  `$…$`/`$$…$$`. Das Modell (etwa 100 MB) lädt Atlas beim ersten Mal selbst
+  `$…$`/`$$…$$`. Das Modell (etwa 170 MB) lädt Atlas beim ersten Mal selbst
   ([docs/latex-ocr.md](docs/latex-ocr.md)).
 - **ILIAS-Anmeldung merken**: Benutzername und Passwort der Hochschule in
   den Einstellungen speichern – das Passwort nur verschlüsselt mit
@@ -23,6 +23,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   selbst wieder an; eingesetzt wird nur auf der einmal bestätigten
   Anmeldeseite (z. B. idp.scc.kit.edu) und nur ein Versuch, damit ein
   falsches Passwort nicht in einer Schleife landet.
+- **Text der Seite mit LaTeX**: „T“ in der PDF-Leiste gibt die Formeln der
+  Seite jetzt als `$…$` bzw. `$$…$$` aus statt als Zeichensalat (`ng2 n`).
+  Atlas erkennt sie an den Mathe-Schriften und lässt sie vom eingebauten
+  Modell lesen; der übrige Text kommt sofort, mit „Kopieren“-Knopf.
 
 ### Geändert
 - Repository aufgeräumt: Konzept und Entwürfe unter `docs/concept/`,

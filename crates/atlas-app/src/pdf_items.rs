@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::Instant;
 
-use atlas_core::pdf::{CancelToken, PdfService, RenderedPage, SelectionStyle, selection_spans};
+use atlas_core::pdf::{CancelToken, PdfService, RenderedPage, SelectionStyle, formulas, selection_spans};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QColor, QImage, QImageFormat, QPainterCompositionMode, QRect, QRectF, QString};
 
@@ -62,9 +62,22 @@ pub mod qobject {
         #[qinvokable]
         fn reload(self: Pin<&mut PdfDocument>);
 
+        /// The text as the PDF has it; `formulas`: how many formulas it
+        /// holds, which then come as LaTeX via `formulaText`.
         #[qsignal]
         #[cxx_name = "textReady"]
-        fn text_ready(self: Pin<&mut PdfDocument>, page: i32, text: QString, ms: i32);
+        fn text_ready(self: Pin<&mut PdfDocument>, page: i32, text: QString, ms: i32, formulas: i32);
+
+        /// How far the LaTeX recognition of the formulas of `page` is.
+        #[qsignal]
+        #[cxx_name = "formulaProgress"]
+        fn formula_progress(self: Pin<&mut PdfDocument>, page: i32, text: QString);
+
+        /// The text of `page` with its formulas as LaTeX (`$…$`, `$$…$$`),
+        /// or `error` (then `text` is the plain text).
+        #[qsignal]
+        #[cxx_name = "formulaText"]
+        fn formula_text(self: Pin<&mut PdfDocument>, page: i32, text: QString, error: QString);
 
         /// Searches the whole document; results arrive via `searchFinished`.
         #[qinvokable]
@@ -344,10 +357,60 @@ impl qobject::PdfDocument {
         let thread = self.qt_thread();
         let started = Instant::now();
         let path = PathBuf::from(self.source.to_string());
-        PdfService::get().text(path, page.max(0) as usize, move |result| {
+        PdfService::get().page_formulas(path, page.max(0) as usize, move |result| {
             let ms = started.elapsed().as_millis() as i32;
-            let text = result.unwrap_or_else(|e| format!("[{e:#}]"));
-            let _ = thread.queue(move |doc| doc.text_ready(page, QString::from(text.as_str()), ms));
+            let (text, clips) = match result {
+                Ok(found) => found,
+                Err(e) => {
+                    let text = format!("[{e:#}]");
+                    let _ = thread.queue(move |doc| doc.text_ready(page, QString::from(text.as_str()), ms, 0));
+                    return;
+                }
+            };
+            let plain = text.plain();
+            let count = text.formulas.len() as i32;
+            let shown = plain.clone();
+            let _ = thread.queue(move |doc| doc.text_ready(page, QString::from(shown.as_str()), ms, count));
+            if count == 0 {
+                return;
+            }
+            // The recognition takes a while: not on the PDF thread.
+            std::thread::spawn(move || {
+                let progress = |message: String| {
+                    let _ = thread.queue(move |doc| doc.formula_progress(page, QString::from(message.as_str())));
+                };
+                let outcome = crate::app::ensure_latex_models(&progress).map(|()| {
+                    let mut latex = Vec::with_capacity(clips.len());
+                    let mut failed = 0;
+                    for (i, (w, h, pixels)) in clips.into_iter().enumerate() {
+                        progress(format!("Erkenne Formel {} von {count} …", i + 1));
+                        let found = if w == 0 {
+                            Err(anyhow::anyhow!("nicht gerendert"))
+                        } else {
+                            atlas_core::latex_ocr::recognize_gray(w, h, pixels)
+                        };
+                        match found {
+                            Ok(tex) if !tex.trim().is_empty() => latex.push(Some(formulas::tidy(&tex))),
+                            other => {
+                                if let Err(e) = other {
+                                    log::warn!("pdf: Formel {} auf Seite {}: {e:#}", i + 1, page + 1);
+                                }
+                                failed += 1;
+                                latex.push(None);
+                            }
+                        }
+                    }
+                    (text.with_latex(&latex), failed)
+                });
+                let (text, error) = match outcome {
+                    Ok((text, 0)) => (text, String::new()),
+                    Ok((text, failed)) => (text, format!("{failed} von {count} Formeln nicht erkannt")),
+                    Err(e) => (plain, format!("{e:#}")),
+                };
+                let _ = thread.queue(move |doc| {
+                    doc.formula_text(page, QString::from(text.as_str()), QString::from(error.as_str()))
+                });
+            });
         });
     }
 

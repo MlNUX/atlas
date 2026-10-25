@@ -67,11 +67,13 @@ pdf() {
   local out="$1" objs=() offsets=() i body annots=""
   [ "${2:-}" = links ] && annots=" /Annots [8 0 R 9 0 R]"
   local page1="BT /F1 20 Tf 72 700 Td (Zitat aus der Quelle) Tj 0 -30 Td (Zweite Zeile hier) Tj ET"
-  local page2="BT /F1 20 Tf 72 700 Td (Seite zwei Text) Tj ET"
+  # Page 2 also has a formula "x = y" in TeX's math fonts (for the text
+  # of a page with LaTeX).
+  local page2="BT /F1 20 Tf 72 700 Td (Seite zwei Text) Tj ET BT /F1 20 Tf 1 0 0 1 72 600 Tm (Formel ) Tj /F2 20 Tf 1 0 0 1 150 600 Tm (x) Tj /F3 20 Tf 1 0 0 1 166 600 Tm (=) Tj /F2 20 Tf 1 0 0 1 186 600 Tm (y) Tj ET"
   objs+=("<< /Type /Catalog /Pages 2 0 R >>")
   objs+=("<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>")
   objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >>$annots >>")
-  objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>")
+  objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 7 0 R /F2 $((${annots:+2}+8)) 0 R /F3 $((${annots:+2}+9)) 0 R >> >> >>")
   objs+=("<< /Length ${#page1} >>
 stream
 $page1
@@ -85,6 +87,8 @@ endstream")
     objs+=("<< /Type /Annot /Subtype /Link /Rect [72 400 300 430] /Border [0 0 0] /Dest [4 0 R /XYZ 0 500 null] >>")
     objs+=("<< /Type /Annot /Subtype /Link /Rect [72 300 300 330] /Border [0 0 0] /A << /S /URI /URI (https://example.org/) >> >>")
   fi
+  objs+=("<< /Type /Font /Subtype /Type1 /BaseFont /CMMI10 >>")
+  objs+=("<< /Type /Font /Subtype /Type1 /BaseFont /CMR10 >>")
   body="%PDF-1.4"$'\n'
   for i in "${!objs[@]}"; do
     offsets+=("$(printf '%s' "$body" | wc -c)")
