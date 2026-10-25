@@ -422,8 +422,8 @@ Rectangle {
 
     // ------------------------------------------------- formula as LaTeX
     // A box dragged over a formula (tool "latex") or the selected text goes
-    // as a picture to pix2tex (local, see docs/latex-ocr.md); the LaTeX is
-    // copied and shown to check and edit.
+    // as a picture to the built-in pix2tex model (atlas_core::latex_ocr, on
+    // this machine); the LaTeX is copied and shown to check and edit.
     /// The box being dragged: {page, x0, y0, x1, y1} (points) or null.
     property var latexBox: null
     property int latexRequest: 0
@@ -451,6 +451,9 @@ Rectangle {
     }
     Connections {
         target: root.app
+        function onLatexProgress(request, text) {
+            if (request === root.latexRequest) latexPopup.progress = text
+        }
         function onLatexRecognized(request, latex, error) {
             if (request !== root.latexRequest) return
             latexPopup.finish(latex, error)
@@ -754,7 +757,7 @@ Rectangle {
                 }
                 IconButton {
                     glyph: "∑"
-                    tip: qsTr("Formel als LaTeX: Rahmen um die Formel ziehen (pix2tex, lokal)")
+                    tip: qsTr("Formel als LaTeX: Rahmen um die Formel ziehen (läuft auf diesem Rechner)")
                     checkable: true
                     checked: root.tool === "latex"
                     onClicked: { root.tool = root.tool === "latex" ? "select" : "latex"; root.clearSelection() }
@@ -1556,7 +1559,7 @@ Rectangle {
             }
             IconButton { glyph: qsTr("❝ Zitat"); tip: qsTr("Markieren und als Zitat in eine Notiz übernehmen (Strg+Q)"); onClicked: root.quoteSelection() }
             IconButton { glyph: "⧉"; tip: qsTr("Text kopieren (Strg+C)"); onClicked: { root.copySelection(); selectionMenu.close() } }
-            IconButton { glyph: "∑"; tip: qsTr("Als LaTeX erkennen und kopieren (pix2tex)"); onClicked: { root.recognizeSelection(); selectionMenu.close() } }
+            IconButton { glyph: "∑"; tip: qsTr("Als LaTeX erkennen und kopieren"); onClicked: { root.recognizeSelection(); selectionMenu.close() } }
         }
     }
 
@@ -1566,10 +1569,13 @@ Rectangle {
         property bool busy: false
         property string error: ""
         property bool firstStart: false
+        /// Download of the model (first use).
+        property string progress: ""
         readonly property alias latex: latexField.text
         function start(warm) {
             busy = true
             error = ""
+            progress = ""
             firstStart = !warm
             latexField.text = ""
             open()
@@ -1593,7 +1599,7 @@ Rectangle {
                 Text {
                     Layout.fillWidth: true
                     text: latexPopup.busy
-                        ? (latexPopup.firstStart ? qsTr("Erkenne Formel … (pix2tex startet, beim ersten Mal kann das dauern)") : qsTr("Erkenne Formel …"))
+                        ? (latexPopup.progress || (latexPopup.firstStart ? qsTr("Erkenne Formel … (das Modell wird geladen)") : qsTr("Erkenne Formel …")))
                         : latexPopup.error ? qsTr("Keine Formel erkannt") : qsTr("LaTeX – kopiert, hier noch änderbar")
                     color: Theme.textStrong
                     font.pixelSize: Theme.fontSize
@@ -1607,8 +1613,8 @@ Rectangle {
                 wrapMode: Text.Wrap
                 color: Theme.error
                 font.pixelSize: Theme.smallFontSize
-                text: latexPopup.error + (/pix2tex|python|starten|No module/i.test(latexPopup.error)
-                    ? "\n" + qsTr("pix2tex muss installiert sein – Anleitung: docs/latex-ocr.md") : "")
+                text: latexPopup.error + (/Download|github|ONNX Runtime/i.test(latexPopup.error)
+                    ? "\n" + qsTr("Beim ersten Mal lädt Atlas das Formelmodell aus dem Netz (etwa 100 MB) – mehr in docs/latex-ocr.md") : "")
             }
             TextArea {
                 id: latexField

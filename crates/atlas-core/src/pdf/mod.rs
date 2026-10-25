@@ -129,8 +129,9 @@ trait Backend {
     ) -> Result<(Vec<[f64; 4]>, String)>;
     fn document_id(&mut self, path: &Path) -> Result<Option<String>>;
     /// Renders `area` (`[x0, y0, x1, y1]`, points, origin top left) of
-    /// `page` at `scale` pixels per point on white into a PNG file.
-    fn clip_png(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64, out: &Path) -> Result<()>;
+    /// `page` at `scale` pixels per point on white, in greyscale: width,
+    /// height, one byte per pixel.
+    fn clip_gray(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)>;
     fn close(&mut self, path: &Path);
 }
 
@@ -284,16 +285,15 @@ impl PdfService {
         }));
     }
 
-    /// Renders a part of a page into a PNG file (e.g. a formula for the
-    /// LaTeX recognition); see [`Backend::clip_png`].
-    pub fn clip_png(
+    /// Renders a part of a page in greyscale (e.g. a formula for the LaTeX
+    /// recognition); see [`Backend::clip_gray`].
+    pub fn clip_gray(
         &self,
         path: PathBuf,
         page: usize,
         area: [f64; 4],
         scale: f64,
-        out: PathBuf,
-        done: impl FnOnce(Result<PathBuf>) + Send + 'static,
+        done: impl FnOnce(Result<(u32, u32, Vec<u8>)>) + Send + 'static,
     ) {
         self.submit(Box::new(move |backend, docs| {
             if !docs.contains_key(&path)
@@ -301,7 +301,7 @@ impl PdfService {
             {
                 return done(Err(err));
             }
-            done(backend.clip_png(&path, page, area, scale, &out).map(|()| out))
+            done(backend.clip_gray(&path, page, area, scale))
         }));
     }
 

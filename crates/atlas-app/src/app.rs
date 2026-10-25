@@ -222,19 +222,26 @@ pub mod qobject {
         fn ilias_login_ready(self: Pin<&mut AppController>, user: QString, password: QString, error: QString);
 
         /// Recognizes the formula in `area` (JSON `[x0, y0, x1, y1]`,
-        /// points) of `page` (0-based) of PDF `path` as LaTeX with pix2tex,
-        /// in the background; then `latexRecognized` with `request`.
+        /// points) of `page` (0-based) of PDF `path` as LaTeX (built-in
+        /// pix2tex model, downloaded on first use), in the background; then
+        /// `latexRecognized` with `request`.
         #[qinvokable]
         #[cxx_name = "latexFromPdf"]
         fn latex_from_pdf(self: &AppController, request: i32, path: &QString, page: i32, area: &QString);
+
+        /// What the recognition of `request` is doing (the first time:
+        /// downloading the model).
+        #[qsignal]
+        #[cxx_name = "latexProgress"]
+        fn latex_progress(self: Pin<&mut AppController>, request: i32, text: QString);
 
         /// `latex` (tidied) or `error` for `request`.
         #[qsignal]
         #[cxx_name = "latexRecognized"]
         fn latex_recognized(self: Pin<&mut AppController>, request: i32, latex: QString, error: QString);
 
-        /// Whether the pix2tex worker has been started already (later
-        /// recognitions are quick).
+        /// Whether the formula model is loaded already (later recognitions
+        /// are quick).
         #[qinvokable]
         #[cxx_name = "latexOcrWarm"]
         fn latex_ocr_warm(self: &AppController) -> bool;
@@ -1192,27 +1199,44 @@ impl qobject::AppController {
             log::warn!("latexFromPdf: bad area {area}");
             return;
         };
-        let dir = atlas_core::paths::state_root().join("cache").join("latex-ocr");
-        let _ = std::fs::create_dir_all(&dir);
-        let out = dir.join(format!("{}-{request}.png", std::process::id()));
-        // About 290 dpi: pix2tex scales the picture down itself.
+        // About 290 dpi; the model scales the picture itself.
         let scale = 4.0;
-        atlas_core::pdf::PdfService::get().clip_png(
+        atlas_core::pdf::PdfService::get().clip_gray(
             path_of(path),
             page.max(0) as usize,
             [x0, y0, x1, y1],
             scale,
-            out,
             move |result| {
                 // The recognition takes a while: not on the PDF thread.
                 std::thread::spawn(move || {
-                    let outcome = result.and_then(|png| {
-                        let latex = atlas_core::latex_ocr::recognize(&png);
-                        let _ = std::fs::remove_file(&png);
-                        latex
+                    use atlas_core::latex_ocr;
+                    let outcome = result.and_then(|(w, h, pixels)| {
+                        let dir = latex_ocr::model_dir();
+                        if !latex_ocr::models_present(&dir) {
+                            let last =
+                                std::sync::Mutex::new(std::time::Instant::now() - std::time::Duration::from_secs(1));
+                            latex_ocr::download_models(&dir, &|file, received, total| {
+                                let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
+                                if last.elapsed() < std::time::Duration::from_millis(250) {
+                                    return;
+                                }
+                                *last = std::time::Instant::now();
+                                let mb = |b: u64| b as f64 / 1_048_576.0;
+                                let text = match total {
+                                    Some(t) => format!(
+                                        "Lade das Formelmodell (einmalig): {file} {:.0} von {:.0} MB",
+                                        mb(received),
+                                        mb(t)
+                                    ),
+                                    None => format!("Lade das Formelmodell (einmalig): {file} {:.0} MB", mb(received)),
+                                };
+                                let _ = thread.queue(move |app| app.latex_progress(request, qs(text)));
+                            })?;
+                        }
+                        latex_ocr::recognize_gray(w, h, pixels)
                     });
                     let (latex, error) = match outcome {
-                        Ok(l) => (atlas_core::latex_ocr::tidy(&l), String::new()),
+                        Ok(l) => (l, String::new()),
                         Err(e) => (String::new(), format!("{e:#}")),
                     };
                     let _ = thread.queue(move |app| app.latex_recognized(request, qs(latex), qs(error)));

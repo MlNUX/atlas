@@ -19,6 +19,7 @@ depends=(
   'syntax-highlighting'      # KF6, QML-Modul org.kde.syntaxhighlighting
   'poppler-glib' 'cairo' 'glib2' 'fontconfig' 'wayland'
   'ripgrep'
+  'onnxruntime'             # „Formel als LaTeX“ (zur Laufzeit geladen)
   'gcc-libs' 'glibc'
 )
 makedepends=('rust' 'cargo' 'clang' 'pkgconf')

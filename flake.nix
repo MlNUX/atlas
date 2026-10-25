@@ -98,6 +98,9 @@
           buildInputs = qtDeps pkgs ++ qmlDeps pkgs ++ libDeps pkgs;
 
           ATLAS_RG_BIN = "${pkgs.ripgrep}/bin/rg";
+          # "Formel als LaTeX": ONNX Runtime, loaded at run time (the path in
+          # the binary keeps it in the closure).
+          ATLAS_ORT_DYLIB = "${pkgs.onnxruntime}/lib/libonnxruntime.so";
 
           # The qtbase setup hook exports QMAKE; point it at the merged prefix.
           preBuild = ''
@@ -155,6 +158,7 @@
             ]);
 
           ATLAS_RG_BIN = "${pkgs.ripgrep}/bin/rg";
+          ATLAS_ORT_DYLIB = "${pkgs.onnxruntime}/lib/libonnxruntime.so";
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
           # Debug builds compile C++ without -O, which _FORTIFY_SOURCE warns about.
           hardeningDisable = [ "fortify" ];

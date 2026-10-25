@@ -12,9 +12,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Neu
 - **Formel als LaTeX**: In PDFs mit ∑ einen Rahmen um eine Formel ziehen
-  (oder markierten Text über ∑ im Auswahlmenü) – Atlas erkennt sie mit
-  pix2tex auf deinem Rechner, kopiert den LaTeX-Code und zeigt ihn zum
-  Prüfen, auch als `$…$`/`$$…$$`. pix2tex wird einmal eingerichtet
+  (oder markierten Text über ∑ im Auswahlmenü) – Atlas erkennt sie auf
+  deinem Rechner mit dem eingebauten pix2tex-Modell (ONNX Runtime, ohne
+  Python), kopiert den LaTeX-Code und zeigt ihn zum Prüfen, auch als
+  `$…$`/`$$…$$`. Das Modell (etwa 100 MB) lädt Atlas beim ersten Mal selbst
   ([docs/latex-ocr.md](docs/latex-ocr.md)).
 - **ILIAS-Anmeldung merken**: Benutzername und Passwort der Hochschule in
   den Einstellungen speichern – das Passwort nur verschlüsselt mit

@@ -66,7 +66,7 @@ impl Backend for PopplerBackend {
         Ok((width_px, height_px, bgra))
     }
 
-    fn clip_png(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64, out: &Path) -> Result<()> {
+    fn clip_gray(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)> {
         let doc = self.doc(path)?;
         let page = page_at(doc, page as i64).context("page out of range")?;
         let (x0, x1) = (area[0].min(area[2]), area[0].max(area[2]));
@@ -75,7 +75,7 @@ impl Backend for PopplerBackend {
         if w < 2 || h < 2 || w > 8000 || h > 8000 {
             anyhow::bail!("Bereich zu klein oder zu groß ({w}×{h} Pixel)");
         }
-        let surface = cairo::ImageSurface::create(cairo::Format::Rgb24, w, h)?;
+        let mut surface = cairo::ImageSurface::create(cairo::Format::Rgb24, w, h)?;
         {
             let cr = cairo::Context::new(&surface)?;
             cr.set_source_rgb(1.0, 1.0, 1.0);
@@ -85,9 +85,17 @@ impl Backend for PopplerBackend {
             page.render(&cr);
         }
         surface.flush();
-        let mut file = std::fs::File::create(out).with_context(|| format!("cannot write {}", out.display()))?;
-        surface.write_to_png(&mut file).map_err(|e| anyhow::anyhow!("PNG: {e}"))?;
-        Ok(())
+        let stride = surface.stride() as usize;
+        let data = surface.data().context("cairo surface data")?;
+        // BGRx; grey like OpenCV's RGB2GRAY (0.299 R + 0.587 G + 0.114 B).
+        let mut gray = Vec::with_capacity((w * h) as usize);
+        for row in data.chunks(stride).take(h as usize) {
+            for px in row[..w as usize * 4].chunks(4) {
+                let v = 0.114 * f32::from(px[0]) + 0.587 * f32::from(px[1]) + 0.299 * f32::from(px[2]);
+                gray.push(v.round().clamp(0.0, 255.0) as u8);
+            }
+        }
+        Ok((w as u32, h as u32, gray))
     }
 
     fn text(&mut self, path: &Path, page: usize) -> Result<String> {

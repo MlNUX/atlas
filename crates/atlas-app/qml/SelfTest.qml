@@ -1150,9 +1150,9 @@ Item {
                 for (const id of test.erase) store.remove(id)
             },
             () => {
-                // Formula as LaTeX: a box dragged with the ∑ tool goes to
-                // pix2tex (here a stand-in that answers with the picture's
-                // width: 50 pt at 4 px/pt = 200).
+                // Formula as LaTeX: a box dragged with the ∑ tool goes to the
+                // built-in model (here the test models, which spell
+                // \frac{a}{b}) – with real ONNX Runtime.
                 const v = editor.activeTab.viewerItem
                 v.goToPage(0)
                 v.tool = "latex"
@@ -1166,8 +1166,8 @@ Item {
             () => {
                 const v = editor.activeTab.viewerItem
                 if (waitFor(() => v.latexShown && !v.latexBusy)) return
-                check("Formel als LaTeX: Rahmen aufziehen erkennt die Formel (pix2tex)",
-                      v.latexShown && v.latexText === "\\frac{a}{b}^{200}" && !v.latexError, v.latexText + " · " + v.latexError)
+                check("Formel als LaTeX: Rahmen aufziehen erkennt die Formel (eingebautes Modell)",
+                      v.latexShown && v.latexText === "\\frac{a}{b}" && !v.latexError, v.latexText + " · " + v.latexError)
                 check("Formel als LaTeX: Werkzeug bleibt aktiv, kein Rahmen übrig", v.tool === "latex" && v.latexBox === null)
                 v.tool = "select"
             },

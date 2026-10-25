@@ -25,6 +25,7 @@ pkgbase = atlas-workspace
 	depends = fontconfig
 	depends = wayland
 	depends = ripgrep
+	depends = onnxruntime
 	depends = gcc-libs
 	depends = glibc
 	optdepends = xdg-utils: Dateien mit dem Standardprogramm öffnen

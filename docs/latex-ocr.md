@@ -7,8 +7,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Text, den man in einer PDF markiert, enthält bei Formeln meist nur
 Zeichensalat: Die PDF kennt den LaTeX-Code nicht mehr. Atlas erkennt die
-Formel deshalb am Bild – mit [pix2tex](https://github.com/lukas-blecher/LaTeX-OCR),
-das auf deinem Rechner läuft. Nichts verlässt ihn.
+Formel deshalb am Bild – mit dem Modell von
+[pix2tex/LaTeX-OCR](https://github.com/lukas-blecher/LaTeX-OCR), eingebaut
+und auf deinem Rechner. Nichts verlässt ihn, und es muss nichts extra
+installiert werden.
 
 ## Benutzen
 
@@ -18,45 +20,29 @@ das auf deinem Rechner läuft. Nichts verlässt ihn.
   bleibt aktiv für die nächste Formel; Esc beendet es.
 - Oder Text markieren und im Menü der Auswahl **∑** wählen.
 
-Die erste Erkennung nach dem Start von Atlas dauert ein paar Sekunden (das
-Modell wird geladen), danach etwa eine Sekunde. Beim allerersten Mal lädt
-pix2tex sein Modell herunter (etwa 100 MB).
+**Beim ersten Mal** lädt Atlas das Modell herunter (etwa 100 MB, einmalig,
+nach `~/.local/share/atlas/latex-ocr/`); das Fenster zeigt den Fortschritt.
+Danach geht es ohne Netz. Die erste Formel nach dem Start von Atlas dauert
+ein paar Sekunden (das Modell wird geladen), weitere etwa eine Sekunde.
 
-pix2tex ist auf einzelne Formeln trainiert; bei Absätzen aus Text und
+Das Modell ist auf einzelne Formeln trainiert; bei Absätzen aus Text und
 Formeln gemischt besser nur die Formel einrahmen.
 
-## Einrichten
+## Wie es funktioniert
 
-pix2tex ist ein Python-Programm mit PyTorch und gehört in eine eigene
-Umgebung. Atlas sucht es dort:
+- Das Modell kommt im ONNX-Format von
+  [RapidLaTeXOCR](https://github.com/RapidAI/RapidLaTeXOCR) (Release
+  `v0.0.0`: `image_resizer.onnx`, `encoder.onnx`, `decoder.onnx`,
+  `tokenizer.json`).
+- Es läuft mit ONNX Runtime, die mit Atlas kommt (Nix-Paket; Arch:
+  Abhängigkeit `onnxruntime`). Eine andere Bibliothek lässt sich mit
+  `ORT_DYLIB_PATH=/pfad/libonnxruntime.so` wählen.
+- Atlas rendert den Rahmen selbst in etwa 290 dpi, schneidet auf die Formel
+  zu, lässt das Modell die passende Breite wählen, erkennt Zeichen für
+  Zeichen und räumt überflüssige Leerzeichen im LaTeX weg – wie
+  RapidLaTeXOCR, nur in Rust (`atlas_core::latex_ocr`).
 
-```sh
-python3 -m venv ~/.local/share/atlas/pix2tex
-# PyTorch ohne Grafikkarten-Unterstützung: gut 1 GB statt mehrerer
-~/.local/share/atlas/pix2tex/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
-~/.local/share/atlas/pix2tex/bin/pip install pix2tex
-```
+## Ohne Internet
 
-Ein anderes Python mit pix2tex trägst du in `~/.config/atlas/config.toml`
-ein:
-
-```toml
-[pdf]
-latex_ocr_python = "/pfad/zu/python"
-```
-
-**NixOS:** pix2tex ist nicht in nixpkgs. Die pip-Pakete von PyTorch
-brauchen die üblichen Systembibliotheken; mit
-`programs.nix-ld.enable = true;` in der Systemkonfiguration funktioniert die
-venv wie oben.
-
-## Fehler
-
-Steht im Fenster „pix2tex lässt sich nicht laden“ oder „lässt sich nicht
-starten“, fehlt pix2tex in dem Python, das Atlas nimmt (Reihenfolge:
-`latex_ocr_python`, dann `~/.local/share/atlas/pix2tex`, dann `python3`).
-Prüfen lässt sich das mit:
-
-```sh
-~/.local/share/atlas/pix2tex/bin/python -c "from pix2tex.cli import LatexOCR"
-```
+Die vier Dateien lassen sich auch von Hand in `~/.local/share/atlas/latex-ocr/`
+legen (von der Release-Seite oben). Fehlt eine, lädt Atlas nur diese nach.

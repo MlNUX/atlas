@@ -21,7 +21,7 @@ notify = "8"
 poppler-rs = "0.26"
 poppler-sys-rs = { version = "0.26", features = ["v25_6"] }
 glib = "0.22"
-cairo-rs = { version = "0.22", features = ["png"] }
+cairo-rs = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -42,6 +42,8 @@ chrono-tz = "0.10"
 iana-time-zone = "0.1"
 scraper = "0.29.0"
 url = "2.5.8"
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22"] }
+image = { version = "0.25", default-features = false }
 
 [dev-dependencies]
 cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"] }
