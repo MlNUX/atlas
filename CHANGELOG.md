@@ -28,11 +28,18 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Atlas erkennt sie an den Mathe-Schriften und lässt sie vom eingebauten
   Modell lesen; der übrige Text kommt sofort, mit „Kopieren“-Knopf.
 
+- **PDF im Vollbild**: Knopf in der PDF-Leiste oder F11. Eine Seite füllt
+  den Bildschirm, blättern mit Pfeiltasten, Bild↑/↓, Leertaste; Anmerkungen
+  und Werkzeuge gehen weiter. Esc oder F11 kehrt mit dem vorigen Zoom zur
+  gleichen Seite in den Tab zurück.
+
 ### Geändert
 - Repository aufgeräumt: Konzept und Entwürfe unter `docs/concept/`,
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 
 ### Behoben
+- **PDF:** Bei „Ganze Seite“ stimmte die angezeigte Seitenzahl nicht
+  (immer 1), weil die schmalere Seite mittig steht.
 - **PDF:** Strg+Mausrad scrollte beim Zoomen die Seiten weg; jetzt bleibt
   die Stelle unter dem Mauszeiger stehen, auch auf späteren Seiten.
 

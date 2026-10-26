@@ -61,6 +61,7 @@ Item {
     property string iliasRoot: ""
     property string goneFile: ""
     property bool goneOpened: false
+    property var fullscreenTab: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -1212,6 +1213,38 @@ Item {
                       v.pageText.indexOf("Formel $\\frac{a}{b}$") >= 0 && v.pageText.indexOf("Seite zwei Text") >= 0 && !v.pageTextError,
                       JSON.stringify(v.pageText) + " · " + v.pageTextError)
                 v.hidePageText()
+            },
+            () => {
+                // Full screen (F11): the same viewer in a window of its own,
+                // one page fits the screen.
+                const v = editor.activeTab.viewerItem
+                v.zoom = 1.5
+                test.fullscreenTab = editor.activeTab
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                v.goToPage(1)
+                v.forceActiveFocus()
+                if (waitFor(() => v.currentPage === 1)) return
+                app.sendKey(window, Qt.Key_F11, 0)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                const w = v.Window.window
+                if (waitFor(() => v.fullscreen && v.width === w.width && w.visible)) return
+                check("Vollbild: PDF in eigenem Vollbildfenster, ganze Seite, gleiche Seite",
+                      v.fullscreen && w !== window && v.zoom === -1 && v.currentPage === 1 && v.width === w.width && v.height === w.height,
+                      [v.fullscreen, w === window, v.zoom, v.currentPage, v.width, w.width].join(" "))
+                check("Vollbild: Leiste ausgeblendet", !v.toolbarShown)
+                app.sendKey(w, Qt.Key_Escape, 0)
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                if (waitFor(() => !v.fullscreen && v.currentPage === 1)) return
+                check("Esc beendet das Vollbild: zurück im Tab mit vorigem Zoom und gleicher Seite",
+                      !v.fullscreen && v.Window.window === window && v.zoom === 1.5 && v.currentPage === 1 && editor.activeTab === test.fullscreenTab && v.toolbarShown,
+                      [v.fullscreen, v.Window.window === window, v.zoom, v.currentPage].join(" "))
+                v.zoom = 0
             },
             () => {
                 // Arrow keys: down scrolls, right/left turn pages.

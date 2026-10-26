@@ -43,7 +43,15 @@ Rectangle {
 
     /// Open another file (from backlinks or the graph).
     signal linkActivated(string path, int line, bool newPane, var state)
-    readonly property int currentPage: Math.max(0, pages.indexAt(10, pages.contentY + pages.height / 3))
+    // Probed in the middle: with "whole page" the page is narrower than the
+    // view and centred; between two pages the one above counts.
+    readonly property int currentPage: {
+        // (Not contentWidth: that follows the zoom, which follows the page.)
+        const x = pages.contentX - pages.originX + pages.width / 2
+        const y = pages.contentY + pages.height / 3
+        const at = pages.indexAt(x, y)
+        return Math.max(0, at >= 0 ? at : pages.indexAt(x, y - pages.spacing))
+    }
 
     // Search state.
     property string searchQuery: ""
@@ -125,6 +133,8 @@ Rectangle {
     }
     function goToPage(index) {
         const i = Math.max(0, Math.min(doc.pageCount - 1, index))
+        // (After a zoom change the pages must be laid out anew first.)
+        pages.forceLayout()
         pages.positionViewAtIndex(i, ListView.Beginning)
     }
     /// Links of the document by 0-based page (from `doc.linksJson`).
@@ -165,7 +175,7 @@ Rectangle {
             root.app.saveDocumentState(root.source, JSON.stringify({ page: root.currentPage, zoom: root.zoom }))
     }
     onCurrentPageChanged: rememberTimer.restart()
-    onZoomChanged: rememberTimer.restart()
+    onZoomChanged: { rememberTimer.restart(); if (zoom < 0) fitPageIndex = currentPage }
     onSourceChanged: { clearSelection(); pendingFocus = "" }
 
     PdfDocument {
@@ -592,8 +602,11 @@ Rectangle {
     }
 
     readonly property real fitScale: doc.maxPageWidth > 0 ? Math.max(0.1, (pages.width - 32) / doc.maxPageWidth) : 1
+    // "Whole page" fits the page shown when it was chosen (following the
+    // current page would loop: the scale moves the pages, which changes it).
+    property int fitPageIndex: 0
     readonly property real fitPageScale: doc.pageCount > 0
-        ? Math.max(0.1, Math.min(fitScale, (pages.height - 24) / doc.pageHeight(currentPage))) : 1
+        ? Math.max(0.1, Math.min(fitScale, (pages.height - 24) / doc.pageHeight(Math.min(fitPageIndex, doc.pageCount - 1)))) : 1
     readonly property real zoomScale: zoom > 0 ? zoom : zoom < 0 ? fitPageScale : fitScale
     // Rendering follows the visible scale with a short delay so resizing a
     // split does not re-render every page on every frame.
@@ -627,6 +640,95 @@ Rectangle {
     }
     function zoomBy(factor) { zoom = Math.max(0.2, Math.min(6, zoomScale * factor)) }
 
+    // Full screen: the viewer itself moves into a window of its own (same
+    // document, annotations and tools), one page fits the screen; F11 or
+    // Esc brings it back to its tab with the zoom it had.
+    property bool fullscreen: false
+    readonly property bool toolbarShown: toolbar.visible
+    property var normalParent: null
+    property var normalState: null
+    function enterFullscreen() {
+        if (fullscreen || doc.status !== "ready") return
+        const page = currentPage
+        normalState = { zoom: zoom, sidebar: sidebarVisible, context: showContext }
+        normalParent = root.parent
+        fullscreen = true
+        sidebarVisible = false
+        showContext = false
+        fullscreenWindow.showFullScreen()
+        root.parent = fullscreenWindow.contentItem
+        zoom = -1
+        fullscreenHint.restart()
+        fullscreenWindow.requestActivate()
+        root.forceActiveFocus()
+        Qt.callLater(() => goToPage(page))
+    }
+    function exitFullscreen() {
+        if (!fullscreen) return
+        const page = currentPage
+        root.parent = normalParent
+        fullscreen = false
+        fullscreenWindow.hide()
+        if (normalState) {
+            zoom = normalState.zoom
+            sidebarVisible = normalState.sidebar
+            showContext = normalState.context
+        }
+        if (root.Window.window) root.Window.window.requestActivate()
+        root.forceActiveFocus()
+        Qt.callLater(() => goToPage(page))
+    }
+    Binding { target: root; property: "x"; value: 0; when: root.fullscreen; restoreMode: Binding.RestoreBindingOrValue }
+    Binding { target: root; property: "y"; value: 0; when: root.fullscreen; restoreMode: Binding.RestoreBindingOrValue }
+    Binding { target: root; property: "width"; value: fullscreenWindow.width; when: root.fullscreen; restoreMode: Binding.RestoreBindingOrValue }
+    Binding { target: root; property: "height"; value: fullscreenWindow.height; when: root.fullscreen; restoreMode: Binding.RestoreBindingOrValue }
+    Component.onDestruction: if (fullscreen) fullscreenWindow.hide()
+
+    Window {
+        id: fullscreenWindow
+        title: root.source.split("/").pop()
+        color: Theme.pdfBackdrop
+        // Leaving full screen by the window manager or closing the window.
+        onVisibilityChanged: (mode) => {
+            if (root.fullscreen && mode !== Window.FullScreen && mode !== Window.Hidden) root.exitFullscreen()
+        }
+        onClosing: (close) => { close.accepted = false; root.exitFullscreen() }
+
+        Timer { id: fullscreenHint; interval: 2500 }
+        Rectangle {
+            z: 10
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 16
+            width: hintRow.implicitWidth + 24
+            height: 34
+            radius: 17
+            color: "#d0202020"
+            opacity: fullscreenHint.running || exitArea.containsMouse || exitButton.hovered ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+            visible: opacity > 0
+            RowLayout {
+                id: hintRow
+                anchors.centerIn: parent
+                spacing: 8
+                Label {
+                    text: qsTr("Seite %1 / %2 · Esc beendet das Vollbild").arg(root.currentPage + 1).arg(doc.pageCount)
+                    color: "white"
+                    font.pixelSize: Theme.smallFontSize
+                }
+                IconButton { id: exitButton; iconName: "minimize"; tip: qsTr("Vollbild beenden (Esc)"); onClicked: root.exitFullscreen() }
+            }
+        }
+        // The hint comes back when the mouse goes to the top edge.
+        Item {
+            z: 9
+            anchors.top: parent.top
+            width: parent.width
+            height: 60
+            HoverHandler { id: exitArea; readonly property bool containsMouse: hovered }
+        }
+    }
+
     Keys.onPressed: (event) => {
         const ctrl = event.modifiers & Qt.ControlModifier
         // Undo and redo of annotation changes.
@@ -641,6 +743,14 @@ Rectangle {
         }
         if (!ctrl && event.key === Qt.Key_Left) {
             if (pages.contentWidth > pages.width + 1) scrollBy(-arrowStep, 0); else goToPage(currentPage - 1)
+            event.accepted = true; return
+        }
+        if (event.key === Qt.Key_F11 || (fullscreen && event.key === Qt.Key_Escape && !selection.length && tool === "select")) {
+            if (fullscreen) exitFullscreen(); else enterFullscreen()
+            event.accepted = true; return
+        }
+        if (fullscreen && (event.key === Qt.Key_Space || event.key === Qt.Key_Backspace)) {
+            goToPage(currentPage + (event.key === Qt.Key_Space ? 1 : -1))
             event.accepted = true; return
         }
         if (event.key === Qt.Key_PageDown) goToPage(currentPage + 1)
@@ -667,8 +777,9 @@ Rectangle {
 
         Rectangle {
             Layout.fillWidth: true
+            id: toolbar
             Layout.preferredHeight: 32
-            visible: root.chrome
+            visible: root.chrome && !root.fullscreen
             color: Theme.header
             RowLayout {
                 anchors.fill: parent
@@ -824,6 +935,7 @@ Rectangle {
                     onClicked: doc.extractText(root.currentPage)
                 }
                 IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
+                IconButton { iconName: "maximize"; tip: qsTr("Vollbild (F11, Esc beendet)"); onClicked: root.enterFullscreen() }
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
                 IconButton {
                     iconName: "backlinks"; glyph: String(contextPanel.count)
