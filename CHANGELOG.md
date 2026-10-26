@@ -61,8 +61,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Rahmen um eine Abbildung ziehen, Notiz wählen – das Bild landet in
   `assets/`, darunter als Bildunterschrift der Link auf die Seite.
 - **Bilder in der Vorschau** vergrößern: Knopf ⤢ (oder Doppelklick) öffnet
-  das Bild in einem eigenen Fenster – passend eingepasst, Mausrad zoomt zur
-  Mausposition, +/−, 1:1, ziehen zum Verschieben, Esc schließt.
+  das Bild in einem Fenster vor Atlas (wie der Graph) – passend eingepasst,
+  Mausrad zoomt zur Mausposition, +/−, 1:1, ziehen zum Verschieben,
+  Esc schließt.
 
 ### Geändert
 - **PDFs schneller**:

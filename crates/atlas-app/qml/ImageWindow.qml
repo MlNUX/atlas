@@ -4,54 +4,100 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Window
 import Atlas
 
-// A picture of a note in a window of its own (button ⤢ or double click in
-// the preview): fits the window, zooms with the wheel (towards the mouse),
-// +/− and 100 %, moves by dragging. Esc closes it.
-Window {
-    id: win
+// A picture of a note, large in front of Atlas (button ⤢ or double click
+// in the preview), like the graph: fits the dialog, the wheel zooms towards
+// the mouse, +/− and 1:1, dragging moves it. Esc closes it.
+Dialog {
+    id: dialog
     property url source
     property string caption: ""
-    /// 0 = fit the window, otherwise the zoom factor.
+    /// 0 = fit the dialog, otherwise the zoom factor.
     property real zoom: 0
     readonly property real fitScale: img.implicitWidth > 0
         ? Math.min(1, Math.min((flick.width - 32) / img.implicitWidth, (flick.height - 32) / img.implicitHeight)) : 1
-    readonly property real scale: zoom > 0 ? zoom : fitScale
+    readonly property real zoomScale: zoom > 0 ? zoom : fitScale
     readonly property bool ready: img.status === Image.Ready
 
-    title: caption || qsTr("Bild")
-    width: Math.min(Screen.desktopAvailableWidth * 0.85, 1400)
-    height: Math.min(Screen.desktopAvailableHeight * 0.85, 1000)
-    color: "#070b12"
-    transientParent: null
+    parent: Overlay.overlay
+    anchors.centerIn: Overlay.overlay
+    width: parent ? parent.width * 0.86 : 1100
+    height: parent ? parent.height * 0.86 : 760
+    modal: true
+    padding: 0
+    topPadding: 0
+    title: ""
 
     function show(url, text) {
         source = url
         caption = text || ""
         zoom = 0
-        visible = true
-        raise()
-        requestActivate()
+        open()
         flick.forceActiveFocus()
     }
     /// Zooms by `factor`, keeping the spot at (x, y) of the view in place.
     function zoomBy(factor, x, y) {
-        const before = scale
+        const at = (v, size) => v === undefined ? size / 2 : v
+        const vx = at(x, flick.width), vy = at(y, flick.height)
+        const before = zoomScale
         const after = Math.max(0.05, Math.min(16, before * factor))
-        const px = (flick.contentX + (x === undefined ? flick.width / 2 : x)) / before
-        const py = (flick.contentY + (y === undefined ? flick.height / 2 : y)) / before
+        const px = (flick.contentX + vx) / before, py = (flick.contentY + vy) / before
         zoom = after
         Qt.callLater(() => {
-            flick.contentX = Math.max(0, Math.min(flick.contentWidth - flick.width, px * after - (x === undefined ? flick.width / 2 : x)))
-            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, py * after - (y === undefined ? flick.height / 2 : y)))
+            flick.contentX = Math.max(0, Math.min(flick.contentWidth - flick.width, px * after - vx))
+            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, py * after - vy))
         })
     }
 
-    ColumnLayout {
-        anchors.fill: parent
+    contentItem: ColumnLayout {
         spacing: 0
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.margins: 16
+            Layout.bottomMargin: 12
+            spacing: 12
+            Rectangle {
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                radius: 10
+                color: Theme.accentSoft
+                Icon { anchors.centerIn: parent; name: "image"; size: 20; color: Theme.accent }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                Text {
+                    Layout.fillWidth: true
+                    text: dialog.caption || qsTr("Bild")
+                    color: Theme.textStrong
+                    font.pixelSize: 16
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: (img.status === Image.Ready ? img.implicitWidth + " × " + img.implicitHeight + " px · " : "")
+                          + qsTr("Mausrad zoomt, Ziehen verschiebt, Doppelklick: ganz/1:1")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                    elide: Text.ElideRight
+                }
+            }
+            IconButton { iconName: "minus"; tip: qsTr("Verkleinern (−)"); onClicked: dialog.zoomBy(0.8) }
+            Label {
+                text: Math.round(dialog.zoomScale * 100) + " %"
+                color: Theme.text
+                font.pixelSize: Theme.smallFontSize
+                Layout.preferredWidth: 44
+                horizontalAlignment: Text.AlignHCenter
+            }
+            IconButton { iconName: "plus"; tip: qsTr("Vergrößern (+)"); onClicked: dialog.zoomBy(1.25) }
+            IconButton { glyph: "1:1"; tip: qsTr("Originalgröße (1)"); checkable: true; checked: dialog.zoom === 1; onClicked: dialog.zoom = 1 }
+            IconButton { iconName: "maximize"; tip: qsTr("Einpassen (0)"); checkable: true; checked: dialog.zoom === 0; onClicked: dialog.zoom = 0 }
+            IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
+        }
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
         Flickable {
             id: flick
@@ -60,26 +106,25 @@ Window {
             clip: true
             focus: true
             boundsBehavior: Flickable.StopAtBounds
-            contentWidth: Math.max(width, img.implicitWidth * win.scale)
-            contentHeight: Math.max(height, img.implicitHeight * win.scale)
+            contentWidth: Math.max(width, img.implicitWidth * dialog.zoomScale)
+            contentHeight: Math.max(height, img.implicitHeight * dialog.zoomScale)
             Keys.onPressed: (event) => {
-                if (event.key === Qt.Key_Escape) win.close()
-                else if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal) win.zoomBy(1.25)
-                else if (event.key === Qt.Key_Minus) win.zoomBy(0.8)
-                else if (event.key === Qt.Key_0) win.zoom = 0
-                else if (event.key === Qt.Key_1) win.zoom = 1
+                if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal) dialog.zoomBy(1.25)
+                else if (event.key === Qt.Key_Minus) dialog.zoomBy(0.8)
+                else if (event.key === Qt.Key_0) dialog.zoom = 0
+                else if (event.key === Qt.Key_1) dialog.zoom = 1
                 else return
                 event.accepted = true
             }
 
             Image {
                 id: img
-                source: win.source
+                source: dialog.source
                 asynchronous: true
                 smooth: true
                 mipmap: true
-                width: implicitWidth * win.scale
-                height: implicitHeight * win.scale
+                width: implicitWidth * dialog.zoomScale
+                height: implicitHeight * dialog.zoomScale
                 x: (flick.contentWidth - width) / 2
                 y: (flick.contentHeight - height) / 2
             }
@@ -90,7 +135,7 @@ Window {
                 text: qsTr("Das Bild lässt sich nicht laden.")
                 color: Theme.error
             }
-            // Wheel: zoom towards the mouse (no scrolling needed for a picture).
+            // Wheel: zoom towards the mouse.
             WheelHandler {
                 acceptedDevices: PointerDevice.AllDevices
                 acceptedPointerTypes: PointerDevice.AllPointerTypes
@@ -98,49 +143,11 @@ Window {
                     const d = event.angleDelta.y !== 0 ? event.angleDelta.y : event.pixelDelta.y * 4
                     if (d === 0) return
                     const p = flick.mapFromItem(flick.contentItem, event.x, event.y)
-                    win.zoomBy(Math.pow(1.0015, d), p.x, p.y)
+                    dialog.zoomBy(Math.pow(1.0015, d), p.x, p.y)
                     event.accepted = true
                 }
             }
-            TapHandler {
-                onDoubleTapped: win.zoom = win.zoom > 0 ? 0 : 1
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 40
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 8
-                spacing: 6
-                Label {
-                    Layout.fillWidth: true
-                    text: win.caption
-                    elide: Text.ElideRight
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                }
-                Label {
-                    text: img.status === Image.Ready ? img.implicitWidth + " × " + img.implicitHeight + " px" : ""
-                    color: Theme.textFaint
-                    font.pixelSize: Theme.smallFontSize
-                }
-                IconButton { iconName: "minus"; tip: qsTr("Verkleinern (−)"); onClicked: win.zoomBy(0.8) }
-                Label {
-                    text: Math.round(win.scale * 100) + " %"
-                    color: Theme.text
-                    font.pixelSize: Theme.smallFontSize
-                    Layout.preferredWidth: 44
-                    horizontalAlignment: Text.AlignHCenter
-                }
-                IconButton { iconName: "plus"; tip: qsTr("Vergrößern (+)"); onClicked: win.zoomBy(1.25) }
-                IconButton { glyph: "1:1"; tip: qsTr("Originalgröße (1)"); checkable: true; checked: win.zoom === 1; onClicked: win.zoom = 1 }
-                IconButton { glyph: "⤢"; tip: qsTr("Ans Fenster anpassen (0)"); checkable: true; checked: win.zoom === 0; onClicked: win.zoom = 0 }
-                IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: win.close() }
-            }
+            TapHandler { onDoubleTapped: dialog.zoom = dialog.zoom > 0 ? 0 : 1 }
         }
     }
 }
