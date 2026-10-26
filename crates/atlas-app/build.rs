@@ -43,7 +43,7 @@ const QML_FILES: &[&str] = &[
     "qml/PathBar.qml",
     "qml/SettingsDialog.qml",
     "qml/HtmlView.qml",
-    "qml/SearchPanel.qml",
+    "qml/SearchDialog.qml",
     "qml/SendToNoteDialog.qml",
     "qml/SelfTest.qml",
     "qml/SessionMenu.qml",

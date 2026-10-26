@@ -165,6 +165,55 @@ Item {
             },
             () => {
                 check("Suche ohne Build-Ordner", searchModel.count === 1, searchModel.count)
+                check("Suche im eigenen Fenster vor Atlas", searchPanel.visible && searchPanel.opened, searchPanel.visible)
+                const e = JSON.parse(searchModel.entry(0))
+                check("Suchtreffer markiert", e.ranges && e.ranges.length === 1 && e.text.slice(e.ranges[0][0], e.ranges[0][1]) === "EINZIGARTIG", JSON.stringify(e))
+                searchPanel.applyState({ query: "einzigartig" })
+            },
+            () => {
+                check("Suche ignoriert Groß-/Kleinschreibung", searchModel.count === 1, searchModel.count)
+                searchPanel.applyState({ query: "einzigartig", caseSensitive: true })
+            },
+            () => {
+                check("Suche beachtet Groß-/Kleinschreibung auf Wunsch", searchModel.count === 0 && !searchModel.running, searchModel.count)
+                searchPanel.applyState({ query: "EINZIGART", wholeWord: true })
+            },
+            () => {
+                check("Suche nach ganzen Wörtern", searchModel.count === 0 && !searchModel.running, searchModel.count)
+                searchPanel.applyState({ query: "EINZIGARTIG", kinds: ["markdown"] })
+            },
+            () => {
+                check("Suche: Typfilter Markdown", searchModel.count === 0 && !searchModel.running, searchModel.count)
+                searchPanel.applyState({ query: "zweite zeile", kinds: ["pdf"] })
+            },
+            () => {
+                const e = JSON.parse(searchModel.entry(0))
+                check("Suche findet Text in PDFs", searchModel.count >= 1 && e.pdf === true && e.relative === "docs/quelle.pdf" && e.line === 1,
+                      searchModel.count + " " + JSON.stringify(e))
+                const page = JSON.parse(searchModel.context(e.path || "", e.line || 1, 6, true))
+                check("Suche: Vorschau der PDF-Seite", page.some(l => l.text.indexOf("Zweite Zeile") >= 0), JSON.stringify(page))
+                searchPanel.openRow(0, false)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("PDF-Treffer öffnet die Seite und markiert das Wort", editor.activeTab.path === path("docs/quelle.pdf")
+                      && v.searchQuery === "Zweite Zeile" && v.hits.length >= 1 && !searchPanel.visible,
+                      editor.activeTab.path + " " + (v && v.searchQuery) + " " + (v && v.hits.length))
+                searchPanel.applyState({ query: "ziele", kinds: ["markdown"] })
+            },
+            () => {
+                let row = -1
+                for (let i = 0; i < searchModel.count; ++i) if (JSON.parse(searchModel.entry(i)).relative === "notes/plan.md") row = i
+                check("Suche: Treffer in plan.md", row >= 0, searchModel.count)
+                searchPanel.openRow(Math.max(0, row), false)
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Markdown-Treffer im Editor ausgewählt", editor.activeTab.path === path("notes/plan.md") && md.editorItem.selectedText === "Ziele",
+                      editor.activeTab.path + " „" + (md && md.editorItem.selectedText) + "“")
+                md.previewItem.runJavaScript("document.querySelectorAll('mark.search-hit.current').length + ':' + (document.querySelector('mark.search-hit') || {}).textContent",
+                    (r) => check("Markdown-Treffer in der Vorschau markiert", r === "1:Ziele", r))
+                searchPanel.applyState({})
                 window.openTerminal(path("src"), "tab")
             },
             () => {

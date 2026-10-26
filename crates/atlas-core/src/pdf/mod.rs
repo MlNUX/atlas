@@ -140,6 +140,14 @@ trait Backend {
     fn close(&mut self, path: &Path);
 }
 
+/// The plain text of every page (lines separated by `\n`), read with a
+/// document of its own: callable from any thread, e.g. the project search.
+pub fn page_texts(path: &Path) -> Result<Vec<String>> {
+    let mut backend = poppler::PopplerBackend::default();
+    let pages = backend.open(path)?.len();
+    (0..pages).map(|page| backend.text(path, page)).collect()
+}
+
 /// Splits a drag from `start` to `end` (`(page, x, y)`, points) into one
 /// selection area per page: the first page from the start point to its
 /// end, pages in between completely, the last page up to the end point.

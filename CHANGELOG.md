@@ -11,6 +11,16 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Neu
+- **Neue Projektsuche** (Strg+Umschalt+F) in einem großen Fenster vor
+  Atlas statt in der Seitenleiste: Filter nach Dokumenttyp (Markdown, PDF,
+  LaTeX, Code, Text), Groß-/Kleinschreibung beachten oder ignorieren,
+  „Ganzes Wort“, regulärer Ausdruck, Dateimuster. Durchsucht jetzt auch den
+  **Text aller PDFs** im Projekt (Treffer mit Seitenzahl). Jeder Fund ist
+  in der Liste markiert, rechts steht eine Vorschau mit den Zeilen davor
+  und danach (bzw. der PDF-Seite); Dateien lassen sich einklappen.
+  ↑/↓ wählen, Enter öffnet, Strg+Enter im Split – das gefundene Wort ist
+  dann im Dokument markiert: im Editor ausgewählt, in der Markdown-Vorschau
+  hervorgehoben, im PDF über die Suche des Viewers auf der richtigen Seite.
 - **Formel als LaTeX**: In PDFs mit ∑ einen Rahmen um eine Formel ziehen
   (oder markierten Text über ∑ im Auswahlmenü) – Atlas erkennt sie auf
   deinem Rechner mit dem eingebauten pix2tex-Modell (ONNX Runtime, ohne

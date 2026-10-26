@@ -125,7 +125,22 @@ Rectangle {
             cursor: editor.viewState().cursor,
         }
     }
+    /// Marks a hit of the project search in the preview (`{ text,
+    /// caseSensitive, line }`) once the page shows the note.
+    property var pendingHits: null
+    function applyHits() {
+        if (!root.pendingHits || !pageReady) return
+        const f = root.pendingHits
+        root.pendingHits = null
+        web.runJavaScript("atlas.markHits(" + JSON.stringify(f.text || "") + ", " + !!f.caseSensitive + ", " + (f.line || 0) + ")")
+    }
     function applyState(state) {
+        if (state.find) {
+            editor.applyState({ find: state.find })
+            root.pendingHits = state.find
+            // After a render that is already queued (new source).
+            Qt.callLater(root.applyHits)
+        }
         if (state.mode) root.mode = state.mode
         if (state.backlinks !== undefined) root.showBacklinks = state.backlinks
         if (state.contextTab !== undefined) contextPanel.tab = state.contextTab
@@ -334,6 +349,7 @@ Rectangle {
                     root.pageReady = true
                     root.render()
                     if (root.previewLine > 1) web.runJavaScript("atlas.scrollToLine(" + root.previewLine + ")")
+                    root.applyHits()
                 }
                 // Links inside the page never navigate it.
                 onNavigationRequested: (request) => {

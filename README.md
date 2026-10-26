@@ -29,7 +29,8 @@ verändert weder PDFs noch Notizen ungefragt.
   Checklisten, Tags, Wiki-Links, Backlinks und lokalem Graph. Zitate springen
   direkt zur Stelle in der PDF.
 - **Arbeitsleiste** (`Strg+P`) für Dateien, Aktionen, Tags, Zitate, Termine
-  und Volltext; projektweite Suche mit ripgrep.
+  und Volltext; projektweite Suche mit ripgrep, auch im Text von PDFs,
+  mit Typfiltern und markierten Treffern.
 - **Terminal** im Fenster, **eigene Aktionen** und Skripte, kleine
   **Erweiterungen**.
 - **Projektkalender** mit Fristen aus Notizen und optionaler

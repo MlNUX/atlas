@@ -276,7 +276,54 @@ window.atlas = (function () {
         if (el) el.scrollIntoView();
     }
 
+    /// Marks every occurrence of `term` (a hit of the project search) and
+    /// shows the one at or after source line `line`; the number of marks.
+    function markHits(term, caseSensitive, line) {
+        const main = document.getElementById("content");
+        for (const old of main.querySelectorAll("mark.search-hit")) old.replaceWith(...old.childNodes);
+        main.normalize();
+        if (!term) return 0;
+        const fold = (t) => caseSensitive ? t : t.toLowerCase();
+        const needle = fold(term);
+        const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                return node.parentElement.closest("script, style, .katex, svg, .code-tools")
+                    ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+            },
+        });
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        const marks = [];
+        for (let node of nodes) {
+            let at = fold(node.data).indexOf(needle);
+            while (at >= 0) {
+                const hit = node.splitText(at);
+                node = hit.splitText(needle.length);
+                const mark = document.createElement("mark");
+                mark.className = "search-hit";
+                hit.replaceWith(mark);
+                mark.appendChild(hit);
+                marks.push(mark);
+                at = fold(node.data).indexOf(needle);
+            }
+        }
+        if (!marks.length) return 0;
+        let marker = null;
+        for (const m of markers()) {
+            if (+m.dataset.line > line) break;
+            marker = m;
+        }
+        const current = marks.find((m) => !marker
+            || (marker.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING)) || marks[0];
+        current.classList.add("current");
+        reportScroll = false;
+        current.scrollIntoView({ block: "center" });
+        setTimeout(() => { reportScroll = true; }, 120);
+        return marks.length;
+    }
+
     return {
+        markHits,
         set(html) {
             const y = window.scrollY;
             const main = document.getElementById("content");

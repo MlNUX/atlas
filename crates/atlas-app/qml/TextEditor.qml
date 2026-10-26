@@ -24,6 +24,7 @@ Rectangle {
     property bool showLineNumbers: true
     property bool autosave: true
     readonly property alias text: area.text
+    readonly property string selectedText: area.selectedText
     readonly property bool modified: editGeneration !== savedGeneration
     readonly property bool readOnly: doc.readOnly !== ""
     readonly property alias document: doc
@@ -141,6 +142,7 @@ Rectangle {
         area.cursorPosition = Math.min(cursor, area.length)
         flick.contentY = Math.min(top, Math.max(0, flick.contentHeight - flick.height))
         if (root.line > 0) Qt.callLater(root.reveal, root.line)
+        if (root.pendingFind) Qt.callLater(root.applyFind)
         if (root.showSymbols) root.updateSymbols()
         spellTimer.restart()
         root.synced()
@@ -186,6 +188,7 @@ Rectangle {
         flashLine.y = rect.y
         flashLine.opacity = 0.5
         flashAnim.restart()
+        if (root.pendingFind) applyFind()
     }
     /// Indents (or with `outdent` moves back) the list items on the lines of
     /// the cursor or selection by two spaces; false if the first of these
@@ -457,6 +460,21 @@ Rectangle {
         if (state.cursor !== undefined) area.cursorPosition = Math.min(state.cursor, area.length)
         if (state.symbols !== undefined) root.showSymbols = state.symbols
         if (state.line) Qt.callLater(root.scrollToLine, state.line)
+        if (state.find) { root.pendingFind = state.find; Qt.callLater(root.applyFind) }
+    }
+
+    /// A hit of the project search to select once the text is there:
+    /// `{ line, start, end }` (UTF-16 offsets in the line).
+    property var pendingFind: null
+    function applyFind() {
+        const f = root.pendingFind
+        if (!f || area.length === 0) return
+        root.pendingFind = null
+        const lineStart = positionOfLine(f.line)
+        const lineEnd = area.text.indexOf("\n", lineStart) < 0 ? area.length : area.text.indexOf("\n", lineStart)
+        area.select(Math.min(lineStart + (f.start || 0), lineEnd), Math.min(lineStart + (f.end || 0), lineEnd))
+        const rect = area.positionToRectangle(area.selectionStart)
+        flick.contentY = Math.max(0, Math.min(rect.y - flick.height / 3, flick.contentHeight - flick.height))
     }
 
     function find(text, backwards) {

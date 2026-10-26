@@ -106,6 +106,11 @@ Rectangle {
     }
     function applyState(state) {
         let s = state || {}
+        if (s.find) {
+            applyFind(s.find)
+            // Only the search (the tab is open already): keep the view.
+            if (Object.keys(s).length === 1) return
+        }
         if (s.annot) pendingFocus = s.annot
         // Only a jump to an annotation: keep zoom and position otherwise.
         if (s.annot && Object.keys(s).length === 1) { Qt.callLater(tryFocus); return }
@@ -130,6 +135,7 @@ Rectangle {
         if (restorePage > 0) goToPage(restorePage)
         restorePage = 0
         tryFocus()
+        runPendingFind()
     }
     function goToPage(index) {
         const i = Math.max(0, Math.min(doc.pageCount - 1, index))
@@ -212,8 +218,11 @@ Rectangle {
             root.hits = list
             root.hitsByPage = byPage
             root.searchMs = ms
-            // Start with the first hit at or after the current page.
-            const first = list.findIndex(h => h.page >= root.currentPage)
+            // Start with the first hit at or after the current page (or the
+            // page of the project search hit).
+            const from = root.searchFromPage >= 0 ? root.searchFromPage : root.currentPage
+            root.searchFromPage = -1
+            const first = list.findIndex(h => h.page >= from)
             root.showHit(list.length ? (first >= 0 ? first : 0) : -1)
         }
         onSelectionReady: (request, json) => {
@@ -626,6 +635,24 @@ Rectangle {
     }
 
     // ---------------------------------------------------------------- search
+
+    /// Text of the project search to look for once the document is ready
+    /// (`find`: `{ text, page }`, page 1-based): its hits are marked, the
+    /// first one shown is on that page.
+    property string pendingFind: ""
+    property int searchFromPage: -1
+    function applyFind(find) {
+        pendingFind = find.text || ""
+        searchFromPage = Math.max(0, (find.page || 1) - 1)
+        if (doc.status === "ready") Qt.callLater(runPendingFind)
+    }
+    function runPendingFind() {
+        if (!pendingFind || doc.status !== "ready") return
+        const text = pendingFind
+        pendingFind = ""
+        searchField.text = text
+        search(text)
+    }
 
     function search(text) {
         searchQuery = text

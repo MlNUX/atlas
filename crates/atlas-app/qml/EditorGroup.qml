@@ -61,6 +61,7 @@ Rectangle {
             if (line) tabs[index].reveal(line)
             if (state && state.annot) tabs[index].applyState({ annot: state.annot })
             if (state && state.processor) tabs[index].applyState({ processor: state.processor })
+            if (state && state.find) tabs[index].applyState({ find: state.find })
             if (state && (path.startsWith("calendar:") || path.startsWith("ilias:")) && Object.keys(state).length) tabs[index].applyState(state)
             current = index
             changed()

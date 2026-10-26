@@ -154,3 +154,7 @@ table.print-frame > * > tr > td { padding: 0; border: 0; background: none; }
   input.task { -webkit-print-color-adjust: exact; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Hits of the project search. */
+mark.search-hit { background: rgba(255, 196, 0, 0.32); color: inherit; border-radius: 2px; padding: 0 1px; }
+mark.search-hit.current { background: rgba(255, 170, 0, 0.75); color: #111; box-shadow: 0 0 0 2px rgba(255, 170, 0, 0.45); }
