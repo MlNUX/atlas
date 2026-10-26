@@ -189,6 +189,19 @@ fn base_font(name: &str) -> String {
     name.to_ascii_uppercase()
 }
 
+/// The glyphs inside one of `rects` (`[x0, y0, x1, y1]`, e.g. the lines
+/// of a text selection), in text order: their centre counts.
+pub fn subset(glyphs: &[Glyph], rects: &[[f64; 4]]) -> Vec<Glyph> {
+    glyphs
+        .iter()
+        .filter(|g| {
+            let (cx, cy) = ((g.rect[0] + g.rect[2]) / 2.0, (g.rect[1] + g.rect[3]) / 2.0);
+            rects.iter().any(|r| cx >= r[0] - 0.5 && cx <= r[2] + 0.5 && cy >= r[1] - 0.5 && cy <= r[3] + 0.5)
+        })
+        .cloned()
+        .collect()
+}
+
 /// TeX's math fonts and the OpenType math fonts.
 fn math_font(name: &str) -> bool {
     const MATH: &[&str] = &[

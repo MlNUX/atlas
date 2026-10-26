@@ -193,8 +193,10 @@ Rectangle {
             textPopup.open()
         }
         onFormulaProgress: (page, text) => {
-            if (page === textPopup.page && textPopup.busy) textPopup.status = text
+            if (page === -1) root.message(text)
+            else if (page === textPopup.page && textPopup.busy) textPopup.status = text
         }
+        onSelectionLatexReady: (request, text, formulas) => root.finishQuote(request, text, formulas)
         onFormulaText: (page, text, error) => {
             if (page !== textPopup.page || !textPopup.busy) return
             textPopup.busy = false
@@ -417,17 +419,22 @@ Rectangle {
 
     /// Turns the current selection into text markup; returns the first ID.
     function markSelection(kind, color) {
-        if (!selection.length) return ""
-        const group = selection.length > 1 ? newGroup() : ""
+        const id = markParts(kind, color, selection)
+        clearSelection()
+        return id
+    }
+    /// Marks the parts of a selection ({page, rects, text}); the first ID.
+    function markParts(kind, color, parts) {
+        if (!parts.length) return ""
+        const group = parts.length > 1 ? newGroup() : ""
         let first = ""
-        for (const part of selection) {
+        for (const part of parts) {
             const id = addAnnot(JSON.stringify({
                 kind: kind, page: part.page + 1, rects: part.rects, text: part.text, color: color || markColor, group: group
             }))
             if (!first) first = id
         }
         if (kind === "highlight" && color) markColor = color
-        clearSelection()
         return first
     }
 
@@ -440,9 +447,37 @@ Rectangle {
                                      (note) => notes.quoteMarkdown(id, note), dir,
                                      qsTr("Zitat in %1 übernommen"), qsTr("Zitate"))
     }
+    /// "In Notiz übernehmen": formulas in the selected text are recognised
+    /// first and go into the quote as LaTeX (`$…$`).
+    property int quoteRequest: 0
+    property var quoteJob: null
     function quoteSelection() {
-        const id = markSelection("highlight", markColor)
+        if (!selection.length) return
+        if (!root.app) { const id = markSelection("highlight", markColor); if (id) quote(id); return }
+        quoteRequest++
+        const parts = selection.map(p => Object.assign({}, p))
+        quoteJob = { request: quoteRequest, parts: parts, waiting: parts.length }
+        parts.forEach((part, i) => doc.selectionLatex(quoteRequest * 100 + i, part.page,
+            JSON.stringify(part.rects.map(r => [r[0], r[1], r[0] + r[2], r[1] + r[3]]))))
+    }
+    function finishQuote(request, text, formulas) {
+        const job = quoteJob
+        if (!job || Math.floor(request / 100) !== job.request) return
+        if (formulas > 0 && text) job.parts[request % 100].text = text
+        if (--job.waiting > 0) return
+        quoteJob = null
+        const id = markParts("highlight", markColor, job.parts)
+        clearSelection()
         if (id) quote(id)
+    }
+    /// A part of the page as picture into a note, with the page as source.
+    function quoteFigure(page, x0, y0, x1, y1) {
+        if (!root.actions || !root.app) return
+        const area = JSON.stringify([Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)])
+        const dir = root.source.slice(0, root.source.lastIndexOf("/"))
+        root.actions.sendBlockToNote(qsTr("Bild von Seite %1 übernehmen in:").arg(page + 1),
+                                     (note) => root.app.pdfAreaToNote(root.source, page + 1, area, note), dir,
+                                     qsTr("Bild in %1 übernommen"), qsTr("Zitate"))
     }
     function copySelection() {
         if (!selectionText) return
@@ -967,6 +1002,13 @@ Rectangle {
                     checkable: true
                     checked: root.tool === "note"
                     onClicked: { root.tool = root.tool === "note" ? "select" : "note"; root.clearSelection() }
+                }
+                IconButton {
+                    iconName: "image"
+                    tip: qsTr("Bild als Zitat: Rahmen um Abbildung oder Tabelle ziehen, dann Notiz wählen")
+                    checkable: true
+                    checked: root.tool === "figure"
+                    onClicked: { root.tool = root.tool === "figure" ? "select" : "figure"; root.clearSelection() }
                 }
                 IconButton {
                     glyph: "∑"
@@ -1570,7 +1612,7 @@ Rectangle {
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             hoverEnabled: true
                             cursorShape: root.tool === "erase" ? Qt.BlankCursor
-                                : root.tool === "ink" || root.tool === "note" || root.tool === "latex" ? Qt.CrossCursor
+                                : root.tool === "ink" || root.tool === "note" || root.tool === "latex" || root.tool === "figure" ? Qt.CrossCursor
                                 : hoveredAnnotation || hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
                             property var pressPoint: null
                             property bool moved: false
@@ -1612,7 +1654,7 @@ Rectangle {
                                     root.dragging = true
                                     const p = root.pointAt(vp.x, vp.y)
                                     if (p) { root.dragEnd = p; root.requestSelection() }
-                                } else if (root.tool === "latex" && root.latexBox) {
+                                } else if ((root.tool === "latex" || root.tool === "figure") && root.latexBox) {
                                     const p = pointOf(mouse)
                                     root.latexBox = Object.assign({}, root.latexBox, { x1: p.x, y1: p.y })
                                 } else if (root.tool === "ink") {
@@ -1645,7 +1687,7 @@ Rectangle {
                                 } else if (root.tool === "ink") {
                                     root.strokePage = p.page
                                     root.stroke = [[p.x, p.y]]
-                                } else if (root.tool === "latex") {
+                                } else if (root.tool === "latex" || root.tool === "figure") {
                                     root.latexBox = { page: p.page, x0: p.x, y0: p.y, x1: p.x, y1: p.y }
                                 }
                             }
@@ -1672,11 +1714,13 @@ Rectangle {
                                     root.strokePage = -1
                                     return
                                 }
-                                if (root.tool === "latex") {
+                                if (root.tool === "latex" || root.tool === "figure") {
                                     const b = root.latexBox
                                     root.latexBox = null
-                                    if (b && Math.abs(b.x1 - b.x0) > 4 && Math.abs(b.y1 - b.y0) > 4)
-                                        root.recognizeLatex(b.page, b.x0, b.y0, b.x1, b.y1)
+                                    if (b && Math.abs(b.x1 - b.x0) > 4 && Math.abs(b.y1 - b.y0) > 4) {
+                                        if (root.tool === "latex") root.recognizeLatex(b.page, b.x0, b.y0, b.x1, b.y1)
+                                        else root.quoteFigure(b.page, b.x0, b.y0, b.x1, b.y1)
+                                    }
                                     return
                                 }
                                 if (root.tool === "note") {

@@ -305,6 +305,57 @@ Item {
                 ed.insertText("\nText", true)
                 ed.applyState({ cursor: ed.text.length })
                 check("Tab rückt Listenpunkte ein und aus, nicht normalen Text", indented && outdented && !ed.indentListItems(false), ed.text.slice(-30))
+                // Enter continues lists (bullets, checkboxes, numbers, quotes)
+                // and ends them on an empty item.
+                const enter = () => app.sendKey(window, Qt.Key_Return, 0)
+                ed.focusText()
+                ed.insertText("\n- eins", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                ed.insertText("zwei", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                enter()
+                check("Enter: neuer Spiegelstrich, leerer Punkt beendet die Liste", ed.text.endsWith("\n- eins\n- zwei\n"), JSON.stringify(ed.text.slice(-30)))
+                ed.insertText("- [x] erledigt", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Enter nach Checkbox: neue offene Checkbox", ed.text.endsWith("- [x] erledigt\n- [ ] "), JSON.stringify(ed.text.slice(-30)))
+                enter()
+                ed.insertText("9. neun", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Enter in nummerierter Liste zählt weiter", ed.text.endsWith("9. neun\n10. "), JSON.stringify(ed.text.slice(-20)))
+                enter()
+                ed.insertText("Text", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Enter nach normalem Text: nur Zeilenumbruch", ed.text.endsWith("Text\n"), JSON.stringify(ed.text.slice(-10)))
+                // Inserting: table, diagram, folder tree, files; `#` suggests tags.
+                const mdv = editor.activeTab.viewerItem
+                ed.applyState({ cursor: ed.text.length })
+                mdv.insertTable(2, 2)
+                check("Tabelle einfügen", ed.text.indexOf("| Spalte 1 | Spalte 2 |\n| --- | --- |\n|     |     |\n|     |     |") > 0, JSON.stringify(ed.text.slice(-80)))
+                ed.applyState({ cursor: ed.text.length })
+                mdv.insertDiagram(0)
+                check("Diagramm-Vorlage einfügen", ed.text.indexOf("```mermaid\nflowchart TD") > 0)
+                ed.applyState({ cursor: ed.text.length })
+                mdv.insertFolderTree(path("notes"))
+                check("Ordnerbaum einfügen", ed.text.indexOf("```tree\n" + path("notes") + "\n├── ") > 0, JSON.stringify(ed.text.slice(-120)))
+                const linked = app.importIntoNote(ed.source, JSON.stringify(["file://" + path("src/main.rs")]))
+                check("Datei aus dem Projekt einfügen: Link relativ zur Notiz", /^\[main\.rs\]\((\.\.\/)*src\/main\.rs\)$/.test(linked), linked)
+                app.copyToClipboard("nur Text")
+                check("Strg+V mit Text: normales Einfügen", app.pasteIntoNote(ed.source) === "")
+                ed.applyState({ cursor: ed.text.length })
+                ed.insertText("\n```bash\necho hallo\n```\n\nLernen für #wi", true)
+                ed.applyState({ cursor: ed.text.length })
+                ed.focusText()
+                ed.updateCompletion()
+                check("# schlägt Tags des Projekts vor", ed.completing && ed.completionKind === "tag"
+                      && ed.completionResults.some(r => r.tag === "wiki"), JSON.stringify(ed.completionResults))
+                ed.acceptCompletion()
+                check("Tag vervollständigt", ed.text.endsWith("Lernen für #wiki"), JSON.stringify(ed.text.slice(-20)))
+                ed.insertText("\n\n## Abschnitt\n\n> Zitat", true)
                 // ---- Phase 2: user defined actions
                 check("Aktionsdatei fehlerfrei", app.actionErrors() === "[]", app.actionErrors())
                 const names = (paths) => fileActions.actionsFor(paths).map(a => a.name).join(",")
@@ -317,6 +368,25 @@ Item {
                 const list = JSON.parse(app.prepareAction("liste-schreiben", [], 0))
                 check("Umleitung verlangt Bestätigung", list.confirm && list.destructive, JSON.stringify(list))
                 fileActions.runInTerminal(list.argv, list.cwd)
+            },
+            () => {
+                // Preview: tags in the text, tree blocks, buttons on code blocks,
+                // folding under headings, closing quotation mark.
+                const md = editor.activeTab.viewerItem
+                md.render()
+                md.previewItem.runJavaScript("(() => { const b = Array.from(document.querySelectorAll('.code-tools button')).map(x => x.textContent);"
+                    + " const t = document.querySelector('pre.tree'); const q = document.querySelector('blockquote > p:last-child');"
+                    + " const h = Array.from(document.querySelectorAll('h2')).pop(); const f = h && h.querySelector('.fold'); if (f) f.click();"
+                    + " const hidden = document.querySelectorAll('.hidden-by-fold').length; if (f) f.click();"
+                    + " return JSON.stringify({ buttons: b, tree: t ? t.textContent.slice(0, 80) : '', tag: !!document.querySelector('.tag.inline'),"
+                    + " close: q ? getComputedStyle(q, '::after').content : '', hidden: hidden, after: document.querySelectorAll('.hidden-by-fold').length }) })()", (r) => {
+                    const o = JSON.parse(r)
+                    check("Vorschau: Kopieren-Knopf an Codeblöcken, Ausführen bei bash", o.buttons.indexOf("Kopieren") >= 0 && o.buttons.indexOf("▶ Ausführen") >= 0, r)
+                    check("Vorschau: Ordnerbaum mit Linien", o.tree.indexOf("├── ") > 0, r)
+                    check("Vorschau: #tag im Text", o.tag, r)
+                    check("Vorschau: Zitat mit schließendem Anführungszeichen", o.close.indexOf("”") >= 0, r)
+                    check("Vorschau: Überschrift klappt ihren Abschnitt ein und aus", o.hidden > 0 && o.after === 0, r)
+                })
             },
             () => {
                 check("Aktion im Projektordner ausgeführt", app.readTextFile(path("aktion-ergebnis.txt")).indexOf("idee.md") >= 0)
@@ -1314,6 +1384,25 @@ Item {
                 check("Tab-Wechsel zurück: die PDF hat den Fokus, nicht mehr der Ordner",
                       hasFocusIn(v) && !hasFocusIn(test.folderTab.viewerItem), String(window.activeFocusItem))
                 g.closeTab(g.tabs.indexOf(test.folderTab))
+            },
+            () => {
+                // Quoting text with a formula: it goes in as LaTeX (test model:
+                // \frac{a}{b}); a figure of the page goes in as picture.
+                const v = test.fullscreenTab.viewerItem
+                v.selection = [{ page: 1, rects: [[60, 215, 200, 40]], text: "Formel x = y" }]
+                v.quoteSelection()
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                const quoted = () => v.annots.find(a => a.page === 2 && a.kind === "highlight")
+                if (waitFor(() => !!quoted() && sendToNote.visible)) return
+                const a = quoted()
+                check("Zitat aus PDF: Formel als LaTeX im Zitat", !!a && a.text.indexOf("$\\frac{a}{b}$") >= 0, a ? a.text : "kein Zitat")
+                sendToNote.close()
+                if (a) v.removeAnnot(a.id)
+                const md = app.pdfAreaToNote(path("docs/quelle.pdf"), 2, JSON.stringify([60, 200, 300, 300]), path("notes/zitate.md"))
+                const m = /^!\[quelle\.pdf, S\. 2\]\(\.\.\/(assets\/quelle-s2-[0-9-]+\.png)\)\n\n> — \[quelle\.pdf, S\. 2\]\(\/docs\/quelle\.pdf#page=2\)$/.exec(md)
+                check("Bild aus PDF als Zitat: PNG in assets/, Link auf die Seite", !!m && app.exists(path(m[1])), md)
             },
             () => {
                 // Arrow keys: down scrolls, right/left turn pages.

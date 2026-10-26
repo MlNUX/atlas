@@ -3,6 +3,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtWebEngine
 import Atlas
@@ -53,6 +54,51 @@ Rectangle {
     readonly property alias editorItem: editor
     /// Keyboard focus: the editor when it is shown, else the view.
     function focusContent() { if (mode !== "preview") editor.focusText(); else root.forceActiveFocus() }
+    // ---- inserting (menu "Einfügen" and command palette)
+    /// Mermaid templates for "Diagramm einfügen".
+    readonly property var diagramTemplates: [
+        { name: qsTr("Flussdiagramm"), code: "flowchart TD\n    A[Start] --> B{Bedingung?}\n    B -->|ja| C[Schritt]\n    B -->|nein| D[Anderer Schritt]\n    C --> E[Ende]\n    D --> E" },
+        { name: qsTr("Sequenzdiagramm"), code: "sequenceDiagram\n    participant A as Client\n    participant B as Server\n    A->>B: Anfrage\n    B-->>A: Antwort" },
+        { name: qsTr("Klassendiagramm"), code: "classDiagram\n    class Tier {\n        +String name\n        +laut() void\n    }\n    class Hund\n    Tier <|-- Hund" },
+        { name: qsTr("Zustandsdiagramm"), code: "stateDiagram-v2\n    [*] --> Bereit\n    Bereit --> Läuft: start\n    Läuft --> Bereit: stopp\n    Läuft --> [*]" },
+        { name: qsTr("ER-Diagramm"), code: "erDiagram\n    STUDENT ||--o{ KURS : belegt\n    KURS }o--|| DOZENT : hält" },
+        { name: qsTr("Gantt-Plan"), code: "gantt\n    title Projektplan\n    dateFormat YYYY-MM-DD\n    section Phase 1\n    Recherche :a1, 2026-11-01, 7d\n    Entwurf   :after a1, 5d\n    section Phase 2\n    Umsetzung :2026-11-14, 10d" },
+        { name: qsTr("Mindmap"), code: "mindmap\n  root((Thema))\n    Idee A\n      Detail\n    Idee B\n    Idee C" },
+        { name: qsTr("Kreisdiagramm"), code: "pie title Verteilung\n    \"A\" : 45\n    \"B\" : 30\n    \"C\" : 25" },
+        { name: qsTr("Zeitstrahl"), code: "timeline\n    title Verlauf\n    2024 : Start\n    2025 : Ausbau\n    2026 : Abschluss" },
+    ]
+    /// The editor must be visible to insert at its cursor.
+    function editorForInsert() {
+        if (root.mode === "preview") root.mode = "split"
+        return editor
+    }
+    function insertDiagram(index) {
+        const t = diagramTemplates[index]
+        if (t) editorForInsert().insertBlock("```mermaid\n" + t.code + "\n```")
+    }
+    /// Markdown table with `rows` body rows and `cols` columns.
+    function tableMarkdown(rows, cols) {
+        const cells = (f) => "| " + Array.from({ length: cols }, (_, i) => f(i)).join(" | ") + " |"
+        const lines = [cells(i => qsTr("Spalte %1").arg(i + 1)), cells(() => "---")]
+        for (let r = 0; r < rows; ++r) lines.push(cells(() => "   "))
+        return lines.join("\n")
+    }
+    function insertTable(rows, cols) { editorForInsert().insertBlock(tableMarkdown(Math.max(1, rows), Math.max(1, cols))) }
+    function askTable() { tableDialog.open() }
+    function askImage() { imageDialog.open() }
+    function askFolderTree() { treeDialog.open() }
+    function insertFolderTree(path) {
+        if (path) editorForInsert().insertBlock("```tree\n" + root.app.folderTree(path) + "```")
+    }
+    /// Runs a shell block of the preview in Atlas' terminal, in the folder of
+    /// the note; the terminal stays open afterwards.
+    function runCode(code) {
+        if (!root.actions || !code.trim()) return
+        const dir = root.source.slice(0, root.source.lastIndexOf("/")) || "/"
+        const script = code + "\nstatus=$?\necho\necho \"── beendet (Exit $status) ──\"\nexec \"${SHELL:-bash}\""
+        root.actions.runInTerminal(["bash", "-c", script], dir)
+    }
+
     readonly property alias previewItem: web
     readonly property alias previewRepaint: webRepaint
     readonly property alias contextPanelItem: contextPanel
@@ -185,6 +231,33 @@ Rectangle {
                 }
                 Item { Layout.fillWidth: true }
                 IconButton {
+                    id: insertButton
+                    glyph: qsTr("＋ Einfügen")
+                    tip: qsTr("Bild, Tabelle, Diagramm oder Ordnerbaum an der Schreibmarke einfügen")
+                    onClicked: insertMenu.popup(insertButton, 0, insertButton.height)
+                    Menu {
+                        id: insertMenu
+                        MenuItem { text: qsTr("Bild …"); onTriggered: root.askImage() }
+                        MenuItem { text: qsTr("Tabelle …"); onTriggered: root.askTable() }
+                        Menu {
+                            id: diagramMenu
+                            title: qsTr("Diagramm")
+                            Instantiator {
+                                model: root.diagramTemplates
+                                delegate: MenuItem {
+                                    required property var modelData
+                                    required property int index
+                                    text: modelData.name
+                                    onTriggered: root.insertDiagram(index)
+                                }
+                                onObjectAdded: (index, object) => diagramMenu.insertItem(index, object)
+                                onObjectRemoved: (index, object) => diagramMenu.removeItem(object)
+                            }
+                        }
+                        MenuItem { text: qsTr("Ordnerbaum …"); onTriggered: root.askFolderTree() }
+                    }
+                }
+                IconButton {
                     visible: root.info.broken > 0
                     glyph: "⚠ " + root.info.broken
                     tip: qsTr("%1 defekte Links – Reparatur suchen").arg(root.info.broken)
@@ -259,6 +332,11 @@ Rectangle {
                 onNewWindowRequested: (request) => Qt.openUrlExternally(request.requestedUrl)
                 onJavaScriptConsoleMessage: (level, text, lineNumber, sourceId) => {
                     if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
+                    else if (text.startsWith("atlas:copy:")) {
+                        root.app.copyToClipboard(JSON.parse(text.slice(11)).text)
+                        root.message(qsTr("Code kopiert"))
+                    }
+                    else if (text.startsWith("atlas:run:")) root.runCode(JSON.parse(text.slice(10)).code)
                     else if (text.startsWith("atlas:task:")) {
                         const t = JSON.parse(text.slice(11))
                         if (!editor.toggleTask(t.line, t.checked)) root.render()
@@ -288,6 +366,36 @@ Rectangle {
                 path: root.source
                 onOpenRequested: (path, line, newPane, state) => root.linkActivated(path, line, newPane, state)
             }
+        }
+    }
+
+    FileDialog {
+        id: imageDialog
+        title: qsTr("Bild einfügen")
+        fileMode: FileDialog.OpenFiles
+        nameFilters: [qsTr("Bilder (*.png *.jpg *.jpeg *.gif *.webp *.svg *.bmp *.avif)"), qsTr("Alle Dateien (*)")]
+        onAccepted: root.editorForInsert().insertAtCursor(
+            root.app.importIntoNote(root.source, JSON.stringify(selectedFiles.map(u => u.toString()))))
+    }
+    FolderDialog {
+        id: treeDialog
+        title: qsTr("Ordnerbaum einfügen")
+        currentFolder: "file://" + (root.app.projectRoot || "/")
+        onAccepted: root.insertFolderTree(root.app.urlToPath(selectedFolder.toString()))
+    }
+    Dialog {
+        id: tableDialog
+        anchors.centerIn: parent
+        modal: true
+        title: qsTr("Tabelle einfügen")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: root.insertTable(rowsBox.value, colsBox.value)
+        GridLayout {
+            columns: 2
+            Label { text: qsTr("Spalten") }
+            SpinBox { id: colsBox; from: 1; to: 20; value: 3; editable: true }
+            Label { text: qsTr("Zeilen") }
+            SpinBox { id: rowsBox; from: 1; to: 100; value: 3; editable: true }
         }
     }
 

@@ -43,11 +43,32 @@ Rectangle {
     // Popup were lost when the JavaScript garbage collector ran.
     property var completionResults: []
     property int completionCurrent: 0
-    /// Start of the typed path (after `[[`).
+    /// Start of the typed path (after `[[`) or tag (after `#`).
     property int completionStart: -1
+    /// "wiki" (file names after `[[`) or "tag" (tags of the project after `#`).
+    property string completionKind: "wiki"
     function updateCompletion() {
         const pos = area.cursorPosition
         const before = area.getText(Math.max(0, pos - 200), pos)
+        // `#ta…` after a space or at the line start: tags of the project.
+        const tag = /(^|[\s(])#([^\s\d#.,;:!?()\[\]{}"'`<>|*~=+-][^\s#.,;:!?()\[\]{}"'`<>|*~=+]*)$/.exec(before)
+        if (tag && area.activeFocus && area.selectionStart === area.selectionEnd) {
+            const typed = tag[2].toLowerCase()
+            let tags = []
+            try { tags = JSON.parse(root.app.noteTags()) } catch (e) {}
+            const results = tags.filter(t => t.key.startsWith(typed) && t.key !== typed)
+                .sort((a, b) => b.count - a.count).slice(0, 8)
+                .map(t => ({ kind: "tag", title: "#" + t.display, relative: t.count === 1 ? qsTr("1 Notiz") : qsTr("%1 Notizen").arg(t.count), tag: t.display }))
+            if (results.length) {
+                root.completionKind = "tag"
+                root.completionResults = results
+                root.completionCurrent = 0
+                root.completionStart = pos - tag[2].length
+                completion.open()
+                return
+            }
+        }
+        root.completionKind = "wiki"
         const open = before.lastIndexOf("[[")
         const query = open >= 0 ? before.slice(open + 2) : ""
         if (open < 0 || !area.activeFocus || /[\]\n|#]/.test(query) || area.selectionStart !== area.selectionEnd) {
@@ -207,6 +228,63 @@ Rectangle {
         return true
     }
 
+    /// Enter in a Markdown list continues it: a new bullet, a new open
+    /// checkbox (`- [ ] `), the next number, or `> ` in a quote. Enter on an
+    /// empty item ends the list (an indented one moves out a level first).
+    /// False if the cursor is not after such a marker.
+    function continueList() {
+        if (area.selectionStart !== area.selectionEnd) return false
+        const pos = area.cursorPosition
+        const text = area.text
+        const lineStart = text.lastIndexOf("\n", pos - 1) + 1
+        const lineEnd = (text.indexOf("\n", pos) + 1 || text.length + 1) - 1
+        const line = text.slice(lineStart, lineEnd)
+        const m = /^(\s*)(?:([-*+])|(\d+)([.)])|(>))(\s+)(\[[ xX]\]\s+)?/.exec(line)
+        if (!m || pos < lineStart + m[0].length) return false
+        if (line.slice(m[0].length).trim() === "") {
+            if (pos !== lineEnd) return false
+            if (m[1].length > 0 && !m[5]) indentListItems(true)
+            else area.remove(lineStart, lineEnd)
+            return true
+        }
+        const marker = m[5] ? ">" : m[3] ? (parseInt(m[3]) + 1) + m[4] : m[2]
+        const insert = "\n" + m[1] + marker + m[6] + (m[7] ? "[ ] " : "")
+        area.insert(pos, insert)
+        area.cursorPosition = pos + insert.length
+        return true
+    }
+
+    /// Inserts `text` at the cursor (replacing a selection).
+    function insertAtCursor(text) {
+        if (!text) return
+        const start = Math.min(area.selectionStart, area.selectionEnd)
+        if (area.selectionStart !== area.selectionEnd) area.remove(start, Math.max(area.selectionStart, area.selectionEnd))
+        area.insert(start, text)
+        area.cursorPosition = start + text.length
+        area.forceActiveFocus()
+    }
+    /// Inserts a block (table, diagram, picture …) at the cursor, with an
+    /// empty line before and after it.
+    function insertBlock(block) {
+        if (!block) return
+        const pos = area.cursorPosition
+        const before = area.text.slice(0, pos), after = area.text.slice(pos)
+        const lead = before.length === 0 || before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n"
+        const body = block.replace(/\n+$/, "")
+        const tail = after.startsWith("\n\n") ? "" : after.startsWith("\n") ? "\n" : "\n\n"
+        area.insert(pos, lead + body + tail)
+        area.cursorPosition = pos + lead.length + body.length
+        area.forceActiveFocus()
+    }
+    /// Markdown: Ctrl+V with a picture or files on the clipboard puts them
+    /// into `assets/` and links them; false if there are none (plain paste).
+    function pasteSpecial() {
+        const markdown = root.app.pasteIntoNote(root.source)
+        if (!markdown) return false
+        insertAtCursor(markdown)
+        return true
+    }
+
     /// Lines of the text (not wrapped rows), for the gutter width.
     readonly property int logicalLines: wrap ? area.text.split("\n").length : 0
     /// Numbers of the visible lines of wrapped text and where they start:
@@ -300,6 +378,13 @@ Rectangle {
         const r = root.completionResults[root.completionCurrent]
         if (!r || root.completionStart < 0) { completion.close(); return }
         const end = area.cursorPosition
+        if (r.kind === "tag") {
+            area.remove(root.completionStart, end)
+            area.insert(root.completionStart, r.tag)
+            area.cursorPosition = root.completionStart + r.tag.length
+            completion.close()
+            return
+        }
         const closing = area.text.slice(end, end + 2) === "]]" ? "" : "]]"
         area.remove(root.completionStart, end)
         area.insert(root.completionStart, "/" + r.relative + closing)
@@ -540,9 +625,21 @@ Rectangle {
                             }
                             if (event.key === Qt.Key_Escape) { completion.close(); event.accepted = true; return }
                         }
+                        // Markdown lists: Enter continues them (Shift+Enter: a plain line break).
+                        if (root.wikiCompletion && !ctrl && !(event.modifiers & Qt.ShiftModifier)
+                                && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && root.continueList()) {
+                            event.accepted = true
+                            return
+                        }
                         // Markdown lists: Tab indents the item, Shift+Tab outdents it.
                         if (root.wrap && !ctrl && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
                                 && root.indentListItems(event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier))) {
+                            event.accepted = true
+                            return
+                        }
+                        // Markdown: pictures and files from the clipboard.
+                        if (root.wikiCompletion && ((ctrl && event.key === Qt.Key_V) || ((event.modifiers & Qt.ShiftModifier) && event.key === Qt.Key_Insert))
+                                && root.pasteSpecial()) {
                             event.accepted = true
                             return
                         }
@@ -552,6 +649,21 @@ Rectangle {
                         else if (event.key === Qt.Key_Escape && findBar.visible) { findBar.visible = false; event.accepted = true }
                     }
                     FontMetrics { id: fontMetrics; font: area.font }
+
+                    // Markdown: files dropped on the text are copied into
+                    // `assets/` (pictures) and linked where they were dropped.
+                    DropArea {
+                        anchors.fill: parent
+                        enabled: root.wikiCompletion
+                        keys: ["text/uri-list"]
+                        onDropped: (drop) => {
+                            const markdown = root.app.importIntoNote(root.source, JSON.stringify(drop.urls.map(u => u.toString())))
+                            if (!markdown) return
+                            area.cursorPosition = area.positionAt(drop.x, drop.y)
+                            root.insertAtCursor(markdown)
+                            drop.accept(Qt.CopyAction)
+                        }
+                    }
 
                     // Completion of wiki links: `[[` suggests project files.
                     Popup {
@@ -580,7 +692,7 @@ Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     x: 6
                                     spacing: 8
-                                    Text { text: modelData.kind === "note" ? "📝" : "📄"; font.pixelSize: 12 }
+                                    Text { text: modelData.kind === "tag" ? "#" : modelData.kind === "note" ? "📝" : "📄"; font.pixelSize: 12; color: "#9dd1ff" }
                                     Text {
                                         text: modelData.title ? modelData.title + "  ·  " + modelData.relative : modelData.relative
                                         color: Theme.text

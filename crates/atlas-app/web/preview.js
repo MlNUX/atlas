@@ -60,6 +60,80 @@ window.atlas = (function () {
         });
     }
 
+    // Code blocks: a copy button, and for shell code a button that runs it
+    // in Atlas' terminal (in the folder of the note).
+    const SHELL = /^(bash|sh|shell|zsh|console|shellsession)$/;
+    function codeTools(root) {
+        root.querySelectorAll("pre").forEach((pre) => {
+            if (pre.classList.contains("mermaid") || pre.parentElement.classList.contains("code-box")) return;
+            const code = pre.querySelector("code");
+            const lang = code ? (code.className.match(/language-(\S+)/) || [])[1] || "" : "";
+            const box = document.createElement("div");
+            box.className = "code-box";
+            pre.parentNode.insertBefore(box, pre);
+            box.appendChild(pre);
+            const tools = document.createElement("div");
+            tools.className = "code-tools";
+            const text = () => pre.innerText.replace(/\n$/, "");
+            const button = (label, title, action) => {
+                const b = document.createElement("button");
+                b.textContent = label;
+                b.title = title;
+                b.addEventListener("click", (ev) => { ev.stopPropagation(); action(b); });
+                tools.appendChild(b);
+            };
+            if (SHELL.test(lang)) {
+                button("▶ Ausführen", "Im Terminal von Atlas ausführen (Ordner der Notiz)", () => {
+                    let src = text();
+                    // Console transcripts: only the commands after the prompt.
+                    if (lang === "console" || lang === "shellsession")
+                        src = src.split("\n").filter((l) => /^\$ /.test(l)).map((l) => l.slice(2)).join("\n");
+                    post("run", { code: src });
+                });
+            }
+            button("Kopieren", "Code kopieren", (b) => {
+                post("copy", { text: text() });
+                b.textContent = "✓ Kopiert";
+                setTimeout(() => { b.textContent = "Kopieren"; }, 1200);
+            });
+            box.appendChild(tools);
+        });
+    }
+
+    // Headings fold their section (until the next heading of the same or a
+    // higher level); folded ones stay folded while the note is edited.
+    const folded = new Set();
+    function foldable(root) {
+        root.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((h) => {
+            const toggle = document.createElement("span");
+            toggle.className = "fold";
+            toggle.title = "Abschnitt ein-/ausklappen";
+            h.insertBefore(toggle, h.firstChild);
+            toggle.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                if (folded.has(h.id)) folded.delete(h.id); else folded.add(h.id);
+                applyFolds(root);
+            });
+        });
+        applyFolds(root);
+    }
+    function applyFolds(root) {
+        let hideBelow = 0; // level of the folded heading in charge, 0 = none
+        for (const el of Array.from(root.children)) {
+            const m = /^H([1-6])$/.exec(el.tagName);
+            if (m) {
+                const level = +m[1];
+                if (hideBelow && level <= hideBelow) hideBelow = 0;
+                el.classList.toggle("hidden-by-fold", hideBelow > 0);
+                const isFolded = !hideBelow && folded.has(el.id);
+                el.classList.toggle("folded", isFolded);
+                if (isFolded) hideBelow = level;
+            } else {
+                el.classList.toggle("hidden-by-fold", hideBelow > 0);
+            }
+        }
+    }
+
     function markers() { return Array.from(document.querySelectorAll("a.line-marker")); }
 
     // Source line at the top edge of the view, with a fraction between two
@@ -164,6 +238,8 @@ window.atlas = (function () {
             main.innerHTML = html;
             renderMath(main);
             highlight(main);
+            codeTools(main);
+            foldable(main);
             busy = true;
             Promise.resolve(renderMermaid(main))
                 .catch(() => {})

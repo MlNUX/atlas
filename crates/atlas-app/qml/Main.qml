@@ -204,6 +204,14 @@ ApplicationWindow {
             if (app.atlasDir && app.exists(current))
                 list.push({ name: qsTr("Verknüpfen mit …"), hint: app.fileName(current), run: () => app.requestRelate(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
+            const md = editor.activeTab && editor.activeTab.kind === "markdown" ? editor.activeTab.viewerItem : null
+            if (md && md.askTable) {
+                list.push({ name: qsTr("Bild einfügen …"), hint: app.fileName(current), run: () => md.askImage() })
+                list.push({ name: qsTr("Tabelle einfügen …"), hint: app.fileName(current), run: () => md.askTable() })
+                list.push({ name: qsTr("Ordnerbaum einfügen …"), hint: app.fileName(current), run: () => md.askFolderTree() })
+                md.diagramTemplates.forEach((t, i) =>
+                    list.push({ name: qsTr("Diagramm einfügen: %1").arg(t.name), hint: "Mermaid", run: () => md.insertDiagram(i) }))
+            }
             if (app.hasChecklist(current))
                 list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
         }

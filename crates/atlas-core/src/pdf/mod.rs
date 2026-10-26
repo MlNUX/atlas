@@ -133,6 +133,8 @@ trait Backend {
     /// `page` at `scale` pixels per point on white, in greyscale: width,
     /// height, one byte per pixel.
     fn clip_gray(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)>;
+    /// Like `clip_gray`, in colour: RGB, three bytes per pixel.
+    fn clip_rgb(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)>;
     /// The characters of the text of `page` with rectangle and font.
     fn glyphs(&mut self, path: &Path, page: usize) -> Result<Vec<formulas::Glyph>>;
     fn close(&mut self, path: &Path);
@@ -342,6 +344,54 @@ impl PdfService {
             }
             done(backend.clip_gray(&path, page, area, scale))
         }));
+    }
+
+    /// Like [`PdfService::page_formulas`], for the text inside `rects`
+    /// (`[x0, y0, x1, y1]`, e.g. a selection) only.
+    pub fn area_formulas(
+        &self,
+        path: PathBuf,
+        page: usize,
+        rects: Vec<[f64; 4]>,
+        done: impl FnOnce(Result<(formulas::PageText, Vec<(u32, u32, Vec<u8>)>)>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&path)
+                && let Err(err) = backend.open(&path)
+            {
+                return done(Err(err));
+            }
+            let text = match backend.glyphs(&path, page) {
+                Ok(glyphs) => formulas::PageText::new(formulas::subset(&glyphs, &rects)),
+                Err(err) => return done(Err(err)),
+            };
+            let clips = (0..text.formulas.len())
+                .map(|i| {
+                    backend.clip_gray(&path, page, text.clip_area(i), text.clip_scale(i)).unwrap_or((0, 0, Vec::new()))
+                })
+                .collect();
+            done(Ok((text, clips)))
+        }));
+    }
+
+    /// Saves `area` (`[x0, y0, x1, y1]`, points) of `page` in colour as PNG
+    /// at `out`, `scale` pixels per point (e.g. a figure quoted in a note).
+    pub fn save_area_png(&self, path: &Path, page: usize, area: [f64; 4], scale: f64, out: &Path) -> Result<()> {
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        let pdf = path.to_path_buf();
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&pdf)
+                && let Err(err) = backend.open(&pdf)
+            {
+                let _ = tx.send(Err(err));
+                return;
+            }
+            let _ = tx.send(backend.clip_rgb(&pdf, page, area, scale));
+        }));
+        let (w, h, rgb) = rx.recv()??;
+        let image = image::RgbImage::from_raw(w, h, rgb).ok_or_else(|| anyhow::anyhow!("Bildgröße passt nicht"))?;
+        image.save_with_format(out, image::ImageFormat::Png)?;
+        Ok(())
     }
 
     /// The text of `page` with its formulas (see [`formulas`]), each
@@ -686,6 +736,37 @@ pub(crate) mod tests {
             latex.push(tex.ok());
         }
         println!("--- Mit LaTeX ---\n{}", text.with_latex(&latex));
+    }
+
+    #[test]
+    fn saves_an_area_as_png_and_finds_formulas_in_a_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.pdf");
+        std::fs::write(&path, sample_pdf()).unwrap();
+        let out = dir.path().join("bild.png");
+        PdfService::get().save_area_png(&path, 0, [0.0, 700.0, 120.0, 842.0], 2.0, &out).unwrap();
+        let png = std::fs::read(&out).unwrap();
+        assert_eq!(&png[1..4], b"PNG");
+        let img = image::load_from_memory(&png).unwrap();
+        assert_eq!((img.width(), img.height()), (240, 284));
+        // The red square (bottom left corner of the page) is in the picture.
+        let px = img.to_rgb8().get_pixel(20, 270).0;
+        assert_eq!(px, [255, 0, 0]);
+
+        let path = dir.path().join("formula.pdf");
+        let content = "BT /F1 12 Tf 1 0 0 1 72 720 Tm (Flaeche) Tj /F2 12 Tf 1 0 0 1 122 720 Tm (x) Tj \
+                       /F3 12 Tf 1 0 0 1 132 720 Tm (=) Tj /F2 12 Tf 1 0 0 1 142 720 Tm (y) Tj ET \
+                       BT /F2 12 Tf 1 0 0 1 72 600 Tm (a) Tj /F3 12 Tf 1 0 0 1 82 600 Tm (+) Tj /F2 12 Tf 1 0 0 1 92 600 Tm (b) Tj ET";
+        std::fs::write(&path, pdf_with(content, &["Helvetica", "CMMI10", "CMR10"])).unwrap();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        // Only the first line is selected: one formula, not two.
+        PdfService::get().area_formulas(path, 0, vec![[60.0, 105.0, 200.0, 130.0]], move |r| {
+            let _ = tx.send(r);
+        });
+        let (text, clips) = rx.recv().unwrap().unwrap();
+        assert_eq!(text.formulas.len(), 1, "{:?}", text.plain());
+        assert_eq!(clips.len(), 1);
+        assert!(text.plain().starts_with("Flaeche"), "{:?}", text.plain());
     }
 
     #[test]

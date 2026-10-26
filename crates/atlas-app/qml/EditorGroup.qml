@@ -541,6 +541,9 @@ Rectangle {
         onEntered: (event) => {
             const tabMove = !!group.tabDrag(event.source)
             if (!tabMove && group.currentTab && ["dir", "trash", "terminal", "calendar"].indexOf(group.currentTab.kind) >= 0) event.accepted = false
+            // A note being edited takes files itself (inserted as pictures/links).
+            const v = group.currentTab ? group.currentTab.viewerItem : null
+            if (!tabMove && group.currentTab && group.currentTab.kind === "markdown" && v && v.mode !== "preview") event.accepted = false
         }
         onDropped: (event) => {
             // From the drop itself: `drag` and `containsDrag` are reset by then.

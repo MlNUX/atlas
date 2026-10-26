@@ -171,6 +171,15 @@ QStringList clipboardFiles()
     return paths;
 }
 
+bool clipboardSaveImage(const QString& path)
+{
+    const QMimeData* mime = QGuiApplication::clipboard()->mimeData();
+    if (!mime || !mime->hasImage())
+        return false;
+    const QImage image = qvariant_cast<QImage>(mime->imageData());
+    return !image.isNull() && image.save(path, "PNG");
+}
+
 bool clipboardFilesCut()
 {
     const QMimeData* mime = QGuiApplication::clipboard()->mimeData();

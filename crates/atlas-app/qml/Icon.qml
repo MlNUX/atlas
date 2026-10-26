@@ -46,6 +46,7 @@ Item {
         "check": "<path d='m5 12.5 4.5 4.5L19 7.5'/>",
         "minus": "<path d='M5 12h14'/>",
         "close": "<path d='M6 6l12 12M18 6 6 18'/>",
+        "image": "<rect x='3.5' y='5' width='17' height='14' rx='2'/><circle cx='9' cy='10' r='1.6'/><path d='m4 17 5-4.5 3.5 3 3-2.5 4.5 4'/>",
         "arrow-left": "<path d='M19 12H5M11 6l-6 6 6 6'/>",
         "arrow-up": "<path d='M12 19V5M6 11l6-6 6 6'/>",
         "grid": "<rect x='4' y='4' width='6.5' height='6.5' rx='1.5'/><rect x='13.5' y='4' width='6.5' height='6.5' rx='1.5'/><rect x='4' y='13.5' width='6.5' height='6.5' rx='1.5'/><rect x='13.5' y='13.5' width='6.5' height='6.5' rx='1.5'/>",

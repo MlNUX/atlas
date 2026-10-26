@@ -28,6 +28,9 @@ void clipboardSetFiles(const QStringList& paths, bool cut);
 // Local files on the clipboard (empty if there are none).
 QStringList clipboardFiles();
 bool clipboardFilesCut();
+// Saves a picture on the clipboard (screenshot, copied image) as PNG at
+// `path`; false if there is none.
+bool clipboardSaveImage(const QString& path);
 
 // Sets up QtWebEngine; must run before the QGuiApplication is created.
 void initWebEngine();

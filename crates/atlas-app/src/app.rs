@@ -730,6 +730,33 @@ pub mod qobject {
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: &AppController, text: &QString);
 
+        /// Saves `area` (JSON `[x0, y0, x1, y1]`, points) of page `page`
+        /// (from 1) of `pdf` as picture into the `assets/` folder for `note`
+        /// and returns the Markdown for the note: the picture and a link
+        /// to the page as its source ("" on failure).
+        #[qinvokable]
+        #[cxx_name = "pdfAreaToNote"]
+        fn pdf_area_to_note(self: &AppController, pdf: &QString, page: i32, area: &QString, note: &QString) -> QString;
+
+        /// The tree of folder `path` as text (`├──`), 3 levels deep.
+        #[qinvokable]
+        #[cxx_name = "folderTree"]
+        fn folder_tree(self: &AppController, path: &QString) -> QString;
+
+        /// Pasting into the note `note`: files on the clipboard are copied
+        /// into the project's `assets/` folder, a picture (screenshot) is
+        /// saved there as PNG; returns the Markdown for them ("" if the
+        /// clipboard holds neither: then text is pasted as usual).
+        #[qinvokable]
+        #[cxx_name = "pasteIntoNote"]
+        fn paste_into_note(self: &AppController, note: &QString) -> QString;
+
+        /// Files dropped on the note `note` (JSON list of paths or file
+        /// URLs): copied into `assets/` like pasted ones; the Markdown.
+        #[qinvokable]
+        #[cxx_name = "importIntoNote"]
+        fn import_into_note(self: &AppController, note: &QString, paths: &QString) -> QString;
+
         /// Saves a PNG of `window` (a QQuickWindow), used by `--screenshot`.
         #[qinvokable]
         #[cxx_name = "saveWindowImage"]
@@ -2778,6 +2805,88 @@ impl qobject::AppController {
             return QString::default();
         }
         qs(file.to_string_lossy())
+    }
+
+    pub fn pdf_area_to_note(&self, pdf: &QString, page: i32, area: &QString, note: &QString) -> QString {
+        use atlas_core::assets;
+        let (pdf, note) = (path_of(pdf), path_of(note));
+        let Ok(area) = serde_json::from_str::<[f64; 4]>(&area.to_string()) else { return QString::default() };
+        let page = page.max(1) as u32;
+        let dir = assets::assets_dir(self.root.as_deref(), &note);
+        if let Err(err) = std::fs::create_dir_all(&dir) {
+            log::warn!("cannot create {}: {err}", dir.display());
+            return QString::default();
+        }
+        let stem = pdf.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "pdf".into());
+        let name = assets::new_image_name(Path::new(&format!("{stem}-s{page}.md")), "png");
+        let target = assets::unique_path(&dir, &name);
+        // About 220 dpi: sharp in notes and when printed.
+        if let Err(err) = atlas_core::pdf::PdfService::get().save_area_png(&pdf, page as usize - 1, area, 3.0, &target)
+        {
+            log::warn!("cannot save the picture: {err:#}");
+            return QString::default();
+        }
+        let file_name =
+            pdf.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().replace(['[', ']'], "");
+        let source = match &self.root {
+            Some(root) if pdf.starts_with(root) && note.starts_with(root) => {
+                format!("/{}", self.relative(&pdf).to_string_lossy())
+            }
+            _ => atlas_core::markdown::relative_path(note.parent().unwrap_or(Path::new("/")), &pdf)
+                .to_string_lossy()
+                .into_owned(),
+        };
+        let label = format!("{file_name}, S. {page}");
+        qs(format!(
+            "![{label}]({})\n\n> — [{label}]({})",
+            assets::link_from(&note, &target),
+            atlas_core::annotations::link(&source, page, None)
+        ))
+    }
+
+    pub fn folder_tree(&self, path: &QString) -> QString {
+        qs(atlas_core::tree::of_folder(&path_of(path), 3, 300))
+    }
+
+    pub fn paste_into_note(&self, note: &QString) -> QString {
+        let note = path_of(note);
+        let root = self.root.as_deref();
+        let files: Vec<PathBuf> =
+            crate::qt_helpers::clipboard_files().iter().map(|p| PathBuf::from(p.to_string())).collect();
+        if !files.is_empty() {
+            return qs(self.import_files(&note, &files));
+        }
+        let dir = atlas_core::assets::assets_dir(root, &note);
+        if std::fs::create_dir_all(&dir).is_err() {
+            return QString::default();
+        }
+        let target = atlas_core::assets::unique_path(&dir, &atlas_core::assets::new_image_name(&note, "png"));
+        if crate::qt_helpers::clipboard_save_image(&qs(target.to_string_lossy())) {
+            log::info!("picture from the clipboard saved as {}", target.display());
+            qs(atlas_core::assets::image_markdown(&note, &target))
+        } else {
+            QString::default()
+        }
+    }
+
+    pub fn import_into_note(&self, note: &QString, paths: &QString) -> QString {
+        let list: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        let files: Vec<PathBuf> = list
+            .iter()
+            .map(|p| PathBuf::from(p.strip_prefix("file://").map(percent_decode).unwrap_or_else(|| p.clone())))
+            .collect();
+        qs(self.import_files(&path_of(note), &files))
+    }
+
+    fn import_files(&self, note: &Path, files: &[PathBuf]) -> String {
+        let mut out = Vec::new();
+        for file in files.iter().filter(|f| f.is_file()) {
+            match atlas_core::assets::import(self.root.as_deref(), note, file) {
+                Ok(markdown) => out.push(markdown),
+                Err(err) => log::warn!("cannot insert {}: {err:#}", file.display()),
+            }
+        }
+        out.join("\n")
     }
 
     pub fn copy_to_clipboard(&self, text: &QString) {

@@ -43,7 +43,7 @@ iana-time-zone = "0.1"
 scraper = "0.29.0"
 url = "2.5.8"
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22"] }
-image = { version = "0.25", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"] }

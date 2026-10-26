@@ -68,6 +68,19 @@ impl Backend for PopplerBackend {
     }
 
     fn clip_gray(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)> {
+        let (w, h, rgb) = self.clip_rgb(path, page, area, scale)?;
+        // Grey like OpenCV's RGB2GRAY (0.299 R + 0.587 G + 0.114 B).
+        let gray = rgb
+            .chunks(3)
+            .map(|px| {
+                let v = 0.299 * f32::from(px[0]) + 0.587 * f32::from(px[1]) + 0.114 * f32::from(px[2]);
+                v.round().clamp(0.0, 255.0) as u8
+            })
+            .collect();
+        Ok((w, h, gray))
+    }
+
+    fn clip_rgb(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)> {
         let doc = self.doc(path)?;
         let page = page_at(doc, page as i64).context("page out of range")?;
         let (x0, x1) = (area[0].min(area[2]), area[0].max(area[2]));
@@ -88,15 +101,14 @@ impl Backend for PopplerBackend {
         surface.flush();
         let stride = surface.stride() as usize;
         let data = surface.data().context("cairo surface data")?;
-        // BGRx; grey like OpenCV's RGB2GRAY (0.299 R + 0.587 G + 0.114 B).
-        let mut gray = Vec::with_capacity((w * h) as usize);
+        // BGRx to RGB.
+        let mut rgb = Vec::with_capacity((w * h * 3) as usize);
         for row in data.chunks(stride).take(h as usize) {
             for px in row[..w as usize * 4].chunks(4) {
-                let v = 0.114 * f32::from(px[0]) + 0.587 * f32::from(px[1]) + 0.299 * f32::from(px[2]);
-                gray.push(v.round().clamp(0.0, 255.0) as u8);
+                rgb.extend_from_slice(&[px[2], px[1], px[0]]);
             }
         }
-        Ok((w as u32, h as u32, gray))
+        Ok((w as u32, h as u32, rgb))
     }
 
     fn text(&mut self, path: &Path, page: usize) -> Result<String> {
