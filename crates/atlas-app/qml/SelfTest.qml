@@ -1332,16 +1332,24 @@ Item {
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
-                const w = v.Window.window
-                if (waitFor(() => v.presenting && v.width === w.width && w.visible && slideAlone(v, 0))) return
+                const w = v.bodyItem.Window.window
+                if (waitFor(() => v.presenting && v.bodyItem.width === w.width && w.visible && slideAlone(v, 0))) return
                 check("Präsentation (F5): eigenes Vollbildfenster, von Seite 1, nur diese Seite zu sehen",
-                      v.presenting && w !== window && v.slide === 0 && slideAlone(v, 0), [v.presenting, w === window, v.slide, slideAlone(v, 0)].join(" "))
-                check("Präsentation: keine Leiste", !v.toolbarShown)
+                      v.presenting && w === v.presentationWindowItem && v.bodyItem.width === w.width && v.bodyItem.height === w.height
+                      && v.slide === 0 && slideAlone(v, 0), [v.presenting, w === window, v.slide, slideAlone(v, 0)].join(" "))
+                check("Präsentation: keine Leiste, keine Statuszeile", !v.toolbarShown && !v.statusShown)
+                // The tab resizing its viewer (e.g. when the main window changes
+                // as the presentation appears) leaves the presentation alone.
+                const before = v.width
+                v.width = 120
+                check("Präsentation: Größenänderung im Tab erreicht sie nicht", v.bodyItem.width === w.width && v.bodyItem.height === w.height,
+                      v.bodyItem.width + "×" + v.bodyItem.height + " in " + w.width + "×" + w.height)
+                v.width = before
                 app.sendKey(w, Qt.Key_Right, 0)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
-                const w = v.Window.window
+                const w = v.presentationWindowItem
                 if (waitFor(() => v.slide === 1 && slideAlone(v, 1))) return
                 check("Präsentation: Pfeil rechts zeigt die nächste Seite allein", v.slide === 1 && slideAlone(v, 1), v.slide)
                 app.sendKey(w, Qt.Key_Right, 0)
@@ -1353,7 +1361,7 @@ Item {
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
-                const w = v.Window.window
+                const w = v.presentationWindowItem
                 if (waitFor(() => v.slide === 1)) return
                 check("Präsentation: Klick zeigt die nächste Seite", v.slide === 1 && slideAlone(v, 1), v.slide)
                 app.sendWheel(w, w.width / 2, w.height / 2, 120, 0)
@@ -1371,7 +1379,7 @@ Item {
                 const v = test.fullscreenTab.viewerItem
                 if (waitFor(() => !v.presenting && v.currentPage === 1)) return
                 check("Esc beendet die Präsentation: zurück im Tab, vorheriger Zoom, zuletzt gezeigte Seite",
-                      !v.presenting && v.Window.window === window && v.zoom === 1.5 && v.currentPage === 1 && editor.activeTab === test.fullscreenTab && v.toolbarShown,
+                      !v.presenting && v.bodyItem.Window.window === window && v.bodyItem.width === v.width && v.zoom === 1.5 && v.currentPage === 1 && editor.activeTab === test.fullscreenTab && v.toolbarShown,
                       [v.presenting, v.Window.window === window, v.zoom, v.currentPage].join(" "))
                 v.zoom = 0
             },

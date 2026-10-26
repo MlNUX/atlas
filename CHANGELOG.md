@@ -78,6 +78,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 
 ### Behoben
+- **PDF-Präsentation:** Beim ersten Start blieb die Seite manchmal in
+  Tab-Größe oben links im schwarzen Vollbild (der Tab setzte die Größe der
+  Ansicht zurück). Jetzt wandert nur der sichtbare Inhalt ins
+  Präsentationsfenster und füllt es; die Statuszeile ist ausgeblendet.
 - **PDF-Zitate:** Als LaTeX erkannte Formeln wurden beim Übernehmen
   maskiert (`\$…\$`) und in der Vorschau nicht gesetzt.
 - **Mermaid-Diagramme** passen sich dem dunklen Hintergrund der Vorschau

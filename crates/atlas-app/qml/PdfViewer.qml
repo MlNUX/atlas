@@ -712,17 +712,17 @@ Rectangle {
         slide = page
         presenting = true
         presentationWindow.showFullScreen()
-        root.parent = presentationWindow.contentItem
+        body.parent = presentationWindow.contentItem
         presentationHint.restart()
         cursorTimer.restart()
         presentationWindow.requestActivate()
-        root.forceActiveFocus()
+        body.forceActiveFocus()
         Qt.callLater(() => showSlide(page))
     }
     function endPresentation() {
         if (!presenting) return
         const page = slide
-        root.parent = normalParent
+        body.parent = root
         presenting = false
         blank = ""
         presentationWindow.hide()
@@ -769,41 +769,12 @@ Rectangle {
     }
     // Slides of another size change the scale: keep the slide centred.
     onSlideScaleChanged: if (presenting) Qt.callLater(() => showSlide(slide))
-    Binding { target: root; property: "x"; value: 0; when: root.presenting; restoreMode: Binding.RestoreBindingOrValue }
-    Binding { target: root; property: "y"; value: 0; when: root.presenting; restoreMode: Binding.RestoreBindingOrValue }
-    Binding { target: root; property: "width"; value: presentationWindow.width; when: root.presenting; restoreMode: Binding.RestoreBindingOrValue }
-    Binding { target: root; property: "height"; value: presentationWindow.height; when: root.presenting; restoreMode: Binding.RestoreBindingOrValue }
+    /// The presentation window (for the smoke test).
+    readonly property alias presentationWindowItem: presentationWindow
+    readonly property alias bodyItem: body
+    readonly property bool statusShown: statusBar.visible
     Component.onDestruction: if (presenting) presentationWindow.hide()
 
-    // Click: next page, right click: previous, wheel: one page per notch;
-    // the pointer hides after two seconds without moving.
-    MouseArea {
-        id: presentationMouse
-        z: 100
-        anchors.fill: parent
-        visible: root.presenting
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        hoverEnabled: true
-        cursorShape: cursorTimer.running ? Qt.ArrowCursor : Qt.BlankCursor
-        property real wheelRest: 0
-        onPositionChanged: cursorTimer.restart()
-        onClicked: (mouse) => root.nextSlide(mouse.button === Qt.RightButton ? -1 : 1)
-        onWheel: (wheel) => {
-            const d = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y * 2
-            wheelRest += d
-            if (Math.abs(wheelRest) >= 120) {
-                root.nextSlide(wheelRest < 0 ? 1 : -1)
-                wheelRest = 0
-            }
-        }
-        Timer { id: cursorTimer; interval: 2000 }
-    }
-    Rectangle {
-        z: 99
-        anchors.fill: parent
-        visible: root.presenting && root.blank !== ""
-        color: root.blank || "black"
-    }
 
     Window {
         id: presentationWindow
@@ -854,7 +825,8 @@ Rectangle {
         }
     }
 
-    Keys.onPressed: (event) => {
+    Keys.onPressed: (event) => handleKey(event)
+    function handleKey(event) {
         if (presenting) { presentationKey(event); event.accepted = true; return }
         const ctrl = event.modifiers & Qt.ControlModifier
         // Undo and redo of annotation changes.
@@ -893,916 +865,958 @@ Rectangle {
         event.accepted = true
     }
 
-    ColumnLayout {
+    // Everything visible. In a presentation it moves into the presentation
+    // window and fills it; the viewer itself stays in its tab (the tab
+    // keeps sizing it there, which must not reach the presentation).
+    Rectangle {
+        id: body
         anchors.fill: parent
-        spacing: 0
+        color: root.color
+        focus: true
+        Keys.onPressed: (event) => root.handleKey(event)
 
-        Rectangle {
-            Layout.fillWidth: true
-            id: toolbar
-            Layout.preferredHeight: 32
-            visible: root.chrome && !root.presenting
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 6
-                anchors.rightMargin: 6
-                spacing: 3
-                IconButton {
-                    iconName: "list"
-                    tip: qsTr("Seitenleiste: Miniaturen, Inhalt und Annotationen")
-                    checkable: true
-                    checked: root.sidebarVisible
-                    onClicked: root.sidebarVisible = !root.sidebarVisible
-                }
-                TextField {
-                    id: pageField
-                    Layout.preferredWidth: 44
-                    implicitHeight: 24
-                    horizontalAlignment: Text.AlignHCenter
-                    font.pixelSize: Theme.smallFontSize
-                    text: doc.pageCount > 0 ? String(root.currentPage + 1) : ""
-                    validator: IntValidator { bottom: 1; top: Math.max(1, doc.pageCount) }
-                    onAccepted: { root.goToPage(parseInt(text) - 1); root.forceActiveFocus() }
-                }
-                Label {
-                    text: "/ " + doc.pageCount
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                }
-                IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Strg+−)"); onClicked: root.zoomBy(1 / 1.2) }
-                Label {
-                    text: Math.round(root.zoomScale * 100) + " %"
-                    color: Theme.text
-                    font.pixelSize: Theme.smallFontSize
-                    Layout.preferredWidth: 40
-                    horizontalAlignment: Text.AlignHCenter
-                }
-                IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg++)"); onClicked: root.zoomBy(1.2) }
-                IconButton { glyph: "↔"; tip: qsTr("Seitenbreite (Strg+0)"); checkable: true; checked: root.zoom === 0; onClicked: root.zoom = 0 }
-                IconButton { glyph: "▯"; tip: qsTr("Ganze Seite"); checkable: true; checked: root.zoom < 0; onClicked: root.zoom = -1 }
-                IconButton {
-                    iconName: "moon"
-                    tip: root.dark ? qsTr("Dunkelmodus aus: Originalfarben") : qsTr("Dunkelmodus: Farben umkehren (für alle PDFs)")
-                    checkable: true
-                    checked: root.dark
-                    enabled: !!root.app
-                    onClicked: root.app.pdfDark = !root.app.pdfDark
-                }
-                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
-                IconButton {
-                    glyph: "I"
-                    tip: qsTr("Text auswählen und markieren")
-                    checkable: true
-                    checked: root.tool === "select"
-                    onClicked: root.tool = "select"
-                }
-                IconButton {
-                    iconName: "pen"
-                    tip: qsTr("Freihand zeichnen")
-                    checkable: true
-                    checked: root.tool === "ink"
-                    onClicked: { root.tool = root.tool === "ink" ? "select" : "ink"; root.clearSelection() }
-                }
-                Rectangle {
-                    visible: root.tool === "ink"
-                    Layout.preferredWidth: 16
-                    Layout.preferredHeight: 16
-                    radius: 8
-                    color: root.inkColor
-                    border.color: Theme.border
-                    MouseArea { anchors.fill: parent; onClicked: inkMenu.popup() }
-                    Menu {
-                        id: inkMenu
-                        Repeater {
-                            model: root.markColors
-                            MenuItem {
-                                required property string modelData
-                                text: "●"
-                                onTriggered: root.inkColor = modelData
-                                contentItem: Text { text: "●  " + parent.modelData; color: parent.modelData }
-                            }
-                        }
-                        MenuSeparator {}
-                        MenuItem { text: qsTr("Dünn"); onTriggered: root.inkWidth = 1 }
-                        MenuItem { text: qsTr("Mittel"); onTriggered: root.inkWidth = 2 }
-                        MenuItem { text: qsTr("Breit"); onTriggered: root.inkWidth = 4 }
-                    }
-                }
-                IconButton {
-                    iconName: "eraser"
-                    tip: qsTr("Radierer: ganze Striche löschen (über sie fahren)")
-                    checkable: true
-                    checked: root.tool === "erase"
-                    onClicked: { root.tool = root.tool === "erase" ? "select" : "erase"; root.clearSelection() }
-                }
-                IconButton {
-                    glyph: "🗨"
-                    tip: qsTr("Notiz auf der Seite anheften")
-                    checkable: true
-                    checked: root.tool === "note"
-                    onClicked: { root.tool = root.tool === "note" ? "select" : "note"; root.clearSelection() }
-                }
-                IconButton {
-                    iconName: "image"
-                    tip: qsTr("Bild als Zitat: Rahmen um Abbildung oder Tabelle ziehen, dann Notiz wählen")
-                    checkable: true
-                    checked: root.tool === "figure"
-                    onClicked: { root.tool = root.tool === "figure" ? "select" : "figure"; root.clearSelection() }
-                }
-                IconButton {
-                    glyph: "∑"
-                    tip: qsTr("Formel als LaTeX: Rahmen um die Formel ziehen (läuft auf diesem Rechner)")
-                    checkable: true
-                    checked: root.tool === "latex"
-                    onClicked: { root.tool = root.tool === "latex" ? "select" : "latex"; root.clearSelection() }
-                }
-                IconButton {
-                    iconName: "undo"
-                    tip: qsTr("Rückgängig (Strg+Z)")
-                    enabled: root.canUndo
-                    onClicked: root.undo()
-                }
-                IconButton {
-                    iconName: "redo"
-                    tip: qsTr("Wiederholen (Strg+Umschalt+Z)")
-                    enabled: root.canRedo
-                    onClicked: root.redo()
-                }
-                IconButton {
-                    iconName: "bookmark"
-                    tip: root.pageBookmarked ? qsTr("Lesezeichen entfernen (Strg+D)") : qsTr("Lesezeichen für diese Seite (Strg+D)")
-                    checkable: true
-                    checked: root.pageBookmarked
-                    enabled: notes.status !== "loading" && notes.status !== "error"
-                    onClicked: root.toggleBookmark()
-                }
-                Item { Layout.fillWidth: true }
-                TextField {
-                    id: searchField
-                    Layout.preferredWidth: Math.min(220, root.width * 0.3)
-                    implicitHeight: 24
-                    font.pixelSize: Theme.smallFontSize
-                    placeholderText: qsTr("Im Dokument suchen (Strg+F)")
-                    onTextEdited: searchDebounce.restart()
-                    onAccepted: { searchDebounce.stop(); if (text === root.searchQuery) root.nextHit(1); else root.search(text) }
-                    Keys.onEscapePressed: { text = ""; root.search(""); root.forceActiveFocus() }
-                    Timer { id: searchDebounce; interval: 300; onTriggered: root.search(searchField.text) }
-                }
-                Label {
-                    visible: root.searchQuery.length > 0
-                    text: root.hits.length ? qsTr("%1/%2").arg(root.currentHit + 1).arg(root.hits.length) : qsTr("0 Treffer")
-                    color: root.hits.length ? Theme.textMuted : Theme.warn
-                    font.pixelSize: Theme.smallFontSize
-                }
-                IconButton { glyph: "↑"; tip: qsTr("Vorheriger Treffer (Umschalt+F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(-1) }
-                IconButton { glyph: "↓"; tip: qsTr("Nächster Treffer (F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(1) }
-                IconButton {
-                    glyph: "T"
-                    tip: qsTr("Text der aktuellen Seite, Formeln als LaTeX")
-                    enabled: doc.status === "ready"
-                    onClicked: doc.extractText(root.currentPage)
-                }
-                IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
-                IconButton {
-                    iconName: "play"
-                    tip: qsTr("Präsentieren ab dieser Seite (Umschalt+F5; F5: von vorn)")
-                    onClicked: root.startPresentation(false)
-                }
-                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
-                IconButton {
-                    iconName: "backlinks"; glyph: String(contextPanel.count)
-                    tip: qsTr("Notizen, die auf diese PDF verweisen oder daraus zitieren")
-                    checkable: true
-                    checked: root.showContext && contextPanel.tab === 0
-                    onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 0); contextPanel.tab = 0 }
-                }
-                IconButton {
-                    iconName: "graph"
-                    tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
-                    checkable: true
-                    checked: root.showContext && contextPanel.tab === 1
-                    onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 1); contextPanel.tab = 1 }
-                }
-            }
-        }
-
-        // The PDF changed since the annotations were made (only matters if
-        // there are any; without, the new version is taken silently).
-        Banner {
-            Layout.fillWidth: true
-            visible: root.changeNotice
-            message: qsTr("Diese PDF wurde seit dem Anlegen der %n Anmerkung(en) verändert – Markierungen können verschoben sein.", "", notes.count)
-            actions: [ { text: qsTr("Verstanden"), run: () => notes.acknowledgeChange() } ]
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+        ColumnLayout {
+            anchors.fill: parent
             spacing: 0
 
-            // Thumbnails, outline and annotations.
             Rectangle {
-                visible: root.sidebarVisible
-                Layout.preferredWidth: 220
-                Layout.fillHeight: true
-                color: Theme.sidebar
-                ColumnLayout {
+                Layout.fillWidth: true
+                id: toolbar
+                Layout.preferredHeight: 32
+                visible: root.chrome && !root.presenting
+                color: Theme.header
+                RowLayout {
                     anchors.fill: parent
-                    spacing: 0
-                    TabBar {
-                        id: sideTabs
-                        Layout.fillWidth: true
-                        currentIndex: root.sidebarTab
-                        onCurrentIndexChanged: root.sidebarTab = currentIndex
-                        TabButton { text: qsTr("Seiten"); font.pixelSize: Theme.smallFontSize }
-                        TabButton { text: qsTr("Inhalt"); font.pixelSize: Theme.smallFontSize }
-                        TabButton { text: qsTr("Anmerkungen") + (notes.count ? " " + notes.count : ""); font.pixelSize: Theme.smallFontSize }
+                    anchors.leftMargin: 6
+                    anchors.rightMargin: 6
+                    spacing: 3
+                    IconButton {
+                        iconName: "list"
+                        tip: qsTr("Seitenleiste: Miniaturen, Inhalt und Annotationen")
+                        checkable: true
+                        checked: root.sidebarVisible
+                        onClicked: root.sidebarVisible = !root.sidebarVisible
                     }
-                    StackLayout {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        currentIndex: sideTabs.currentIndex
-                        ListView {
-                            id: thumbs
-                            clip: true
-                            model: doc.status === "ready" ? doc.pageCount : 0
-                            spacing: 8
-                            topMargin: 8
-                            cacheBuffer: 400
-                            ScrollBar.vertical: ScrollBar {}
-                            delegate: Item {
-                                id: thumb
-                                required property int index
-                                width: ListView.view.width
-                                height: 110 * doc.pageHeight(index) / doc.pageWidth(index) + 22
-                                Rectangle {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    width: 110
-                                    height: parent.height - 22
-                                    color: root.paperColor
-                                    border.width: thumb.index === root.currentPage ? 2 : 0
-                                    border.color: Theme.accent
-                                    PdfPage {
-                                        anchors.fill: parent
-                                        anchors.margins: parent.border.width
-                                        source: doc.source
-                                        page: thumb.index
-                                        inverted: root.dark
-                                        renderWidth: Math.round(110 * Screen.devicePixelRatio)
+                    TextField {
+                        id: pageField
+                        Layout.preferredWidth: 44
+                        implicitHeight: 24
+                        horizontalAlignment: Text.AlignHCenter
+                        font.pixelSize: Theme.smallFontSize
+                        text: doc.pageCount > 0 ? String(root.currentPage + 1) : ""
+                        validator: IntValidator { bottom: 1; top: Math.max(1, doc.pageCount) }
+                        onAccepted: { root.goToPage(parseInt(text) - 1); root.forceActiveFocus() }
+                    }
+                    Label {
+                        text: "/ " + doc.pageCount
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                    IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Strg+−)"); onClicked: root.zoomBy(1 / 1.2) }
+                    Label {
+                        text: Math.round(root.zoomScale * 100) + " %"
+                        color: Theme.text
+                        font.pixelSize: Theme.smallFontSize
+                        Layout.preferredWidth: 40
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg++)"); onClicked: root.zoomBy(1.2) }
+                    IconButton { glyph: "↔"; tip: qsTr("Seitenbreite (Strg+0)"); checkable: true; checked: root.zoom === 0; onClicked: root.zoom = 0 }
+                    IconButton { glyph: "▯"; tip: qsTr("Ganze Seite"); checkable: true; checked: root.zoom < 0; onClicked: root.zoom = -1 }
+                    IconButton {
+                        iconName: "moon"
+                        tip: root.dark ? qsTr("Dunkelmodus aus: Originalfarben") : qsTr("Dunkelmodus: Farben umkehren (für alle PDFs)")
+                        checkable: true
+                        checked: root.dark
+                        enabled: !!root.app
+                        onClicked: root.app.pdfDark = !root.app.pdfDark
+                    }
+                    Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
+                    IconButton {
+                        glyph: "I"
+                        tip: qsTr("Text auswählen und markieren")
+                        checkable: true
+                        checked: root.tool === "select"
+                        onClicked: root.tool = "select"
+                    }
+                    IconButton {
+                        iconName: "pen"
+                        tip: qsTr("Freihand zeichnen")
+                        checkable: true
+                        checked: root.tool === "ink"
+                        onClicked: { root.tool = root.tool === "ink" ? "select" : "ink"; root.clearSelection() }
+                    }
+                    Rectangle {
+                        visible: root.tool === "ink"
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                        radius: 8
+                        color: root.inkColor
+                        border.color: Theme.border
+                        MouseArea { anchors.fill: parent; onClicked: inkMenu.popup() }
+                        Menu {
+                            id: inkMenu
+                            Repeater {
+                                model: root.markColors
+                                MenuItem {
+                                    required property string modelData
+                                    text: "●"
+                                    onTriggered: root.inkColor = modelData
+                                    contentItem: Text { text: "●  " + parent.modelData; color: parent.modelData }
+                                }
+                            }
+                            MenuSeparator {}
+                            MenuItem { text: qsTr("Dünn"); onTriggered: root.inkWidth = 1 }
+                            MenuItem { text: qsTr("Mittel"); onTriggered: root.inkWidth = 2 }
+                            MenuItem { text: qsTr("Breit"); onTriggered: root.inkWidth = 4 }
+                        }
+                    }
+                    IconButton {
+                        iconName: "eraser"
+                        tip: qsTr("Radierer: ganze Striche löschen (über sie fahren)")
+                        checkable: true
+                        checked: root.tool === "erase"
+                        onClicked: { root.tool = root.tool === "erase" ? "select" : "erase"; root.clearSelection() }
+                    }
+                    IconButton {
+                        glyph: "🗨"
+                        tip: qsTr("Notiz auf der Seite anheften")
+                        checkable: true
+                        checked: root.tool === "note"
+                        onClicked: { root.tool = root.tool === "note" ? "select" : "note"; root.clearSelection() }
+                    }
+                    IconButton {
+                        iconName: "image"
+                        tip: qsTr("Bild als Zitat: Rahmen um Abbildung oder Tabelle ziehen, dann Notiz wählen")
+                        checkable: true
+                        checked: root.tool === "figure"
+                        onClicked: { root.tool = root.tool === "figure" ? "select" : "figure"; root.clearSelection() }
+                    }
+                    IconButton {
+                        glyph: "∑"
+                        tip: qsTr("Formel als LaTeX: Rahmen um die Formel ziehen (läuft auf diesem Rechner)")
+                        checkable: true
+                        checked: root.tool === "latex"
+                        onClicked: { root.tool = root.tool === "latex" ? "select" : "latex"; root.clearSelection() }
+                    }
+                    IconButton {
+                        iconName: "undo"
+                        tip: qsTr("Rückgängig (Strg+Z)")
+                        enabled: root.canUndo
+                        onClicked: root.undo()
+                    }
+                    IconButton {
+                        iconName: "redo"
+                        tip: qsTr("Wiederholen (Strg+Umschalt+Z)")
+                        enabled: root.canRedo
+                        onClicked: root.redo()
+                    }
+                    IconButton {
+                        iconName: "bookmark"
+                        tip: root.pageBookmarked ? qsTr("Lesezeichen entfernen (Strg+D)") : qsTr("Lesezeichen für diese Seite (Strg+D)")
+                        checkable: true
+                        checked: root.pageBookmarked
+                        enabled: notes.status !== "loading" && notes.status !== "error"
+                        onClicked: root.toggleBookmark()
+                    }
+                    Item { Layout.fillWidth: true }
+                    TextField {
+                        id: searchField
+                        Layout.preferredWidth: Math.min(220, root.width * 0.3)
+                        implicitHeight: 24
+                        font.pixelSize: Theme.smallFontSize
+                        placeholderText: qsTr("Im Dokument suchen (Strg+F)")
+                        onTextEdited: searchDebounce.restart()
+                        onAccepted: { searchDebounce.stop(); if (text === root.searchQuery) root.nextHit(1); else root.search(text) }
+                        Keys.onEscapePressed: { text = ""; root.search(""); root.forceActiveFocus() }
+                        Timer { id: searchDebounce; interval: 300; onTriggered: root.search(searchField.text) }
+                    }
+                    Label {
+                        visible: root.searchQuery.length > 0
+                        text: root.hits.length ? qsTr("%1/%2").arg(root.currentHit + 1).arg(root.hits.length) : qsTr("0 Treffer")
+                        color: root.hits.length ? Theme.textMuted : Theme.warn
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                    IconButton { glyph: "↑"; tip: qsTr("Vorheriger Treffer (Umschalt+F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(-1) }
+                    IconButton { glyph: "↓"; tip: qsTr("Nächster Treffer (F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(1) }
+                    IconButton {
+                        glyph: "T"
+                        tip: qsTr("Text der aktuellen Seite, Formeln als LaTeX")
+                        enabled: doc.status === "ready"
+                        onClicked: doc.extractText(root.currentPage)
+                    }
+                    IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
+                    IconButton {
+                        iconName: "play"
+                        tip: qsTr("Präsentieren ab dieser Seite (Umschalt+F5; F5: von vorn)")
+                        onClicked: root.startPresentation(false)
+                    }
+                    Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
+                    IconButton {
+                        iconName: "backlinks"; glyph: String(contextPanel.count)
+                        tip: qsTr("Notizen, die auf diese PDF verweisen oder daraus zitieren")
+                        checkable: true
+                        checked: root.showContext && contextPanel.tab === 0
+                        onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 0); contextPanel.tab = 0 }
+                    }
+                    IconButton {
+                        iconName: "graph"
+                        tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
+                        checkable: true
+                        checked: root.showContext && contextPanel.tab === 1
+                        onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 1); contextPanel.tab = 1 }
+                    }
+                }
+            }
+
+            // The PDF changed since the annotations were made (only matters if
+            // there are any; without, the new version is taken silently).
+            Banner {
+                Layout.fillWidth: true
+                visible: root.changeNotice
+                message: qsTr("Diese PDF wurde seit dem Anlegen der %n Anmerkung(en) verändert – Markierungen können verschoben sein.", "", notes.count)
+                actions: [ { text: qsTr("Verstanden"), run: () => notes.acknowledgeChange() } ]
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 0
+
+                // Thumbnails, outline and annotations.
+                Rectangle {
+                    visible: root.sidebarVisible
+                    Layout.preferredWidth: 220
+                    Layout.fillHeight: true
+                    color: Theme.sidebar
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 0
+                        TabBar {
+                            id: sideTabs
+                            Layout.fillWidth: true
+                            currentIndex: root.sidebarTab
+                            onCurrentIndexChanged: root.sidebarTab = currentIndex
+                            TabButton { text: qsTr("Seiten"); font.pixelSize: Theme.smallFontSize }
+                            TabButton { text: qsTr("Inhalt"); font.pixelSize: Theme.smallFontSize }
+                            TabButton { text: qsTr("Anmerkungen") + (notes.count ? " " + notes.count : ""); font.pixelSize: Theme.smallFontSize }
+                        }
+                        StackLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            currentIndex: sideTabs.currentIndex
+                            ListView {
+                                id: thumbs
+                                clip: true
+                                model: doc.status === "ready" ? doc.pageCount : 0
+                                spacing: 8
+                                topMargin: 8
+                                cacheBuffer: 400
+                                ScrollBar.vertical: ScrollBar {}
+                                delegate: Item {
+                                    id: thumb
+                                    required property int index
+                                    width: ListView.view.width
+                                    height: 110 * doc.pageHeight(index) / doc.pageWidth(index) + 22
+                                    Rectangle {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: 110
+                                        height: parent.height - 22
+                                        color: root.paperColor
+                                        border.width: thumb.index === root.currentPage ? 2 : 0
+                                        border.color: Theme.accent
+                                        PdfPage {
+                                            anchors.fill: parent
+                                            anchors.margins: parent.border.width
+                                            source: doc.source
+                                            page: thumb.index
+                                            inverted: root.dark
+                                            renderWidth: Math.round(110 * Screen.devicePixelRatio)
+                                        }
+                                        Text {
+                                            visible: (root.annotsByPage[thumb.index + 1] || []).some(a => a.kind === "bookmark")
+                                            anchors.right: parent.right
+                                            anchors.top: parent.top
+                                            text: "🔖"
+                                            font.pixelSize: 12
+                                        }
+                                        MouseArea { anchors.fill: parent; onClicked: root.goToPage(thumb.index) }
                                     }
                                     Text {
-                                        visible: (root.annotsByPage[thumb.index + 1] || []).some(a => a.kind === "bookmark")
-                                        anchors.right: parent.right
-                                        anchors.top: parent.top
-                                        text: "🔖"
-                                        font.pixelSize: 12
+                                        anchors.bottom: parent.bottom
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: thumb.index + 1
+                                        color: thumb.index === root.currentPage ? Theme.textStrong : Theme.textMuted
+                                        font.pixelSize: Theme.smallFontSize
                                     }
-                                    MouseArea { anchors.fill: parent; onClicked: root.goToPage(thumb.index) }
-                                }
-                                Text {
-                                    anchors.bottom: parent.bottom
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: thumb.index + 1
-                                    color: thumb.index === root.currentPage ? Theme.textStrong : Theme.textMuted
-                                    font.pixelSize: Theme.smallFontSize
                                 }
                             }
-                        }
-                        ListView {
-                            id: outlineList
-                            clip: true
-                            model: { try { return JSON.parse(doc.outlineJson || "[]") } catch (e) { return [] } }
-                            ScrollBar.vertical: ScrollBar {}
-                            delegate: Rectangle {
-                                id: entry
-                                required property var modelData
-                                width: ListView.view.width
-                                height: Theme.rowHeight
-                                color: entryHover.hovered ? Theme.hover : "transparent"
-                                HoverHandler { id: entryHover }
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    x: 8 + entry.modelData.depth * 12
-                                    width: parent.width - x - 30
-                                    text: entry.modelData.title
-                                    color: Theme.text
-                                    font.pixelSize: Theme.smallFontSize
-                                    elide: Text.ElideRight
-                                }
-                                Text {
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 6
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: entry.modelData.page >= 0 ? entry.modelData.page + 1 : ""
-                                    color: Theme.textFaint
-                                    font.pixelSize: Theme.smallFontSize
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: if (entry.modelData.page >= 0) root.goToPage(entry.modelData.page)
-                                }
-                            }
-                            Label {
-                                anchors.centerIn: parent
-                                visible: outlineList.count === 0
-                                text: qsTr("Kein Inhaltsverzeichnis")
-                                color: Theme.textFaint
-                                font.pixelSize: Theme.smallFontSize
-                            }
-                        }
-                        ColumnLayout {
-                            spacing: 0
                             ListView {
-                                id: annotList
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
+                                id: outlineList
                                 clip: true
-                                // Built only while the list is shown.
-                                model: root.sidebarVisible && root.sidebarTab === 2 ? root.sortedAnnots : []
+                                model: { try { return JSON.parse(doc.outlineJson || "[]") } catch (e) { return [] } }
                                 ScrollBar.vertical: ScrollBar {}
                                 delegate: Rectangle {
-                                    id: annotRow
+                                    id: entry
                                     required property var modelData
                                     width: ListView.view.width
-                                    height: annotColumn.implicitHeight + 10
-                                    color: annotHover.hovered ? Theme.hover : root.focusedAnnot === modelData.id ? Theme.selection : "transparent"
-                                    HoverHandler { id: annotHover }
-                                    Rectangle {
-                                        x: 0; width: 3; height: parent.height
-                                        color: annotRow.modelData.color || Theme.accent
+                                    height: Theme.rowHeight
+                                    color: entryHover.hovered ? Theme.hover : "transparent"
+                                    HoverHandler { id: entryHover }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: 8 + entry.modelData.depth * 12
+                                        width: parent.width - x - 30
+                                        text: entry.modelData.title
+                                        color: Theme.text
+                                        font.pixelSize: Theme.smallFontSize
+                                        elide: Text.ElideRight
                                     }
-                                    ColumnLayout {
-                                        id: annotColumn
-                                        x: 10
-                                        y: 5
-                                        width: parent.width - 34
-                                        spacing: 2
-                                        RowLayout {
-                                            spacing: 4
-                                            Text { text: root.kindGlyph(annotRow.modelData.kind); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
-                                            Text { text: qsTr("S. %1").arg(annotRow.modelData.page); color: Theme.textFaint; font.pixelSize: Theme.smallFontSize }
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: root.annotationLabel(annotRow.modelData)
-                                            color: Theme.text
-                                            font.pixelSize: Theme.smallFontSize
-                                            wrapMode: Text.Wrap
-                                            maximumLineCount: 3
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            visible: !!annotRow.modelData.comment && !!annotRow.modelData.text
-                                            text: "💬 " + (annotRow.modelData.comment || "")
-                                            color: Theme.textMuted
-                                            font.pixelSize: Theme.smallFontSize
-                                            wrapMode: Text.Wrap
-                                            maximumLineCount: 2
-                                            elide: Text.ElideRight
-                                        }
+                                    Text {
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 6
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: entry.modelData.page >= 0 ? entry.modelData.page + 1 : ""
+                                        color: Theme.textFaint
+                                        font.pixelSize: Theme.smallFontSize
                                     }
                                     MouseArea {
                                         anchors.fill: parent
-                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                        onClicked: (mouse) => {
-                                            root.focusAnnotation(annotRow.modelData.id)
-                                            if (mouse.button === Qt.RightButton) annotPopup.show(annotRow.modelData.id, null)
-                                        }
-                                        onDoubleClicked: annotPopup.show(annotRow.modelData.id, null)
-                                    }
-                                    IconButton {
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 4
-                                        anchors.top: parent.top
-                                        anchors.topMargin: 4
-                                        visible: annotHover.hovered
-                                        iconName: "close"
-                                        tip: qsTr("Löschen")
-                                        onClicked: root.removeAnnot(annotRow.modelData.id)
+                                        onClicked: if (entry.modelData.page >= 0) root.goToPage(entry.modelData.page)
                                     }
                                 }
                                 Label {
                                     anchors.centerIn: parent
-                                    width: parent.width - 24
-                                    visible: annotList.count === 0
-                                    wrapMode: Text.Wrap
-                                    horizontalAlignment: Text.AlignHCenter
+                                    visible: outlineList.count === 0
+                                    text: qsTr("Kein Inhaltsverzeichnis")
                                     color: Theme.textFaint
                                     font.pixelSize: Theme.smallFontSize
-                                    text: notes.status === "error" ? notes.error
-                                        : qsTr("Noch keine Anmerkungen.\nText markieren, ✎ zeichnen, 🗨 anheften oder 🔖 setzen.")
                                 }
                             }
-                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-                            Button {
-                                Layout.fillWidth: true
-                                Layout.margins: 6
-                                flat: true
-                                font.pixelSize: Theme.smallFontSize
-                                text: qsTr("Als PDF-Kopie exportieren …")
-                                enabled: notes.count > 0
-                                onClicked: root.exportCopy()
-                                ToolTip.visible: hovered
-                                ToolTip.delay: 600
-                                ToolTip.text: qsTr("Schreibt eine Kopie mit eingebetteten Annotationen; die Original-PDF bleibt unverändert.")
-                            }
-                        }
-                    }
-                }
-            }
-
-            ListView {
-                id: pages
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                // Arrow keys are handled by the viewer (scroll, turn pages).
-                keyNavigationEnabled: false
-                model: doc.status === "ready" ? doc.pageCount : 0
-                // Presenting: a screen of space between pages, so only one
-                // shows; scrolling is the presentation's (page by page).
-                spacing: root.presenting ? height : 12
-                topMargin: root.presenting ? 0 : 12
-                bottomMargin: root.presenting ? 0 : 12
-                interactive: !root.presenting
-                cacheBuffer: Math.max(0, height)
-                boundsBehavior: Flickable.StopAtBounds
-                flickableDirection: Flickable.AutoFlickIfNeeded
-                contentWidth: root.presenting ? width : Math.max(width, doc.maxPageWidth * root.zoomScale + 32)
-                ScrollBar.vertical: ScrollBar { policy: root.presenting ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded }
-                ScrollBar.horizontal: ScrollBar { policy: root.presenting ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded }
-
-                // Ctrl+wheel zooms (on the list itself: it would take every
-                // wheel event for scrolling); the spot under the mouse stays.
-                // Touchpads and high-resolution wheels (Wayland) send small or
-                // pixel-only deltas; Ctrl+wheel never scrolls. Qt on Wayland
-                // reports even mouse wheels as a "touchpad" with finger pointer
-                // type: every device and pointer type counts.
-                WheelHandler {
-                    acceptedDevices: PointerDevice.AllDevices
-                    acceptedPointerTypes: PointerDevice.AllPointerTypes
-                    acceptedModifiers: Qt.ControlModifier
-                    onWheel: (event) => {
-                        event.accepted = true
-                        const steps = root.wheelSteps(event)
-                        if (!steps) return
-                        // The spot under the mouse stays: remembered as page and
-                        // place on that page – not as a distance from the top of
-                        // the document, which drifts (the gaps between pages do
-                        // not grow with the zoom, and the list only estimates the
-                        // positions of pages it has not laid out). Pages are
-                        // centred in the content, so a page narrower than the
-                        // view must not move sideways either.
-                        pagesFling.stop()
-                        pages.cancelFlick()
-                        // The handler lives in the list's content: its event
-                        // position includes the scroll position. In view
-                        // coordinates (counting the scroll position twice made
-                        // the pages run away – the further down, the more).
-                        const at = pages.mapFromItem(pages.contentItem, event.x, event.y)
-                        const before = root.zoomScale
-                        const offset = (z) => (pages.contentWidth - doc.maxPageWidth * z) / 2
-                        const px = (pages.contentX - pages.originX + at.x - offset(before)) / before
-                        const cy = pages.contentY + at.y
-                        let index = pages.indexAt(pages.contentWidth / 2, cy)
-                        if (index < 0) index = pages.indexAt(pages.contentWidth / 2, cy - pages.spacing)
-                        if (index < 0) index = root.currentPage
-                        const item = pages.itemAtIndex(index)
-                        // Place on the page as a fraction of its height (in the gap
-                        // below a page: a little over 1).
-                        const along = item && item.height > 0 ? (cy - item.y) / item.height : 0
-                        root.zoomBy(Math.pow(1.1, steps))
-                        const place = () => {
-                            const maxX = Math.max(0, pages.contentWidth - pages.width)
-                            const x = offset(root.zoomScale) + px * root.zoomScale - at.x
-                            pages.contentX = Math.max(0, Math.min(maxX, x)) + pages.originX
-                            // The pages at the new size, laid out now.
-                            pages.forceLayout()
-                            const now = pages.itemAtIndex(index)
-                            if (!now) return
-                            const y = now.y + along * now.height - at.y
-                            const minY = pages.originY - pages.topMargin
-                            const maxY = Math.max(minY, pages.originY + pages.contentHeight + pages.bottomMargin - pages.height)
-                            pages.contentY = Math.max(minY, Math.min(maxY, y))
-                        }
-                        // At once (no frame at the old position), and again after
-                        // the list settled (pages above may have been measured anew).
-                        place()
-                        Qt.callLater(place)
-                        event.accepted = true
-                    }
-                }
-                // Momentum after touchpad swipes (#4); the wheel handler below
-                // scrolls and reports the steps.
-                TouchpadFling {
-                    id: pagesFling
-                    parent: pages
-                    flickable: pages
-                    handleWheel: false
-                    active: !root.app || root.app.touchpadFling
-                    app: root.app
-                }
-                // Plain wheel: scroll faster than the list would (a few lines
-                // per notch felt sluggish on long documents). Touchpads keep
-                // their own pixel deltas, a bit amplified.
-                WheelHandler {
-                    acceptedDevices: PointerDevice.AllDevices
-                    acceptedPointerTypes: PointerDevice.AllPointerTypes
-                    acceptedModifiers: Qt.NoModifier
-                    onWheel: (event) => {
-                        const delta = (angle, pixel) => pixel !== 0 && (angle === 0 || angle % 120 !== 0)
-                            ? pixel * 1.5 : angle / 120 * root.wheelStep
-                        // Touchpad: measured for the momentum after the swipe.
-                        if (pagesFling.isTouchpad(event))
-                            pagesFling.sample(delta(event.angleDelta.x, event.pixelDelta.x), delta(event.angleDelta.y, event.pixelDelta.y))
-                        root.scrollBy(-delta(event.angleDelta.x, event.pixelDelta.x), -delta(event.angleDelta.y, event.pixelDelta.y))
-                        event.accepted = true
-                    }
-                }
-
-                delegate: Item {
-                    id: pageDelegate
-                    required property int index
-                    readonly property alias paperItem: paper
-                    width: pages.contentWidth
-                    height: doc.pageHeight(index) * root.zoomScale
-
-                    Rectangle {
-                        id: paper
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: doc.pageWidth(pageDelegate.index) * root.zoomScale
-                        height: parent.height
-                        color: root.paperColor
-
-                        PdfPage {
-                            id: page
-                            anchors.fill: parent
-                            source: doc.source
-                            page: pageDelegate.index
-                            inverted: root.dark
-                            renderWidth: Math.round(doc.pageWidth(pageDelegate.index) * root.renderScale * Screen.devicePixelRatio)
-                            onRenderMsChanged: root.lastRenderMs = renderMs
-                        }
-
-                        // Everything drawn over the page, in page points: the
-                        // layer is only scaled as a whole, so zooming does not
-                        // recompute every annotation, stroke point and hit.
-                        Item {
-                            id: overlay
-                            readonly property real s: root.zoomScale
-                            width: doc.pageWidth(pageDelegate.index)
-                            height: doc.pageHeight(pageDelegate.index)
-                            transformOrigin: Item.TopLeft
-                            scale: s
-
-                            // Annotations of this page.
-                            Repeater {
-                                model: root.annotsByPage[pageDelegate.index + 1] || []
-                                delegate: Item {
-                                    id: ann
-                                    required property var modelData
-                                    readonly property bool focused: root.focusedAnnot === modelData.id
-                                    anchors.fill: parent
-
-                                    // Text markup: one bar per line.
-                                    Repeater {
-                                        model: ["highlight", "underline", "strikeout"].indexOf(ann.modelData.kind) >= 0 ? ann.modelData.rects : []
-                                        delegate: Rectangle {
-                                            required property var modelData
-                                            x: modelData[0]
-                                            y: modelData[1]
-                                            width: modelData[2]
-                                            height: modelData[3]
-                                            color: ann.modelData.kind === "highlight" ? Qt.alpha(ann.modelData.color, 0.38) : "transparent"
-                                            border.width: ann.focused ? 2 / overlay.s : 0
-                                            border.color: "#ff9632"
-                                            Rectangle {
-                                                visible: ann.modelData.kind !== "highlight"
-                                                width: parent.width
-                                                height: Math.max(1.5 / overlay.s, 1.2)
-                                                y: ann.modelData.kind === "underline" ? parent.height - height : (parent.height - height) / 2
-                                                color: ann.modelData.color
+                            ColumnLayout {
+                                spacing: 0
+                                ListView {
+                                    id: annotList
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    // Built only while the list is shown.
+                                    model: root.sidebarVisible && root.sidebarTab === 2 ? root.sortedAnnots : []
+                                    ScrollBar.vertical: ScrollBar {}
+                                    delegate: Rectangle {
+                                        id: annotRow
+                                        required property var modelData
+                                        width: ListView.view.width
+                                        height: annotColumn.implicitHeight + 10
+                                        color: annotHover.hovered ? Theme.hover : root.focusedAnnot === modelData.id ? Theme.selection : "transparent"
+                                        HoverHandler { id: annotHover }
+                                        Rectangle {
+                                            x: 0; width: 3; height: parent.height
+                                            color: annotRow.modelData.color || Theme.accent
+                                        }
+                                        ColumnLayout {
+                                            id: annotColumn
+                                            x: 10
+                                            y: 5
+                                            width: parent.width - 34
+                                            spacing: 2
+                                            RowLayout {
+                                                spacing: 4
+                                                Text { text: root.kindGlyph(annotRow.modelData.kind); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
+                                                Text { text: qsTr("S. %1").arg(annotRow.modelData.page); color: Theme.textFaint; font.pixelSize: Theme.smallFontSize }
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: root.annotationLabel(annotRow.modelData)
+                                                color: Theme.text
+                                                font.pixelSize: Theme.smallFontSize
+                                                wrapMode: Text.Wrap
+                                                maximumLineCount: 3
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                visible: !!annotRow.modelData.comment && !!annotRow.modelData.text
+                                                text: "💬 " + (annotRow.modelData.comment || "")
+                                                color: Theme.textMuted
+                                                font.pixelSize: Theme.smallFontSize
+                                                wrapMode: Text.Wrap
+                                                maximumLineCount: 2
+                                                elide: Text.ElideRight
                                             }
                                         }
-                                    }
-                                    // Markers for comments on text markup.
-                                    Text {
-                                        visible: !!ann.modelData.comment && !!ann.modelData.rects && ann.modelData.rects.length > 0 && ann.modelData.kind !== "note"
-                                        x: visible ? ann.modelData.rects[0][0] + ann.modelData.rects[0][2] : 0
-                                        y: visible ? ann.modelData.rects[0][1] - height / 2 : 0
-                                        text: "💬"
-                                        font.pixelSize: Math.max(9 / overlay.s, 9)
-                                    }
-                                    // Comment pinned to the page.
-                                    Rectangle {
-                                        visible: ann.modelData.kind === "note"
-                                        x: visible ? ann.modelData.rects[0][0] : 0
-                                        y: visible ? ann.modelData.rects[0][1] : 0
-                                        width: Math.max(16 / overlay.s, 18)
-                                        height: width
-                                        radius: 3 / overlay.s
-                                        color: ann.modelData.color
-                                        border.width: (ann.focused ? 2 : 1) / overlay.s
-                                        border.color: ann.focused ? "#ff9632" : "#80000000"
-                                        Text { anchors.centerIn: parent; text: "🗨"; font.pixelSize: parent.height * 0.6 }
-                                        ToolTip.visible: noteHover.hovered && !!ann.modelData.comment
-                                        ToolTip.text: ann.modelData.comment || ""
-                                        HoverHandler { id: noteHover }
-                                    }
-                                    // Freehand strokes.
-                                    Shape {
-                                        visible: ann.modelData.kind === "ink"
-                                        anchors.fill: parent
-                                        ShapePath {
-                                            strokeColor: ann.focused ? "#ff9632" : ann.modelData.color
-                                            strokeWidth: ann.modelData.width || 2
-                                            fillColor: "transparent"
-                                            capStyle: ShapePath.RoundCap
-                                            joinStyle: ShapePath.RoundJoin
-                                            PathMultiline {
-                                                paths: ann.modelData.kind === "ink"
-                                                    ? ann.modelData.ink.map(st => st.map(p => Qt.point(p[0], p[1]))) : []
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                            onClicked: (mouse) => {
+                                                root.focusAnnotation(annotRow.modelData.id)
+                                                if (mouse.button === Qt.RightButton) annotPopup.show(annotRow.modelData.id, null)
                                             }
+                                            onDoubleClicked: annotPopup.show(annotRow.modelData.id, null)
+                                        }
+                                        IconButton {
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 4
+                                            anchors.top: parent.top
+                                            anchors.topMargin: 4
+                                            visible: annotHover.hovered
+                                            iconName: "close"
+                                            tip: qsTr("Löschen")
+                                            onClicked: root.removeAnnot(annotRow.modelData.id)
                                         }
                                     }
-                                    // Bookmark ribbon.
-                                    Text {
-                                        visible: ann.modelData.kind === "bookmark"
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 8 / overlay.s
-                                        y: -4 / overlay.s
-                                        text: "🔖"
-                                        font.pixelSize: Math.max(14 / overlay.s, 16)
+                                    Label {
+                                        anchors.centerIn: parent
+                                        width: parent.width - 24
+                                        visible: annotList.count === 0
+                                        wrapMode: Text.Wrap
+                                        horizontalAlignment: Text.AlignHCenter
+                                        color: Theme.textFaint
+                                        font.pixelSize: Theme.smallFontSize
+                                        text: notes.status === "error" ? notes.error
+                                            : qsTr("Noch keine Anmerkungen.\nText markieren, ✎ zeichnen, 🗨 anheften oder 🔖 setzen.")
                                     }
                                 }
+                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+                                Button {
+                                    Layout.fillWidth: true
+                                    Layout.margins: 6
+                                    flat: true
+                                    font.pixelSize: Theme.smallFontSize
+                                    text: qsTr("Als PDF-Kopie exportieren …")
+                                    enabled: notes.count > 0
+                                    onClicked: root.exportCopy()
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 600
+                                    ToolTip.text: qsTr("Schreibt eine Kopie mit eingebetteten Annotationen; die Original-PDF bleibt unverändert.")
+                                }
                             }
+                        }
+                    }
+                }
 
-                            // Current text selection.
-                            Repeater {
-                                model: root.selectionByPage[pageDelegate.index] || []
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    x: modelData[0]
-                                    y: modelData[1]
-                                    width: modelData[2]
-                                    height: modelData[3]
-                                    color: "#5a3399ff"
-                                }
-                            }
-                            // The box for "formula as LaTeX".
-                            Rectangle {
-                                readonly property var b: root.latexBox
-                                visible: !!b && b.page === pageDelegate.index
-                                x: b ? Math.min(b.x0, b.x1) : 0
-                                y: b ? Math.min(b.y0, b.y1) : 0
-                                width: b ? Math.abs(b.x1 - b.x0) : 0
-                                height: b ? Math.abs(b.y1 - b.y0) : 0
-                                color: "#223399ff"
-                                border.color: Theme.accent
-                                border.width: 1.5 / overlay.s
-                            }
-                            // Freehand stroke being drawn.
-                            Shape {
-                                visible: root.strokePage === pageDelegate.index && root.stroke.length > 1
-                                anchors.fill: parent
-                                ShapePath {
-                                    strokeColor: root.inkColor
-                                    strokeWidth: root.inkWidth
-                                    fillColor: "transparent"
-                                    capStyle: ShapePath.RoundCap
-                                    joinStyle: ShapePath.RoundJoin
-                                    PathPolyline {
-                                        path: root.strokePage === pageDelegate.index
-                                            ? root.stroke.map(p => Qt.point(p[0], p[1])) : []
-                                    }
-                                }
-                            }
-                            // Search hits on this page.
-                            Repeater {
-                                model: root.hitsByPage[pageDelegate.index] || []
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    x: modelData.x - 1 / overlay.s
-                                    y: modelData.y - 1 / overlay.s
-                                    width: modelData.w + 2 / overlay.s
-                                    height: modelData.h + 2 / overlay.s
-                                    color: modelData.index === root.currentHit ? "#80ff9632" : "#50ffd200"
-                                    border.color: modelData.index === root.currentHit ? "#ff9632" : "transparent"
-                                    border.width: 1 / overlay.s
-                                }
-                            }
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            visible: !page.rendered
-                            text: page.error ? page.error : qsTr("Seite %1").arg(pageDelegate.index + 1)
-                            color: page.error ? Theme.error : "#999999"
-                            width: parent.width - 20
-                            wrapMode: Text.Wrap
-                            horizontalAlignment: Text.AlignHCenter
-                        }
+                ListView {
+                    id: pages
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    // Arrow keys are handled by the viewer (scroll, turn pages).
+                    keyNavigationEnabled: false
+                    model: doc.status === "ready" ? doc.pageCount : 0
+                    // Presenting: a screen of space between pages, so only one
+                    // shows; scrolling is the presentation's (page by page).
+                    spacing: root.presenting ? height : 12
+                    topMargin: root.presenting ? 0 : 12
+                    bottomMargin: root.presenting ? 0 : 12
+                    interactive: !root.presenting
+                    cacheBuffer: Math.max(0, height)
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.AutoFlickIfNeeded
+                    contentWidth: root.presenting ? width : Math.max(width, doc.maxPageWidth * root.zoomScale + 32)
+                    ScrollBar.vertical: ScrollBar { policy: root.presenting ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded }
+                    ScrollBar.horizontal: ScrollBar { policy: root.presenting ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded }
 
-                        // Selecting, drawing and pinning notes.
-                        MouseArea {
-                            id: pageMouse
-                            anchors.fill: parent
-                            preventStealing: true
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            hoverEnabled: true
-                            cursorShape: root.tool === "erase" ? Qt.BlankCursor
-                                : root.tool === "ink" || root.tool === "note" || root.tool === "latex" || root.tool === "figure" ? Qt.CrossCursor
-                                : hoveredAnnotation || hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
-                            property var pressPoint: null
-                            property bool moved: false
-                            property var hoveredAnnotation: null
-                            property var hoveredLink: null
-                            /// Last eraser position (points) and strokes erased in this drag.
-                            property var erasePoint: null
-                            property int erased: 0
-                            /// Pointer position for the eraser circle.
-                            property point hoverPos: Qt.point(-100, -100)
-                            ToolTip.visible: !!hoveredLink && !!hoveredLink.uri && !pressed
-                            ToolTip.text: hoveredLink ? hoveredLink.uri : ""
-                            ToolTip.delay: 400
-                            function pointOf(mouse) {
-                                return { page: pageDelegate.index, x: mouse.x / root.zoomScale, y: mouse.y / root.zoomScale }
+                    // Ctrl+wheel zooms (on the list itself: it would take every
+                    // wheel event for scrolling); the spot under the mouse stays.
+                    // Touchpads and high-resolution wheels (Wayland) send small or
+                    // pixel-only deltas; Ctrl+wheel never scrolls. Qt on Wayland
+                    // reports even mouse wheels as a "touchpad" with finger pointer
+                    // type: every device and pointer type counts.
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.AllDevices
+                        acceptedPointerTypes: PointerDevice.AllPointerTypes
+                        acceptedModifiers: Qt.ControlModifier
+                        onWheel: (event) => {
+                            event.accepted = true
+                            const steps = root.wheelSteps(event)
+                            if (!steps) return
+                            // The spot under the mouse stays: remembered as page and
+                            // place on that page – not as a distance from the top of
+                            // the document, which drifts (the gaps between pages do
+                            // not grow with the zoom, and the list only estimates the
+                            // positions of pages it has not laid out). Pages are
+                            // centred in the content, so a page narrower than the
+                            // view must not move sideways either.
+                            pagesFling.stop()
+                            pages.cancelFlick()
+                            // The handler lives in the list's content: its event
+                            // position includes the scroll position. In view
+                            // coordinates (counting the scroll position twice made
+                            // the pages run away – the further down, the more).
+                            const at = pages.mapFromItem(pages.contentItem, event.x, event.y)
+                            const before = root.zoomScale
+                            const offset = (z) => (pages.contentWidth - doc.maxPageWidth * z) / 2
+                            const px = (pages.contentX - pages.originX + at.x - offset(before)) / before
+                            const cy = pages.contentY + at.y
+                            let index = pages.indexAt(pages.contentWidth / 2, cy)
+                            if (index < 0) index = pages.indexAt(pages.contentWidth / 2, cy - pages.spacing)
+                            if (index < 0) index = root.currentPage
+                            const item = pages.itemAtIndex(index)
+                            // Place on the page as a fraction of its height (in the gap
+                            // below a page: a little over 1).
+                            const along = item && item.height > 0 ? (cy - item.y) / item.height : 0
+                            root.zoomBy(Math.pow(1.1, steps))
+                            const place = () => {
+                                const maxX = Math.max(0, pages.contentWidth - pages.width)
+                                const x = offset(root.zoomScale) + px * root.zoomScale - at.x
+                                pages.contentX = Math.max(0, Math.min(maxX, x)) + pages.originX
+                                // The pages at the new size, laid out now.
+                                pages.forceLayout()
+                                const now = pages.itemAtIndex(index)
+                                if (!now) return
+                                const y = now.y + along * now.height - at.y
+                                const minY = pages.originY - pages.topMargin
+                                const maxY = Math.max(minY, pages.originY + pages.contentHeight + pages.bottomMargin - pages.height)
+                                pages.contentY = Math.max(minY, Math.min(maxY, y))
                             }
-                            onPositionChanged: (mouse) => {
-                                const vp = mapToItem(pages, mouse.x, mouse.y)
-                                hoverPos = Qt.point(mouse.x, mouse.y)
-                                if (root.tool === "erase") {
-                                    if (pressed && erasePoint) {
-                                        const p = pointOf(mouse)
-                                        erased += root.eraseAlong(pageDelegate.index, erasePoint.x, erasePoint.y, p.x, p.y)
-                                        erasePoint = p
-                                    }
-                                    return
-                                }
-                                if (!pressed) {
-                                    if (root.tool === "select") {
-                                        hoveredAnnotation = root.annotationAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
-                                        hoveredLink = hoveredAnnotation ? null : root.linkAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
-                                    }
-                                    return
-                                }
-                                root.dragViewport = vp
-                                if (!pressPoint) return
-                                if (Math.abs(mouse.x - pressPoint.vx) + Math.abs(mouse.y - pressPoint.vy) > 3) moved = true
-                                if (root.tool === "select" && moved) {
-                                    root.dragging = true
-                                    const p = root.pointAt(vp.x, vp.y)
-                                    if (p) { root.dragEnd = p; root.requestSelection() }
-                                } else if ((root.tool === "latex" || root.tool === "figure") && root.latexBox) {
-                                    const p = pointOf(mouse)
-                                    root.latexBox = Object.assign({}, root.latexBox, { x1: p.x, y1: p.y })
-                                } else if (root.tool === "ink") {
-                                    root.dragging = true
-                                    const p = root.pointAt(vp.x, vp.y)
-                                    if (!p || p.page !== root.strokePage) return
-                                    const last = root.stroke[root.stroke.length - 1]
-                                    if (!last || Math.abs(last[0] - p.x) + Math.abs(last[1] - p.y) > 0.8)
-                                        root.stroke = root.stroke.concat([[p.x, p.y]])
-                                }
-                            }
-                            onPressed: (mouse) => {
-                                root.forceActiveFocus()
-                                const p = pointOf(mouse)
-                                pressPoint = { vx: mouse.x, vy: mouse.y, page: p.page, x: p.x, y: p.y }
-                                moved = false
-                                if (mouse.button === Qt.RightButton) return
-                                if (root.tool === "erase") {
-                                    root.eraseBatch = Date.now().toString(36)
-                                    erasePoint = p
-                                    erased = root.eraseAlong(p.page, p.x, p.y, p.x, p.y)
-                                    return
-                                }
-                                if (root.tool === "select") {
-                                    selectionMenu.close()
-                                    if (!(mouse.modifiers & Qt.ShiftModifier) || !root.dragStart) {
-                                        root.selectStyle = 0
-                                        root.dragStart = p
-                                    }
-                                } else if (root.tool === "ink") {
-                                    root.strokePage = p.page
-                                    root.stroke = [[p.x, p.y]]
-                                } else if (root.tool === "latex" || root.tool === "figure") {
-                                    root.latexBox = { page: p.page, x0: p.x, y0: p.y, x1: p.x, y1: p.y }
-                                }
-                            }
-                            onReleased: (mouse) => {
-                                root.dragging = false
-                                const p = pointOf(mouse)
-                                if (mouse.button === Qt.RightButton) {
-                                    const hit = root.annotationAt(p.page, p.x, p.y)
-                                    if (hit) annotPopup.show(hit.id, mapToItem(root, mouse.x, mouse.y))
-                                    else if (root.selection.length) selectionMenu.showAt(mapToItem(root, mouse.x, mouse.y))
-                                    return
-                                }
-                                if (root.tool === "erase") {
-                                    root.eraseBatch = ""
-                                    erasePoint = null
-                                    if (erased > 0) root.message(qsTr("%n Strich(e) gelöscht – Strg+Z holt sie zurück", "", erased))
-                                    erased = 0
-                                    return
-                                }
-                                if (root.tool === "ink") {
-                                    if (root.stroke.length > 1)
-                                        root.addAnnot(JSON.stringify({ kind: "ink", page: root.strokePage + 1, ink: [root.stroke], color: root.inkColor, width: root.inkWidth }))
-                                    root.stroke = []
-                                    root.strokePage = -1
-                                    return
-                                }
-                                if (root.tool === "latex" || root.tool === "figure") {
-                                    const b = root.latexBox
-                                    root.latexBox = null
-                                    if (b && Math.abs(b.x1 - b.x0) > 4 && Math.abs(b.y1 - b.y0) > 4) {
-                                        if (root.tool === "latex") root.recognizeLatex(b.page, b.x0, b.y0, b.x1, b.y1)
-                                        else root.quoteFigure(b.page, b.x0, b.y0, b.x1, b.y1)
-                                    }
-                                    return
-                                }
-                                if (root.tool === "note") {
-                                    const id = root.addAnnot(JSON.stringify({ kind: "note", page: p.page + 1, rects: [[p.x - 9, p.y - 9, 18, 18]], color: "#ffd400" }))
-                                    if (id) annotPopup.show(id, mapToItem(root, mouse.x, mouse.y), true)
-                                    root.tool = "select"
-                                    return
-                                }
-                                if (!moved && !(mouse.modifiers & Qt.ShiftModifier)) {
-                                    // A click: open an annotation, follow a link or drop
-                                    // the selection.
-                                    const hit = root.annotationAt(p.page, p.x, p.y)
-                                    root.clearSelection()
-                                    if (hit) annotPopup.show(hit.id, mapToItem(root, mouse.x, mouse.y))
-                                    else {
-                                        const link = root.linkAt(p.page, p.x, p.y)
-                                        if (link) root.followLink(link)
-                                    }
-                                    return
-                                }
-                                if (mouse.modifiers & Qt.ShiftModifier) { root.dragEnd = root.pointAt(mapToItem(pages, mouse.x, mouse.y).x, mapToItem(pages, mouse.x, mouse.y).y) || p; root.requestSelection() }
-                                selectionMenu.showAt(mapToItem(root, mouse.x, mouse.y))
-                            }
-                            onDoubleClicked: (mouse) => {
-                                if (root.tool !== "select") return
-                                const p = pointOf(mouse)
-                                root.selectStyle = 1
-                                root.dragStart = p
-                                root.dragEnd = p
-                                root.requestSelection()
-                                selectionMenu.showAt(mapToItem(root, mouse.x, mouse.y))
-                            }
+                            // At once (no frame at the old position), and again after
+                            // the list settled (pages above may have been measured anew).
+                            place()
+                            Qt.callLater(place)
+                            event.accepted = true
                         }
-                        // The eraser under the pointer.
+                    }
+                    // Momentum after touchpad swipes (#4); the wheel handler below
+                    // scrolls and reports the steps.
+                    TouchpadFling {
+                        id: pagesFling
+                        parent: pages
+                        flickable: pages
+                        handleWheel: false
+                        active: !root.app || root.app.touchpadFling
+                        app: root.app
+                    }
+                    // Plain wheel: scroll faster than the list would (a few lines
+                    // per notch felt sluggish on long documents). Touchpads keep
+                    // their own pixel deltas, a bit amplified.
+                    WheelHandler {
+                        acceptedDevices: PointerDevice.AllDevices
+                        acceptedPointerTypes: PointerDevice.AllPointerTypes
+                        acceptedModifiers: Qt.NoModifier
+                        onWheel: (event) => {
+                            const delta = (angle, pixel) => pixel !== 0 && (angle === 0 || angle % 120 !== 0)
+                                ? pixel * 1.5 : angle / 120 * root.wheelStep
+                            // Touchpad: measured for the momentum after the swipe.
+                            if (pagesFling.isTouchpad(event))
+                                pagesFling.sample(delta(event.angleDelta.x, event.pixelDelta.x), delta(event.angleDelta.y, event.pixelDelta.y))
+                            root.scrollBy(-delta(event.angleDelta.x, event.pixelDelta.x), -delta(event.angleDelta.y, event.pixelDelta.y))
+                            event.accepted = true
+                        }
+                    }
+
+                    delegate: Item {
+                        id: pageDelegate
+                        required property int index
+                        readonly property alias paperItem: paper
+                        width: pages.contentWidth
+                        height: doc.pageHeight(index) * root.zoomScale
+
                         Rectangle {
-                            readonly property real size: Math.max(10, 2 * root.eraserRadius * root.zoomScale)
-                            visible: root.tool === "erase" && pageMouse.containsMouse
-                            x: pageMouse.hoverPos.x - size / 2
-                            y: pageMouse.hoverPos.y - size / 2
-                            width: size
-                            height: size
-                            radius: size / 2
-                            color: Qt.rgba(1, 1, 1, pageMouse.pressed ? 0.35 : 0.2)
-                            border.color: "#80000000"
-                            border.width: 1
+                            id: paper
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: doc.pageWidth(pageDelegate.index) * root.zoomScale
+                            height: parent.height
+                            color: root.paperColor
+
+                            PdfPage {
+                                id: page
+                                anchors.fill: parent
+                                source: doc.source
+                                page: pageDelegate.index
+                                inverted: root.dark
+                                renderWidth: Math.round(doc.pageWidth(pageDelegate.index) * root.renderScale * Screen.devicePixelRatio)
+                                onRenderMsChanged: root.lastRenderMs = renderMs
+                            }
+
+                            // Everything drawn over the page, in page points: the
+                            // layer is only scaled as a whole, so zooming does not
+                            // recompute every annotation, stroke point and hit.
+                            Item {
+                                id: overlay
+                                readonly property real s: root.zoomScale
+                                width: doc.pageWidth(pageDelegate.index)
+                                height: doc.pageHeight(pageDelegate.index)
+                                transformOrigin: Item.TopLeft
+                                scale: s
+
+                                // Annotations of this page.
+                                Repeater {
+                                    model: root.annotsByPage[pageDelegate.index + 1] || []
+                                    delegate: Item {
+                                        id: ann
+                                        required property var modelData
+                                        readonly property bool focused: root.focusedAnnot === modelData.id
+                                        anchors.fill: parent
+
+                                        // Text markup: one bar per line.
+                                        Repeater {
+                                            model: ["highlight", "underline", "strikeout"].indexOf(ann.modelData.kind) >= 0 ? ann.modelData.rects : []
+                                            delegate: Rectangle {
+                                                required property var modelData
+                                                x: modelData[0]
+                                                y: modelData[1]
+                                                width: modelData[2]
+                                                height: modelData[3]
+                                                color: ann.modelData.kind === "highlight" ? Qt.alpha(ann.modelData.color, 0.38) : "transparent"
+                                                border.width: ann.focused ? 2 / overlay.s : 0
+                                                border.color: "#ff9632"
+                                                Rectangle {
+                                                    visible: ann.modelData.kind !== "highlight"
+                                                    width: parent.width
+                                                    height: Math.max(1.5 / overlay.s, 1.2)
+                                                    y: ann.modelData.kind === "underline" ? parent.height - height : (parent.height - height) / 2
+                                                    color: ann.modelData.color
+                                                }
+                                            }
+                                        }
+                                        // Markers for comments on text markup.
+                                        Text {
+                                            visible: !!ann.modelData.comment && !!ann.modelData.rects && ann.modelData.rects.length > 0 && ann.modelData.kind !== "note"
+                                            x: visible ? ann.modelData.rects[0][0] + ann.modelData.rects[0][2] : 0
+                                            y: visible ? ann.modelData.rects[0][1] - height / 2 : 0
+                                            text: "💬"
+                                            font.pixelSize: Math.max(9 / overlay.s, 9)
+                                        }
+                                        // Comment pinned to the page.
+                                        Rectangle {
+                                            visible: ann.modelData.kind === "note"
+                                            x: visible ? ann.modelData.rects[0][0] : 0
+                                            y: visible ? ann.modelData.rects[0][1] : 0
+                                            width: Math.max(16 / overlay.s, 18)
+                                            height: width
+                                            radius: 3 / overlay.s
+                                            color: ann.modelData.color
+                                            border.width: (ann.focused ? 2 : 1) / overlay.s
+                                            border.color: ann.focused ? "#ff9632" : "#80000000"
+                                            Text { anchors.centerIn: parent; text: "🗨"; font.pixelSize: parent.height * 0.6 }
+                                            ToolTip.visible: noteHover.hovered && !!ann.modelData.comment
+                                            ToolTip.text: ann.modelData.comment || ""
+                                            HoverHandler { id: noteHover }
+                                        }
+                                        // Freehand strokes.
+                                        Shape {
+                                            visible: ann.modelData.kind === "ink"
+                                            anchors.fill: parent
+                                            ShapePath {
+                                                strokeColor: ann.focused ? "#ff9632" : ann.modelData.color
+                                                strokeWidth: ann.modelData.width || 2
+                                                fillColor: "transparent"
+                                                capStyle: ShapePath.RoundCap
+                                                joinStyle: ShapePath.RoundJoin
+                                                PathMultiline {
+                                                    paths: ann.modelData.kind === "ink"
+                                                        ? ann.modelData.ink.map(st => st.map(p => Qt.point(p[0], p[1]))) : []
+                                                }
+                                            }
+                                        }
+                                        // Bookmark ribbon.
+                                        Text {
+                                            visible: ann.modelData.kind === "bookmark"
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 8 / overlay.s
+                                            y: -4 / overlay.s
+                                            text: "🔖"
+                                            font.pixelSize: Math.max(14 / overlay.s, 16)
+                                        }
+                                    }
+                                }
+
+                                // Current text selection.
+                                Repeater {
+                                    model: root.selectionByPage[pageDelegate.index] || []
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        x: modelData[0]
+                                        y: modelData[1]
+                                        width: modelData[2]
+                                        height: modelData[3]
+                                        color: "#5a3399ff"
+                                    }
+                                }
+                                // The box for "formula as LaTeX".
+                                Rectangle {
+                                    readonly property var b: root.latexBox
+                                    visible: !!b && b.page === pageDelegate.index
+                                    x: b ? Math.min(b.x0, b.x1) : 0
+                                    y: b ? Math.min(b.y0, b.y1) : 0
+                                    width: b ? Math.abs(b.x1 - b.x0) : 0
+                                    height: b ? Math.abs(b.y1 - b.y0) : 0
+                                    color: "#223399ff"
+                                    border.color: Theme.accent
+                                    border.width: 1.5 / overlay.s
+                                }
+                                // Freehand stroke being drawn.
+                                Shape {
+                                    visible: root.strokePage === pageDelegate.index && root.stroke.length > 1
+                                    anchors.fill: parent
+                                    ShapePath {
+                                        strokeColor: root.inkColor
+                                        strokeWidth: root.inkWidth
+                                        fillColor: "transparent"
+                                        capStyle: ShapePath.RoundCap
+                                        joinStyle: ShapePath.RoundJoin
+                                        PathPolyline {
+                                            path: root.strokePage === pageDelegate.index
+                                                ? root.stroke.map(p => Qt.point(p[0], p[1])) : []
+                                        }
+                                    }
+                                }
+                                // Search hits on this page.
+                                Repeater {
+                                    model: root.hitsByPage[pageDelegate.index] || []
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        x: modelData.x - 1 / overlay.s
+                                        y: modelData.y - 1 / overlay.s
+                                        width: modelData.w + 2 / overlay.s
+                                        height: modelData.h + 2 / overlay.s
+                                        color: modelData.index === root.currentHit ? "#80ff9632" : "#50ffd200"
+                                        border.color: modelData.index === root.currentHit ? "#ff9632" : "transparent"
+                                        border.width: 1 / overlay.s
+                                    }
+                                }
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                visible: !page.rendered
+                                text: page.error ? page.error : qsTr("Seite %1").arg(pageDelegate.index + 1)
+                                color: page.error ? Theme.error : "#999999"
+                                width: parent.width - 20
+                                wrapMode: Text.Wrap
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+
+                            // Selecting, drawing and pinning notes.
+                            MouseArea {
+                                id: pageMouse
+                                anchors.fill: parent
+                                preventStealing: true
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                hoverEnabled: true
+                                cursorShape: root.tool === "erase" ? Qt.BlankCursor
+                                    : root.tool === "ink" || root.tool === "note" || root.tool === "latex" || root.tool === "figure" ? Qt.CrossCursor
+                                    : hoveredAnnotation || hoveredLink ? Qt.PointingHandCursor : Qt.IBeamCursor
+                                property var pressPoint: null
+                                property bool moved: false
+                                property var hoveredAnnotation: null
+                                property var hoveredLink: null
+                                /// Last eraser position (points) and strokes erased in this drag.
+                                property var erasePoint: null
+                                property int erased: 0
+                                /// Pointer position for the eraser circle.
+                                property point hoverPos: Qt.point(-100, -100)
+                                ToolTip.visible: !!hoveredLink && !!hoveredLink.uri && !pressed
+                                ToolTip.text: hoveredLink ? hoveredLink.uri : ""
+                                ToolTip.delay: 400
+                                function pointOf(mouse) {
+                                    return { page: pageDelegate.index, x: mouse.x / root.zoomScale, y: mouse.y / root.zoomScale }
+                                }
+                                onPositionChanged: (mouse) => {
+                                    const vp = mapToItem(pages, mouse.x, mouse.y)
+                                    hoverPos = Qt.point(mouse.x, mouse.y)
+                                    if (root.tool === "erase") {
+                                        if (pressed && erasePoint) {
+                                            const p = pointOf(mouse)
+                                            erased += root.eraseAlong(pageDelegate.index, erasePoint.x, erasePoint.y, p.x, p.y)
+                                            erasePoint = p
+                                        }
+                                        return
+                                    }
+                                    if (!pressed) {
+                                        if (root.tool === "select") {
+                                            hoveredAnnotation = root.annotationAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
+                                            hoveredLink = hoveredAnnotation ? null : root.linkAt(pageDelegate.index, mouse.x / root.zoomScale, mouse.y / root.zoomScale)
+                                        }
+                                        return
+                                    }
+                                    root.dragViewport = vp
+                                    if (!pressPoint) return
+                                    if (Math.abs(mouse.x - pressPoint.vx) + Math.abs(mouse.y - pressPoint.vy) > 3) moved = true
+                                    if (root.tool === "select" && moved) {
+                                        root.dragging = true
+                                        const p = root.pointAt(vp.x, vp.y)
+                                        if (p) { root.dragEnd = p; root.requestSelection() }
+                                    } else if ((root.tool === "latex" || root.tool === "figure") && root.latexBox) {
+                                        const p = pointOf(mouse)
+                                        root.latexBox = Object.assign({}, root.latexBox, { x1: p.x, y1: p.y })
+                                    } else if (root.tool === "ink") {
+                                        root.dragging = true
+                                        const p = root.pointAt(vp.x, vp.y)
+                                        if (!p || p.page !== root.strokePage) return
+                                        const last = root.stroke[root.stroke.length - 1]
+                                        if (!last || Math.abs(last[0] - p.x) + Math.abs(last[1] - p.y) > 0.8)
+                                            root.stroke = root.stroke.concat([[p.x, p.y]])
+                                    }
+                                }
+                                onPressed: (mouse) => {
+                                    root.forceActiveFocus()
+                                    const p = pointOf(mouse)
+                                    pressPoint = { vx: mouse.x, vy: mouse.y, page: p.page, x: p.x, y: p.y }
+                                    moved = false
+                                    if (mouse.button === Qt.RightButton) return
+                                    if (root.tool === "erase") {
+                                        root.eraseBatch = Date.now().toString(36)
+                                        erasePoint = p
+                                        erased = root.eraseAlong(p.page, p.x, p.y, p.x, p.y)
+                                        return
+                                    }
+                                    if (root.tool === "select") {
+                                        selectionMenu.close()
+                                        if (!(mouse.modifiers & Qt.ShiftModifier) || !root.dragStart) {
+                                            root.selectStyle = 0
+                                            root.dragStart = p
+                                        }
+                                    } else if (root.tool === "ink") {
+                                        root.strokePage = p.page
+                                        root.stroke = [[p.x, p.y]]
+                                    } else if (root.tool === "latex" || root.tool === "figure") {
+                                        root.latexBox = { page: p.page, x0: p.x, y0: p.y, x1: p.x, y1: p.y }
+                                    }
+                                }
+                                onReleased: (mouse) => {
+                                    root.dragging = false
+                                    const p = pointOf(mouse)
+                                    if (mouse.button === Qt.RightButton) {
+                                        const hit = root.annotationAt(p.page, p.x, p.y)
+                                        if (hit) annotPopup.show(hit.id, mapToItem(root, mouse.x, mouse.y))
+                                        else if (root.selection.length) selectionMenu.showAt(mapToItem(root, mouse.x, mouse.y))
+                                        return
+                                    }
+                                    if (root.tool === "erase") {
+                                        root.eraseBatch = ""
+                                        erasePoint = null
+                                        if (erased > 0) root.message(qsTr("%n Strich(e) gelöscht – Strg+Z holt sie zurück", "", erased))
+                                        erased = 0
+                                        return
+                                    }
+                                    if (root.tool === "ink") {
+                                        if (root.stroke.length > 1)
+                                            root.addAnnot(JSON.stringify({ kind: "ink", page: root.strokePage + 1, ink: [root.stroke], color: root.inkColor, width: root.inkWidth }))
+                                        root.stroke = []
+                                        root.strokePage = -1
+                                        return
+                                    }
+                                    if (root.tool === "latex" || root.tool === "figure") {
+                                        const b = root.latexBox
+                                        root.latexBox = null
+                                        if (b && Math.abs(b.x1 - b.x0) > 4 && Math.abs(b.y1 - b.y0) > 4) {
+                                            if (root.tool === "latex") root.recognizeLatex(b.page, b.x0, b.y0, b.x1, b.y1)
+                                            else root.quoteFigure(b.page, b.x0, b.y0, b.x1, b.y1)
+                                        }
+                                        return
+                                    }
+                                    if (root.tool === "note") {
+                                        const id = root.addAnnot(JSON.stringify({ kind: "note", page: p.page + 1, rects: [[p.x - 9, p.y - 9, 18, 18]], color: "#ffd400" }))
+                                        if (id) annotPopup.show(id, mapToItem(root, mouse.x, mouse.y), true)
+                                        root.tool = "select"
+                                        return
+                                    }
+                                    if (!moved && !(mouse.modifiers & Qt.ShiftModifier)) {
+                                        // A click: open an annotation, follow a link or drop
+                                        // the selection.
+                                        const hit = root.annotationAt(p.page, p.x, p.y)
+                                        root.clearSelection()
+                                        if (hit) annotPopup.show(hit.id, mapToItem(root, mouse.x, mouse.y))
+                                        else {
+                                            const link = root.linkAt(p.page, p.x, p.y)
+                                            if (link) root.followLink(link)
+                                        }
+                                        return
+                                    }
+                                    if (mouse.modifiers & Qt.ShiftModifier) { root.dragEnd = root.pointAt(mapToItem(pages, mouse.x, mouse.y).x, mapToItem(pages, mouse.x, mouse.y).y) || p; root.requestSelection() }
+                                    selectionMenu.showAt(mapToItem(root, mouse.x, mouse.y))
+                                }
+                                onDoubleClicked: (mouse) => {
+                                    if (root.tool !== "select") return
+                                    const p = pointOf(mouse)
+                                    root.selectStyle = 1
+                                    root.dragStart = p
+                                    root.dragEnd = p
+                                    root.requestSelection()
+                                    selectionMenu.showAt(mapToItem(root, mouse.x, mouse.y))
+                                }
+                            }
+                            // The eraser under the pointer.
+                            Rectangle {
+                                readonly property real size: Math.max(10, 2 * root.eraserRadius * root.zoomScale)
+                                visible: root.tool === "erase" && pageMouse.containsMouse
+                                x: pageMouse.hoverPos.x - size / 2
+                                y: pageMouse.hoverPos.y - size / 2
+                                width: size
+                                height: size
+                                radius: size / 2
+                                color: Qt.rgba(1, 1, 1, pageMouse.pressed ? 0.35 : 0.2)
+                                border.color: "#80000000"
+                                border.width: 1
+                            }
                         }
                     }
+
                 }
 
+                // Notes citing this PDF and the local graph.
+                ContextPanel {
+                    id: contextPanel
+                    Layout.preferredWidth: 280
+                    Layout.fillHeight: true
+                    visible: root.showContext
+                    app: root.app
+                    path: root.source
+                    onOpenRequested: (path, line, newPane, state) => root.linkActivated(path, line, newPane, state)
+                }
             }
 
-            // Notes citing this PDF and the local graph.
-            ContextPanel {
-                id: contextPanel
-                Layout.preferredWidth: 280
-                Layout.fillHeight: true
-                visible: root.showContext
-                app: root.app
-                path: root.source
-                onOpenRequested: (path, line, newPane, state) => root.linkActivated(path, line, newPane, state)
+            Rectangle {
+                Layout.fillWidth: true
+                id: statusBar
+                Layout.preferredHeight: 20
+                visible: (root.chrome || doc.status === "error") && !root.presenting
+                color: Theme.header
+                Label {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    verticalAlignment: Text.AlignVCenter
+                    color: doc.status === "error" ? Theme.error : Theme.textFaint
+                    font.pixelSize: Theme.smallFontSize
+                    elide: Text.ElideRight
+                    text: doc.status === "error" ? doc.error
+                        : doc.status === "loading" ? qsTr("Öffnen …")
+                        : qsTr("Öffnen %1 ms · Rendern %2 ms%3%4").arg(doc.openMs).arg(root.lastRenderMs)
+                            .arg(root.searchQuery ? qsTr(" · Suche %1 ms").arg(root.searchMs) : "")
+                            .arg(notes.status === "error" ? qsTr(" · Anmerkungen: %1").arg(notes.error)
+                                : notes.count ? qsTr(" · %n Anmerkung(en)", "", notes.count) : "")
+                }
             }
         }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 20
-            visible: root.chrome || doc.status === "error"
-            color: Theme.header
-            Label {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                verticalAlignment: Text.AlignVCenter
-                color: doc.status === "error" ? Theme.error : Theme.textFaint
-                font.pixelSize: Theme.smallFontSize
-                elide: Text.ElideRight
-                text: doc.status === "error" ? doc.error
-                    : doc.status === "loading" ? qsTr("Öffnen …")
-                    : qsTr("Öffnen %1 ms · Rendern %2 ms%3%4").arg(doc.openMs).arg(root.lastRenderMs)
-                        .arg(root.searchQuery ? qsTr(" · Suche %1 ms").arg(root.searchMs) : "")
-                        .arg(notes.status === "error" ? qsTr(" · Anmerkungen: %1").arg(notes.error)
-                            : notes.count ? qsTr(" · %n Anmerkung(en)", "", notes.count) : "")
+        // Click: next page, right click: previous, wheel: one page per notch;
+        // the pointer hides after two seconds without moving.
+        MouseArea {
+            id: presentationMouse
+            z: 100
+            anchors.fill: parent
+            visible: root.presenting
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            hoverEnabled: true
+            cursorShape: cursorTimer.running ? Qt.ArrowCursor : Qt.BlankCursor
+            property real wheelRest: 0
+            onPositionChanged: cursorTimer.restart()
+            onClicked: (mouse) => root.nextSlide(mouse.button === Qt.RightButton ? -1 : 1)
+            onWheel: (wheel) => {
+                const d = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y * 2
+                wheelRest += d
+                if (Math.abs(wheelRest) >= 120) {
+                    root.nextSlide(wheelRest < 0 ? 1 : -1)
+                    wheelRest = 0
+                }
             }
+            Timer { id: cursorTimer; interval: 2000 }
+        }
+        Rectangle {
+            z: 99
+            anchors.fill: parent
+            visible: root.presenting && root.blank !== ""
+            color: root.blank || "black"
         }
     }
 
