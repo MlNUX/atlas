@@ -63,6 +63,7 @@ Item {
     property bool goneOpened: false
     property var fullscreenTab: null
     property var folderTab: null
+    property var imageView: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -366,6 +367,8 @@ Item {
                 app.spellAdd("Tippfeler")
                 ed.updateSpelling()
                 check("Rechtschreibprüfung: eigenes Wörterbuch", !flagged(), JSON.stringify(ed.spellRanges.slice(-3)))
+                // A picture (cut out of a PDF) for the preview's picture window.
+                ed.insertText("\n\n" + app.pdfAreaToNote(path("docs/umbenannt.pdf"), 1, JSON.stringify([0, 0, 300, 200]), ed.source), true)
                 ed.insertText("\n\n## Abschnitt\n\n> Zitat", true)
                 // ---- Phase 2: user defined actions
                 check("Aktionsdatei fehlerfrei", app.actionErrors() === "[]", app.actionErrors())
@@ -400,6 +403,16 @@ Item {
                     check("Vorschau: Überschrift klappt ihren Abschnitt ein und aus", o.hidden > 0 && o.after === 0, r)
                     check("Vorschau: Diagramm auf dem Hintergrund der Seite", o.mermaid === "rgba(0, 0, 0, 0)", r)
                 })
+                md.previewItem.runJavaScript("(() => { const b = document.querySelector('.img-zoom'); if (b) b.click(); return !!b })()",
+                    (found) => check("Vorschau: Bild mit Vergrößern-Knopf", found))
+                test.imageView = md
+            },
+            () => {
+                const w = test.imageView.imageWindowItem
+                if (waitFor(() => w.visible && w.ready)) return
+                check("Bild vergrößern öffnet eigenes Fenster mit dem Bild", w.visible && w.ready && w.caption.indexOf("S. 1") > 0,
+                      [w.visible, w.ready, w.source, w.caption].join(" "))
+                w.close()
             },
             () => {
                 check("Aktion im Projektordner ausgeführt", app.readTextFile(path("aktion-ergebnis.txt")).indexOf("idee.md") >= 0)

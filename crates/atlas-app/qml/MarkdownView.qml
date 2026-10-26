@@ -99,6 +99,16 @@ Rectangle {
         root.actions.runInTerminal(["bash", "-c", script], dir)
     }
 
+    /// A picture of the preview in its own window. Local pictures come as
+    /// `atlas://file/<path>` (served to the preview only): as file URL.
+    function showImage(picture) {
+        const src = picture.src.startsWith("atlas://file/")
+            ? "file://" + picture.src.slice("atlas://file".length) : picture.src
+        imageWindow.show(src, picture.alt)
+    }
+    readonly property alias imageWindowItem: imageWindow
+    ImageWindow { id: imageWindow }
+
     readonly property alias previewItem: web
     readonly property alias previewRepaint: webRepaint
     readonly property alias contextPanelItem: contextPanel
@@ -337,6 +347,7 @@ Rectangle {
                         root.message(qsTr("Code kopiert"))
                     }
                     else if (text.startsWith("atlas:run:")) root.runCode(JSON.parse(text.slice(10)).code)
+                    else if (text.startsWith("atlas:image:")) root.showImage(JSON.parse(text.slice(12)))
                     else if (text.startsWith("atlas:task:")) {
                         const t = JSON.parse(text.slice(11))
                         if (!editor.toggleTask(t.line, t.checked)) root.render()

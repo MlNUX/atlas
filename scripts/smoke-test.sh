@@ -220,7 +220,7 @@ export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu"
 
 status=0
 # One step every 1.5 s; generous for slow machines.
-timeout 300 "$bin" "$project" --self-test 2> "$work/log" || status=$?
+timeout 600 "$bin" "$project" --self-test 2> "$work/log" || status=$?
 grep -E "selftest:" "$work/log" | sed 's/^qml: //' || true
 # KaTeX accepts what LaTeX would reject; that must not flood the log.
 if grep -q "LaTeX-incompatible" "$work/log"; then

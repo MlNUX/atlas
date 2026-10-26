@@ -174,24 +174,9 @@ window.atlas = (function () {
             img.addEventListener("dblclick", () => showPicture(img));
         });
     }
+    // Atlas shows the picture in a window of its own.
     function showPicture(img) {
-        const overlay = document.createElement("div");
-        overlay.className = "img-overlay";
-        const big = document.createElement("img");
-        big.src = img.src;
-        big.alt = img.alt;
-        overlay.appendChild(big);
-        if (img.alt) {
-            const caption = document.createElement("div");
-            caption.className = "img-caption";
-            caption.textContent = img.alt;
-            overlay.appendChild(caption);
-        }
-        const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
-        const onKey = (ev) => { if (ev.key === "Escape") close(); };
-        overlay.addEventListener("click", close);
-        document.addEventListener("keydown", onKey);
-        document.body.appendChild(overlay);
+        post("image", { src: img.getAttribute("src") || "", alt: img.alt || "" });
     }
 
     function markers() { return Array.from(document.querySelectorAll("a.line-marker")); }
