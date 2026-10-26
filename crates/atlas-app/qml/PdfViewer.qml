@@ -686,6 +686,9 @@ Rectangle {
 
     Window {
         id: fullscreenWindow
+        // A window of its own: Qt would take the window of the viewer as
+        // transient parent – in full screen that is this window itself.
+        transientParent: null
         title: root.source.split("/").pop()
         color: Theme.pdfBackdrop
         // Leaving full screen by the window manager or closing the window.
