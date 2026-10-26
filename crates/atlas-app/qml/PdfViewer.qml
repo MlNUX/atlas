@@ -691,10 +691,9 @@ Rectangle {
         transientParent: null
         title: root.source.split("/").pop()
         color: Theme.pdfBackdrop
-        // Leaving full screen by the window manager or closing the window.
-        onVisibilityChanged: (mode) => {
-            if (root.fullscreen && mode !== Window.FullScreen && mode !== Window.Hidden) root.exitFullscreen()
-        }
+        // Ends only by Esc/F11, the button or closing the window: on Wayland
+        // the compositor reports "windowed" for a moment while it is
+        // setting up full screen, which must not end it again.
         onClosing: (close) => { close.accepted = false; root.exitFullscreen() }
 
         Timer { id: fullscreenHint; interval: 2500 }

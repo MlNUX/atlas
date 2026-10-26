@@ -600,6 +600,15 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+E"; onActivated: sidebarTabs.currentIndex = 0 }
     Shortcut { sequence: "Ctrl+\\"; onActivated: if (editor.activeGroup) editor.splitGroup(editor.activeGroup) }
     Shortcut { sequence: "Ctrl+W"; onActivated: if (editor.activeGroup) editor.activeGroup.closeCurrent() }
+    // PDF full screen, wherever the focus is (the viewer handles F11 and Esc
+    // itself while in full screen).
+    Shortcut {
+        sequence: "F11"
+        onActivated: {
+            const v = editor.activeTab && editor.activeTab.kind === "pdf" ? editor.activeTab.viewerItem : null
+            if (v && v.enterFullscreen) v.enterFullscreen()
+        }
+    }
     Shortcut { sequence: "Ctrl+Tab"; onActivated: if (editor.activeGroup) editor.activeGroup.nextTab(1) }
     Shortcut { sequence: "Ctrl+Shift+Tab"; onActivated: if (editor.activeGroup) editor.activeGroup.nextTab(-1) }
     // In the calendar: previous / next week or month.
