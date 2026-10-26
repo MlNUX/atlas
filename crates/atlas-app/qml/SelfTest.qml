@@ -108,6 +108,18 @@ Item {
         console.log("selftest:", ok ? "ok  " : "FAIL", name, ok ? "" : "– " + (detail === undefined ? "" : detail))
     }
     function path(rel) { return app.projectRoot + "/" + rel }
+    /// In the presentation only page `index` of viewer `v` is to be seen
+    /// (completely, its neighbours not at all).
+    function slideAlone(v, index) {
+        const list = v.pagesView
+        const top = list.contentY, bottom = list.contentY + list.height
+        const inside = (i) => {
+            const it = list.itemAtIndex(i)
+            return it && it.y < bottom - 1 && it.y + it.height > top + 1
+        }
+        const it = list.itemAtIndex(index)
+        return !!it && it.y >= top - 1 && it.y + it.height <= bottom + 1 && !inside(index - 1) && !inside(index + 1)
+    }
     /// The keyboard focus is in `item` (or one of its children).
     function hasFocusIn(item) {
         for (let p = window.activeFocusItem; p; p = p.parent) if (p === item) return true
@@ -1221,8 +1233,8 @@ Item {
                 v.hidePageText()
             },
             () => {
-                // Full screen (F11): the same viewer in a window of its own,
-                // one page fits the screen.
+                // Presentation (like PowerPoint): the same viewer full screen,
+                // one page at a time; arrows, click and wheel turn pages.
                 const v = editor.activeTab.viewerItem
                 v.zoom = 1.5
                 test.fullscreenTab = editor.activeTab
@@ -1232,24 +1244,52 @@ Item {
                 v.goToPage(1)
                 v.forceActiveFocus()
                 if (waitFor(() => v.currentPage === 1)) return
-                app.sendKey(window, Qt.Key_F11, 0)
+                // F5: from the start (wherever the focus is).
+                app.sendKey(window, Qt.Key_F5, 0)
             },
             () => {
-                const v = editor.activeTab.viewerItem
+                const v = test.fullscreenTab.viewerItem
                 const w = v.Window.window
-                if (waitFor(() => v.fullscreen && v.width === w.width && w.visible)) return
-                check("Vollbild: PDF in eigenem Vollbildfenster, ganze Seite, gleiche Seite",
-                      v.fullscreen && w !== window && v.zoom === -1 && v.currentPage === 1 && v.width === w.width && v.height === w.height,
-                      [v.fullscreen, w === window, v.zoom, v.currentPage, v.width, w.width].join(" "))
-                check("Vollbild: Leiste ausgeblendet", !v.toolbarShown)
+                if (waitFor(() => v.presenting && v.width === w.width && w.visible && slideAlone(v, 0))) return
+                check("Präsentation (F5): eigenes Vollbildfenster, von Seite 1, nur diese Seite zu sehen",
+                      v.presenting && w !== window && v.slide === 0 && slideAlone(v, 0), [v.presenting, w === window, v.slide, slideAlone(v, 0)].join(" "))
+                check("Präsentation: keine Leiste", !v.toolbarShown)
+                app.sendKey(w, Qt.Key_Right, 0)
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                const w = v.Window.window
+                if (waitFor(() => v.slide === 1 && slideAlone(v, 1))) return
+                check("Präsentation: Pfeil rechts zeigt die nächste Seite allein", v.slide === 1 && slideAlone(v, 1), v.slide)
+                app.sendKey(w, Qt.Key_Right, 0)
+                check("Präsentation: nach der letzten Seite bleibt sie stehen", v.slide === 1, v.slide)
+                app.sendKey(w, Qt.Key_Left, 0)
+                check("Präsentation: Pfeil links zurück", v.slide === 0, v.slide)
+                app.postMouse(w, 0, w.width / 2, w.height / 2, 10)
+                app.postMouse(w, 2, w.width / 2, w.height / 2, 30)
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                const w = v.Window.window
+                if (waitFor(() => v.slide === 1)) return
+                check("Präsentation: Klick zeigt die nächste Seite", v.slide === 1 && slideAlone(v, 1), v.slide)
+                app.sendWheel(w, w.width / 2, w.height / 2, 120, 0)
+                check("Präsentation: Mausrad hoch zeigt die vorige Seite", v.slide === 0, v.slide)
+                app.sendKey(w, Qt.Key_2, 0)
+                app.sendKey(w, Qt.Key_Return, 0)
+                check("Präsentation: Zahl + Enter springt zur Seite", v.slide === 1, v.slide)
+                app.sendKey(w, Qt.Key_B, 0)
+                check("Präsentation: B macht den Bildschirm schwarz", v.blank === "black")
+                app.sendKey(w, Qt.Key_Space, 0)
+                check("Präsentation: nächste Taste hebt Schwarz auf, ohne zu blättern", v.blank === "" && v.slide === 1, v.blank + " " + v.slide)
                 app.sendKey(w, Qt.Key_Escape, 0)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
-                if (waitFor(() => !v.fullscreen && v.currentPage === 1)) return
-                check("Esc beendet das Vollbild: zurück im Tab mit vorigem Zoom und gleicher Seite",
-                      !v.fullscreen && v.Window.window === window && v.zoom === 1.5 && v.currentPage === 1 && editor.activeTab === test.fullscreenTab && v.toolbarShown,
-                      [v.fullscreen, v.Window.window === window, v.zoom, v.currentPage].join(" "))
+                if (waitFor(() => !v.presenting && v.currentPage === 1)) return
+                check("Esc beendet die Präsentation: zurück im Tab, vorheriger Zoom, zuletzt gezeigte Seite",
+                      !v.presenting && v.Window.window === window && v.zoom === 1.5 && v.currentPage === 1 && editor.activeTab === test.fullscreenTab && v.toolbarShown,
+                      [v.presenting, v.Window.window === window, v.zoom, v.currentPage].join(" "))
                 v.zoom = 0
             },
             () => {

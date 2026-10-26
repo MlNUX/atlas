@@ -28,10 +28,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Atlas erkennt sie an den Mathe-Schriften und lässt sie vom eingebauten
   Modell lesen; der übrige Text kommt sofort, mit „Kopieren“-Knopf.
 
-- **PDF im Vollbild**: Knopf in der PDF-Leiste oder F11. Eine Seite füllt
-  den Bildschirm, blättern mit Pfeiltasten, Bild↑/↓, Leertaste; Anmerkungen
-  und Werkzeuge gehen weiter. Esc oder F11 kehrt mit dem vorigen Zoom zur
-  gleichen Seite in den Tab zurück.
+- **PDF präsentieren** wie mit PowerPoint: F5 von vorn, Umschalt+F5 (oder
+  F11, ▶ in der PDF-Leiste) ab der aktuellen Seite. Im Vollbild steht immer
+  genau eine Seite auf Schwarz; weiter mit Klick, →, ↓, Leertaste, Enter,
+  Bild↓ oder Mausrad, zurück mit Rechtsklick, ←, ↑, Rücktaste, Bild↑;
+  Pos1/Ende, Seitenzahl + Enter springt; B/W schaltet auf Schwarz/Weiß;
+  der Mauszeiger verschwindet nach 2 s. Anmerkungen bleiben sichtbar. Esc
+  kehrt zur zuletzt gezeigten Seite in den Tab zurück.
 
 ### Geändert
 - Repository aufgeräumt: Konzept und Entwürfe unter `docs/concept/`,

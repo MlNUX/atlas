@@ -95,7 +95,7 @@ Rectangle {
     property int strokePage: -1
     property var stroke: []
 
-    color: Theme.pdfBackdrop
+    color: presenting ? "black" : Theme.pdfBackdrop
     focus: true
 
     function viewState() {
@@ -607,7 +607,10 @@ Rectangle {
     property int fitPageIndex: 0
     readonly property real fitPageScale: doc.pageCount > 0
         ? Math.max(0.1, Math.min(fitScale, (pages.height - 24) / doc.pageHeight(Math.min(fitPageIndex, doc.pageCount - 1)))) : 1
-    readonly property real zoomScale: zoom > 0 ? zoom : zoom < 0 ? fitPageScale : fitScale
+    readonly property real zoomScale: presenting ? slideScale : zoom > 0 ? zoom : zoom < 0 ? fitPageScale : fitScale
+    /// The slide as large as the screen allows (presentation).
+    readonly property real slideScale: doc.pageCount > 0
+        ? Math.max(0.1, Math.min(pages.width / doc.pageWidth(slide), pages.height / doc.pageHeight(slide))) : 1
     // Rendering follows the visible scale with a short delay so resizing a
     // split does not re-render every page on every frame.
     property real renderScale: zoomScale
@@ -640,65 +643,143 @@ Rectangle {
     }
     function zoomBy(factor) { zoom = Math.max(0.2, Math.min(6, zoomScale * factor)) }
 
-    // Full screen: the viewer itself moves into a window of its own (same
-    // document, annotations and tools), one page fits the screen; F11 or
-    // Esc brings it back to its tab with the zoom it had.
-    property bool fullscreen: false
+    // Presentation (like PowerPoint): the viewer itself moves into a full
+    // screen window of its own (annotations stay visible) and shows one page
+    // at a time on black. Click, arrows, space, wheel: next/previous page;
+    // number + Enter: that page; B/W: black/white screen; Esc: back to the
+    // tab, at the page shown last.
+    property bool presenting: false
+    /// The page shown in the presentation.
+    property int slide: 0
+    /// "" or the colour of a blanked screen ("black", "white").
+    property string blank: ""
+    /// Digits typed for "number + Enter".
+    property string typedSlide: ""
     readonly property bool toolbarShown: toolbar.visible
     property var normalParent: null
     property var normalState: null
-    function enterFullscreen() {
-        if (fullscreen || doc.status !== "ready") return
-        const page = currentPage
-        normalState = { zoom: zoom, sidebar: sidebarVisible, context: showContext }
+    function startPresentation(fromStart) {
+        if (presenting || doc.status !== "ready") return
+        const page = fromStart ? 0 : currentPage
+        normalState = { zoom: zoom, sidebar: sidebarVisible, context: showContext, tool: tool }
         normalParent = root.parent
-        fullscreen = true
+        clearSelection()
+        tool = "select"
         sidebarVisible = false
         showContext = false
-        fullscreenWindow.showFullScreen()
-        root.parent = fullscreenWindow.contentItem
-        zoom = -1
-        fullscreenHint.restart()
-        fullscreenWindow.requestActivate()
+        blank = ""
+        typedSlide = ""
+        slide = page
+        presenting = true
+        presentationWindow.showFullScreen()
+        root.parent = presentationWindow.contentItem
+        presentationHint.restart()
+        cursorTimer.restart()
+        presentationWindow.requestActivate()
         root.forceActiveFocus()
-        Qt.callLater(() => goToPage(page))
+        Qt.callLater(() => showSlide(page))
     }
-    function exitFullscreen() {
-        if (!fullscreen) return
-        const page = currentPage
+    function endPresentation() {
+        if (!presenting) return
+        const page = slide
         root.parent = normalParent
-        fullscreen = false
-        fullscreenWindow.hide()
+        presenting = false
+        blank = ""
+        presentationWindow.hide()
         if (normalState) {
             zoom = normalState.zoom
             sidebarVisible = normalState.sidebar
             showContext = normalState.context
+            tool = normalState.tool
         }
         if (root.Window.window) root.Window.window.requestActivate()
         root.forceActiveFocus()
         Qt.callLater(() => goToPage(page))
     }
-    Binding { target: root; property: "x"; value: 0; when: root.fullscreen; restoreMode: Binding.RestoreBindingOrValue }
-    Binding { target: root; property: "y"; value: 0; when: root.fullscreen; restoreMode: Binding.RestoreBindingOrValue }
-    Binding { target: root; property: "width"; value: fullscreenWindow.width; when: root.fullscreen; restoreMode: Binding.RestoreBindingOrValue }
-    Binding { target: root; property: "height"; value: fullscreenWindow.height; when: root.fullscreen; restoreMode: Binding.RestoreBindingOrValue }
-    Component.onDestruction: if (fullscreen) fullscreenWindow.hide()
+    /// Shows page `index` alone, centred (the gaps between pages are a
+    /// screen high, so no neighbour peeks in).
+    function showSlide(index) {
+        if (!presenting) return
+        slide = Math.max(0, Math.min(doc.pageCount - 1, index))
+        pages.forceLayout()
+        pages.positionViewAtIndex(slide, ListView.Center)
+    }
+    function nextSlide(step) {
+        if (blank) { blank = ""; return }
+        typedSlide = ""
+        showSlide(slide + step)
+    }
+    function presentationKey(event) {
+        const k = event.key
+        if (k === Qt.Key_Escape || k === Qt.Key_F11 || k === Qt.Key_F5) { endPresentation(); return }
+        if (k >= Qt.Key_0 && k <= Qt.Key_9) { typedSlide += String(k - Qt.Key_0); return }
+        if ((k === Qt.Key_Return || k === Qt.Key_Enter) && typedSlide) {
+            const n = parseInt(typedSlide)
+            typedSlide = ""
+            blank = ""
+            showSlide(n - 1)
+            return
+        }
+        if (k === Qt.Key_B || k === Qt.Key_Period) { blank = blank === "black" ? "" : "black"; return }
+        if (k === Qt.Key_W || k === Qt.Key_Comma) { blank = blank === "white" ? "" : "white"; return }
+        if ([Qt.Key_Right, Qt.Key_Down, Qt.Key_Space, Qt.Key_PageDown, Qt.Key_Return, Qt.Key_Enter, Qt.Key_N].indexOf(k) >= 0) nextSlide(1)
+        else if ([Qt.Key_Left, Qt.Key_Up, Qt.Key_Backspace, Qt.Key_PageUp, Qt.Key_P].indexOf(k) >= 0) nextSlide(-1)
+        else if (k === Qt.Key_Home) { blank = ""; showSlide(0) }
+        else if (k === Qt.Key_End) { blank = ""; showSlide(doc.pageCount - 1) }
+    }
+    // Slides of another size change the scale: keep the slide centred.
+    onSlideScaleChanged: if (presenting) Qt.callLater(() => showSlide(slide))
+    Binding { target: root; property: "x"; value: 0; when: root.presenting; restoreMode: Binding.RestoreBindingOrValue }
+    Binding { target: root; property: "y"; value: 0; when: root.presenting; restoreMode: Binding.RestoreBindingOrValue }
+    Binding { target: root; property: "width"; value: presentationWindow.width; when: root.presenting; restoreMode: Binding.RestoreBindingOrValue }
+    Binding { target: root; property: "height"; value: presentationWindow.height; when: root.presenting; restoreMode: Binding.RestoreBindingOrValue }
+    Component.onDestruction: if (presenting) presentationWindow.hide()
+
+    // Click: next page, right click: previous, wheel: one page per notch;
+    // the pointer hides after two seconds without moving.
+    MouseArea {
+        id: presentationMouse
+        z: 100
+        anchors.fill: parent
+        visible: root.presenting
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        hoverEnabled: true
+        cursorShape: cursorTimer.running ? Qt.ArrowCursor : Qt.BlankCursor
+        property real wheelRest: 0
+        onPositionChanged: cursorTimer.restart()
+        onClicked: (mouse) => root.nextSlide(mouse.button === Qt.RightButton ? -1 : 1)
+        onWheel: (wheel) => {
+            const d = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.pixelDelta.y * 2
+            wheelRest += d
+            if (Math.abs(wheelRest) >= 120) {
+                root.nextSlide(wheelRest < 0 ? 1 : -1)
+                wheelRest = 0
+            }
+        }
+        Timer { id: cursorTimer; interval: 2000 }
+    }
+    Rectangle {
+        z: 99
+        anchors.fill: parent
+        visible: root.presenting && root.blank !== ""
+        color: root.blank || "black"
+    }
 
     Window {
-        id: fullscreenWindow
+        id: presentationWindow
         // A window of its own: Qt would take the window of the viewer as
         // transient parent – in full screen that is this window itself.
         transientParent: null
         title: root.source.split("/").pop()
-        color: Theme.pdfBackdrop
-        // Ends only by Esc/F11, the button or closing the window: on Wayland
+        color: "black"
+        // Ends only by Esc, the button or closing the window: on Wayland
         // the compositor reports "windowed" for a moment while it is
         // setting up full screen, which must not end it again.
-        onClosing: (close) => { close.accepted = false; root.exitFullscreen() }
+        onClosing: (close) => { close.accepted = false; root.endPresentation() }
 
-        Timer { id: fullscreenHint; interval: 2500 }
+        Timer { id: presentationHint; interval: 3000 }
         Rectangle {
-            z: 10
+            z: 110
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.topMargin: 16
@@ -706,7 +787,7 @@ Rectangle {
             height: 34
             radius: 17
             color: "#d0202020"
-            opacity: fullscreenHint.running || exitArea.containsMouse || exitButton.hovered ? 1 : 0
+            opacity: presentationHint.running || hintArea.hovered || exitButton.hovered || root.typedSlide ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 200 } }
             visible: opacity > 0
             RowLayout {
@@ -714,24 +795,27 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 8
                 Label {
-                    text: qsTr("Seite %1 / %2 · Esc beendet das Vollbild").arg(root.currentPage + 1).arg(doc.pageCount)
+                    text: root.typedSlide
+                        ? qsTr("Gehe zu Seite %1 … (Enter)").arg(root.typedSlide)
+                        : qsTr("Seite %1 / %2 · Klick, ← → oder Mausrad blättern · B schwarz · Esc beendet").arg(root.slide + 1).arg(doc.pageCount)
                     color: "white"
                     font.pixelSize: Theme.smallFontSize
                 }
-                IconButton { id: exitButton; iconName: "minimize"; tip: qsTr("Vollbild beenden (Esc)"); onClicked: root.exitFullscreen() }
+                IconButton { id: exitButton; iconName: "close"; tip: qsTr("Präsentation beenden (Esc)"); onClicked: root.endPresentation() }
             }
         }
         // The hint comes back when the mouse goes to the top edge.
         Item {
-            z: 9
+            z: 109
             anchors.top: parent.top
             width: parent.width
             height: 60
-            HoverHandler { id: exitArea; readonly property bool containsMouse: hovered }
+            HoverHandler { id: hintArea }
         }
     }
 
     Keys.onPressed: (event) => {
+        if (presenting) { presentationKey(event); event.accepted = true; return }
         const ctrl = event.modifiers & Qt.ControlModifier
         // Undo and redo of annotation changes.
         if (ctrl && event.key === Qt.Key_Z && !(event.modifiers & Qt.ShiftModifier)) { undo(); event.accepted = true; return }
@@ -747,12 +831,8 @@ Rectangle {
             if (pages.contentWidth > pages.width + 1) scrollBy(-arrowStep, 0); else goToPage(currentPage - 1)
             event.accepted = true; return
         }
-        if (event.key === Qt.Key_F11 || (fullscreen && event.key === Qt.Key_Escape && !selection.length && tool === "select")) {
-            if (fullscreen) exitFullscreen(); else enterFullscreen()
-            event.accepted = true; return
-        }
-        if (fullscreen && (event.key === Qt.Key_Space || event.key === Qt.Key_Backspace)) {
-            goToPage(currentPage + (event.key === Qt.Key_Space ? 1 : -1))
+        if (event.key === Qt.Key_F5 || event.key === Qt.Key_F11) {
+            startPresentation(event.key === Qt.Key_F5 && !(event.modifiers & Qt.ShiftModifier))
             event.accepted = true; return
         }
         if (event.key === Qt.Key_PageDown) goToPage(currentPage + 1)
@@ -781,7 +861,7 @@ Rectangle {
             Layout.fillWidth: true
             id: toolbar
             Layout.preferredHeight: 32
-            visible: root.chrome && !root.fullscreen
+            visible: root.chrome && !root.presenting
             color: Theme.header
             RowLayout {
                 anchors.fill: parent
@@ -937,7 +1017,11 @@ Rectangle {
                     onClicked: doc.extractText(root.currentPage)
                 }
                 IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
-                IconButton { iconName: "maximize"; tip: qsTr("Vollbild (F11, Esc beendet)"); onClicked: root.enterFullscreen() }
+                IconButton {
+                    iconName: "play"
+                    tip: qsTr("Präsentieren ab dieser Seite (Umschalt+F5; F5: von vorn)")
+                    onClicked: root.startPresentation(false)
+                }
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
                 IconButton {
                     iconName: "backlinks"; glyph: String(contextPanel.count)
@@ -1189,15 +1273,18 @@ Rectangle {
                 // Arrow keys are handled by the viewer (scroll, turn pages).
                 keyNavigationEnabled: false
                 model: doc.status === "ready" ? doc.pageCount : 0
-                spacing: 12
-                topMargin: 12
-                bottomMargin: 12
+                // Presenting: a screen of space between pages, so only one
+                // shows; scrolling is the presentation's (page by page).
+                spacing: root.presenting ? height : 12
+                topMargin: root.presenting ? 0 : 12
+                bottomMargin: root.presenting ? 0 : 12
+                interactive: !root.presenting
                 cacheBuffer: Math.max(0, height)
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.AutoFlickIfNeeded
-                contentWidth: Math.max(width, doc.maxPageWidth * root.zoomScale + 32)
-                ScrollBar.vertical: ScrollBar {}
-                ScrollBar.horizontal: ScrollBar {}
+                contentWidth: root.presenting ? width : Math.max(width, doc.maxPageWidth * root.zoomScale + 32)
+                ScrollBar.vertical: ScrollBar { policy: root.presenting ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded }
+                ScrollBar.horizontal: ScrollBar { policy: root.presenting ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded }
 
                 // Ctrl+wheel zooms (on the list itself: it would take every
                 // wheel event for scrolling); the spot under the mouse stays.
