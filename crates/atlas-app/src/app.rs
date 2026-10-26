@@ -2905,8 +2905,9 @@ impl qobject::AppController {
                 .into_owned(),
         };
         let label = format!("{file_name}, S. {page}");
+        // The source as caption under the picture (same paragraph).
         qs(format!(
-            "![{label}]({})\n\n> — [{label}]({})",
+            "![{label}]({})\n*[{label}]({})*",
             assets::link_from(&note, &target),
             atlas_core::annotations::link(&source, page, None)
         ))

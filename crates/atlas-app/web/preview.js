@@ -11,6 +11,27 @@
 window.atlas = (function () {
     let mermaidLoading = null;
     let reportScroll = true;
+    // The PDF export prints on white paper: diagrams in light colours then.
+    let printMode = false;
+    // Diagrams in the colours of the page (navy design), see preview.css.
+    const DARK_DIAGRAMS = {
+        theme: "base",
+        themeVariables: {
+            darkMode: true, background: "transparent", fontFamily: "system-ui, Inter, Noto Sans, sans-serif",
+            primaryColor: "#1b2a44", primaryTextColor: "#eef3fb", primaryBorderColor: "#3d8bfd",
+            secondaryColor: "#22304a", secondaryTextColor: "#eef3fb", secondaryBorderColor: "#5aa2ff",
+            tertiaryColor: "#152036", tertiaryTextColor: "#c5d0e0", tertiaryBorderColor: "#2c3b58",
+            lineColor: "#8a97ad", textColor: "#c5d0e0", mainBkg: "#1b2a44", nodeBorder: "#3d8bfd",
+            clusterBkg: "#152036", clusterBorder: "#2c3b58", edgeLabelBackground: "#0f1726", titleColor: "#eef3fb",
+            noteBkgColor: "#2b2a1e", noteTextColor: "#f3e3b0", noteBorderColor: "#e0b33a",
+            actorBkg: "#1b2a44", actorBorder: "#3d8bfd", actorTextColor: "#eef3fb", signalColor: "#c5d0e0", signalTextColor: "#c5d0e0",
+            labelBoxBkgColor: "#1b2a44", labelTextColor: "#eef3fb", sequenceNumberColor: "#0f1726",
+            pie1: "#3d8bfd", pie2: "#7fdcaa", pie3: "#c9a8ff", pie4: "#f3cf74", pie5: "#ff9ca1", pieTitleTextColor: "#eef3fb",
+            pieSectionTextColor: "#0f1726", pieLegendTextColor: "#c5d0e0", pieStrokeColor: "#0f1726",
+            gridColor: "#2c3b58", sectionBkgColor: "#152036", altSectionBkgColor: "#0f1726", taskBkgColor: "#1b2a44",
+            taskBorderColor: "#3d8bfd", taskTextColor: "#eef3fb", taskTextOutsideColor: "#c5d0e0", todayLineColor: "#f2575f",
+        },
+    };
 
     function post(kind, data) { console.log("atlas:" + kind + ":" + JSON.stringify(data)); }
 
@@ -40,7 +61,8 @@ window.atlas = (function () {
                 const s = document.createElement("script");
                 s.src = "vendor/mermaid/mermaid.min.js";
                 s.onload = () => {
-                    mermaid.initialize({ startOnLoad: false, theme: "default", securityLevel: "strict" });
+                    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: "strict" },
+                        printMode ? { theme: "default" } : DARK_DIAGRAMS));
                     resolve();
                 };
                 document.head.appendChild(s);
@@ -132,6 +154,44 @@ window.atlas = (function () {
                 el.classList.toggle("hidden-by-fold", hideBelow > 0);
             }
         }
+    }
+
+    // Pictures: a button enlarges them to the size of the view (click or
+    // Esc closes it again).
+    function zoomablePictures(root) {
+        root.querySelectorAll("img").forEach((img) => {
+            if (img.closest(".img-box") || img.closest("a")) return;
+            const box = document.createElement("span");
+            box.className = "img-box";
+            img.parentNode.insertBefore(box, img);
+            box.appendChild(img);
+            const b = document.createElement("button");
+            b.className = "img-zoom";
+            b.title = "Vergrößern";
+            b.textContent = "⤢";
+            b.addEventListener("click", (ev) => { ev.stopPropagation(); showPicture(img); });
+            box.appendChild(b);
+            img.addEventListener("dblclick", () => showPicture(img));
+        });
+    }
+    function showPicture(img) {
+        const overlay = document.createElement("div");
+        overlay.className = "img-overlay";
+        const big = document.createElement("img");
+        big.src = img.src;
+        big.alt = img.alt;
+        overlay.appendChild(big);
+        if (img.alt) {
+            const caption = document.createElement("div");
+            caption.className = "img-caption";
+            caption.textContent = img.alt;
+            overlay.appendChild(caption);
+        }
+        const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+        const onKey = (ev) => { if (ev.key === "Escape") close(); };
+        overlay.addEventListener("click", close);
+        document.addEventListener("keydown", onKey);
+        document.body.appendChild(overlay);
     }
 
     function markers() { return Array.from(document.querySelectorAll("a.line-marker")); }
@@ -239,6 +299,7 @@ window.atlas = (function () {
             renderMath(main);
             highlight(main);
             codeTools(main);
+            zoomablePictures(main);
             foldable(main);
             busy = true;
             Promise.resolve(renderMermaid(main))
@@ -261,6 +322,8 @@ window.atlas = (function () {
             setTimeout(() => { reportScroll = true; }, 120);
         },
         scrollToY(y) { window.scrollTo(0, y); },
+        /// The PDF export: light diagrams (call before `set`).
+        setPrintMode(on) { printMode = !!on; },
         /// Follows the editor smoothly to source line `line` (fractional).
         follow,
         exactTopLine,

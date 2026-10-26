@@ -390,13 +390,15 @@ Item {
                     + " const h = Array.from(document.querySelectorAll('h2')).pop(); const f = h && h.querySelector('.fold'); if (f) f.click();"
                     + " const hidden = document.querySelectorAll('.hidden-by-fold').length; if (f) f.click();"
                     + " return JSON.stringify({ buttons: b, tree: t ? t.textContent.slice(0, 80) : '', tag: !!document.querySelector('.tag.inline'),"
-                    + " close: q ? getComputedStyle(q, '::after').content : '', hidden: hidden, after: document.querySelectorAll('.hidden-by-fold').length }) })()", (r) => {
+                    + " close: q ? getComputedStyle(q, '::after').content : '', hidden: hidden, after: document.querySelectorAll('.hidden-by-fold').length,"
+                    + " mermaid: (document.querySelector('pre.mermaid') ? getComputedStyle(document.querySelector('pre.mermaid')).backgroundColor : '') }) })()", (r) => {
                     const o = JSON.parse(r)
                     check("Vorschau: Kopieren-Knopf an Codeblöcken, Ausführen bei bash", o.buttons.indexOf("Kopieren") >= 0 && o.buttons.indexOf("▶ Ausführen") >= 0, r)
                     check("Vorschau: Ordnerbaum mit Linien", o.tree.indexOf("├── ") > 0, r)
                     check("Vorschau: #tag im Text", o.tag, r)
                     check("Vorschau: Zitat mit schließendem Anführungszeichen", o.close.indexOf("”") >= 0, r)
                     check("Vorschau: Überschrift klappt ihren Abschnitt ein und aus", o.hidden > 0 && o.after === 0, r)
+                    check("Vorschau: Diagramm auf dem Hintergrund der Seite", o.mermaid === "rgba(0, 0, 0, 0)", r)
                 })
             },
             () => {
@@ -1412,8 +1414,8 @@ Item {
                 sendToNote.close()
                 if (a) v.removeAnnot(a.id)
                 const md = app.pdfAreaToNote(path("docs/quelle.pdf"), 2, JSON.stringify([60, 200, 300, 300]), path("notes/zitate.md"))
-                const m = /^!\[quelle\.pdf, S\. 2\]\(\.\.\/(assets\/quelle-s2-[0-9-]+\.png)\)\n\n> — \[quelle\.pdf, S\. 2\]\(\/docs\/quelle\.pdf#page=2\)$/.exec(md)
-                check("Bild aus PDF als Zitat: PNG in assets/, Link auf die Seite", !!m && app.exists(path(m[1])), md)
+                const m = /^!\[quelle\.pdf, S\. 2\]\(\.\.\/(assets\/quelle-s2-[0-9-]+\.png)\)\n\*\[quelle\.pdf, S\. 2\]\(\/docs\/quelle\.pdf#page=2\)\*$/.exec(md)
+                check("Bild aus PDF als Zitat: PNG in assets/, Bildunterschrift mit Link auf die Seite", !!m && app.exists(path(m[1])), md)
             },
             () => {
                 // Arrow keys: down scrolls, right/left turn pages.

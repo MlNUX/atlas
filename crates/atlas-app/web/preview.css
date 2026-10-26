@@ -27,7 +27,8 @@ code { font: 0.9em/1.4 monospace; background: var(--raised); padding: 0.1em 0.35
 pre { background: #0b111d; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; overflow: auto; }
 pre code { background: none; padding: 0; }
 pre code.hljs { background: none; padding: 0; }
-pre.mermaid { background: #f6f6f6; color: #1f1f1f; text-align: center; }
+/* Diagrams on the page's own background (colours in preview.js). */
+pre.mermaid { background: transparent; border-color: var(--border); color: var(--text); text-align: center; }
 
 /* Quotes as cards; PDF quotes get the gold bar and their source as a chip. */
 blockquote {
@@ -52,6 +53,27 @@ th, td { border: 1px solid var(--border); padding: 6px 12px; }
 th { background: var(--raised); color: var(--strong); }
 tr:nth-child(even) td { background: #121c2e; }
 img { max-width: 100%; border-radius: 6px; }
+/* Pictures with a button to enlarge them. */
+.img-box { position: relative; display: inline-block; max-width: 100%; }
+.img-zoom {
+  position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 7px; cursor: zoom-in;
+  font-size: 16px; line-height: 1; color: var(--strong); background: rgba(15, 23, 38, 0.8); border: 1px solid var(--border);
+  opacity: 0; transition: opacity 0.15s;
+}
+.img-box:hover .img-zoom { opacity: 1; }
+.img-zoom:hover { border-color: var(--accent); }
+.img-overlay {
+  position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; background: rgba(5, 9, 16, 0.92); cursor: zoom-out; padding: 24px; box-sizing: border-box;
+}
+.img-overlay img { max-width: 100%; max-height: calc(100% - 40px); object-fit: contain; border-radius: 6px; background: white; }
+.img-caption { color: var(--muted); font-size: 0.9em; }
+/* A picture with its caption below (e.g. a figure quoted from a PDF:
+   picture, line break, *caption*). */
+p:has(> .img-box + em:last-child), p:has(> img + em:last-child) { text-align: center; }
+p:has(> .img-box) > em:last-child, p:has(> img) > em:last-child {
+  display: block; margin-top: 6px; font-size: 0.85em; font-style: normal; color: var(--muted);
+}
 hr { border: 0; border-top: 1px solid var(--border); }
 /* Task lists: no bullets, the box takes the bullet's place. */
 li:has(> input[type=checkbox]), li:has(> p > input[type=checkbox]) { list-style: none; margin: 0.2em 0; }
@@ -133,7 +155,7 @@ table.print-frame > * > tr > td { padding: 0; border: 0; background: none; }
   h1, h2, h3 { break-after: avoid; }
   pre, blockquote, table:not(.print-frame), img, pre.mermaid { break-inside: avoid; }
   a.broken::after { content: none; }
-  .code-tools, .fold { display: none; }
+  .code-tools, .fold, .img-zoom { display: none; }
   .hidden-by-fold { display: revert !important; }
   input.task { -webkit-print-color-adjust: exact; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }

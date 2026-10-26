@@ -31,7 +31,7 @@ Item {
     }
     function start() {
         const result = JSON.parse(app.renderMarkdown(app.readTextFile(source), source))
-        web.runJavaScript("atlas.set(" + JSON.stringify(result.html) + ")")
+        web.runJavaScript("atlas.setPrintMode(true); atlas.set(" + JSON.stringify(result.html) + ")")
         waitTimer.tries = 0
         waitTimer.start()
     }

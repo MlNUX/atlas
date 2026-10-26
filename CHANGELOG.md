@@ -59,7 +59,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **PDF-Zitate**: Formeln in markiertem Text kommen beim „In Notiz
   übernehmen“ als `$…$` in die Notiz. Neues Werkzeug **„Bild als Zitat“**:
   Rahmen um eine Abbildung ziehen, Notiz wählen – das Bild landet in
-  `assets/` mit Link auf die Seite.
+  `assets/`, darunter als Bildunterschrift der Link auf die Seite.
+- **Bilder in der Vorschau** vergrößern: Knopf ⤢ (oder Doppelklick),
+  Klick oder Esc schließt.
 
 ### Geändert
 - **PDFs schneller**:
@@ -76,6 +78,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 
 ### Behoben
+- **PDF-Zitate:** Als LaTeX erkannte Formeln wurden beim Übernehmen
+  maskiert (`\$…\$`) und in der Vorschau nicht gesetzt.
+- **Mermaid-Diagramme** passen sich dem dunklen Hintergrund der Vorschau
+  an (im PDF-Export weiter hell).
 - **Markdown-Vorschau:** Zitate bekommen auch das schließende „”“;
   verschachtelte Checklisten sind deutlicher eingerückt.
 - **Tabs:** Beim Wechsel des Tabs blieb der Tastaturfokus im vorherigen Tab
