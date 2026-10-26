@@ -265,7 +265,6 @@ Dialog {
                     elide: Text.ElideRight
                 }
             }
-            IconButton { glyph: "TODO"; tip: qsTr("TODO und FIXME im Projekt finden"); onClicked: dialog.searchTodos() }
             IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
         }
 
