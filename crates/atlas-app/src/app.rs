@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use atlas_core::config::{Config, EditorConfig, EditorLaunch, editor_launch};
 use atlas_core::finder;
@@ -65,6 +65,8 @@ pub mod qobject {
         #[qproperty(QString, context_modules, cxx_name = "contextModules", READ, NOTIFY)]
         /// Numbers in file names by value (`[files] natural_sort`).
         #[qproperty(bool, natural_sort, cxx_name = "naturalSort", READ, WRITE = set_natural_sort, NOTIFY)]
+        /// Spellcheck in notes (`[editor] spellcheck`).
+        #[qproperty(bool, spellcheck, READ, WRITE = set_spellcheck, NOTIFY)]
         /// Momentum scrolling after touchpad swipes (`[files] touchpad_fling`).
         #[qproperty(bool, touchpad_fling, cxx_name = "touchpadFling", READ, WRITE = set_touchpad_fling, NOTIFY)]
         /// Last chosen order of folder views as JSON {key, ascending}
@@ -117,6 +119,28 @@ pub mod qobject {
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
         fn set_natural_sort(self: Pin<&mut AppController>, on: bool);
         fn set_touchpad_fling(self: Pin<&mut AppController>, on: bool);
+        fn set_spellcheck(self: Pin<&mut AppController>, on: bool);
+
+        /// Misspelled words of the Markdown `text`: JSON `[[start, length]]`
+        /// in characters (UTF-16); "null" if no dictionary was found.
+        #[qinvokable]
+        #[cxx_name = "spellCheck"]
+        fn spell_check(self: &AppController, text: &QString) -> QString;
+
+        /// Up to five suggestions for `word`.
+        #[qinvokable]
+        #[cxx_name = "spellSuggest"]
+        fn spell_suggest(self: &AppController, word: &QString) -> QStringList;
+
+        /// Adds `word` to the personal dictionary (config folder).
+        #[qinvokable]
+        #[cxx_name = "spellAdd"]
+        fn spell_add(self: &AppController, word: &QString);
+
+        /// The dictionaries in use ("de_DE, en_US"; "" if none was found).
+        #[qinvokable]
+        #[cxx_name = "spellLanguages"]
+        fn spell_languages(self: &AppController) -> QString;
 
         /// Changes `[ilias]`: `base_url`, `download_dir` or
         /// `show_in_places` ("true"/"false").
@@ -809,6 +833,7 @@ pub struct AppControllerRust {
     context_modules: QString,
     natural_sort: bool,
     touchpad_fling: bool,
+    spellcheck: bool,
     folder_sort: QString,
     ilias_config: QString,
     /// Watches the file managers' places files.
@@ -880,6 +905,7 @@ impl Default for AppControllerRust {
             context_modules: context_json(&Config::load().context),
             natural_sort: Config::load().files.natural_sort,
             touchpad_fling: Config::load().files.touchpad_fling,
+            spellcheck: Config::load().editor.spellcheck.unwrap_or(true),
             folder_sort: folder_sort_json(&Config::load().files),
             ilias_config: ilias_json(&Config::load().ilias),
             places_watcher: None,
@@ -1039,6 +1065,48 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().touchpad_fling = on;
         self.as_mut().touchpad_fling_changed();
+    }
+
+    pub fn set_spellcheck(mut self: Pin<&mut Self>, on: bool) {
+        if self.spellcheck == on {
+            return;
+        }
+        let mut config = Config::load().editor;
+        config.spellcheck = if on { None } else { Some(false) };
+        if let Err(err) = Config::save_editor(&config) {
+            log::warn!("cannot save [editor]: {err:#}");
+        }
+        self.as_mut().rust_mut().spellcheck = on;
+        self.as_mut().spellcheck_changed();
+    }
+
+    pub fn spell_check(&self, text: &QString) -> QString {
+        let text = text.to_string();
+        with_speller(|checker| {
+            let bad = checker.misspelled(&text);
+            let list: Vec<[usize; 2]> =
+                atlas_core::spell::utf16_ranges(&text, &bad).into_iter().map(|(s, l)| [s, l]).collect();
+            serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())
+        })
+        .map_or_else(|| qs("null"), qs)
+    }
+
+    pub fn spell_suggest(&self, word: &QString) -> QStringList {
+        let mut out = QStringList::default();
+        for s in with_speller(|c| c.suggest(&word.to_string(), 5)).unwrap_or_default() {
+            out.append(qs(s));
+        }
+        out
+    }
+
+    pub fn spell_add(&self, word: &QString) {
+        if let Some(Err(err)) = with_speller(|c| c.add(&word.to_string())) {
+            log::warn!("spellcheck: {err:#}");
+        }
+    }
+
+    pub fn spell_languages(&self) -> QString {
+        qs(with_speller(|c| c.languages().join(", ")).unwrap_or_default())
     }
 
     pub fn set_ilias_config(mut self: Pin<&mut Self>, key: &QString, value: &QString) {
@@ -1858,7 +1926,7 @@ impl qobject::AppController {
         if let Err(err) = atlas_core::config::split_words(&command) {
             return qs(format!("{err:#}"));
         }
-        let editor = EditorConfig { command, terminal: Some(terminal) };
+        let editor = EditorConfig { command, terminal: Some(terminal), ..Config::load().editor };
         match Config::save_editor(&editor) {
             Ok(()) => QString::default(),
             Err(err) => qs(format!("{err:#}")),
@@ -3032,6 +3100,21 @@ fn folder_sort_json(f: &atlas_core::config::FilesConfig) -> QString {
 /// `[context]` for QML.
 fn context_json(c: &atlas_core::config::ContextConfig) -> QString {
     QString::from(serde_json::to_string(c).unwrap_or_else(|_| "{}".into()).as_str())
+}
+
+/// Runs `f` with the spellchecker, loaded on first use (about 0.1 s);
+/// `None` if no dictionary was found.
+fn with_speller<T>(f: impl FnOnce(&mut atlas_core::spell::Checker) -> T) -> Option<T> {
+    use atlas_core::spell::{Checker, dictionary_dirs};
+    static SPELLER: OnceLock<Mutex<Option<Checker>>> = OnceLock::new();
+    let speller = SPELLER.get_or_init(|| {
+        let personal = atlas_core::config::config_dir().join("dictionary.txt");
+        Mutex::new(
+            Checker::load(&dictionary_dirs(), Some(personal)).inspect_err(|e| log::info!("spellcheck: {e:#}")).ok(),
+        )
+    });
+    let mut guard = speller.lock().unwrap_or_else(|e| e.into_inner());
+    guard.as_mut().map(f)
 }
 
 /// Downloads the formula model the first time (see

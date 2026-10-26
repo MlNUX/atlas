@@ -26,6 +26,8 @@ makedepends=('rust' 'cargo' 'clang' 'pkgconf')
 optdepends=(
   'xdg-utils: Dateien mit dem Standardprogramm öffnen'
   'systemd: App-Passwort des Kalenders verschlüsselt speichern (systemd-creds)'
+  'hunspell-de: Rechtschreibprüfung Deutsch'
+  'hunspell-en_us: Rechtschreibprüfung Englisch'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')   # vor dem Hochladen: updpkgsums

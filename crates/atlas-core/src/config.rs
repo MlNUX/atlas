@@ -50,6 +50,9 @@ pub struct EditorConfig {
     pub command: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<bool>,
+    /// Spellcheck in notes (German and English); on unless `false`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spellcheck: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -508,17 +511,18 @@ mod tests {
     #[test]
     fn builds_editor_commands() {
         let file = Path::new("/p/src/Mein Parser.rs");
-        let cfg = EditorConfig { command: "code --goto {file}:{line}:{column}".into(), terminal: None };
+        let cfg =
+            EditorConfig { command: "code --goto {file}:{line}:{column}".into(), terminal: None, spellcheck: None };
         assert_eq!(
             editor_launch(&cfg, file, 12, 0).unwrap(),
             EditorLaunch::Detached(vec!["code".into(), "--goto".into(), "/p/src/Mein Parser.rs:12:1".into()])
         );
-        let cfg = EditorConfig { command: "nvim".into(), terminal: None };
+        let cfg = EditorConfig { command: "nvim".into(), terminal: None, spellcheck: None };
         assert_eq!(
             editor_launch(&cfg, file, 7, 0).unwrap(),
             EditorLaunch::Terminal(vec!["nvim".into(), "+7".into(), "/p/src/Mein Parser.rs".into()])
         );
-        let cfg = EditorConfig { command: "my-term-editor {file}".into(), terminal: Some(true) };
+        let cfg = EditorConfig { command: "my-term-editor {file}".into(), terminal: Some(true), spellcheck: None };
         assert!(matches!(editor_launch(&cfg, file, 1, 1).unwrap(), EditorLaunch::Terminal(_)));
     }
 
@@ -527,7 +531,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("config.toml");
         std::fs::write(&file, "[other]\nkey = 1\n").unwrap();
-        let editor = EditorConfig { command: "kate -l {line} {file}".into(), terminal: Some(false) };
+        let editor = EditorConfig { command: "kate -l {line} {file}".into(), terminal: Some(false), spellcheck: None };
         Config::save_editor_to(&file, &editor).unwrap();
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("[other]"), "{text}");

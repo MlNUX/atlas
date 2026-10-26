@@ -142,6 +142,7 @@ Rectangle {
         flick.contentY = Math.min(top, Math.max(0, flick.contentHeight - flick.height))
         if (root.line > 0) Qt.callLater(root.reveal, root.line)
         if (root.showSymbols) root.updateSymbols()
+        spellTimer.restart()
         root.synced()
     }
 
@@ -252,6 +253,63 @@ Rectangle {
         area.insert(pos, insert)
         area.cursorPosition = pos + insert.length
         return true
+    }
+
+    // ---- spellcheck (notes, German and English): the misspelled words are
+    // underlined in the visible part; a right click offers suggestions.
+    readonly property bool spellOn: root.wikiCompletion && !root.large && !!root.app && root.app.spellcheck
+    onSpellOnChanged: updateSpelling()
+    /// [start, length] of each misspelled word (characters).
+    property var spellRanges: []
+    /// Underlines of the visible ones: {x, y, w}.
+    property var spellMarks: []
+    function updateSpelling() {
+        let ranges = null
+        if (spellOn) try { ranges = JSON.parse(root.app.spellCheck(area.text)) } catch (e) {}
+        spellRanges = ranges || []
+        updateSpellMarks()
+    }
+    function updateSpellMarks() {
+        const top = flick.contentY - 40, bottom = flick.contentY + flick.height + 40
+        const marks = []
+        for (const r of spellRanges) {
+            const a = area.positionToRectangle(r[0])
+            if (a.y > bottom) break
+            if (a.y + a.height < top) continue
+            const b = area.positionToRectangle(r[0] + r[1])
+            // A word broken across two rows is left out.
+            if (Math.abs(b.y - a.y) > 1 || b.x <= a.x) continue
+            marks.push({ x: a.x, y: a.y + a.height - 1, w: b.x - a.x })
+            if (marks.length >= 500) break
+        }
+        spellMarks = marks
+    }
+    /// The misspelled word at character `pos`: [start, length] or null.
+    function spellRangeAt(pos) {
+        return spellRanges.find(r => pos >= r[0] && pos <= r[0] + r[1]) || null
+    }
+    Timer { id: spellTimer; interval: 450; onTriggered: root.updateSpelling() }
+    Timer { id: spellMarksTimer; interval: 50; onTriggered: root.updateSpellMarks() }
+    Connections {
+        target: flick
+        function onContentYChanged() { if (root.spellMarks.length || root.spellRanges.length) spellMarksTimer.restart() }
+        function onWidthChanged() { spellMarksTimer.restart() }
+    }
+
+    // Right click: suggestions for a misspelled word, cut, copy, paste.
+    property var menuWord: null
+    property var menuSuggestions: []
+    function showEditMenu(x, y) {
+        const pos = area.positionAt(x, y)
+        const r = spellOn ? spellRangeAt(pos) : null
+        menuWord = r ? { start: r[0], length: r[1], text: area.text.slice(r[0], r[0] + r[1]) } : null
+        menuSuggestions = menuWord ? root.app.spellSuggest(menuWord.text) : []
+        editMenu.popup()
+    }
+    function replaceWord(start, length, text) {
+        area.remove(start, start + length)
+        area.insert(start, text)
+        area.cursorPosition = start + text.length
     }
 
     /// Inserts `text` at the cursor (replacing a selection).
@@ -613,6 +671,8 @@ Rectangle {
                         recoveryTimer.restart()
                         if (root.autosave) autosaveTimer.restart()
                         if (root.showSymbols) symbolTimer.restart()
+                        // Old underlines would sit in the wrong place until checked again.
+                        if (root.spellOn) { root.spellMarks = []; spellTimer.restart() }
                     }
                     onCursorPositionChanged: if (root.wikiCompletion) completionTimer.restart()
                     Keys.onPressed: (event) => {
@@ -649,6 +709,58 @@ Rectangle {
                         else if (event.key === Qt.Key_Escape && findBar.visible) { findBar.visible = false; event.accepted = true }
                     }
                     FontMetrics { id: fontMetrics; font: area.font }
+
+                    // Misspelled words.
+                    Repeater {
+                        model: root.spellMarks
+                        Rectangle {
+                            required property var modelData
+                            x: modelData.x
+                            y: modelData.y
+                            width: modelData.w
+                            height: 1.6
+                            color: "#f2575f"
+                            opacity: 0.9
+                        }
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: (point) => root.showEditMenu(point.position.x, point.position.y)
+                    }
+                    Menu {
+                        id: editMenu
+                        Instantiator {
+                            model: root.menuSuggestions
+                            delegate: MenuItem {
+                                required property string modelData
+                                text: modelData
+                                font.bold: true
+                                onTriggered: if (root.menuWord) root.replaceWord(root.menuWord.start, root.menuWord.length, modelData)
+                            }
+                            onObjectAdded: (index, object) => editMenu.insertItem(index, object)
+                            onObjectRemoved: (index, object) => editMenu.removeItem(object)
+                        }
+                        MenuItem {
+                            visible: !!root.menuWord && root.menuSuggestions.length === 0
+                            height: visible ? implicitHeight : 0
+                            enabled: false
+                            text: qsTr("Keine Vorschläge")
+                        }
+                        MenuItem {
+                            visible: !!root.menuWord
+                            height: visible ? implicitHeight : 0
+                            text: root.menuWord ? qsTr("„%1“ zum Wörterbuch hinzufügen").arg(root.menuWord.text) : ""
+                            onTriggered: { root.app.spellAdd(root.menuWord.text); root.updateSpelling() }
+                        }
+                        MenuSeparator { visible: !!root.menuWord; height: visible ? implicitHeight : 0 }
+                        MenuItem { text: qsTr("Ausschneiden"); enabled: area.selectedText.length > 0; onTriggered: area.cut() }
+                        MenuItem { text: qsTr("Kopieren"); enabled: area.selectedText.length > 0; onTriggered: area.copy() }
+                        MenuItem {
+                            text: qsTr("Einfügen")
+                            onTriggered: { if (!(root.wikiCompletion && root.pasteSpecial())) area.paste() }
+                        }
+                        MenuItem { text: qsTr("Alles auswählen"); onTriggered: area.selectAll() }
+                    }
 
                     // Markdown: files dropped on the text are copied into
                     // `assets/` (pictures) and linked where they were dropped.

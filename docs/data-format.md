@@ -231,6 +231,8 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 | `$XDG_STATE_HOME/atlas/ilias/debug.log` | ILIAS-Protokoll zur Fehlersuche: Anmeldefenster, jede abgerufene Seite mit Weiterleitung und Anmelde-Urteil samt Grund, Funde, Downloads; von Cookies nur die Namen (höchstens 4 MB) |
 | `$XDG_STATE_HOME/atlas/ilias/debug/` | Kopien der Dashboard-Seiten und auffälliger Seiten (nicht angemeldet, nichts gefunden) des letzten Einlesens |
 | `$XDG_DATA_HOME/atlas/…/QtWebEngine/atlas-ilias/` | Web-Profil der ILIAS-Anmeldung (Cookies der Sitzung, kein Passwort) |
+| `$XDG_CONFIG_HOME/atlas/dictionary.txt` | eigenes Wörterbuch der Rechtschreibprüfung: ein Wort pro Zeile („zum Wörterbuch hinzufügen“) |
+| `<Projekt>/assets/` | in Notizen eingefügte Bilder (Strg+V, Ziehen, „Bild als Zitat“ aus PDFs); außerhalb eines Projekts `assets/` neben der Notiz |
 | `$XDG_STATE_HOME/atlas/trusted-extensions.json` | freigegebene Projekt-Erweiterungen: Ordner → BLAKE3 des Manifests |
 
 `ATLAS_STATE_DIR` und `ATLAS_CONFIG_DIR` ersetzen die beiden Ordner (Tests).
@@ -241,6 +243,7 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 [editor]
 command = "code --goto {file}:{line}:{column}"   # {file} {line} {column} {dir}
 terminal = false                                 # im Atlas-Terminal ausführen
+spellcheck = false                               # Rechtschreibprüfung aus (Standard: an)
 
 [terminal]
 shell = "/run/current-system/sw/bin/fish"        # Standard: Login-Shell
@@ -330,7 +333,9 @@ Unbekannte Schlüssel bleiben beim Speichern aus Atlas erhalten.
 ## In Notizen
 
 Atlas speichert nichts Verstecktes in Markdown-Dateien. Es liest Tags aus dem
-YAML-Frontmatter (`tags: [a, b/c]`) und `title:`, und es schreibt Links nur in
+YAML-Frontmatter (`tags: [a, b/c]`) und aus dem Text (`#lernen`, `#uni/ana1`:
+`#` nach Leerzeichen oder Zeilenanfang, dann ein Buchstabe; nicht in Code,
+Links und Überschriften), dazu `title:`, und es schreibt Links nur in
 der dokumentierten Form (`/pfad` ab Projektwurzel oder relativ, mit
 `#L10-L20`, `#page=3` oder Überschriften-Anker).
 

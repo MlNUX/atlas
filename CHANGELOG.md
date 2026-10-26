@@ -36,6 +36,31 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   der Mauszeiger verschwindet nach 2 s. Anmerkungen bleiben sichtbar. Esc
   kehrt zur zuletzt gezeigten Seite in den Tab zurück.
 
+- **Markdown-Editor**:
+  - Enter setzt Aufzählungen, Checkboxen (neu offen), Nummerierung und
+    Zitate fort; Enter auf einem leeren Punkt beendet die Liste.
+  - **Bilder** per Strg+V (auch Bildschirmfotos) oder Ziehen: landen in
+    `assets/` des Projekts und werden relativ zur Notiz verlinkt.
+  - Menü **„＋ Einfügen“**: Bild, Tabelle, Diagramm (Mermaid-Vorlagen:
+    Fluss, Sequenz, Klassen, Zustände, ER, Gantt, Mindmap, Kreis,
+    Zeitstrahl) und **Ordnerbaum** aus einem echten Ordner.
+  - **#Tags im Text** zählen wie die im YAML-Kopf; `#` schlägt die Tags des
+    Projekts vor.
+  - **Rechtschreibprüfung** Deutsch und Englisch zugleich, auf dem Rechner
+    (Hunspell-Wörterbücher, im Nix-Paket enthalten): rot unterstrichen,
+    Rechtsklick für Vorschläge oder „zum Wörterbuch hinzufügen“;
+    abschaltbar in den Einstellungen.
+- **Markdown-Vorschau**:
+  - Codeblöcke mit „Kopieren“, bash-/sh-Blöcke mit „▶ Ausführen“ im
+    Terminal von Atlas (im Ordner der Notiz).
+  - Überschriften klappen ihren Abschnitt ein und aus.
+  - ` ```tree `-Blöcke zeichnen eine eingerückte Liste als Ordnerbaum
+    (├── └──).
+- **PDF-Zitate**: Formeln in markiertem Text kommen beim „In Notiz
+  übernehmen“ als `$…$` in die Notiz. Neues Werkzeug **„Bild als Zitat“**:
+  Rahmen um eine Abbildung ziehen, Notiz wählen – das Bild landet in
+  `assets/` mit Link auf die Seite.
+
 ### Geändert
 - **PDFs schneller**:
   - Zoomen und Größe ändern ruckeln nicht mehr (die Seite wird skaliert
@@ -51,6 +76,8 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 
 ### Behoben
+- **Markdown-Vorschau:** Zitate bekommen auch das schließende „”“;
+  verschachtelte Checklisten sind deutlicher eingerückt.
 - **Tabs:** Beim Wechsel des Tabs blieb der Tastaturfokus im vorherigen Tab
   (z. B. Pfeiltasten im Ordner gingen ins Leere); jetzt bekommt ihn der
   neue Tab – Ordneransicht, Editor, PDF, Terminal

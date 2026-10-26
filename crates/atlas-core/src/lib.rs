@@ -31,6 +31,7 @@ pub mod relations;
 pub mod search;
 pub mod secret;
 pub mod session;
+pub mod spell;
 pub mod symbols;
 pub mod terminal;
 pub mod textfile;

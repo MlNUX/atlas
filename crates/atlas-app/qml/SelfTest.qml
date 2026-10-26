@@ -355,6 +355,17 @@ Item {
                       && ed.completionResults.some(r => r.tag === "wiki"), JSON.stringify(ed.completionResults))
                 ed.acceptCompletion()
                 check("Tag vervollständigt", ed.text.endsWith("Lernen für #wiki"), JSON.stringify(ed.text.slice(-20)))
+                // Spellcheck (German and English): typo found, suggestion, own dictionary.
+                ed.insertText("\n\nDas ist ein Tippfeler, the lecture is online.", true)
+                ed.updateSpelling()
+                const typo = ed.text.lastIndexOf("Tippfeler")
+                const flagged = () => ed.spellRanges.some(r => r[0] === typo && r[1] === 9)
+                check("Rechtschreibprüfung: Tippfehler unterstrichen, richtige Wörter nicht", app.spellLanguages() === "de_DE, en_US" && flagged()
+                      && !ed.spellRanges.some(r => r[0] > typo + 9), app.spellLanguages() + " " + JSON.stringify(ed.spellRanges.slice(-3)))
+                check("Rechtschreibprüfung: Vorschlag", app.spellSuggest("Tippfeler").indexOf("Tippfehler") >= 0, app.spellSuggest("Tippfeler"))
+                app.spellAdd("Tippfeler")
+                ed.updateSpelling()
+                check("Rechtschreibprüfung: eigenes Wörterbuch", !flagged(), JSON.stringify(ed.spellRanges.slice(-3)))
                 ed.insertText("\n\n## Abschnitt\n\n> Zitat", true)
                 // ---- Phase 2: user defined actions
                 check("Aktionsdatei fehlerfrei", app.actionErrors() === "[]", app.actionErrors())

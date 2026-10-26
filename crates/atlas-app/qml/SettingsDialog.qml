@@ -206,6 +206,38 @@ Dialog {
                     }
                 }
 
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: spellRow.implicitHeight + 24
+                    RowLayout {
+                        id: spellRow
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+                        Icon { Layout.alignment: Qt.AlignTop; name: "pen"; size: 18; color: Theme.accent }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Text { text: qsTr("Rechtschreibprüfung in Notizen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.smallFontSize
+                                readonly property string languages: dialog.visible ? dialog.app.spellLanguages() : ""
+                                text: (languages ? qsTr("Deutsch und Englisch zugleich (%1), auf diesem Rechner. ").arg(languages)
+                                                 : qsTr("Keine Wörterbücher gefunden (Hunspell de_DE, en_US). "))
+                                      + qsTr("Rechtsklick auf ein rot unterstrichenes Wort: Vorschläge oder ins eigene Wörterbuch.")
+                            }
+                        }
+                        Toggle {
+                            Layout.alignment: Qt.AlignVCenter
+                            checked: dialog.app.spellcheck
+                            onToggled: dialog.app.spellcheck = !dialog.app.spellcheck
+                        }
+                    }
+                }
+
                 SectionLabel { text: qsTr("ILIAS"); Layout.topMargin: 10 }
                 Card {
                     Layout.fillWidth: true
