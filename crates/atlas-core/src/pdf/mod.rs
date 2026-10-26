@@ -173,9 +173,28 @@ pub fn selection_spans(
 
 type Job = Box<dyn FnOnce(&mut dyn Backend, &mut HashMap<PathBuf, DocInfo>) + Send>;
 
-/// Handle to the PDF worker thread.
+/// Handle to the PDF worker threads: one for everything but rendering,
+/// a few for rendering pages in parallel (each with documents of its own:
+/// a Poppler document must not be used by two threads at once).
 pub struct PdfService {
     jobs: Sender<Job>,
+    renders: Sender<RenderJob>,
+    /// Bumped by [`PdfService::close`]: render threads reopen a document
+    /// whose number changed (it changed on disk).
+    closed: Arc<std::sync::Mutex<HashMap<PathBuf, u64>>>,
+}
+
+struct RenderJob {
+    path: PathBuf,
+    page: usize,
+    width_px: u32,
+    cancel: CancelToken,
+    done: Box<dyn FnOnce(Result<RenderedPage>) + Send>,
+}
+
+/// Render threads: up to 3, one fewer than the cores (the UI needs one).
+fn render_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| n.get().saturating_sub(1)).clamp(1, 3)
 }
 
 /// Lets a queued render be skipped when its result is no longer needed
@@ -211,7 +230,41 @@ impl PdfService {
                 }
             })
             .expect("spawn pdf worker");
-        Self { jobs: tx }
+        let closed: Arc<std::sync::Mutex<HashMap<PathBuf, u64>>> = Arc::default();
+        let (renders, render_rx) = unbounded::<RenderJob>();
+        for i in 0..render_threads() {
+            let rx = render_rx.clone();
+            let closed = closed.clone();
+            std::thread::Builder::new()
+                .name(format!("atlas-pdf-render-{i}"))
+                .spawn(move || {
+                    let mut backend = poppler::PopplerBackend::default();
+                    // Documents open here, with the close number they were opened at.
+                    let mut open: HashMap<PathBuf, u64> = HashMap::new();
+                    for job in rx {
+                        if job.cancel.is_cancelled() {
+                            continue;
+                        }
+                        let epoch = closed.lock().map(|c| c.get(&job.path).copied().unwrap_or(0)).unwrap_or(0);
+                        if open.get(&job.path) != Some(&epoch) {
+                            backend.close(&job.path);
+                            if let Err(err) = backend.open(&job.path) {
+                                (job.done)(Err(err));
+                                continue;
+                            }
+                            open.insert(job.path.clone(), epoch);
+                        }
+                        let start = Instant::now();
+                        let result =
+                            backend.render(&job.path, job.page, job.width_px.max(1)).map(|(width, height, bgra)| {
+                                RenderedPage { width, height, bgra, elapsed: start.elapsed() }
+                            });
+                        (job.done)(result);
+                    }
+                })
+                .expect("spawn pdf render worker");
+        }
+        Self { jobs: tx, renders, closed }
     }
 
     fn submit(&self, job: Job) {
@@ -237,13 +290,17 @@ impl PdfService {
 
     /// Forgets a document, e.g. after it changed on disk.
     pub fn close(&self, path: PathBuf) {
+        if let Ok(mut closed) = self.closed.lock() {
+            *closed.entry(path.clone()).or_default() += 1;
+        }
         self.submit(Box::new(move |backend, docs| {
             docs.remove(&path);
             backend.close(&path);
         }));
     }
 
-    /// Renders `page` (0 based) at `width_px` pixels width.
+    /// Renders `page` (0 based) at `width_px` pixels width (on one of the
+    /// render threads; `done` runs there).
     pub fn render(
         &self,
         path: PathBuf,
@@ -252,28 +309,7 @@ impl PdfService {
         cancel: CancelToken,
         done: impl FnOnce(Result<RenderedPage>) + Send + 'static,
     ) {
-        self.submit(Box::new(move |backend, docs| {
-            if cancel.is_cancelled() {
-                return;
-            }
-            if !docs.contains_key(&path) {
-                let start = Instant::now();
-                match backend.open(&path) {
-                    Ok(page_sizes) => {
-                        docs.insert(path.clone(), DocInfo { page_sizes, open_time: start.elapsed() });
-                    }
-                    Err(err) => return done(Err(err)),
-                }
-            }
-            let start = Instant::now();
-            let result = backend.render(&path, page, width_px.max(1)).map(|(width, height, bgra)| RenderedPage {
-                width,
-                height,
-                bgra,
-                elapsed: start.elapsed(),
-            });
-            done(result)
-        }));
+        let _ = self.renders.send(RenderJob { path, page, width_px, cancel, done: Box::new(done) });
     }
 
     /// Extracts the plain text of a page.
@@ -537,6 +573,86 @@ pub(crate) mod tests {
         assert_eq!(&page.bgra[row + 8..row + 12], &[0, 0, 255, 255], "output must be BGRA");
         let text = service.text_blocking(&path, 0).unwrap();
         assert!(text.contains("Hello Atlas"), "text: {text:?}");
+    }
+
+    /// By hand: several engines rendering the same document at the same
+    /// time give the same pixels as one (Poppler's font handling is shared).
+    #[test]
+    #[ignore]
+    fn parallel_rendering_is_identical() {
+        let path = PathBuf::from(std::env::var("ATLAS_BENCH_PDF").expect("ATLAS_BENCH_PDF"));
+        let mut backend = poppler::PopplerBackend::default();
+        let n = backend.open(&path).unwrap().len();
+        let hash =
+            |bgra: &[u8]| bgra.iter().fold(0u64, |h, &b| h.wrapping_mul(1_099_511_628_211).wrapping_add(u64::from(b)));
+        let expected: Vec<u64> = (0..n).map(|p| hash(&backend.render(&path, p, 900).unwrap().2)).collect();
+        for round in 0..3 {
+            let got: Vec<(usize, u64)> = std::thread::scope(|scope| {
+                let workers: Vec<_> = (0..4)
+                    .map(|t| {
+                        let path = path.clone();
+                        scope.spawn(move || {
+                            let mut backend = poppler::PopplerBackend::default();
+                            backend.open(&path).unwrap();
+                            (t..n)
+                                .step_by(4)
+                                .map(|p| (p, hash(&backend.render(&path, p, 900).unwrap().2)))
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .collect();
+                workers.into_iter().flat_map(|w| w.join().unwrap()).collect()
+            });
+            for (p, h) in got {
+                assert_eq!(h, expected[p], "round {round}, page {p}");
+            }
+        }
+        println!("{n} pages identical in 3 rounds of 4 threads");
+    }
+
+    /// By hand: render times of a real document, one engine and several in
+    /// parallel. `ATLAS_BENCH_PDF=lang.pdf cargo test --release -p atlas-core -- --ignored --nocapture render_benchmark`
+    #[test]
+    #[ignore]
+    fn render_benchmark() {
+        let path = PathBuf::from(std::env::var("ATLAS_BENCH_PDF").expect("ATLAS_BENCH_PDF"));
+        let width: u32 = std::env::var("ATLAS_BENCH_WIDTH").ok().and_then(|w| w.parse().ok()).unwrap_or(1600);
+        let mut backend = poppler::PopplerBackend::default();
+        let started = Instant::now();
+        let sizes = backend.open(&path).unwrap();
+        println!("open: {} pages, {} ms", sizes.len(), started.elapsed().as_millis());
+        let n = sizes.len().min(40);
+        let started = Instant::now();
+        let mut darken = Duration::ZERO;
+        for page in 0..n {
+            let (w, h, bgra) = backend.render(&path, page, width).unwrap();
+            let mut p = RenderedPage { width: w, height: h, bgra, elapsed: Duration::ZERO };
+            let t = Instant::now();
+            p.darken();
+            darken += t.elapsed();
+        }
+        let one = started.elapsed() - darken;
+        println!(
+            "render {n} pages at {width} px, one engine: {} ms per page; darken {} ms per page",
+            one.as_millis() / n as u128,
+            darken.as_millis() / n as u128
+        );
+        for threads in [2usize, 4] {
+            let started = Instant::now();
+            std::thread::scope(|scope| {
+                for t in 0..threads {
+                    let path = path.clone();
+                    scope.spawn(move || {
+                        let mut backend = poppler::PopplerBackend::default();
+                        backend.open(&path).unwrap();
+                        for page in (t..n).step_by(threads) {
+                            backend.render(&path, page, width).unwrap();
+                        }
+                    });
+                }
+            });
+            println!("{threads} engines: {} ms per page", started.elapsed().as_millis() / n as u128);
+        }
     }
 
     /// By hand, with the real formula model:

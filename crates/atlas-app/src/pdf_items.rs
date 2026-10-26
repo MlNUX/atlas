@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use atlas_core::pdf::{CancelToken, PdfService, RenderedPage, SelectionStyle, formulas, selection_spans};
 use cxx_qt::{CxxQtType, Threading};
-use cxx_qt_lib::{QColor, QImage, QImageFormat, QPainterCompositionMode, QRect, QRectF, QString};
+use cxx_qt_lib::{QColor, QImage, QImageFormat, QPainterCompositionMode, QRect, QRectF, QSize, QString};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -24,6 +24,8 @@ pub mod qobject {
         type QPainter = cxx_qt_lib::QPainter;
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+        include!("cxx-qt-lib/qsize.h");
+        type QSize = cxx_qt_lib::QSize;
     }
 
     extern "RustQt" {
@@ -129,6 +131,11 @@ pub mod qobject {
 
         #[inherit]
         fn update(self: Pin<&mut PdfPage>);
+        /// Fixed to the rendered image: zooming or resizing then only scales
+        /// the texture instead of painting the page anew on every frame.
+        #[inherit]
+        #[cxx_name = "setTextureSize"]
+        fn set_texture_size(self: Pin<&mut PdfPage>, size: &QSize);
         #[inherit]
         fn width(self: &PdfPage) -> f64;
         #[inherit]
@@ -421,6 +428,87 @@ impl qobject::PdfDocument {
     }
 }
 
+/// Rendered pages recently shown, so scrolling back (or reopening a PDF)
+/// shows them at once instead of rendering again. Keyed by file, its
+/// modification time (a changed file misses), page, width and dark mode;
+/// the oldest go first beyond `CACHE_BYTES`. GUI thread only.
+mod page_cache {
+    use std::cell::RefCell;
+    use std::collections::VecDeque;
+    use std::path::{Path, PathBuf};
+    use std::time::SystemTime;
+
+    use cxx_qt_lib::QImage;
+
+    const CACHE_BYTES: usize = 256 << 20;
+
+    #[derive(Clone, PartialEq)]
+    pub struct Key {
+        path: PathBuf,
+        modified: Option<SystemTime>,
+        page: i32,
+        width: i32,
+        inverted: bool,
+    }
+
+    impl Key {
+        pub fn inverted(&self) -> bool {
+            self.inverted
+        }
+
+        pub fn new(path: &Path, page: i32, width: i32, inverted: bool) -> Key {
+            let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+            Key { path: path.to_path_buf(), modified, page, width, inverted }
+        }
+    }
+
+    struct Entry {
+        key: Key,
+        image: QImage,
+        height: i32,
+        bytes: usize,
+    }
+
+    type Cache = (VecDeque<Entry>, usize);
+
+    thread_local! {
+        static CACHE: RefCell<Cache> = const { RefCell::new((VecDeque::new(), 0)) };
+    }
+
+    /// The image and its height for `key`; it becomes the newest.
+    pub fn get(key: &Key) -> Option<(QImage, i32)> {
+        CACHE.with(|c| {
+            let mut c = c.borrow_mut();
+            let at = c.0.iter().position(|e| &e.key == key)?;
+            let entry = c.0.remove(at)?;
+            let found = (entry.image.clone(), entry.height);
+            c.0.push_back(entry);
+            Some(found)
+        })
+    }
+
+    pub fn put(key: Key, image: &QImage, height: i32) {
+        let bytes = key.width.max(0) as usize * height.max(0) as usize * 4;
+        if bytes > CACHE_BYTES / 4 {
+            return;
+        }
+        CACHE.with(|c| {
+            let mut c = c.borrow_mut();
+            if let Some(at) = c.0.iter().position(|e| e.key == key)
+                && let Some(old) = c.0.remove(at)
+            {
+                c.1 -= old.bytes;
+            }
+            c.1 += bytes;
+            c.0.push_back(Entry { key, image: image.clone(), height, bytes });
+            while c.1 > CACHE_BYTES {
+                let Some(old) = c.0.pop_front() else { break };
+                c.1 -= old.bytes;
+            }
+        })
+    }
+}
+
 #[derive(Default)]
 pub struct PdfPageRust {
     source: QString,
@@ -475,50 +563,65 @@ impl qobject::PdfPage {
             this.generation += 1;
         }
         let generation = self.generation;
-        let thread = self.qt_thread();
         let inverted = self.inverted;
+        let key = page_cache::Key::new(&path, self.page, width, inverted);
+        if let Some((image, height)) = page_cache::get(&key) {
+            self.show_image(image, width, height, inverted, 0);
+            return;
+        }
+        let thread = self.qt_thread();
         PdfService::get().render(path, self.page as usize, width as u32, token, move |mut result| {
             // Converted once here on the render thread, not on every paint.
             if inverted && let Ok(page) = result.as_mut() {
                 page.darken();
             }
-            let _ = thread.queue(move |page| page.apply_render(generation, inverted, result));
+            let _ = thread.queue(move |page| page.apply_render(generation, key, result));
         });
     }
 
-    fn apply_render(mut self: Pin<&mut Self>, generation: u64, inverted: bool, result: anyhow::Result<RenderedPage>) {
+    fn apply_render(
+        mut self: Pin<&mut Self>,
+        generation: u64,
+        key: page_cache::Key,
+        result: anyhow::Result<RenderedPage>,
+    ) {
         if generation != self.generation {
             return;
         }
         match result {
             Ok(page) => {
+                let (width, height) = (page.width as i32, page.height as i32);
+                let ms = page.elapsed.as_millis() as i32;
                 // SAFETY: `bgra` holds width*height premultiplied BGRA pixels,
                 // which is Format_ARGB32_Premultiplied on little endian.
                 let image = unsafe {
-                    QImage::from_raw_bytes(
-                        page.bgra,
-                        page.width as i32,
-                        page.height as i32,
-                        QImageFormat::Format_ARGB32_Premultiplied,
-                    )
+                    QImage::from_raw_bytes(page.bgra, width, height, QImageFormat::Format_ARGB32_Premultiplied)
                 };
-                {
-                    let mut this = self.as_mut().rust_mut();
-                    this.image = Some(image);
-                    this.image_inverted = inverted;
-                    this.render_ms = page.elapsed.as_millis() as i32;
-                    this.rendered = true;
-                    this.error = QString::default();
-                }
-                self.as_mut().render_ms_changed();
-                self.as_mut().rendered_changed();
-                self.as_mut().error_changed();
+                let inverted = key.inverted();
+                page_cache::put(key, &image, height);
+                self.show_image(image, width, height, inverted, ms);
             }
             Err(err) => {
                 self.as_mut().rust_mut().error = QString::from(format!("{err:#}").as_str());
                 self.as_mut().error_changed();
+                self.update();
             }
         }
+    }
+
+    fn show_image(mut self: Pin<&mut Self>, image: QImage, width: i32, height: i32, inverted: bool, ms: i32) {
+        {
+            let mut this = self.as_mut().rust_mut();
+            this.image = Some(image);
+            this.image_inverted = inverted;
+            this.render_ms = ms;
+            this.rendered = true;
+            this.error = QString::default();
+        }
+        self.as_mut().set_texture_size(&QSize::new(width, height));
+        self.as_mut().render_ms_changed();
+        self.as_mut().rendered_changed();
+        self.as_mut().error_changed();
         self.update();
     }
 

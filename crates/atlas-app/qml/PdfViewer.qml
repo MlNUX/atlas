@@ -68,7 +68,7 @@ Rectangle {
     property string inkColor: "#ff6b6b"
     property real inkWidth: 2
 
-    // Annotations of this PDF (parsed from `notes.annotationsJson`).
+    // Annotations of this PDF (read page by page, see `readAnnotationPages`).
     property var annots: []
     /// 1-based page → annotations.
     property var annotsByPage: ({})
@@ -228,7 +228,7 @@ Rectangle {
         source: root.source
         projectRoot: root.app ? root.app.projectRoot : ""
         storeDir: root.app ? root.app.annotationsDir : ""
-        onAnnotationsJsonChanged: root.parseAnnotations()
+        onPagesChanged: (pages) => root.readAnnotationPages(JSON.parse(pages))
         onStatusChanged: {
             if (status === "moved") root.message(qsTr("Annotationen nach dem Verschieben der PDF wiedergefunden"))
             if (status === "changed" && count === 0) Qt.callLater(acknowledgeChange)
@@ -245,13 +245,18 @@ Rectangle {
 
     function message(text) { if (root.actions) root.actions.showMessage(text) }
 
-    function parseAnnotations() {
-        let list = []
-        try { list = JSON.parse(notes.annotationsJson || "[]") } catch (e) {}
-        const byPage = {}
-        for (const a of list) (byPage[a.page] = byPage[a.page] || []).push(a)
-        annots = list
+    /// Reads the annotations of the pages that changed (page numbers from
+    /// 1); the other pages keep theirs, nothing is built anew there.
+    function readAnnotationPages(changed) {
+        const byPage = Object.assign({}, annotsByPage)
+        for (const page of changed) {
+            let list = []
+            try { list = JSON.parse(notes.pageJson(page)) } catch (e) {}
+            if (list.length) byPage[page] = list
+            else delete byPage[page]
+        }
         annotsByPage = byPage
+        annots = [].concat(...Object.keys(byPage).map(Number).sort((x, y) => x - y).map(page => byPage[page]))
     }
     function annotation(id) { return annots.find(a => a.id === id) || null }
     /// Sorted for the sidebar: by page, then from top to bottom.
@@ -1171,7 +1176,8 @@ Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
-                                model: root.sortedAnnots
+                                // Built only while the list is shown.
+                                model: root.sidebarVisible && root.sidebarTab === 2 ? root.sortedAnnots : []
                                 ScrollBar.vertical: ScrollBar {}
                                 delegate: Rectangle {
                                     id: annotRow
@@ -1398,140 +1404,152 @@ Rectangle {
                             onRenderMsChanged: root.lastRenderMs = renderMs
                         }
 
-                        // Annotations of this page.
-                        Repeater {
-                            model: root.annotsByPage[pageDelegate.index + 1] || []
-                            delegate: Item {
-                                id: ann
-                                required property var modelData
-                                readonly property bool focused: root.focusedAnnot === modelData.id
-                                readonly property real s: root.zoomScale
-                                anchors.fill: parent
+                        // Everything drawn over the page, in page points: the
+                        // layer is only scaled as a whole, so zooming does not
+                        // recompute every annotation, stroke point and hit.
+                        Item {
+                            id: overlay
+                            readonly property real s: root.zoomScale
+                            width: doc.pageWidth(pageDelegate.index)
+                            height: doc.pageHeight(pageDelegate.index)
+                            transformOrigin: Item.TopLeft
+                            scale: s
 
-                                // Text markup: one bar per line.
-                                Repeater {
-                                    model: ["highlight", "underline", "strikeout"].indexOf(ann.modelData.kind) >= 0 ? ann.modelData.rects : []
-                                    delegate: Rectangle {
-                                        required property var modelData
-                                        x: modelData[0] * ann.s
-                                        y: modelData[1] * ann.s
-                                        width: modelData[2] * ann.s
-                                        height: modelData[3] * ann.s
-                                        color: ann.modelData.kind === "highlight" ? Qt.alpha(ann.modelData.color, 0.38) : "transparent"
-                                        border.width: ann.focused ? 2 : 0
-                                        border.color: "#ff9632"
-                                        Rectangle {
-                                            visible: ann.modelData.kind !== "highlight"
-                                            width: parent.width
-                                            height: Math.max(1.5, 1.2 * ann.s)
-                                            y: ann.modelData.kind === "underline" ? parent.height - height : (parent.height - height) / 2
-                                            color: ann.modelData.color
-                                        }
-                                    }
-                                }
-                                // Markers for comments on text markup.
-                                Text {
-                                    visible: !!ann.modelData.comment && !!ann.modelData.rects && ann.modelData.rects.length > 0 && ann.modelData.kind !== "note"
-                                    x: visible ? (ann.modelData.rects[0][0] + ann.modelData.rects[0][2]) * ann.s : 0
-                                    y: visible ? ann.modelData.rects[0][1] * ann.s - height / 2 : 0
-                                    text: "💬"
-                                    font.pixelSize: Math.max(9, 9 * ann.s)
-                                }
-                                // Comment pinned to the page.
-                                Rectangle {
-                                    visible: ann.modelData.kind === "note"
-                                    x: visible ? ann.modelData.rects[0][0] * ann.s : 0
-                                    y: visible ? ann.modelData.rects[0][1] * ann.s : 0
-                                    width: Math.max(16, 18 * ann.s)
-                                    height: width
-                                    radius: 3
-                                    color: ann.modelData.color
-                                    border.width: ann.focused ? 2 : 1
-                                    border.color: ann.focused ? "#ff9632" : "#80000000"
-                                    Text { anchors.centerIn: parent; text: "🗨"; font.pixelSize: parent.height * 0.6 }
-                                    ToolTip.visible: noteHover.hovered && !!ann.modelData.comment
-                                    ToolTip.text: ann.modelData.comment || ""
-                                    HoverHandler { id: noteHover }
-                                }
-                                // Freehand strokes.
-                                Shape {
-                                    visible: ann.modelData.kind === "ink"
+                            // Annotations of this page.
+                            Repeater {
+                                model: root.annotsByPage[pageDelegate.index + 1] || []
+                                delegate: Item {
+                                    id: ann
+                                    required property var modelData
+                                    readonly property bool focused: root.focusedAnnot === modelData.id
                                     anchors.fill: parent
-                                    ShapePath {
-                                        strokeColor: ann.focused ? "#ff9632" : ann.modelData.color
-                                        strokeWidth: (ann.modelData.width || 2) * ann.s
-                                        fillColor: "transparent"
-                                        capStyle: ShapePath.RoundCap
-                                        joinStyle: ShapePath.RoundJoin
-                                        PathMultiline {
-                                            paths: ann.modelData.kind === "ink"
-                                                ? ann.modelData.ink.map(st => st.map(p => Qt.point(p[0] * ann.s, p[1] * ann.s))) : []
+
+                                    // Text markup: one bar per line.
+                                    Repeater {
+                                        model: ["highlight", "underline", "strikeout"].indexOf(ann.modelData.kind) >= 0 ? ann.modelData.rects : []
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            x: modelData[0]
+                                            y: modelData[1]
+                                            width: modelData[2]
+                                            height: modelData[3]
+                                            color: ann.modelData.kind === "highlight" ? Qt.alpha(ann.modelData.color, 0.38) : "transparent"
+                                            border.width: ann.focused ? 2 / overlay.s : 0
+                                            border.color: "#ff9632"
+                                            Rectangle {
+                                                visible: ann.modelData.kind !== "highlight"
+                                                width: parent.width
+                                                height: Math.max(1.5 / overlay.s, 1.2)
+                                                y: ann.modelData.kind === "underline" ? parent.height - height : (parent.height - height) / 2
+                                                color: ann.modelData.color
+                                            }
                                         }
                                     }
-                                }
-                                // Bookmark ribbon.
-                                Text {
-                                    visible: ann.modelData.kind === "bookmark"
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 8
-                                    y: -4
-                                    text: "🔖"
-                                    font.pixelSize: Math.max(14, 16 * ann.s)
+                                    // Markers for comments on text markup.
+                                    Text {
+                                        visible: !!ann.modelData.comment && !!ann.modelData.rects && ann.modelData.rects.length > 0 && ann.modelData.kind !== "note"
+                                        x: visible ? ann.modelData.rects[0][0] + ann.modelData.rects[0][2] : 0
+                                        y: visible ? ann.modelData.rects[0][1] - height / 2 : 0
+                                        text: "💬"
+                                        font.pixelSize: Math.max(9 / overlay.s, 9)
+                                    }
+                                    // Comment pinned to the page.
+                                    Rectangle {
+                                        visible: ann.modelData.kind === "note"
+                                        x: visible ? ann.modelData.rects[0][0] : 0
+                                        y: visible ? ann.modelData.rects[0][1] : 0
+                                        width: Math.max(16 / overlay.s, 18)
+                                        height: width
+                                        radius: 3 / overlay.s
+                                        color: ann.modelData.color
+                                        border.width: (ann.focused ? 2 : 1) / overlay.s
+                                        border.color: ann.focused ? "#ff9632" : "#80000000"
+                                        Text { anchors.centerIn: parent; text: "🗨"; font.pixelSize: parent.height * 0.6 }
+                                        ToolTip.visible: noteHover.hovered && !!ann.modelData.comment
+                                        ToolTip.text: ann.modelData.comment || ""
+                                        HoverHandler { id: noteHover }
+                                    }
+                                    // Freehand strokes.
+                                    Shape {
+                                        visible: ann.modelData.kind === "ink"
+                                        anchors.fill: parent
+                                        ShapePath {
+                                            strokeColor: ann.focused ? "#ff9632" : ann.modelData.color
+                                            strokeWidth: ann.modelData.width || 2
+                                            fillColor: "transparent"
+                                            capStyle: ShapePath.RoundCap
+                                            joinStyle: ShapePath.RoundJoin
+                                            PathMultiline {
+                                                paths: ann.modelData.kind === "ink"
+                                                    ? ann.modelData.ink.map(st => st.map(p => Qt.point(p[0], p[1]))) : []
+                                            }
+                                        }
+                                    }
+                                    // Bookmark ribbon.
+                                    Text {
+                                        visible: ann.modelData.kind === "bookmark"
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 8 / overlay.s
+                                        y: -4 / overlay.s
+                                        text: "🔖"
+                                        font.pixelSize: Math.max(14 / overlay.s, 16)
+                                    }
                                 }
                             }
-                        }
 
-                        // Current text selection.
-                        Repeater {
-                            model: root.selectionByPage[pageDelegate.index] || []
-                            delegate: Rectangle {
-                                required property var modelData
-                                x: modelData[0] * root.zoomScale
-                                y: modelData[1] * root.zoomScale
-                                width: modelData[2] * root.zoomScale
-                                height: modelData[3] * root.zoomScale
-                                color: "#5a3399ff"
-                            }
-                        }
-                        // The box for "formula as LaTeX".
-                        Rectangle {
-                            readonly property var b: root.latexBox
-                            visible: !!b && b.page === pageDelegate.index
-                            x: b ? Math.min(b.x0, b.x1) * root.zoomScale : 0
-                            y: b ? Math.min(b.y0, b.y1) * root.zoomScale : 0
-                            width: b ? Math.abs(b.x1 - b.x0) * root.zoomScale : 0
-                            height: b ? Math.abs(b.y1 - b.y0) * root.zoomScale : 0
-                            color: "#223399ff"
-                            border.color: Theme.accent
-                            border.width: 1.5
-                        }
-                        // Freehand stroke being drawn.
-                        Shape {
-                            visible: root.strokePage === pageDelegate.index && root.stroke.length > 1
-                            anchors.fill: parent
-                            ShapePath {
-                                strokeColor: root.inkColor
-                                strokeWidth: root.inkWidth * root.zoomScale
-                                fillColor: "transparent"
-                                capStyle: ShapePath.RoundCap
-                                joinStyle: ShapePath.RoundJoin
-                                PathPolyline {
-                                    path: root.strokePage === pageDelegate.index
-                                        ? root.stroke.map(p => Qt.point(p[0] * root.zoomScale, p[1] * root.zoomScale)) : []
+                            // Current text selection.
+                            Repeater {
+                                model: root.selectionByPage[pageDelegate.index] || []
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    x: modelData[0]
+                                    y: modelData[1]
+                                    width: modelData[2]
+                                    height: modelData[3]
+                                    color: "#5a3399ff"
                                 }
                             }
-                        }
-                        // Search hits on this page.
-                        Repeater {
-                            model: root.hitsByPage[pageDelegate.index] || []
-                            delegate: Rectangle {
-                                required property var modelData
-                                x: modelData.x * root.zoomScale - 1
-                                y: modelData.y * root.zoomScale - 1
-                                width: modelData.w * root.zoomScale + 2
-                                height: modelData.h * root.zoomScale + 2
-                                color: modelData.index === root.currentHit ? "#80ff9632" : "#50ffd200"
-                                border.color: modelData.index === root.currentHit ? "#ff9632" : "transparent"
+                            // The box for "formula as LaTeX".
+                            Rectangle {
+                                readonly property var b: root.latexBox
+                                visible: !!b && b.page === pageDelegate.index
+                                x: b ? Math.min(b.x0, b.x1) : 0
+                                y: b ? Math.min(b.y0, b.y1) : 0
+                                width: b ? Math.abs(b.x1 - b.x0) : 0
+                                height: b ? Math.abs(b.y1 - b.y0) : 0
+                                color: "#223399ff"
+                                border.color: Theme.accent
+                                border.width: 1.5 / overlay.s
+                            }
+                            // Freehand stroke being drawn.
+                            Shape {
+                                visible: root.strokePage === pageDelegate.index && root.stroke.length > 1
+                                anchors.fill: parent
+                                ShapePath {
+                                    strokeColor: root.inkColor
+                                    strokeWidth: root.inkWidth
+                                    fillColor: "transparent"
+                                    capStyle: ShapePath.RoundCap
+                                    joinStyle: ShapePath.RoundJoin
+                                    PathPolyline {
+                                        path: root.strokePage === pageDelegate.index
+                                            ? root.stroke.map(p => Qt.point(p[0], p[1])) : []
+                                    }
+                                }
+                            }
+                            // Search hits on this page.
+                            Repeater {
+                                model: root.hitsByPage[pageDelegate.index] || []
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    x: modelData.x - 1 / overlay.s
+                                    y: modelData.y - 1 / overlay.s
+                                    width: modelData.w + 2 / overlay.s
+                                    height: modelData.h + 2 / overlay.s
+                                    color: modelData.index === root.currentHit ? "#80ff9632" : "#50ffd200"
+                                    border.color: modelData.index === root.currentHit ? "#ff9632" : "transparent"
+                                    border.width: 1 / overlay.s
+                                }
                             }
                         }
                         Text {

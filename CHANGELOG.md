@@ -37,6 +37,16 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   kehrt zur zuletzt gezeigten Seite in den Tab zurück.
 
 ### Geändert
+- **PDFs schneller**:
+  - Zoomen und Größe ändern ruckeln nicht mehr (die Seite wird skaliert
+    statt bei jedem Bild neu gemalt): 16 statt bis zu 115 ms pro Schritt.
+  - Seiten werden auf bis zu drei Kernen parallel gerendert, bei Folien mit
+    Bildern etwa dreimal so schnell.
+  - Zuletzt gezeigte Seiten kommen aus einem Zwischenspeicher (256 MB), beim
+    Zurückscrollen ohne neues Rendern.
+  - Anmerkungen werden beim Zoomen nicht mehr einzeln neu berechnet, und ein
+    Strich, Radieren oder Markieren kostet nur noch die eigene Seite statt
+    aller Anmerkungen der PDF.
 - Repository aufgeräumt: Konzept und Entwürfe unter `docs/concept/`,
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 

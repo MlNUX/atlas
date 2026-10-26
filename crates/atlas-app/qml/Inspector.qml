@@ -49,7 +49,7 @@ Rectangle {
     readonly property var annotations: {
         const store = pdfViewer && pdfViewer.annotationStore ? pdfViewer.annotationStore : null
         if (!store) return []
-        try { return JSON.parse(store.annotationsJson || "[]").filter(a => a.kind !== "ink") } catch (e) { return [] }
+        try { return JSON.parse(store.markupJson || "[]") } catch (e) { return [] }
     }
     /// User actions for the document, then for the project: {id, name,
     /// description, source, paths}.
