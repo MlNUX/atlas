@@ -89,6 +89,8 @@ Rectangle {
         })
     }
 
+    /// Keyboard focus to the list/grid (when its tab is shown).
+    function focusContent() { root.activeView.forceActiveFocus() }
     function selectOnly(path) { selected = ({ [path]: true }); anchorPath = path }
     function toggle(path) {
         const s = Object.assign({}, selected)

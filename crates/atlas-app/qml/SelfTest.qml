@@ -62,6 +62,7 @@ Item {
     property string goneFile: ""
     property bool goneOpened: false
     property var fullscreenTab: null
+    property var folderTab: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -107,6 +108,11 @@ Item {
         console.log("selftest:", ok ? "ok  " : "FAIL", name, ok ? "" : "– " + (detail === undefined ? "" : detail))
     }
     function path(rel) { return app.projectRoot + "/" + rel }
+    /// The keyboard focus is in `item` (or one of its children).
+    function hasFocusIn(item) {
+        for (let p = window.activeFocusItem; p; p = p.parent) if (p === item) return true
+        return false
+    }
 
     function start() {
         const note = path("notes/idee.md")
@@ -1245,6 +1251,29 @@ Item {
                       !v.fullscreen && v.Window.window === window && v.zoom === 1.5 && v.currentPage === 1 && editor.activeTab === test.fullscreenTab && v.toolbarShown,
                       [v.fullscreen, v.Window.window === window, v.zoom, v.currentPage].join(" "))
                 v.zoom = 0
+            },
+            () => {
+                // Issue #9: switching tabs moves the keyboard focus to the tab
+                // switched to (here: PDF → folder → PDF).
+                const g = editor.activeGroup
+                test.fullscreenTab.viewerItem.forceActiveFocus()
+                test.folderTab = g.openTab(path("src"), 0, "tab")
+            },
+            () => {
+                const g = editor.activeGroup
+                const view = test.folderTab.viewerItem
+                if (waitFor(() => !!view && hasFocusIn(view))) return
+                check("Tab-Wechsel: der neue Tab (Ordner) bekommt den Fokus", hasFocusIn(view) && view.activeView.activeFocus,
+                      String(window.activeFocusItem))
+                g.current = g.tabs.indexOf(test.fullscreenTab)
+            },
+            () => {
+                const g = editor.activeGroup
+                const v = test.fullscreenTab.viewerItem
+                if (waitFor(() => hasFocusIn(v))) return
+                check("Tab-Wechsel zurück: die PDF hat den Fokus, nicht mehr der Ordner",
+                      hasFocusIn(v) && !hasFocusIn(test.folderTab.viewerItem), String(window.activeFocusItem))
+                g.closeTab(g.tabs.indexOf(test.folderTab))
             },
             () => {
                 // Arrow keys: down scrolls, right/left turn pages.

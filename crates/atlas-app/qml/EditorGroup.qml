@@ -369,7 +369,11 @@ Rectangle {
                             onReleased: if (drag.active) ghost.Drag.drop()
                             onClicked: (mouse) => {
                                 if (mouse.button === Qt.MiddleButton) group.closeTab(tabItem.index)
-                                else { group.current = tabItem.index; group.activated() }
+                                else {
+                                    group.current = tabItem.index
+                                    group.activated()
+                                    if (group.currentTab) group.currentTab.takeFocus()
+                                }
                             }
                             onDoubleClicked: if (tabItem.tab) { tabItem.tab.preview = false; group.changed() }
                         }
@@ -494,7 +498,21 @@ Rectangle {
         }
     }
 
-    onCurrentChanged: { for (let i = 0; i < tabs.length; ++i) tabs[i].visible = (i === current) }
+    // The tab switched to takes the keyboard focus if the focus was in this
+    // split (or nowhere) – not when a file is opened from the tree with the
+    // keyboard, which keeps it there.
+    onCurrentChanged: {
+        const take = focusWasHere()
+        for (let i = 0; i < tabs.length; ++i) tabs[i].visible = (i === current)
+        if (take) Qt.callLater(() => { if (group.currentTab) group.currentTab.takeFocus() })
+    }
+    function focusWasHere() {
+        const w = group.Window.window
+        const f = w ? w.activeFocusItem : null
+        if (!f || f === w.contentItem) return group.active
+        for (let p = f; p; p = p.parent) if (p === group) return true
+        return false
+    }
     onTabsChanged: { for (let i = 0; i < tabs.length; ++i) tabs[i].visible = (i === current) }
 
     // Back/forward with the extra mouse buttons.

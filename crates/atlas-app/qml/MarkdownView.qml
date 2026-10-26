@@ -51,6 +51,8 @@ Rectangle {
     signal savedAs(string path)
 
     readonly property alias editorItem: editor
+    /// Keyboard focus: the editor when it is shown, else the view.
+    function focusContent() { if (mode !== "preview") editor.focusText(); else root.forceActiveFocus() }
     readonly property alias previewItem: web
     readonly property alias previewRepaint: webRepaint
     readonly property alias contextPanelItem: contextPanel

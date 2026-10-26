@@ -38,6 +38,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 
 ### Behoben
+- **Tabs:** Beim Wechsel des Tabs blieb der Tastaturfokus im vorherigen Tab
+  (z. B. Pfeiltasten im Ordner gingen ins Leere); jetzt bekommt ihn der
+  neue Tab – Ordneransicht, Editor, PDF, Terminal
+  ([#9](https://github.com/MlNUX/atlas/issues/9)).
 - **PDF:** Bei „Ganze Seite“ stimmte die angezeigte Seitenzahl nicht
   (immer 1), weil die schmalere Seite mittig steht.
 - **PDF:** Strg+Mausrad scrollte beim Zoomen die Seiten weg; jetzt bleibt
