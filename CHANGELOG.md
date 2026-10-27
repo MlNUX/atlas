@@ -10,6 +10,134 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+## [1.1.2] – 2026-10-27
+
+### Neu
+- **Neue Projektsuche** (Strg+Umschalt+F) in einem großen Fenster vor
+  Atlas statt in der Seitenleiste: Filter nach Dokumenttyp (Markdown, PDF,
+  LaTeX, Code, Text), Groß-/Kleinschreibung beachten oder ignorieren,
+  „Ganzes Wort“, regulärer Ausdruck, Dateimuster. Durchsucht jetzt auch den
+  **Text aller PDFs** im Projekt (Treffer mit Seitenzahl). Jeder Fund ist
+  in der Liste markiert, rechts steht eine Vorschau mit den Zeilen davor
+  und danach (bzw. der PDF-Seite); Dateien lassen sich einklappen.
+  ↑/↓ wählen, Enter öffnet, Strg+Enter im Split – das gefundene Wort ist
+  dann im Dokument markiert: im Editor ausgewählt, in der Markdown-Vorschau
+  hervorgehoben, im PDF über die Suche des Viewers auf der richtigen Seite.
+- **Formel als LaTeX**: In PDFs mit ∑ einen Rahmen um eine Formel ziehen
+  (oder markierten Text über ∑ im Auswahlmenü) – Atlas erkennt sie auf
+  deinem Rechner mit dem eingebauten pix2tex-Modell (ONNX Runtime, ohne
+  Python), kopiert den LaTeX-Code und zeigt ihn zum Prüfen, auch als
+  `$…$`/`$$…$$`. Das Modell (etwa 170 MB) lädt Atlas beim ersten Mal selbst
+  ([docs/latex-ocr.md](docs/latex-ocr.md)).
+- **ILIAS-Anmeldung merken**: Benutzername und Passwort der Hochschule in
+  den Einstellungen speichern – das Passwort nur verschlüsselt mit
+  systemd-creds, sonst gar nicht. Läuft die Sitzung ab, meldet Atlas dich
+  selbst wieder an; eingesetzt wird nur auf der einmal bestätigten
+  Anmeldeseite (z. B. idp.scc.kit.edu) und nur ein Versuch, damit ein
+  falsches Passwort nicht in einer Schleife landet.
+- **Text der Seite mit LaTeX**: „T“ in der PDF-Leiste gibt die Formeln der
+  Seite jetzt als `$…$` bzw. `$$…$$` aus statt als Zeichensalat (`ng2 n`).
+  Atlas erkennt sie an den Mathe-Schriften und lässt sie vom eingebauten
+  Modell lesen; der übrige Text kommt sofort, mit „Kopieren“-Knopf.
+
+- **PDF präsentieren** wie mit PowerPoint: F5 von vorn, Umschalt+F5 (oder
+  F11, ▶ in der PDF-Leiste) ab der aktuellen Seite. Im Vollbild steht immer
+  genau eine Seite auf Schwarz; weiter mit Klick, →, ↓, Leertaste, Enter,
+  Bild↓ oder Mausrad, zurück mit Rechtsklick, ←, ↑, Rücktaste, Bild↑;
+  Pos1/Ende, Seitenzahl + Enter springt; B/W schaltet auf Schwarz/Weiß;
+  der Mauszeiger verschwindet nach 2 s. Anmerkungen bleiben sichtbar. Esc
+  kehrt zur zuletzt gezeigten Seite in den Tab zurück.
+
+- **Markdown-Editor**:
+  - Enter setzt Aufzählungen, Checkboxen (neu offen), Nummerierung und
+    Zitate fort; Enter auf einem leeren Punkt beendet die Liste.
+  - **Bilder** per Strg+V (auch Bildschirmfotos) oder Ziehen: landen in
+    `assets/` des Projekts und werden relativ zur Notiz verlinkt.
+  - Menü **„＋ Einfügen“**: Bild, Tabelle, Diagramm (Mermaid-Vorlagen:
+    Fluss, Sequenz, Klassen, Zustände, ER, Gantt, Mindmap, Kreis,
+    Zeitstrahl) und **Ordnerbaum** aus einem echten Ordner.
+  - **#Tags im Text** zählen wie die im YAML-Kopf; `#` schlägt die Tags des
+    Projekts vor.
+  - **Rechtschreibprüfung** Deutsch und Englisch zugleich, auf dem Rechner
+    (Hunspell-Wörterbücher, im Nix-Paket enthalten): rot unterstrichen,
+    Rechtsklick für Vorschläge oder „zum Wörterbuch hinzufügen“;
+    abschaltbar in den Einstellungen.
+- **Markdown-Vorschau**:
+  - Codeblöcke mit „Kopieren“, bash-/sh-Blöcke mit „▶ Ausführen“ im
+    Terminal von Atlas (im Ordner der Notiz).
+  - Überschriften klappen ihren Abschnitt ein und aus.
+  - ` ```tree `-Blöcke zeichnen eine eingerückte Liste als Ordnerbaum
+    (├── └──).
+- **PDF-Zitate**: Formeln in markiertem Text kommen beim „In Notiz
+  übernehmen“ als `$…$` in die Notiz. Neues Werkzeug **„Bild als Zitat“**:
+  Rahmen um eine Abbildung ziehen, Notiz wählen – das Bild landet in
+  `assets/`, darunter als Bildunterschrift der Link auf die Seite.
+- **Bilder in der Vorschau** vergrößern: Knopf ⤢ (oder Doppelklick) öffnet
+  das Bild in einem Fenster vor Atlas (wie der Graph) – passend eingepasst,
+  Mausrad zoomt zur Mausposition, +/−, 1:1, ziehen zum Verschieben,
+  Esc schließt.
+
+### Geändert
+- **Scrollen wie im Browser** (PDF, Editor, Dateiliste, Projektbaum): Das
+  Touchpad bewegt den Inhalt genau mit den Fingern, auch ganz langsame
+  Bewegungen unter einem Pixel, einmal pro Bild; beim Loslassen gleitet die
+  Ansicht sofort weiter (Wayland meldet das Ende der Geste) und läuft aus
+  wie in Firefox – mit Reibung (pro Millisekunde ein fester Anteil der
+  Geschwindigkeit, `apz.fling_friction`) statt gleichmäßigem Abbremsen mit
+  hartem Halt. Das Mausrad
+  scrollt weich statt in Sprüngen. Vorher hielt Atlas Touchpad-Schritte von
+  genau 10, 20, 30 … Pixeln für Mausrad-Rasten (Qt meldet unter Wayland
+  das 12-Fache der Bewegung als Winkel) und sprang dabei um eine ganze
+  Stufe; Schritte unter einem Pixel gingen verloren. Das Abheben der Finger
+  (libinput meldet dabei kurz ein „Festhalten“) beendet den Schwung nicht
+  mehr; erst ein echtes Auflegen hält ihn an.
+- **Suchfenster übersichtlicher**: Groß/klein, ganzes Wort und regulärer
+  Ausdruck als kleine Schalter im Suchfeld; die Typfilter zeigen ihre
+  Trefferzahl; Dateimuster und Build-Ordner unter „Weitere Filter“. Pro
+  Datei erst drei Treffer („+ N weitere“ klappt den Rest auf), alle Dateien
+  auf einen Klick ein- und ausklappen, Tastenhilfe in der Fußzeile. „Öffnen“ öffnet den Treffer als
+  festen Tab im aktiven Split, „Im Split“ (Strg+Enter) daneben – kein
+  temporäres Fenster mehr.
+- **PDFs schneller**:
+  - Zoomen und Größe ändern ruckeln nicht mehr (die Seite wird skaliert
+    statt bei jedem Bild neu gemalt): 16 statt bis zu 115 ms pro Schritt.
+  - Seiten werden auf bis zu drei Kernen parallel gerendert, bei Folien mit
+    Bildern etwa dreimal so schnell.
+  - Zuletzt gezeigte Seiten kommen aus einem Zwischenspeicher (256 MB), beim
+    Zurückscrollen ohne neues Rendern.
+  - Anmerkungen werden beim Zoomen nicht mehr einzeln neu berechnet, und ein
+    Strich, Radieren oder Markieren kostet nur noch die eigene Seite statt
+    aller Anmerkungen der PDF.
+- Repository aufgeräumt: Konzept und Entwürfe unter `docs/concept/`,
+  Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
+
+### Behoben
+- Rechtschreibprüfung: keine Flut von „QTextCursor::setPosition: Position …
+  out of range“ mehr im Terminal. Beim Laden einer anderen Datei (oder
+  derselben nach einer Änderung) wurden kurz die Unterstreichungen des
+  alten, längeren Texts gezeichnet.
+- PDF im Split: Ein Klick irgendwo in den Split (Leiste, Rand neben den
+  Seiten, Knöpfe) gibt die Pfeiltasten der PDF – vorher musste man erst in
+  eine Seite klicken, und ein angeklickter Knopf behielt die Tasten.
+- **PDF-Präsentation:** Beim ersten Start blieb die Seite manchmal in
+  Tab-Größe oben links im schwarzen Vollbild (der Tab setzte die Größe der
+  Ansicht zurück). Jetzt wandert nur der sichtbare Inhalt ins
+  Präsentationsfenster und füllt es; die Statuszeile ist ausgeblendet.
+- **PDF-Zitate:** Als LaTeX erkannte Formeln wurden beim Übernehmen
+  maskiert (`\$…\$`) und in der Vorschau nicht gesetzt.
+- **Mermaid-Diagramme** passen sich dem dunklen Hintergrund der Vorschau
+  an (im PDF-Export weiter hell).
+- **Markdown-Vorschau:** Zitate bekommen auch das schließende „”“;
+  verschachtelte Checklisten sind deutlicher eingerückt.
+- **Tabs:** Beim Wechsel des Tabs blieb der Tastaturfokus im vorherigen Tab
+  (z. B. Pfeiltasten im Ordner gingen ins Leere); jetzt bekommt ihn der
+  neue Tab – Ordneransicht, Editor, PDF, Terminal
+  ([#9](https://github.com/MlNUX/atlas/issues/9)).
+- **PDF:** Bei „Ganze Seite“ stimmte die angezeigte Seitenzahl nicht
+  (immer 1), weil die schmalere Seite mittig steht.
+- **PDF:** Strg+Mausrad scrollte beim Zoomen die Seiten weg; jetzt bleibt
+  die Stelle unter dem Mauszeiger stehen, auch auf späteren Seiten.
+
 ## [1.1.1] – 2026-10-23
 
 ### Neu
@@ -215,7 +343,8 @@ Erste öffentliche Version.
 - Nix-Flake mit Paket, App, Overlay und Entwicklungsumgebung.
 - PKGBUILD für das AUR (`atlas-workspace`).
 
-[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.1...HEAD
+[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/MlNUX/atlas/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/MlNUX/atlas/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/MlNUX/atlas/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/MlNUX/atlas/releases/tag/v1.0.0

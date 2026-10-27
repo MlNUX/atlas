@@ -147,7 +147,7 @@ ApplicationWindow {
         onCalendarEntryRequested: (uid, start) => window.openCalendar({ selected: uid, date: start ? start.slice(0, 10) : "" })
         actions: window.paletteActions()
         onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
-        onSearchRequested: (text) => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.setQuery(text) }
+        onSearchRequested: (text) => { searchDialog.setQuery(text) }
         onLineRequested: (line) => { if (editor.activeTab) editor.activeTab.reveal(line) }
         onAboutToShow: actions = window.paletteActions()
     }
@@ -164,8 +164,8 @@ ApplicationWindow {
             { name: qsTr("Projektordner öffnen …"), hint: "Strg+O", run: () => folderDialog.askProject() },
             { name: qsTr("Neue Datei …"), hint: app.relativePath(dir), run: () => fileActions.newFile(dir) },
             { name: qsTr("Neuer Ordner …"), hint: app.relativePath(dir), run: () => fileActions.newFolder(dir) },
-            { name: qsTr("Projektweit suchen"), hint: "Strg+Umschalt+F", run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } },
-            { name: qsTr("TODO und FIXME finden"), run: () => { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.searchTodos() } },
+            { name: qsTr("Projektweit suchen"), hint: "Strg+Umschalt+F", run: () => { searchDialog.focusQuery() } },
+            { name: qsTr("TODO und FIXME finden"), run: () => { searchDialog.searchTodos() } },
             { name: qsTr("Terminal ein-/ausblenden"), hint: "Strg+`", run: () => window.toggleTerminal(true) },
             { name: qsTr("Neues Terminal"), hint: "Strg+Umschalt+`", run: () => window.openTerminal(dir, "panel") },
             { name: qsTr("Terminal als Tab öffnen"), run: () => window.openTerminal(dir, "tab") },
@@ -204,6 +204,14 @@ ApplicationWindow {
             if (app.atlasDir && app.exists(current))
                 list.push({ name: qsTr("Verknüpfen mit …"), hint: app.fileName(current), run: () => app.requestRelate(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
+            const md = editor.activeTab && editor.activeTab.kind === "markdown" ? editor.activeTab.viewerItem : null
+            if (md && md.askTable) {
+                list.push({ name: qsTr("Bild einfügen …"), hint: app.fileName(current), run: () => md.askImage() })
+                list.push({ name: qsTr("Tabelle einfügen …"), hint: app.fileName(current), run: () => md.askTable() })
+                list.push({ name: qsTr("Ordnerbaum einfügen …"), hint: app.fileName(current), run: () => md.askFolderTree() })
+                md.diagramTemplates.forEach((t, i) =>
+                    list.push({ name: qsTr("Diagramm einfügen: %1").arg(t.name), hint: "Mermaid", run: () => md.insertDiagram(i) }))
+            }
             if (app.hasChecklist(current))
                 list.push({ name: qsTr("Checkliste als Aufgaben übernehmen …"), hint: app.fileName(current), run: () => fileActions.calendarSync.importChecklist(current) })
         }
@@ -301,6 +309,12 @@ ApplicationWindow {
     }
 
     SearchModel { id: searchModel }
+    SearchDialog {
+        id: searchDialog
+        model: searchModel
+        projectRoot: app.projectRoot
+        onOpenRequested: (path, line, newPane, state) => editor.open(path, line, newPane ? "split" : "tab", state)
+    }
 
     SettingsDialog {
         id: settingsDialog
@@ -372,8 +386,8 @@ ApplicationWindow {
         inspectorVisible = layout.inspector !== undefined ? layout.inspector.visible : true
         if (layout.inspector && layout.inspector.tab !== undefined) inspector.tab = layout.inspector.tab
         if (layout.inspector && layout.inspector.width) inspector.SplitView.preferredWidth = layout.inspector.width
-        sidebarTabs.currentIndex = layout.sidebarTab || 0
-        searchPanel.applyState(layout.search || {})
+        sidebarTabs.currentIndex = 0
+        searchDialog.applyState(layout.search || {})
     }
 
     function currentLayout() {
@@ -384,7 +398,7 @@ ApplicationWindow {
             inspector: { visible: inspectorVisible, tab: inspector.tab, width: inspector.width },
             sidebarWidth: sidebar.width,
             sidebarTab: sidebarTabs.currentIndex,
-            search: searchPanel.viewState(),
+            search: searchDialog.viewState(),
             terminal: Object.assign(terminalPanel.serialize(), { visible: terminalPanel.visible, height: terminalPanel.height })
         }
     }
@@ -469,10 +483,7 @@ ApplicationWindow {
         if (app.projectRoot) restoreSession()
         else if (app.openFiles.length > 0) openCliFiles()
         else editor.addGroup()
-        if (app.initialSearch) {
-            sidebarTabs.currentIndex = 1
-            searchPanel.setQuery(app.initialSearch)
-        }
+        if (app.initialSearch) searchDialog.setQuery(app.initialSearch)
         if (app.screenshotPath) screenshotTimer.start()
         if (app.screenshotDialog) dialogTimer.start()
         if (app.quitAfterMs > 0) quitTimer.start()
@@ -581,7 +592,7 @@ ApplicationWindow {
         onLoaded: {
             Object.assign(item, {
                 app: app, editor: editor, fileActions: fileActions, commandPalette: commandPalette,
-                searchPanel: searchPanel, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
+                searchPanel: searchDialog, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
                 sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, relateDialog: relateDialog, settingsDialog: settingsDialog,
                 projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector, placesList: placesList,
             })
@@ -596,10 +607,17 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show(">") }
     Shortcut { sequence: "Ctrl+`"; context: Qt.ApplicationShortcut; onActivated: window.toggleTerminal() }
     Shortcut { sequence: "Ctrl+Shift+`"; context: Qt.ApplicationShortcut; onActivated: { terminalPanel.visible = true; terminalPanel.newTerminal() } }
-    Shortcut { sequence: "Ctrl+Shift+F"; context: Qt.ApplicationShortcut; onActivated: { sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
+    Shortcut { sequence: "Ctrl+Shift+F"; context: Qt.ApplicationShortcut; onActivated: searchDialog.focusQuery() }
     Shortcut { sequence: "Ctrl+Shift+E"; onActivated: sidebarTabs.currentIndex = 0 }
     Shortcut { sequence: "Ctrl+\\"; onActivated: if (editor.activeGroup) editor.splitGroup(editor.activeGroup) }
     Shortcut { sequence: "Ctrl+W"; onActivated: if (editor.activeGroup) editor.activeGroup.closeCurrent() }
+    // PDF presentation, wherever the focus is (like PowerPoint: F5 from the
+    // start, Shift+F5 from the current page; F11 too). Only with a PDF tab:
+    // F5 reloads web pages otherwise.
+    readonly property var activePdf: editor.activeTab && editor.activeTab.kind === "pdf" ? editor.activeTab.viewerItem : null
+    Shortcut { sequence: "F5"; enabled: !!window.activePdf; onActivated: window.activePdf.startPresentation(true) }
+    Shortcut { sequence: "Shift+F5"; enabled: !!window.activePdf; onActivated: window.activePdf.startPresentation(false) }
+    Shortcut { sequence: "F11"; enabled: !!window.activePdf; onActivated: window.activePdf.startPresentation(false) }
     Shortcut { sequence: "Ctrl+Tab"; onActivated: if (editor.activeGroup) editor.activeGroup.nextTab(1) }
     Shortcut { sequence: "Ctrl+Shift+Tab"; onActivated: if (editor.activeGroup) editor.activeGroup.nextTab(-1) }
     // In the calendar: previous / next week or month.
@@ -763,7 +781,7 @@ ApplicationWindow {
                         MenuItem { text: qsTr("Alle Befehle …\tStrg+Umschalt+P"); onTriggered: commandPalette.show(">") }
                         MenuSeparator {}
                         MenuItem { text: qsTr("Seitenleiste ein-/ausblenden\tStrg+B"); onTriggered: window.toggleSidebar() }
-                        MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { sidebar.visible = true; sidebarTabs.currentIndex = 1; searchPanel.focusQuery() } }
+                        MenuItem { text: qsTr("Projektweit suchen\tStrg+Umschalt+F"); onTriggered: { searchDialog.focusQuery() } }
                         MenuSeparator {}
                         // (Calendar, extensions and editor: in the settings.)
                         MenuItem { text: qsTr("Einstellungen …"); onTriggered: settingsDialog.open() }
@@ -893,25 +911,6 @@ ApplicationWindow {
                             onOpenRequested: (path, newPane) => editor.open(path, 0, newPane ? "split" : "tab")
                             onOpenProjectRequested: folderDialog.askProject()
                             onPinRequested: (path) => editor.open(path, 0, "tab")
-                        }
-                    }
-                    ColumnLayout {
-                        spacing: 0
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 34
-                            Layout.leftMargin: 16
-                            Layout.rightMargin: 8
-                            Label { Layout.fillWidth: true; text: qsTr("Suche"); color: Theme.textStrong; font.bold: true; font.pixelSize: Theme.fontSize }
-                            IconButton { iconName: "close"; iconSize: 14; tip: qsTr("Zurück zum Explorer (Strg+Umschalt+E)"); onClicked: sidebarTabs.currentIndex = 0 }
-                        }
-                        SearchPanel {
-                            id: searchPanel
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            model: searchModel
-                            projectRoot: app.projectRoot
-                            onOpenRequested: (path, line, newPane) => editor.open(path, line, newPane ? "split" : "temporary")
                         }
                     }
                 }

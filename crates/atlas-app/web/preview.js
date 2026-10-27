@@ -11,6 +11,27 @@
 window.atlas = (function () {
     let mermaidLoading = null;
     let reportScroll = true;
+    // The PDF export prints on white paper: diagrams in light colours then.
+    let printMode = false;
+    // Diagrams in the colours of the page (navy design), see preview.css.
+    const DARK_DIAGRAMS = {
+        theme: "base",
+        themeVariables: {
+            darkMode: true, background: "transparent", fontFamily: "system-ui, Inter, Noto Sans, sans-serif",
+            primaryColor: "#1b2a44", primaryTextColor: "#eef3fb", primaryBorderColor: "#3d8bfd",
+            secondaryColor: "#22304a", secondaryTextColor: "#eef3fb", secondaryBorderColor: "#5aa2ff",
+            tertiaryColor: "#152036", tertiaryTextColor: "#c5d0e0", tertiaryBorderColor: "#2c3b58",
+            lineColor: "#8a97ad", textColor: "#c5d0e0", mainBkg: "#1b2a44", nodeBorder: "#3d8bfd",
+            clusterBkg: "#152036", clusterBorder: "#2c3b58", edgeLabelBackground: "#0f1726", titleColor: "#eef3fb",
+            noteBkgColor: "#2b2a1e", noteTextColor: "#f3e3b0", noteBorderColor: "#e0b33a",
+            actorBkg: "#1b2a44", actorBorder: "#3d8bfd", actorTextColor: "#eef3fb", signalColor: "#c5d0e0", signalTextColor: "#c5d0e0",
+            labelBoxBkgColor: "#1b2a44", labelTextColor: "#eef3fb", sequenceNumberColor: "#0f1726",
+            pie1: "#3d8bfd", pie2: "#7fdcaa", pie3: "#c9a8ff", pie4: "#f3cf74", pie5: "#ff9ca1", pieTitleTextColor: "#eef3fb",
+            pieSectionTextColor: "#0f1726", pieLegendTextColor: "#c5d0e0", pieStrokeColor: "#0f1726",
+            gridColor: "#2c3b58", sectionBkgColor: "#152036", altSectionBkgColor: "#0f1726", taskBkgColor: "#1b2a44",
+            taskBorderColor: "#3d8bfd", taskTextColor: "#eef3fb", taskTextOutsideColor: "#c5d0e0", todayLineColor: "#f2575f",
+        },
+    };
 
     function post(kind, data) { console.log("atlas:" + kind + ":" + JSON.stringify(data)); }
 
@@ -40,7 +61,8 @@ window.atlas = (function () {
                 const s = document.createElement("script");
                 s.src = "vendor/mermaid/mermaid.min.js";
                 s.onload = () => {
-                    mermaid.initialize({ startOnLoad: false, theme: "default", securityLevel: "strict" });
+                    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: "strict" },
+                        printMode ? { theme: "default" } : DARK_DIAGRAMS));
                     resolve();
                 };
                 document.head.appendChild(s);
@@ -58,6 +80,103 @@ window.atlas = (function () {
             const lang = el.className.replace(/.*language-(\S+).*/, "$1");
             if (hljs.getLanguage(lang)) hljs.highlightElement(el);
         });
+    }
+
+    // Code blocks: a copy button, and for shell code a button that runs it
+    // in Atlas' terminal (in the folder of the note).
+    const SHELL = /^(bash|sh|shell|zsh|console|shellsession)$/;
+    function codeTools(root) {
+        root.querySelectorAll("pre").forEach((pre) => {
+            if (pre.classList.contains("mermaid") || pre.parentElement.classList.contains("code-box")) return;
+            const code = pre.querySelector("code");
+            const lang = code ? (code.className.match(/language-(\S+)/) || [])[1] || "" : "";
+            const box = document.createElement("div");
+            box.className = "code-box";
+            pre.parentNode.insertBefore(box, pre);
+            box.appendChild(pre);
+            const tools = document.createElement("div");
+            tools.className = "code-tools";
+            const text = () => pre.innerText.replace(/\n$/, "");
+            const button = (label, title, action) => {
+                const b = document.createElement("button");
+                b.textContent = label;
+                b.title = title;
+                b.addEventListener("click", (ev) => { ev.stopPropagation(); action(b); });
+                tools.appendChild(b);
+            };
+            if (SHELL.test(lang)) {
+                button("▶ Ausführen", "Im Terminal von Atlas ausführen (Ordner der Notiz)", () => {
+                    let src = text();
+                    // Console transcripts: only the commands after the prompt.
+                    if (lang === "console" || lang === "shellsession")
+                        src = src.split("\n").filter((l) => /^\$ /.test(l)).map((l) => l.slice(2)).join("\n");
+                    post("run", { code: src });
+                });
+            }
+            button("Kopieren", "Code kopieren", (b) => {
+                post("copy", { text: text() });
+                b.textContent = "✓ Kopiert";
+                setTimeout(() => { b.textContent = "Kopieren"; }, 1200);
+            });
+            box.appendChild(tools);
+        });
+    }
+
+    // Headings fold their section (until the next heading of the same or a
+    // higher level); folded ones stay folded while the note is edited.
+    const folded = new Set();
+    function foldable(root) {
+        root.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((h) => {
+            const toggle = document.createElement("span");
+            toggle.className = "fold";
+            toggle.title = "Abschnitt ein-/ausklappen";
+            h.insertBefore(toggle, h.firstChild);
+            toggle.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                if (folded.has(h.id)) folded.delete(h.id); else folded.add(h.id);
+                applyFolds(root);
+            });
+        });
+        applyFolds(root);
+    }
+    function applyFolds(root) {
+        let hideBelow = 0; // level of the folded heading in charge, 0 = none
+        for (const el of Array.from(root.children)) {
+            const m = /^H([1-6])$/.exec(el.tagName);
+            if (m) {
+                const level = +m[1];
+                if (hideBelow && level <= hideBelow) hideBelow = 0;
+                el.classList.toggle("hidden-by-fold", hideBelow > 0);
+                const isFolded = !hideBelow && folded.has(el.id);
+                el.classList.toggle("folded", isFolded);
+                if (isFolded) hideBelow = level;
+            } else {
+                el.classList.toggle("hidden-by-fold", hideBelow > 0);
+            }
+        }
+    }
+
+    // Pictures: a button enlarges them to the size of the view (click or
+    // Esc closes it again).
+    function zoomablePictures(root) {
+        root.querySelectorAll("img").forEach((img) => {
+            if (img.closest(".img-box") || img.closest("a")) return;
+            const box = document.createElement("span");
+            box.className = "img-box";
+            img.parentNode.insertBefore(box, img);
+            box.appendChild(img);
+            const b = document.createElement("button");
+            b.className = "img-zoom";
+            b.title = "Vergrößern";
+            b.textContent = "⤢";
+            b.addEventListener("click", (ev) => { ev.stopPropagation(); showPicture(img); });
+            box.appendChild(b);
+            img.addEventListener("dblclick", () => showPicture(img));
+        });
+    }
+    // Atlas shows the picture in a window of its own.
+    function showPicture(img) {
+        post("image", { src: img.getAttribute("src") || "", alt: img.alt || "" });
     }
 
     function markers() { return Array.from(document.querySelectorAll("a.line-marker")); }
@@ -157,13 +276,63 @@ window.atlas = (function () {
         if (el) el.scrollIntoView();
     }
 
+    /// Marks every occurrence of `term` (a hit of the project search) and
+    /// shows the one at or after source line `line`; the number of marks.
+    function markHits(term, caseSensitive, line) {
+        const main = document.getElementById("content");
+        for (const old of main.querySelectorAll("mark.search-hit")) old.replaceWith(...old.childNodes);
+        main.normalize();
+        if (!term) return 0;
+        const fold = (t) => caseSensitive ? t : t.toLowerCase();
+        const needle = fold(term);
+        const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                return node.parentElement.closest("script, style, .katex, svg, .code-tools")
+                    ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+            },
+        });
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        const marks = [];
+        for (let node of nodes) {
+            let at = fold(node.data).indexOf(needle);
+            while (at >= 0) {
+                const hit = node.splitText(at);
+                node = hit.splitText(needle.length);
+                const mark = document.createElement("mark");
+                mark.className = "search-hit";
+                hit.replaceWith(mark);
+                mark.appendChild(hit);
+                marks.push(mark);
+                at = fold(node.data).indexOf(needle);
+            }
+        }
+        if (!marks.length) return 0;
+        let marker = null;
+        for (const m of markers()) {
+            if (+m.dataset.line > line) break;
+            marker = m;
+        }
+        const current = marks.find((m) => !marker
+            || (marker.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING)) || marks[0];
+        current.classList.add("current");
+        reportScroll = false;
+        current.scrollIntoView({ block: "center" });
+        setTimeout(() => { reportScroll = true; }, 120);
+        return marks.length;
+    }
+
     return {
+        markHits,
         set(html) {
             const y = window.scrollY;
             const main = document.getElementById("content");
             main.innerHTML = html;
             renderMath(main);
             highlight(main);
+            codeTools(main);
+            zoomablePictures(main);
+            foldable(main);
             busy = true;
             Promise.resolve(renderMermaid(main))
                 .catch(() => {})
@@ -185,6 +354,8 @@ window.atlas = (function () {
             setTimeout(() => { reportScroll = true; }, 120);
         },
         scrollToY(y) { window.scrollTo(0, y); },
+        /// The PDF export: light diagrams (call before `set`).
+        setPrintMode(on) { printMode = !!on; },
         /// Follows the editor smoothly to source line `line` (fractional).
         follow,
         exactTopLine,

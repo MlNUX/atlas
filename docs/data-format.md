@@ -178,7 +178,7 @@ Aufgaben, die Markdown-Datei bleibt dabei unverändert.
 Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 `[calendar] default` aus `config.toml`, sonst der Projektkalender.
 
-**`cache/sync.json`** (Nextcloud, siehe [Phase-2-Bericht](phase2.md)):
+**`cache/sync.json`** (Nextcloud, siehe [Phase-2-Bericht](development/phase2.md)):
 
 ```json
 {
@@ -226,12 +226,22 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 | `$XDG_CONFIG_HOME/atlas/extensions/` | installierte Erweiterungen ([extensions.md](extensions.md)) |
 | `$XDG_STATE_HOME/atlas/ilias/index.json` | eingelesene ILIAS-Kurse: `{"base_url", "scanned": ms, "courses": [Knoten]}`; Knoten `{kind: crs\|grp\|sess\|fold\|file, id, name, url, info, download?, children?, error?}` |
 | `$XDG_STATE_HOME/atlas/ilias/downloads.json` | geladene ILIAS-Dateien: ILIAS-Adresse → `{path, info, time}`; anderes `info` als im Index = neue Version |
+| `$XDG_DATA_HOME/atlas/latex-ocr/` | das Formelmodell für „Formel als LaTeX“ (`image_resizer.onnx`, `encoder.onnx`, `decoder.onnx`, `tokenizer.json`; einmal geladen, [latex-ocr.md](latex-ocr.md)) |
+| `$XDG_STATE_HOME/atlas/secrets/ilias.cred` | Passwort der Hochschul-Anmeldung für ILIAS, nur verschlüsselt mit `systemd-creds --user` (ohne systemd-creds wird es nicht gespeichert) |
 | `$XDG_STATE_HOME/atlas/ilias/debug.log` | ILIAS-Protokoll zur Fehlersuche: Anmeldefenster, jede abgerufene Seite mit Weiterleitung und Anmelde-Urteil samt Grund, Funde, Downloads; von Cookies nur die Namen (höchstens 4 MB) |
 | `$XDG_STATE_HOME/atlas/ilias/debug/` | Kopien der Dashboard-Seiten und auffälliger Seiten (nicht angemeldet, nichts gefunden) des letzten Einlesens |
 | `$XDG_DATA_HOME/atlas/…/QtWebEngine/atlas-ilias/` | Web-Profil der ILIAS-Anmeldung (Cookies der Sitzung, kein Passwort) |
+| `$XDG_CONFIG_HOME/atlas/dictionary.txt` | eigenes Wörterbuch der Rechtschreibprüfung: ein Wort pro Zeile („zum Wörterbuch hinzufügen“) |
+| `<Projekt>/assets/` | in Notizen eingefügte Bilder (Strg+V, Ziehen, „Bild als Zitat“ aus PDFs); außerhalb eines Projekts `assets/` neben der Notiz |
 | `$XDG_STATE_HOME/atlas/trusted-extensions.json` | freigegebene Projekt-Erweiterungen: Ordner → BLAKE3 des Manifests |
 
 `ATLAS_STATE_DIR` und `ATLAS_CONFIG_DIR` ersetzen die beiden Ordner (Tests).
+
+Die Wörterbücher der Rechtschreibprüfung (`de_DE` und `en_US`, je `.dic` und
+`.aff`, Hunspell) sucht Atlas in `ATLAS_HUNSPELL_DIRS` (mit `:` getrennt; im
+Nix-Paket fest eingebaut), `$XDG_DATA_DIRS/hunspell`,
+`~/.nix-profile/share/hunspell`, `/run/current-system/sw/share/hunspell`,
+`/usr/share/hunspell`, `/usr/share/myspell/dicts` und `/usr/share/myspell`.
 
 ### `config.toml`
 
@@ -239,6 +249,7 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 [editor]
 command = "code --goto {file}:{line}:{column}"   # {file} {line} {column} {dir}
 terminal = false                                 # im Atlas-Terminal ausführen
+spellcheck = false                               # Rechtschreibprüfung aus (Standard: an)
 
 [terminal]
 shell = "/run/current-system/sw/bin/fish"        # Standard: Login-Shell
@@ -270,6 +281,8 @@ dark = true                                      # Dunkelmodus: Farben umgekehrt
 base_url = "https://ilias.studium.kit.edu/"      # Standard: KIT
 download_dir = "/home/minux/Uni/ILIAS"           # zuletzt gewählter Zielordner, beim nächsten Download vorgeschlagen
 show_in_places = true
+user = "uxxxx"                                   # Benutzername der Hochschul-Anmeldung (das Passwort steht nie hier)
+login_host = "idp.scc.kit.edu"                   # einzige Seite, auf der Atlas die gespeicherte Anmeldung einsetzt
 
 [calendar]                                       # Nextcloud/CalDAV oder Google – ohne Passwort
 provider = ""                                    # "" = Nextcloud/CalDAV, "google" = Google (siehe google-kalender.md)
@@ -326,7 +339,9 @@ Unbekannte Schlüssel bleiben beim Speichern aus Atlas erhalten.
 ## In Notizen
 
 Atlas speichert nichts Verstecktes in Markdown-Dateien. Es liest Tags aus dem
-YAML-Frontmatter (`tags: [a, b/c]`) und `title:`, und es schreibt Links nur in
+YAML-Frontmatter (`tags: [a, b/c]`) und aus dem Text (`#lernen`, `#uni/ana1`:
+`#` nach Leerzeichen oder Zeilenanfang, dann ein Buchstabe; nicht in Code,
+Links und Überschriften), dazu `title:`, und es schreibt Links nur in
 der dokumentierten Form (`/pfad` ab Projektwurzel oder relativ, mit
 `#L10-L20`, `#page=3` oder Überschriften-Anker).
 

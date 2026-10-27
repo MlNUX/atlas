@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Minux
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# AUR-Paket atlas-workspace. Baut das Release-Archiv des Tags v$pkgver.
+# Arch-Paket atlas-workspace (makepkg -si). Baut das Release-Archiv des Tags v$pkgver.
 # Nach einem neuen Tag: pkgver anpassen, `updpkgsums` und
 # `makepkg --printsrcinfo > .SRCINFO` ausführen.
 
 # Maintainer: Minux (https://github.com/MlNUX)
 pkgname=atlas-workspace
-pkgver=1.1.1
+pkgver=1.1.2
 pkgrel=1
 pkgdesc="File-centric desktop workspace with PDF, Markdown and terminal"
 arch=('x86_64' 'aarch64')
@@ -19,12 +19,15 @@ depends=(
   'syntax-highlighting'      # KF6, QML-Modul org.kde.syntaxhighlighting
   'poppler-glib' 'cairo' 'glib2' 'fontconfig' 'wayland'
   'ripgrep'
+  'onnxruntime'             # „Formel als LaTeX“ (zur Laufzeit geladen)
   'gcc-libs' 'glibc'
 )
 makedepends=('rust' 'cargo' 'clang' 'pkgconf')
 optdepends=(
   'xdg-utils: Dateien mit dem Standardprogramm öffnen'
   'systemd: App-Passwort des Kalenders verschlüsselt speichern (systemd-creds)'
+  'hunspell-de: Rechtschreibprüfung Deutsch'
+  'hunspell-en_us: Rechtschreibprüfung Englisch'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')   # vor dem Hochladen: updpkgsums

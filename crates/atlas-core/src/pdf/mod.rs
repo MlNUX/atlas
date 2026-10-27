@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! PDF rendering (Poppler, chosen in Phase 0, see docs/phase0.md).
+//! PDF rendering (Poppler, chosen in Phase 0, see docs/development/phase0.md).
 //!
 //! The library is not thread safe in the way the UI needs, so a worker
 //! thread ("actor") owns it and all open documents. Requests are queued; the
@@ -11,6 +11,7 @@
 //! Rendered pages are BGRA, premultiplied, 4 bytes per pixel, rows without
 //! padding – i.e. `QImage::Format_ARGB32_Premultiplied` on little endian.
 
+pub mod formulas;
 mod poppler;
 
 use std::collections::HashMap;
@@ -128,7 +129,23 @@ trait Backend {
         style: SelectionStyle,
     ) -> Result<(Vec<[f64; 4]>, String)>;
     fn document_id(&mut self, path: &Path) -> Result<Option<String>>;
+    /// Renders `area` (`[x0, y0, x1, y1]`, points, origin top left) of
+    /// `page` at `scale` pixels per point on white, in greyscale: width,
+    /// height, one byte per pixel.
+    fn clip_gray(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)>;
+    /// Like `clip_gray`, in colour: RGB, three bytes per pixel.
+    fn clip_rgb(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)>;
+    /// The characters of the text of `page` with rectangle and font.
+    fn glyphs(&mut self, path: &Path, page: usize) -> Result<Vec<formulas::Glyph>>;
     fn close(&mut self, path: &Path);
+}
+
+/// The plain text of every page (lines separated by `\n`), read with a
+/// document of its own: callable from any thread, e.g. the project search.
+pub fn page_texts(path: &Path) -> Result<Vec<String>> {
+    let mut backend = poppler::PopplerBackend::default();
+    let pages = backend.open(path)?.len();
+    (0..pages).map(|page| backend.text(path, page)).collect()
 }
 
 /// Splits a drag from `start` to `end` (`(page, x, y)`, points) into one
@@ -166,9 +183,28 @@ pub fn selection_spans(
 
 type Job = Box<dyn FnOnce(&mut dyn Backend, &mut HashMap<PathBuf, DocInfo>) + Send>;
 
-/// Handle to the PDF worker thread.
+/// Handle to the PDF worker threads: one for everything but rendering,
+/// a few for rendering pages in parallel (each with documents of its own:
+/// a Poppler document must not be used by two threads at once).
 pub struct PdfService {
     jobs: Sender<Job>,
+    renders: Sender<RenderJob>,
+    /// Bumped by [`PdfService::close`]: render threads reopen a document
+    /// whose number changed (it changed on disk).
+    closed: Arc<std::sync::Mutex<HashMap<PathBuf, u64>>>,
+}
+
+struct RenderJob {
+    path: PathBuf,
+    page: usize,
+    width_px: u32,
+    cancel: CancelToken,
+    done: Box<dyn FnOnce(Result<RenderedPage>) + Send>,
+}
+
+/// Render threads: up to 3, one fewer than the cores (the UI needs one).
+fn render_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| n.get().saturating_sub(1)).clamp(1, 3)
 }
 
 /// Lets a queued render be skipped when its result is no longer needed
@@ -204,7 +240,41 @@ impl PdfService {
                 }
             })
             .expect("spawn pdf worker");
-        Self { jobs: tx }
+        let closed: Arc<std::sync::Mutex<HashMap<PathBuf, u64>>> = Arc::default();
+        let (renders, render_rx) = unbounded::<RenderJob>();
+        for i in 0..render_threads() {
+            let rx = render_rx.clone();
+            let closed = closed.clone();
+            std::thread::Builder::new()
+                .name(format!("atlas-pdf-render-{i}"))
+                .spawn(move || {
+                    let mut backend = poppler::PopplerBackend::default();
+                    // Documents open here, with the close number they were opened at.
+                    let mut open: HashMap<PathBuf, u64> = HashMap::new();
+                    for job in rx {
+                        if job.cancel.is_cancelled() {
+                            continue;
+                        }
+                        let epoch = closed.lock().map(|c| c.get(&job.path).copied().unwrap_or(0)).unwrap_or(0);
+                        if open.get(&job.path) != Some(&epoch) {
+                            backend.close(&job.path);
+                            if let Err(err) = backend.open(&job.path) {
+                                (job.done)(Err(err));
+                                continue;
+                            }
+                            open.insert(job.path.clone(), epoch);
+                        }
+                        let start = Instant::now();
+                        let result =
+                            backend.render(&job.path, job.page, job.width_px.max(1)).map(|(width, height, bgra)| {
+                                RenderedPage { width, height, bgra, elapsed: start.elapsed() }
+                            });
+                        (job.done)(result);
+                    }
+                })
+                .expect("spawn pdf render worker");
+        }
+        Self { jobs: tx, renders, closed }
     }
 
     fn submit(&self, job: Job) {
@@ -230,13 +300,17 @@ impl PdfService {
 
     /// Forgets a document, e.g. after it changed on disk.
     pub fn close(&self, path: PathBuf) {
+        if let Ok(mut closed) = self.closed.lock() {
+            *closed.entry(path.clone()).or_default() += 1;
+        }
         self.submit(Box::new(move |backend, docs| {
             docs.remove(&path);
             backend.close(&path);
         }));
     }
 
-    /// Renders `page` (0 based) at `width_px` pixels width.
+    /// Renders `page` (0 based) at `width_px` pixels width (on one of the
+    /// render threads; `done` runs there).
     pub fn render(
         &self,
         path: PathBuf,
@@ -245,28 +319,7 @@ impl PdfService {
         cancel: CancelToken,
         done: impl FnOnce(Result<RenderedPage>) + Send + 'static,
     ) {
-        self.submit(Box::new(move |backend, docs| {
-            if cancel.is_cancelled() {
-                return;
-            }
-            if !docs.contains_key(&path) {
-                let start = Instant::now();
-                match backend.open(&path) {
-                    Ok(page_sizes) => {
-                        docs.insert(path.clone(), DocInfo { page_sizes, open_time: start.elapsed() });
-                    }
-                    Err(err) => return done(Err(err)),
-                }
-            }
-            let start = Instant::now();
-            let result = backend.render(&path, page, width_px.max(1)).map(|(width, height, bgra)| RenderedPage {
-                width,
-                height,
-                bgra,
-                elapsed: start.elapsed(),
-            });
-            done(result)
-        }));
+        let _ = self.renders.send(RenderJob { path, page, width_px, cancel, done: Box::new(done) });
     }
 
     /// Extracts the plain text of a page.
@@ -278,6 +331,122 @@ impl PdfService {
                 return done(Err(err));
             }
             done(backend.text(&path, page))
+        }));
+    }
+
+    /// Renders a part of a page in greyscale (e.g. a formula for the LaTeX
+    /// recognition); see [`Backend::clip_gray`].
+    pub fn clip_gray(
+        &self,
+        path: PathBuf,
+        page: usize,
+        area: [f64; 4],
+        scale: f64,
+        done: impl FnOnce(Result<(u32, u32, Vec<u8>)>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&path)
+                && let Err(err) = backend.open(&path)
+            {
+                return done(Err(err));
+            }
+            done(backend.clip_gray(&path, page, area, scale))
+        }));
+    }
+
+    /// Like [`PdfService::page_formulas`], for the text inside `rects`
+    /// (`[x0, y0, x1, y1]`, e.g. a selection) only.
+    pub fn area_formulas(
+        &self,
+        path: PathBuf,
+        page: usize,
+        rects: Vec<[f64; 4]>,
+        done: impl FnOnce(Result<(formulas::PageText, Vec<(u32, u32, Vec<u8>)>)>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&path)
+                && let Err(err) = backend.open(&path)
+            {
+                return done(Err(err));
+            }
+            let text = match backend.glyphs(&path, page) {
+                Ok(glyphs) => formulas::PageText::new(formulas::subset(&glyphs, &rects)),
+                Err(err) => return done(Err(err)),
+            };
+            let clips = (0..text.formulas.len())
+                .map(|i| {
+                    backend.clip_gray(&path, page, text.clip_area(i), text.clip_scale(i)).unwrap_or((0, 0, Vec::new()))
+                })
+                .collect();
+            done(Ok((text, clips)))
+        }));
+    }
+
+    /// Saves `area` (`[x0, y0, x1, y1]`, points) of `page` in colour as PNG
+    /// at `out`, `scale` pixels per point (e.g. a figure quoted in a note).
+    pub fn save_area_png(&self, path: &Path, page: usize, area: [f64; 4], scale: f64, out: &Path) -> Result<()> {
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        let pdf = path.to_path_buf();
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&pdf)
+                && let Err(err) = backend.open(&pdf)
+            {
+                let _ = tx.send(Err(err));
+                return;
+            }
+            let _ = tx.send(backend.clip_rgb(&pdf, page, area, scale));
+        }));
+        let (w, h, rgb) = rx.recv()??;
+        let image = image::RgbImage::from_raw(w, h, rgb).ok_or_else(|| anyhow::anyhow!("Bildgröße passt nicht"))?;
+        image.save_with_format(out, image::ImageFormat::Png)?;
+        Ok(())
+    }
+
+    /// The text of `page` with its formulas (see [`formulas`]), each
+    /// formula cut out in greyscale at the size the formula model reads best
+    /// (an empty picture if that failed).
+    pub fn page_formulas(
+        &self,
+        path: PathBuf,
+        page: usize,
+        done: impl FnOnce(Result<(formulas::PageText, Vec<(u32, u32, Vec<u8>)>)>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&path)
+                && let Err(err) = backend.open(&path)
+            {
+                return done(Err(err));
+            }
+            let text = match backend.glyphs(&path, page) {
+                Ok(glyphs) => formulas::PageText::new(glyphs),
+                Err(err) => return done(Err(err)),
+            };
+            let clips = (0..text.formulas.len())
+                .map(|i| {
+                    backend.clip_gray(&path, page, text.clip_area(i), text.clip_scale(i)).unwrap_or((0, 0, Vec::new()))
+                })
+                .collect();
+            done(Ok((text, clips)))
+        }));
+    }
+
+    /// Cuts out `area` of `page` (a box drawn around a formula) for the
+    /// formula model, at the size it reads best for the text in there.
+    pub fn formula_clip(
+        &self,
+        path: PathBuf,
+        page: usize,
+        area: [f64; 4],
+        done: impl FnOnce(Result<(u32, u32, Vec<u8>)>) + Send + 'static,
+    ) {
+        self.submit(Box::new(move |backend, docs| {
+            if !docs.contains_key(&path)
+                && let Err(err) = backend.open(&path)
+            {
+                return done(Err(err));
+            }
+            let size = backend.glyphs(&path, page).ok().and_then(|g| formulas::font_size_in(&g, area));
+            done(backend.clip_gray(&path, page, area, formulas::scale_for(size.unwrap_or(12.0))))
         }));
     }
 
@@ -391,16 +560,22 @@ pub(crate) mod tests {
     /// tests need no fixtures.
     pub(crate) fn sample_pdf() -> Vec<u8> {
         // A red square in the bottom left corner and a line of text.
-        let content = b"1 0 0 rg 0 0 100 100 re f 0 g BT /F1 24 Tf 72 720 Td (Hello Atlas) Tj ET";
-        let objects = [
+        pdf_with("1 0 0 rg 0 0 100 100 re f 0 g BT /F1 24 Tf 72 720 Td (Hello Atlas) Tj ET", &["Helvetica"])
+    }
+
+    /// One page (A4) with `content`, fonts `/F1`, `/F2`, … named `fonts`
+    /// (Type 1, not embedded).
+    pub(crate) fn pdf_with(content: &str, fonts: &[&str]) -> Vec<u8> {
+        let refs: String = (0..fonts.len()).map(|i| format!("/F{} {} 0 R ", i + 1, i + 5)).collect();
+        let mut objects = vec![
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R \
-             /Resources << /Font << /F1 5 0 R >> >> >>"
-                .to_string(),
-            format!("<< /Length {} >>\nstream\n{}\nendstream", content.len(), std::str::from_utf8(content).unwrap()),
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << {refs}>> >> >>"
+            ),
+            format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len()),
         ];
+        objects.extend(fonts.iter().map(|f| format!("<< /Type /Font /Subtype /Type1 /BaseFont /{f} >>")));
         let mut out = b"%PDF-1.4\n".to_vec();
         let mut offsets = Vec::new();
         for (i, obj) in objects.iter().enumerate() {
@@ -456,6 +631,224 @@ pub(crate) mod tests {
         assert_eq!(&page.bgra[row + 8..row + 12], &[0, 0, 255, 255], "output must be BGRA");
         let text = service.text_blocking(&path, 0).unwrap();
         assert!(text.contains("Hello Atlas"), "text: {text:?}");
+    }
+
+    /// By hand: rendering on the render threads while the main worker
+    /// extracts text, glyphs and searches, on several documents at once.
+    /// `ATLAS_BENCH_PDF=a.pdf ATLAS_BENCH_PDF2=b.pdf cargo test -p atlas-core -- --ignored stress_pdf_threads`
+    #[test]
+    #[ignore]
+    fn stress_pdf_threads() {
+        let a = PathBuf::from(std::env::var("ATLAS_BENCH_PDF").expect("ATLAS_BENCH_PDF"));
+        let b = PathBuf::from(std::env::var("ATLAS_BENCH_PDF2").expect("ATLAS_BENCH_PDF2"));
+        let service = PdfService::get();
+        let pages_a = service.open_blocking(&a).unwrap().page_sizes.len();
+        let pages_b = service.open_blocking(&b).unwrap().page_sizes.len();
+        let until = Instant::now() + Duration::from_secs(std::env::var("STRESS_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(30));
+        let mut rounds = 0;
+        while Instant::now() < until {
+            let (tx, rx) = crossbeam_channel::unbounded();
+            for i in 0..12 {
+                let (path, n) = if i % 2 == 0 { (&a, pages_a) } else { (&b, pages_b) };
+                let tx = tx.clone();
+                service.render(path.clone(), (rounds * 7 + i) % n, 600 + (i as u32 % 3) * 300, CancelToken::default(), move |r| {
+                    let _ = tx.send(r.map(|_| ()));
+                });
+            }
+            for page in 0..3 {
+                let _ = service.text_blocking(&a, page % pages_a);
+                let (t2, r2) = crossbeam_channel::bounded(1);
+                service.page_formulas(b.clone(), page % pages_b, move |r| {
+                    let _ = t2.send(r.map(|_| ()));
+                });
+                let _ = r2.recv();
+                let (t3, r3) = crossbeam_channel::bounded(1);
+                service.search(a.clone(), "die".into(), CancelToken::default(), move |r| {
+                    let _ = t3.send(r.map(|_| ()));
+                });
+                let _ = r3.recv();
+            }
+            if rounds % 5 == 0 {
+                service.close(a.clone());
+            }
+            drop(tx);
+            for r in rx {
+                r.unwrap();
+            }
+            rounds += 1;
+        }
+        println!("{rounds} rounds without a crash");
+    }
+
+    /// By hand: several engines rendering the same document at the same
+    /// time give the same pixels as one (Poppler's font handling is shared).
+    #[test]
+    #[ignore]
+    fn parallel_rendering_is_identical() {
+        let path = PathBuf::from(std::env::var("ATLAS_BENCH_PDF").expect("ATLAS_BENCH_PDF"));
+        let mut backend = poppler::PopplerBackend::default();
+        let n = backend.open(&path).unwrap().len();
+        let hash =
+            |bgra: &[u8]| bgra.iter().fold(0u64, |h, &b| h.wrapping_mul(1_099_511_628_211).wrapping_add(u64::from(b)));
+        let expected: Vec<u64> = (0..n).map(|p| hash(&backend.render(&path, p, 900).unwrap().2)).collect();
+        for round in 0..3 {
+            let got: Vec<(usize, u64)> = std::thread::scope(|scope| {
+                let workers: Vec<_> = (0..4)
+                    .map(|t| {
+                        let path = path.clone();
+                        scope.spawn(move || {
+                            let mut backend = poppler::PopplerBackend::default();
+                            backend.open(&path).unwrap();
+                            (t..n)
+                                .step_by(4)
+                                .map(|p| (p, hash(&backend.render(&path, p, 900).unwrap().2)))
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .collect();
+                workers.into_iter().flat_map(|w| w.join().unwrap()).collect()
+            });
+            for (p, h) in got {
+                assert_eq!(h, expected[p], "round {round}, page {p}");
+            }
+        }
+        println!("{n} pages identical in 3 rounds of 4 threads");
+    }
+
+    /// By hand: render times of a real document, one engine and several in
+    /// parallel. `ATLAS_BENCH_PDF=lang.pdf cargo test --release -p atlas-core -- --ignored --nocapture render_benchmark`
+    #[test]
+    #[ignore]
+    fn render_benchmark() {
+        let path = PathBuf::from(std::env::var("ATLAS_BENCH_PDF").expect("ATLAS_BENCH_PDF"));
+        let width: u32 = std::env::var("ATLAS_BENCH_WIDTH").ok().and_then(|w| w.parse().ok()).unwrap_or(1600);
+        let mut backend = poppler::PopplerBackend::default();
+        let started = Instant::now();
+        let sizes = backend.open(&path).unwrap();
+        println!("open: {} pages, {} ms", sizes.len(), started.elapsed().as_millis());
+        let n = sizes.len().min(40);
+        let started = Instant::now();
+        let mut darken = Duration::ZERO;
+        for page in 0..n {
+            let (w, h, bgra) = backend.render(&path, page, width).unwrap();
+            let mut p = RenderedPage { width: w, height: h, bgra, elapsed: Duration::ZERO };
+            let t = Instant::now();
+            p.darken();
+            darken += t.elapsed();
+        }
+        let one = started.elapsed() - darken;
+        println!(
+            "render {n} pages at {width} px, one engine: {} ms per page; darken {} ms per page",
+            one.as_millis() / n as u128,
+            darken.as_millis() / n as u128
+        );
+        for threads in [2usize, 4] {
+            let started = Instant::now();
+            std::thread::scope(|scope| {
+                for t in 0..threads {
+                    let path = path.clone();
+                    scope.spawn(move || {
+                        let mut backend = poppler::PopplerBackend::default();
+                        backend.open(&path).unwrap();
+                        for page in (t..n).step_by(threads) {
+                            backend.render(&path, page, width).unwrap();
+                        }
+                    });
+                }
+            });
+            println!("{threads} engines: {} ms per page", started.elapsed().as_millis() / n as u128);
+        }
+    }
+
+    /// By hand, with the real formula model:
+    /// `ATLAS_FORMULA_PDF=folie.pdf ATLAS_LATEX_OCR_MODELS=… cargo test -p atlas-core -- --ignored --nocapture page_text_with_real_model`
+    #[test]
+    #[ignore]
+    fn page_text_with_real_model() {
+        let path = PathBuf::from(std::env::var("ATLAS_FORMULA_PDF").expect("ATLAS_FORMULA_PDF"));
+        let page: usize = std::env::var("ATLAS_FORMULA_PAGE").ok().and_then(|p| p.parse().ok()).unwrap_or(0);
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        PdfService::get().page_formulas(path, page, move |r| {
+            let _ = tx.send(r);
+        });
+        let (text, clips) = rx.recv().unwrap().unwrap();
+        println!("--- Text ---\n{}", text.plain());
+        if std::env::var("ATLAS_FORMULA_GLYPHS").is_ok() {
+            for g in &text.glyphs {
+                println!("{:?} {:?} {:.1} {:?}", g.ch, g.rect.map(|v| v.round()), g.size, g.font);
+            }
+        }
+        let mut latex = Vec::new();
+        for (i, (w, h, pixels)) in clips.into_iter().enumerate() {
+            if let Ok(dir) = std::env::var("ATLAS_FORMULA_DUMP") {
+                let mut pgm = format!("P5 {w} {h} 255\n").into_bytes();
+                pgm.extend_from_slice(&pixels);
+                std::fs::write(format!("{dir}/formel-{i}.pgm"), pgm).unwrap();
+            }
+            let started = Instant::now();
+            let tex = crate::latex_ocr::recognize_gray(w, h, pixels);
+            println!("Formel {i} {:?} {w}×{h} ({} ms): {tex:?}", text.formulas[i].rect, started.elapsed().as_millis());
+            latex.push(tex.ok());
+        }
+        println!("--- Mit LaTeX ---\n{}", text.with_latex(&latex));
+    }
+
+    #[test]
+    fn saves_an_area_as_png_and_finds_formulas_in_a_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.pdf");
+        std::fs::write(&path, sample_pdf()).unwrap();
+        let out = dir.path().join("bild.png");
+        PdfService::get().save_area_png(&path, 0, [0.0, 700.0, 120.0, 842.0], 2.0, &out).unwrap();
+        let png = std::fs::read(&out).unwrap();
+        assert_eq!(&png[1..4], b"PNG");
+        let img = image::load_from_memory(&png).unwrap();
+        assert_eq!((img.width(), img.height()), (240, 284));
+        // The red square (bottom left corner of the page) is in the picture.
+        let px = img.to_rgb8().get_pixel(20, 270).0;
+        assert_eq!(px, [255, 0, 0]);
+
+        let path = dir.path().join("formula.pdf");
+        let content = "BT /F1 12 Tf 1 0 0 1 72 720 Tm (Flaeche) Tj /F2 12 Tf 1 0 0 1 122 720 Tm (x) Tj \
+                       /F3 12 Tf 1 0 0 1 132 720 Tm (=) Tj /F2 12 Tf 1 0 0 1 142 720 Tm (y) Tj ET \
+                       BT /F2 12 Tf 1 0 0 1 72 600 Tm (a) Tj /F3 12 Tf 1 0 0 1 82 600 Tm (+) Tj /F2 12 Tf 1 0 0 1 92 600 Tm (b) Tj ET";
+        std::fs::write(&path, pdf_with(content, &["Helvetica", "CMMI10", "CMR10"])).unwrap();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        // Only the first line is selected: one formula, not two.
+        PdfService::get().area_formulas(path, 0, vec![[60.0, 105.0, 200.0, 130.0]], move |r| {
+            let _ = tx.send(r);
+        });
+        let (text, clips) = rx.recv().unwrap().unwrap();
+        assert_eq!(text.formulas.len(), 1, "{:?}", text.plain());
+        assert_eq!(clips.len(), 1);
+        assert!(text.plain().starts_with("Flaeche"), "{:?}", text.plain());
+    }
+
+    #[test]
+    fn finds_formulas_by_their_fonts_and_cuts_them_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("formula.pdf");
+        // "Fläche x = y2 gesamt" with x, y in CMMI10 and = 2 in CMR10.
+        let content = "BT /F1 12 Tf 1 0 0 1 72 720 Tm (Flaeche) Tj /F2 12 Tf 1 0 0 1 122 720 Tm (x) Tj \
+                       /F3 12 Tf 1 0 0 1 132 720 Tm (=) Tj /F2 12 Tf 1 0 0 1 142 720 Tm (y) Tj \
+                       /F3 8 Tf 1 0 0 1 149 725 Tm (2) Tj /F1 12 Tf 1 0 0 1 159 720 Tm (gesamt) Tj ET";
+        std::fs::write(&path, pdf_with(content, &["Helvetica", "CMMI10", "CMR10"])).unwrap();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        PdfService::get().page_formulas(path.clone(), 0, move |r| {
+            let _ = tx.send(r);
+        });
+        let (text, clips) = rx.recv().unwrap().unwrap();
+        let fonts: Vec<_> = text.glyphs.iter().map(|g| (g.ch, g.font.clone())).collect();
+        assert!(text.plain().contains("Flaeche"), "{:?}", text.plain());
+        assert_eq!(text.formulas.len(), 1, "{fonts:?} {:?}", text.formulas);
+        let f = &text.formulas[0];
+        // Origin top left: the line sits about 110 points from the top.
+        assert!(f.rect[1] > 90.0 && f.rect[3] < 130.0 && f.rect[0] > 100.0, "{:?}", f.rect);
+        assert_eq!(clips.len(), 1);
+        let (w, h, pixels) = &clips[0];
+        assert!(*w > 20 && *h > 15 && pixels.iter().any(|&p| p < 128), "{w}×{h}");
+        let latex = text.with_latex(&[Some("x = y^2".into())]);
+        assert_eq!(latex, "Flaeche $x = y^2$ gesamt", "{:?}", text.plain());
     }
 }
 

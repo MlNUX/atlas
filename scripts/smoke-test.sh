@@ -67,11 +67,13 @@ pdf() {
   local out="$1" objs=() offsets=() i body annots=""
   [ "${2:-}" = links ] && annots=" /Annots [8 0 R 9 0 R]"
   local page1="BT /F1 20 Tf 72 700 Td (Zitat aus der Quelle) Tj 0 -30 Td (Zweite Zeile hier) Tj ET"
-  local page2="BT /F1 20 Tf 72 700 Td (Seite zwei Text) Tj ET"
+  # Page 2 also has a formula "x = y" in TeX's math fonts (for the text
+  # of a page with LaTeX).
+  local page2="BT /F1 20 Tf 72 700 Td (Seite zwei Text) Tj ET BT /F1 20 Tf 1 0 0 1 72 600 Tm (Formel ) Tj /F2 20 Tf 1 0 0 1 150 600 Tm (x) Tj /F3 20 Tf 1 0 0 1 166 600 Tm (=) Tj /F2 20 Tf 1 0 0 1 186 600 Tm (y) Tj ET"
   objs+=("<< /Type /Catalog /Pages 2 0 R >>")
   objs+=("<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>")
   objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 5 0 R /Resources << /Font << /F1 7 0 R >> >>$annots >>")
-  objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 7 0 R >> >> >>")
+  objs+=("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 7 0 R /F2 $((${annots:+2}+8)) 0 R /F3 $((${annots:+2}+9)) 0 R >> >> >>")
   objs+=("<< /Length ${#page1} >>
 stream
 $page1
@@ -85,6 +87,8 @@ endstream")
     objs+=("<< /Type /Annot /Subtype /Link /Rect [72 400 300 430] /Border [0 0 0] /Dest [4 0 R /XYZ 0 500 null] >>")
     objs+=("<< /Type /Annot /Subtype /Link /Rect [72 300 300 330] /Border [0 0 0] /A << /S /URI /URI (https://example.org/) >> >>")
   fi
+  objs+=("<< /Type /Font /Subtype /Type1 /BaseFont /CMMI10 >>")
+  objs+=("<< /Type /Font /Subtype /Type1 /BaseFont /CMR10 >>")
   body="%PDF-1.4"$'\n'
   for i in "${!objs[@]}"; do
     offsets+=("$(printf '%s' "$body" | wc -c)")
@@ -173,6 +177,23 @@ python3 scripts/ilias-mock.py "$ilias_port" &
 ilias_pid=$!
 trap 'kill $ilias_pid 2>/dev/null; rm -rf "$work"' EXIT
 mkdir -p "$work/ilias"
+# Stands in for systemd-creds (ROT13), for the remembered ILIAS login.
+cat > "$work/fake-creds" <<'SH'
+#!/bin/sh
+[ "$1" = --user ] || exit 9
+case "$2" in
+  encrypt) tr a-z n-za-m > "$5" ;;
+  decrypt) tr a-z n-za-m < "$4" ;;
+  *) exit 8 ;;
+esac
+SH
+chmod +x "$work/fake-creds"
+export ATLAS_SYSTEMD_CREDS="$work/fake-creds"
+# "Formel als LaTeX": tiny stand-ins for the pix2tex ONNX models (no
+# download; scripts/make-latex-ocr-fixtures.py) – the decoder spells
+# \frac{a}{b}.
+# (Run from the repository root, like the binary path above.)
+export ATLAS_LATEX_OCR_MODELS="$PWD/crates/atlas-core/tests/latex-ocr"
 cat >> "$work/config/config.toml" <<TOML
 [ilias]
 base_url = "http://127.0.0.1:$ilias_port/"
@@ -199,7 +220,7 @@ export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu"
 
 status=0
 # One step every 1.5 s; generous for slow machines.
-timeout 300 "$bin" "$project" --self-test 2> "$work/log" || status=$?
+timeout 600 "$bin" "$project" --self-test 2> "$work/log" || status=$?
 grep -E "selftest:" "$work/log" | sed 's/^qml: //' || true
 # KaTeX accepts what LaTeX would reject; that must not flood the log.
 if grep -q "LaTeX-incompatible" "$work/log"; then

@@ -61,6 +61,11 @@ Item {
     property string iliasRoot: ""
     property string goneFile: ""
     property bool goneOpened: false
+    property var fullscreenTab: null
+    property var folderTab: null
+    property var imageView: null
+    property var zoomPoint: null
+    property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
     function layoutText() { return "Bereich " + Math.round(editor.width) + ": " + editor.groups.map(g => Math.round(g.width)).join(" + ") }
     /// The splits (with the gaps between them) cover the editor area.
@@ -104,6 +109,23 @@ Item {
         console.log("selftest:", ok ? "ok  " : "FAIL", name, ok ? "" : "– " + (detail === undefined ? "" : detail))
     }
     function path(rel) { return app.projectRoot + "/" + rel }
+    /// In the presentation only page `index` of viewer `v` is to be seen
+    /// (completely, its neighbours not at all).
+    function slideAlone(v, index) {
+        const list = v.pagesView
+        const top = list.contentY, bottom = list.contentY + list.height
+        const inside = (i) => {
+            const it = list.itemAtIndex(i)
+            return it && it.y < bottom - 1 && it.y + it.height > top + 1
+        }
+        const it = list.itemAtIndex(index)
+        return !!it && it.y >= top - 1 && it.y + it.height <= bottom + 1 && !inside(index - 1) && !inside(index + 1)
+    }
+    /// The keyboard focus is in `item` (or one of its children).
+    function hasFocusIn(item) {
+        for (let p = window.activeFocusItem; p; p = p.parent) if (p === item) return true
+        return false
+    }
 
     function start() {
         const note = path("notes/idee.md")
@@ -143,6 +165,57 @@ Item {
             },
             () => {
                 check("Suche ohne Build-Ordner", searchModel.count === 1, searchModel.count)
+                check("Suche im eigenen Fenster vor Atlas", searchPanel.visible && searchPanel.opened, searchPanel.visible)
+                const e = JSON.parse(searchModel.entry(0))
+                check("Suchtreffer markiert", e.ranges && e.ranges.length === 1 && e.text.slice(e.ranges[0][0], e.ranges[0][1]) === "EINZIGARTIG", JSON.stringify(e))
+                searchPanel.applyState({ query: "einzigartig" })
+            },
+            () => {
+                check("Suche ignoriert Groß-/Kleinschreibung", searchModel.count === 1, searchModel.count)
+                searchPanel.applyState({ query: "einzigartig", caseSensitive: true })
+            },
+            () => {
+                check("Suche beachtet Groß-/Kleinschreibung auf Wunsch", searchModel.count === 0 && !searchModel.running, searchModel.count)
+                searchPanel.applyState({ query: "EINZIGART", wholeWord: true })
+            },
+            () => {
+                check("Suche nach ganzen Wörtern", searchModel.count === 0 && !searchModel.running, searchModel.count)
+                searchPanel.applyState({ query: "EINZIGARTIG", kinds: ["markdown"] })
+            },
+            () => {
+                check("Suche: Typfilter Markdown", searchModel.count === 0 && !searchModel.running, searchModel.count)
+                searchPanel.applyState({ query: "zweite zeile", kinds: ["pdf"] })
+            },
+            () => {
+                const e = JSON.parse(searchModel.entry(0))
+                check("Suche findet Text in PDFs", searchModel.count >= 1 && e.pdf === true && e.relative === "docs/quelle.pdf" && e.line === 1,
+                      searchModel.count + " " + JSON.stringify(e))
+                const page = JSON.parse(searchModel.context(e.path || "", e.line || 1, 6, true))
+                check("Suche: Vorschau der PDF-Seite", page.some(l => l.text.indexOf("Zweite Zeile") >= 0), JSON.stringify(page))
+                searchPanel.openRow(0, false)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                check("Suchtreffer öffnet als fester Tab im aktiven Split", !editor.activeTab.preview && !editor.activeGroup.temporary,
+                      editor.activeTab.preview + " " + editor.activeGroup.temporary)
+                check("PDF-Treffer öffnet die Seite und markiert das Wort", editor.activeTab.path === path("docs/quelle.pdf")
+                      && v.searchQuery === "Zweite Zeile" && v.hits.length >= 1 && !searchPanel.visible,
+                      editor.activeTab.path + " " + (v && v.searchQuery) + " " + (v && v.hits.length))
+                searchPanel.applyState({ query: "ziele", kinds: ["markdown"] })
+            },
+            () => {
+                let row = -1
+                for (let i = 0; i < searchModel.count; ++i) if (JSON.parse(searchModel.entry(i)).relative === "notes/plan.md") row = i
+                check("Suche: Treffer in plan.md", row >= 0, searchModel.count)
+                searchPanel.openRow(Math.max(0, row), false)
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Markdown-Treffer im Editor ausgewählt", editor.activeTab.path === path("notes/plan.md") && md.editorItem.selectedText === "Ziele",
+                      editor.activeTab.path + " „" + (md && md.editorItem.selectedText) + "“")
+                md.previewItem.runJavaScript("document.querySelectorAll('mark.search-hit.current').length + ':' + (document.querySelector('mark.search-hit') || {}).textContent",
+                    (r) => check("Markdown-Treffer in der Vorschau markiert", r === "1:Ziele", r))
+                searchPanel.applyState({})
                 window.openTerminal(path("src"), "tab")
             },
             () => {
@@ -172,6 +245,12 @@ Item {
             () => {
                 const v = editor.activeTab.viewerItem
                 check("PDF-Ansicht", !!v && !!v.annotationStore, editor.activeTab.kind)
+                // A click into the split (not on a page) gives the PDF the keys.
+                projectTree.forceActiveFocus()
+                editor.activeGroup.focusAfterTap()
+                let inPdf = false
+                for (let p = window.activeFocusItem; p; p = p.parent) if (p === v) inPdf = true
+                check("Klick in den PDF-Split: Pfeiltasten ohne Klick auf die Seite", inPdf, window.activeFocusItem)
                 check("Anmerkungen geladen", v.annotationStore.status === "new", v.annotationStore.status)
                 // Drag over both lines of page 1.
                 v.dragStart = { page: 0, x: 60, y: 120 }
@@ -284,6 +363,76 @@ Item {
                 ed.insertText("\nText", true)
                 ed.applyState({ cursor: ed.text.length })
                 check("Tab rückt Listenpunkte ein und aus, nicht normalen Text", indented && outdented && !ed.indentListItems(false), ed.text.slice(-30))
+                // Enter continues lists (bullets, checkboxes, numbers, quotes)
+                // and ends them on an empty item.
+                const enter = () => app.sendKey(window, Qt.Key_Return, 0)
+                ed.focusText()
+                ed.insertText("\n- eins", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                ed.insertText("zwei", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                enter()
+                check("Enter: neuer Spiegelstrich, leerer Punkt beendet die Liste", ed.text.endsWith("\n- eins\n- zwei\n"), JSON.stringify(ed.text.slice(-30)))
+                ed.insertText("- [x] erledigt", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Enter nach Checkbox: neue offene Checkbox", ed.text.endsWith("- [x] erledigt\n- [ ] "), JSON.stringify(ed.text.slice(-30)))
+                enter()
+                ed.insertText("9. neun", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Enter in nummerierter Liste zählt weiter", ed.text.endsWith("9. neun\n10. "), JSON.stringify(ed.text.slice(-20)))
+                enter()
+                ed.insertText("Text", true)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Enter nach normalem Text: nur Zeilenumbruch", ed.text.endsWith("Text\n"), JSON.stringify(ed.text.slice(-10)))
+                // Inserting: table, diagram, folder tree, files; `#` suggests tags.
+                const mdv = editor.activeTab.viewerItem
+                ed.applyState({ cursor: ed.text.length })
+                mdv.insertTable(2, 2)
+                check("Tabelle einfügen", ed.text.indexOf("| Spalte 1 | Spalte 2 |\n| --- | --- |\n|     |     |\n|     |     |") > 0, JSON.stringify(ed.text.slice(-80)))
+                ed.applyState({ cursor: ed.text.length })
+                mdv.insertDiagram(0)
+                check("Diagramm-Vorlage einfügen", ed.text.indexOf("```mermaid\nflowchart TD") > 0)
+                ed.applyState({ cursor: ed.text.length })
+                mdv.insertFolderTree(path("notes"))
+                check("Ordnerbaum einfügen", ed.text.indexOf("```tree\n" + path("notes") + "\n├── ") > 0, JSON.stringify(ed.text.slice(-120)))
+                const linked = app.importIntoNote(ed.source, JSON.stringify(["file://" + path("src/main.rs")]))
+                check("Datei aus dem Projekt einfügen: Link relativ zur Notiz", /^\[main\.rs\]\((\.\.\/)*src\/main\.rs\)$/.test(linked), linked)
+                app.copyToClipboard("nur Text")
+                check("Strg+V mit Text: normales Einfügen", app.pasteIntoNote(ed.source) === "")
+                ed.applyState({ cursor: ed.text.length })
+                ed.insertText("\n```bash\necho hallo\n```\n\nLernen für #wi", true)
+                ed.applyState({ cursor: ed.text.length })
+                ed.focusText()
+                ed.updateCompletion()
+                check("# schlägt Tags des Projekts vor", ed.completing && ed.completionKind === "tag"
+                      && ed.completionResults.some(r => r.tag === "wiki"), JSON.stringify(ed.completionResults))
+                ed.acceptCompletion()
+                check("Tag vervollständigt", ed.text.endsWith("Lernen für #wiki"), JSON.stringify(ed.text.slice(-20)))
+                // Spellcheck (German and English): typo found, suggestion, own dictionary.
+                ed.insertText("\n\nDas ist ein Tippfeler, the lecture is online.", true)
+                ed.updateSpelling()
+                const typo = ed.text.lastIndexOf("Tippfeler")
+                const flagged = () => ed.spellRanges.some(r => r[0] === typo && r[1] === 9)
+                check("Rechtschreibprüfung: Tippfehler unterstrichen, richtige Wörter nicht", app.spellLanguages() === "de_DE, en_US" && flagged()
+                      && !ed.spellRanges.some(r => r[0] > typo + 9), app.spellLanguages() + " " + JSON.stringify(ed.spellRanges.slice(-3)))
+                check("Rechtschreibprüfung: Vorschlag", app.spellSuggest("Tippfeler").indexOf("Tippfehler") >= 0, app.spellSuggest("Tippfeler"))
+                app.spellAdd("Tippfeler")
+                ed.updateSpelling()
+                check("Rechtschreibprüfung: eigenes Wörterbuch", !flagged(), JSON.stringify(ed.spellRanges.slice(-3)))
+                // Ranges of an older, longer text are not drawn (no positions
+                // past the end: "QTextCursor::setPosition: … out of range").
+                ed.spellRanges = [[ed.text.length + 10, 5]]
+                ed.updateSpellMarks()
+                check("Rechtschreibprüfung: alte Stellen hinter dem Textende ignoriert", ed.spellMarks.length === 0, JSON.stringify(ed.spellMarks))
+                ed.updateSpelling()
+                // A picture (cut out of a PDF) for the preview's picture window.
+                ed.insertText("\n\n" + app.pdfAreaToNote(path("docs/umbenannt.pdf"), 1, JSON.stringify([0, 0, 300, 200]), ed.source), true)
+                ed.insertText("\n\n## Abschnitt\n\n> Zitat", true)
                 // ---- Phase 2: user defined actions
                 check("Aktionsdatei fehlerfrei", app.actionErrors() === "[]", app.actionErrors())
                 const names = (paths) => fileActions.actionsFor(paths).map(a => a.name).join(",")
@@ -296,6 +445,37 @@ Item {
                 const list = JSON.parse(app.prepareAction("liste-schreiben", [], 0))
                 check("Umleitung verlangt Bestätigung", list.confirm && list.destructive, JSON.stringify(list))
                 fileActions.runInTerminal(list.argv, list.cwd)
+            },
+            () => {
+                // Preview: tags in the text, tree blocks, buttons on code blocks,
+                // folding under headings, closing quotation mark.
+                const md = editor.activeTab.viewerItem
+                md.render()
+                md.previewItem.runJavaScript("(() => { const b = Array.from(document.querySelectorAll('.code-tools button')).map(x => x.textContent);"
+                    + " const t = document.querySelector('pre.tree'); const q = document.querySelector('blockquote > p:last-child');"
+                    + " const h = Array.from(document.querySelectorAll('h2')).pop(); const f = h && h.querySelector('.fold'); if (f) f.click();"
+                    + " const hidden = document.querySelectorAll('.hidden-by-fold').length; if (f) f.click();"
+                    + " return JSON.stringify({ buttons: b, tree: t ? t.textContent.slice(0, 80) : '', tag: !!document.querySelector('.tag.inline'),"
+                    + " close: q ? getComputedStyle(q, '::after').content : '', hidden: hidden, after: document.querySelectorAll('.hidden-by-fold').length,"
+                    + " mermaid: (document.querySelector('pre.mermaid') ? getComputedStyle(document.querySelector('pre.mermaid')).backgroundColor : '') }) })()", (r) => {
+                    const o = JSON.parse(r)
+                    check("Vorschau: Kopieren-Knopf an Codeblöcken, Ausführen bei bash", o.buttons.indexOf("Kopieren") >= 0 && o.buttons.indexOf("▶ Ausführen") >= 0, r)
+                    check("Vorschau: Ordnerbaum mit Linien", o.tree.indexOf("├── ") > 0, r)
+                    check("Vorschau: #tag im Text", o.tag, r)
+                    check("Vorschau: Zitat mit schließendem Anführungszeichen", o.close.indexOf("”") >= 0, r)
+                    check("Vorschau: Überschrift klappt ihren Abschnitt ein und aus", o.hidden > 0 && o.after === 0, r)
+                    check("Vorschau: Diagramm auf dem Hintergrund der Seite", o.mermaid === "rgba(0, 0, 0, 0)", r)
+                })
+                md.previewItem.runJavaScript("(() => { const b = document.querySelector('.img-zoom'); if (b) b.click(); return !!b })()",
+                    (found) => check("Vorschau: Bild mit Vergrößern-Knopf", found))
+                test.imageView = md
+            },
+            () => {
+                const w = test.imageView.imageWindowItem
+                if (waitFor(() => w.visible && w.ready)) return
+                check("Bild vergrößern öffnet eigenes Fenster mit dem Bild", w.visible && w.ready && w.caption.indexOf("S. 1") > 0,
+                      [w.visible, w.ready, w.source, w.caption].join(" "))
+                w.close()
             },
             () => {
                 check("Aktion im Projektordner ausgeführt", app.readTextFile(path("aktion-ergebnis.txt")).indexOf("idee.md") >= 0)
@@ -557,8 +737,24 @@ Item {
                 const y0 = v.pagesView.contentY
                 app.sendWheel(window, p.x, p.y, -120, false)
                 check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
+                // (Eased in over a few frames, like a browser: settled here.)
+                check("Mausrad: Stufe wird weich gescrollt", Math.abs(v.fling.wheelY + v.wheelStep) < 1, v.fling.wheelY)
+                v.fling.settle()
                 check("Mausrad scrollt eine große Stufe", v.pagesView.contentY - y0 >= v.wheelStep - 1, y0 + " → " + v.pagesView.contentY)
+                // Touchpad as Qt on Wayland reports it: 10 px with an angle delta
+                // of 120 – a touchpad step, not a wheel notch (it made the view
+                // jump by a whole notch).
+                const y1 = v.pagesView.contentY
+                app.sendWheel(window, p.x, p.y, -10, 64 | 16 | 4)
+                app.sendWheel(window, p.x, p.y, -10, 64 | 16)
+                app.sendWheel(window, p.x, p.y, -10, 64 | 16)
+                v.fling.flush()
+                check("Touchpad unter Wayland: Ansicht folgt den Fingern genau", Math.abs(v.pagesView.contentY - y1 - 30) < 1 && v.fling.wheelY === 0,
+                      y1 + " → " + v.pagesView.contentY)
+                app.sendWheel(window, p.x, p.y, 0, 2 | 16 | 32)
+                v.fling.stop()
                 app.sendWheel(window, p.x, p.y, 120, false)
+                v.fling.settle()
                 // Dark mode: one switch for all PDFs, stored in config.toml.
                 app.pdfDark = true
                 check("PDF-Dunkelmodus: Seiten invertiert, Papier dunkel", v.dark && Qt.colorEqual(v.paperColor, "#262626"), v.paperColor)
@@ -595,6 +791,32 @@ Item {
                 check("Sessionliste mit Umfang", sessions.length >= 1 && sessions.every(s => s.tabs >= 0 && s.splits >= 0 && !!s.kind), JSON.stringify(sessions))
                 sessionMenu.clicked()
                 check("Sessionfenster öffnet", sessionMenu.sessions.length === sessions.length)
+            },
+            () => {
+                // Zooming on page 2: the spot under the mouse stays (it used
+                // to drift with the gaps between pages – the pages scrolled).
+                const v = editor.activeTab.viewerItem
+                v.zoom = 1
+                v.goToPage(1)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                test.zoomPoint = v.mapToItem(null, v.width / 2, v.height * 0.5)
+                const q = v.mapFromItem(null, test.zoomPoint.x, test.zoomPoint.y)
+                const vp = v.pagesView.mapFromItem(v, q.x, q.y)
+                test.zoomAnchor = v.pointAt(vp.x, vp.y)
+                for (let i = 0; i < 6; i++) app.sendWheel(window, test.zoomPoint.x, test.zoomPoint.y, 120, true)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                const q = v.mapFromItem(null, test.zoomPoint.x, test.zoomPoint.y)
+                const vp = v.pagesView.mapFromItem(v, q.x, q.y)
+                const now = v.pointAt(vp.x, vp.y)
+                const a = test.zoomAnchor
+                check("Strg+Mausrad auf Seite 2: die Stelle unter der Maus bleibt (kein Wegscrollen)",
+                      !!a && !!now && now.page === a.page && Math.abs(now.y - a.y) < 1 && Math.abs(now.x - a.x) < 1 && v.zoomScale > 1.6,
+                      JSON.stringify(a) + " → " + JSON.stringify(now) + " · Zoom " + v.zoomScale)
+                v.zoom = 1
             },
             () => {
                 // Task list checkboxes in the preview toggle the source line.
@@ -1150,6 +1372,152 @@ Item {
                 for (const id of test.erase) store.remove(id)
             },
             () => {
+                // Formula as LaTeX: a box dragged with the ∑ tool goes to the
+                // built-in model (here the test models, which spell
+                // \frac{a}{b}) – with real ONNX Runtime.
+                const v = editor.activeTab.viewerItem
+                v.goToPage(0)
+                v.tool = "latex"
+                const paper = v.pagesView.itemAtIndex(0).paperItem
+                const at = (x, y) => paper.mapToItem(null, x * v.zoomScale, y * v.zoomScale)
+                const a = at(72, 130), b = at(97, 145), c = at(122, 160)
+                app.postMouse(window, 0, a.x, a.y, 30)
+                app.postMouse(window, 1, b.x, b.y, 60)
+                app.postMouse(window, 2, c.x, c.y, 90)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.latexShown && !v.latexBusy)) return
+                check("Formel als LaTeX: Rahmen aufziehen erkennt die Formel (eingebautes Modell)",
+                      v.latexShown && v.latexText === "\\frac{a}{b}" && !v.latexError, v.latexText + " · " + v.latexError)
+                check("Formel als LaTeX: Werkzeug bleibt aktiv, kein Rahmen übrig", v.tool === "latex" && v.latexBox === null)
+                v.tool = "select"
+            },
+            () => {
+                // Text of a page ("T"): the formula "x = y" in CMMI/CMR on
+                // page 2 comes as LaTeX from the (test) model.
+                const v = editor.activeTab.viewerItem
+                v.showPageText(1)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.pageTextShown && !v.pageTextBusy && v.pageText.indexOf("$") >= 0)) return
+                check("Text der Seite: Formel als LaTeX eingesetzt, übriger Text bleibt",
+                      v.pageText.indexOf("Formel $\\frac{a}{b}$") >= 0 && v.pageText.indexOf("Seite zwei Text") >= 0 && !v.pageTextError,
+                      JSON.stringify(v.pageText) + " · " + v.pageTextError)
+                v.hidePageText()
+            },
+            () => {
+                // Presentation (like PowerPoint): the same viewer full screen,
+                // one page at a time; arrows, click and wheel turn pages.
+                const v = editor.activeTab.viewerItem
+                v.zoom = 1.5
+                test.fullscreenTab = editor.activeTab
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                v.goToPage(1)
+                v.forceActiveFocus()
+                if (waitFor(() => v.currentPage === 1)) return
+                // F5: from the start (wherever the focus is).
+                app.sendKey(window, Qt.Key_F5, 0)
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                const w = v.bodyItem.Window.window
+                if (waitFor(() => v.presenting && v.bodyItem.width === w.width && w.visible && slideAlone(v, 0))) return
+                check("Präsentation (F5): eigenes Vollbildfenster, von Seite 1, nur diese Seite zu sehen",
+                      v.presenting && w === v.presentationWindowItem && v.bodyItem.width === w.width && v.bodyItem.height === w.height
+                      && v.slide === 0 && slideAlone(v, 0), [v.presenting, w === window, v.slide, slideAlone(v, 0)].join(" "))
+                check("Präsentation: keine Leiste, keine Statuszeile", !v.toolbarShown && !v.statusShown)
+                // The tab resizing its viewer (e.g. when the main window changes
+                // as the presentation appears) leaves the presentation alone.
+                const before = v.width
+                v.width = 120
+                check("Präsentation: Größenänderung im Tab erreicht sie nicht", v.bodyItem.width === w.width && v.bodyItem.height === w.height,
+                      v.bodyItem.width + "×" + v.bodyItem.height + " in " + w.width + "×" + w.height)
+                v.width = before
+                app.sendKey(w, Qt.Key_Right, 0)
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                const w = v.presentationWindowItem
+                if (waitFor(() => v.slide === 1 && slideAlone(v, 1))) return
+                check("Präsentation: Pfeil rechts zeigt die nächste Seite allein", v.slide === 1 && slideAlone(v, 1), v.slide)
+                app.sendKey(w, Qt.Key_Right, 0)
+                check("Präsentation: nach der letzten Seite bleibt sie stehen", v.slide === 1, v.slide)
+                app.sendKey(w, Qt.Key_Left, 0)
+                check("Präsentation: Pfeil links zurück", v.slide === 0, v.slide)
+                app.postMouse(w, 0, w.width / 2, w.height / 2, 10)
+                app.postMouse(w, 2, w.width / 2, w.height / 2, 30)
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                const w = v.presentationWindowItem
+                if (waitFor(() => v.slide === 1)) return
+                check("Präsentation: Klick zeigt die nächste Seite", v.slide === 1 && slideAlone(v, 1), v.slide)
+                app.sendWheel(w, w.width / 2, w.height / 2, 120, 0)
+                check("Präsentation: Mausrad hoch zeigt die vorige Seite", v.slide === 0, v.slide)
+                app.sendKey(w, Qt.Key_2, 0)
+                app.sendKey(w, Qt.Key_Return, 0)
+                check("Präsentation: Zahl + Enter springt zur Seite", v.slide === 1, v.slide)
+                app.sendKey(w, Qt.Key_B, 0)
+                check("Präsentation: B macht den Bildschirm schwarz", v.blank === "black")
+                app.sendKey(w, Qt.Key_Space, 0)
+                check("Präsentation: nächste Taste hebt Schwarz auf, ohne zu blättern", v.blank === "" && v.slide === 1, v.blank + " " + v.slide)
+                app.sendKey(w, Qt.Key_Escape, 0)
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                if (waitFor(() => !v.presenting && v.currentPage === 1)) return
+                check("Esc beendet die Präsentation: zurück im Tab, vorheriger Zoom, zuletzt gezeigte Seite",
+                      !v.presenting && v.bodyItem.Window.window === window && v.bodyItem.width === v.width && v.zoom === 1.5 && v.currentPage === 1 && editor.activeTab === test.fullscreenTab && v.toolbarShown,
+                      [v.presenting, v.Window.window === window, v.zoom, v.currentPage].join(" "))
+                v.zoom = 0
+            },
+            () => {
+                // Issue #9: switching tabs moves the keyboard focus to the tab
+                // switched to (here: PDF → folder → PDF).
+                const g = editor.activeGroup
+                test.fullscreenTab.viewerItem.forceActiveFocus()
+                test.folderTab = g.openTab(path("src"), 0, "tab")
+            },
+            () => {
+                const g = editor.activeGroup
+                const view = test.folderTab.viewerItem
+                if (waitFor(() => !!view && hasFocusIn(view))) return
+                check("Tab-Wechsel: der neue Tab (Ordner) bekommt den Fokus", hasFocusIn(view) && view.activeView.activeFocus,
+                      String(window.activeFocusItem))
+                g.current = g.tabs.indexOf(test.fullscreenTab)
+            },
+            () => {
+                const g = editor.activeGroup
+                const v = test.fullscreenTab.viewerItem
+                if (waitFor(() => hasFocusIn(v))) return
+                check("Tab-Wechsel zurück: die PDF hat den Fokus, nicht mehr der Ordner",
+                      hasFocusIn(v) && !hasFocusIn(test.folderTab.viewerItem), String(window.activeFocusItem))
+                g.closeTab(g.tabs.indexOf(test.folderTab))
+            },
+            () => {
+                // Quoting text with a formula: it goes in as LaTeX (test model:
+                // \frac{a}{b}); a figure of the page goes in as picture.
+                const v = test.fullscreenTab.viewerItem
+                v.selection = [{ page: 1, rects: [[60, 215, 200, 40]], text: "Formel x = y" }]
+                v.quoteSelection()
+            },
+            () => {
+                const v = test.fullscreenTab.viewerItem
+                const quoted = () => v.annots.find(a => a.page === 2 && a.kind === "highlight")
+                if (waitFor(() => !!quoted() && sendToNote.visible)) return
+                const a = quoted()
+                check("Zitat aus PDF: Formel als LaTeX im Zitat", !!a && a.text.indexOf("$\\frac{a}{b}$") >= 0, a ? a.text : "kein Zitat")
+                sendToNote.close()
+                if (a) v.removeAnnot(a.id)
+                const md = app.pdfAreaToNote(path("docs/quelle.pdf"), 2, JSON.stringify([60, 200, 300, 300]), path("notes/zitate.md"))
+                const m = /^!\[quelle\.pdf, S\. 2\]\(\.\.\/(assets\/quelle-s2-[0-9-]+\.png)\)\n\*\[quelle\.pdf, S\. 2\]\(\/docs\/quelle\.pdf#page=2\)\*$/.exec(md)
+                check("Bild aus PDF als Zitat: PNG in assets/, Bildunterschrift mit Link auf die Seite", !!m && app.exists(path(m[1])), md)
+            },
+            () => {
                 // Arrow keys: down scrolls, right/left turn pages.
                 const v = editor.activeTab.viewerItem
                 v.goToPage(0)
@@ -1185,6 +1553,15 @@ Item {
                 test.flings = v.fling.count
                 app.sendWheel(window, tp.x, tp.y, -40, 2 | 4 | 16)
                 for (let i = 0; i < 5; ++i) app.sendWheel(window, tp.x, tp.y, -40, 2 | 16)
+                // Fingers lifted (Wayland's axis stop): the momentum starts at
+                // once, not after a pause.
+                app.sendWheel(window, tp.x, tp.y, 0, 2 | 16 | 32)
+                check("Touchpad: Schwung setzt beim Loslassen sofort ein", v.fling.count === test.flings + 1 && v.fling.gliding,
+                      v.fling.count - test.flings)
+                // libinput reports a "hold" while the fingers leave the touchpad:
+                // that must not stop the momentum it just started.
+                app.touchpadHeld()
+                check("Touchpad: Finger abheben stoppt den Schwung nicht", v.fling.gliding)
                 test.flingDirect = v.pagesView.contentY - test.flingY
                 // Markdown → PDF with the preview (no pandoc).
                 test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
@@ -1332,12 +1709,12 @@ Item {
                 const ed = editor.activeTab.viewerItem.editorItem
                 check("Editor: Touchpad-Schwung", ed.fling.count === test.flings + 1, ed.fling.count)
                 // Fingers put down on the touchpad (hold gesture) stop it.
-                const f = ed.fling.flickable
                 ed.scrollToExactLine(60)
-                f.flick(0, -4000)
-                const was = f.flicking
+                ed.fling.glide(0, -4)
+                ed.fling.flingStart = 0
+                const was = ed.fling.gliding
                 app.touchpadHeld()
-                check("Finger auflegen stoppt den Schwung", was && !f.flicking, was + " " + f.flicking)
+                check("Finger auflegen stoppt den Schwung", was && !ed.fling.gliding, was + " " + ed.fling.gliding)
                 fileActions.calendar.remove(test.modEvent)
             },
             () => {
@@ -1372,14 +1749,24 @@ Item {
                 editor.open("ilias:", 0, "tab")
                 const il = fileActions.ilias
                 check("ILIAS-Tab offen", editor.activeTab.kind === "ilias" && !!editor.activeTab.viewerItem)
-                il.refresh()
+                // The university login, remembered (fake systemd-creds).
+                settingsDialog.rememberIliasLogin("uxtest", "geheim")
+            },
+            () => {
+                const saved = () => JSON.parse(app.iliasConfig).login_saved === true
+                if (waitFor(saved)) return
+                const cred = app.readTextFile(app.stateDir() + "/secrets/ilias.cred")
+                check("ILIAS: Anmeldung nur verschlüsselt gespeichert", saved() && cred.length > 0 && cred.indexOf("geheim") < 0
+                      && !app.exists(app.stateDir() + "/secrets/ilias.secret") && app.readTextFile(app.configDir() + "/config.toml").indexOf("geheim") < 0,
+                      settingsDialog.iliasLoginMessage)
+                fileActions.ilias.refresh()
             },
             () => {
                 const il = fileActions.ilias
-                if (waitFor(() => il.state === "login" && il.loginVisible)) return
+                if (waitFor(() => il.state === "login" && il.loginVisible && il.offerHost !== "")) return
                 check("ILIAS: ohne Sitzung wird nach der Anmeldung gefragt", il.state === "login" && il.loginVisible, il.state + " " + il.status)
-                // The user logs in on the page shown.
-                il.loginPage.runJavaScript("document.getElementById('login') && document.getElementById('login').click()")
+                check("ILIAS: fragt einmal, ob die Anmeldung auf dieser Seite eingesetzt werden darf", il.offerHost === il.host, il.offerHost)
+                il.allowLoginHere()
             },
             () => { const il = fileActions.ilias; if (waitFor(() => !il.loginVisible && il.state === "idle" && il.index.courses.length > 0)) return },
             () => {
@@ -1482,6 +1869,19 @@ Item {
                 const file = test.iliasRoot + "/Mathe/orga.pdf"
                 check("ILIAS: neue Version geladen und ersetzt die alte", il.fileState(test.iliasOrga) === "loaded"
                       && app.readTextFile(file).indexOf("Version 2") >= 0 && !app.exists(test.iliasRoot + "/Mathe/orga (2).pdf"), il.status)
+            },
+            () => {
+                // Signed out: the next login uses the remembered data by itself.
+                const il = fileActions.ilias
+                il.logout()
+                il.refresh()
+            },
+            () => {
+                const il = fileActions.ilias
+                if (waitFor(() => !il.loginVisible && il.state === "idle" && il.status.indexOf("eingelesen") >= 0)) return
+                check("ILIAS: nach dem Abmelden ohne Zutun wieder angemeldet (gespeicherte Anmeldung)",
+                      !il.loginVisible && il.state === "idle" && il.filledOn === il.host && JSON.parse(app.iliasConfig).login_host === il.host,
+                      il.state + " " + il.status + " · " + il.filledOn)
             },
             () => {
                 // The project folder cannot be collapsed: a click on it keeps the tree.

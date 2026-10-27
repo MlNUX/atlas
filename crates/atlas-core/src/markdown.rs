@@ -3,7 +3,7 @@
 
 //! Markdown: rendering for the preview, links, tags and link rewriting.
 //!
-//! Link syntax (see PHASES.md, Phase 1 § 4):
+//! Link syntax (see docs/concept/phases.md, Phase 1 § 4):
 //! - a leading `/` is the project root: `[Parser](/src/parser.rs#L120)`
 //! - other relative links are relative to the Markdown file
 //! - `#L120` / `#L120-L145` address code lines, `#page=8` PDF pages,
@@ -163,7 +163,7 @@ pub(crate) fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn percent_encode_path(path: &str) -> String {
+pub(crate) fn percent_encode_path(path: &str) -> String {
     let mut out = String::new();
     for c in path.chars() {
         match c {
@@ -435,6 +435,8 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
     let mut slugs: Vec<String> = Vec::new();
     // Display text of the current wiki link without alias.
     let mut wiki_label: Option<String> = None;
+    // Inside link text no `#tag` is looked for.
+    let mut in_link = 0usize;
 
     let mut parser = Parser::new_ext(src, options()).into_offset_iter();
     for (event, range) in parser.by_ref() {
@@ -447,6 +449,11 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
                 depth += 1;
             }
             Event::End(_) => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        match &event {
+            Event::Start(Tag::Link { .. }) => in_link += 1,
+            Event::End(TagEnd::Link) => in_link = in_link.saturating_sub(1),
             _ => {}
         }
         match event {
@@ -477,6 +484,8 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
                 if let Some((lang, text)) = code.take() {
                     let block = if lang.eq_ignore_ascii_case("mermaid") {
                         format!("<pre class=\"mermaid\">{}</pre>\n", escape(&text))
+                    } else if lang.eq_ignore_ascii_case("tree") {
+                        format!("<pre class=\"tree\">{}</pre>\n", escape(&crate::tree::draw(&text)))
                     } else if lang.is_empty() {
                         format!("<pre><code class=\"nohighlight\">{}</code></pre>\n", escape(&text))
                     } else {
@@ -614,6 +623,26 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
             // A line break in the text is one in the preview too (as in
             // Obsidian), not just a space.
             Event::SoftBreak if html => events.push(Event::HardBreak),
+            // `#tag` in the text: a tag like those of the front matter.
+            Event::Text(text) if in_link == 0 && !in_metadata && text.contains('#') => {
+                let mut at = 0;
+                for (range, name) in inline_tags(&text) {
+                    if range.start > at {
+                        events.push(Event::Text(text[at..range.start].to_owned().into()));
+                    }
+                    events
+                        .push(Event::InlineHtml(format!("<span class=\"tag inline\">#{}</span>", escape(name)).into()));
+                    if !result.tags.iter().any(|t| normalize_tag(t) == normalize_tag(name)) {
+                        result.tags.push(name.to_owned());
+                    }
+                    at = range.end;
+                }
+                if at == 0 {
+                    events.push(Event::Text(text));
+                } else if at < text.len() {
+                    events.push(Event::Text(text[at..].to_owned().into()));
+                }
+            }
             other => events.push(other),
         }
     }
@@ -631,9 +660,10 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
 
     if html {
         let mut out = String::with_capacity(src.len() * 2);
-        if !result.tags.is_empty() {
+        // Tags of the front matter on top (those in the text are shown there).
+        if !result.front_matter.tags.is_empty() {
             out.push_str("<div class=\"atlas-tags\">");
-            for tag in &result.tags {
+            for tag in &result.front_matter.tags {
                 out += &format!("<span class=\"tag\">#{}</span>", escape(tag));
             }
             out.push_str("</div>\n");
@@ -642,6 +672,22 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
         result.html = out;
     }
     result
+}
+
+/// `#tag`s in a piece of text: the range of `#name` and the name. A tag
+/// starts with a letter (`#1` is no tag) and follows a space or the start,
+/// not a word (`a#b`, URL fragments).
+pub fn inline_tags(text: &str) -> Vec<(Range<usize>, &str)> {
+    static TAG: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re =
+        TAG.get_or_init(|| regex::Regex::new(r"(?:^|[^\p{L}\p{N}_#/&])#(\p{L}[\p{L}\p{N}_/-]*)").expect("tag regex"));
+    re.captures_iter(text)
+        .filter_map(|c| c.get(1))
+        .map(|m| {
+            let name = m.as_str().trim_end_matches(['/', '-']);
+            (m.start() - 1..m.start() + name.len(), name)
+        })
+        .collect()
 }
 
 /// Relative path from `from_dir` to `to` (both absolute, normalised).
@@ -894,6 +940,23 @@ mod tests {
     fn relative_paths() {
         assert_eq!(relative_path(Path::new("/p/notes"), Path::new("/p/docs/a.pdf")), PathBuf::from("../docs/a.pdf"));
         assert_eq!(relative_path(Path::new("/p"), Path::new("/p/a.md")), PathBuf::from("a.md"));
+    }
+
+    #[test]
+    fn inline_tags_count_like_front_matter_tags() {
+        let src = "---\ntags: [rust]\n---\n\nLernen für #Prüfung und #uni/ana1, nicht #1, a#b, `#code`, [#link](x.md).\n\n## Kapitel #nein\n\nNochmal #prüfung.\n";
+        let r = render(src, Path::new("/p/n.md"), Some(Path::new("/p")));
+        assert_eq!(r.tags, vec!["rust", "Prüfung", "uni/ana1"]);
+        assert!(r.html.contains("<span class=\"tag inline\">#Prüfung</span> und"), "{}", r.html);
+        assert!(r.html.contains("<div class=\"atlas-tags\"><span class=\"tag\">#rust</span></div>"));
+        assert!(r.html.contains("nicht #1, a#b"));
+        assert_eq!(analyze(src, Path::new("/p/n.md"), None).tags.len(), 3);
+    }
+
+    #[test]
+    fn tree_blocks_draw_lines() {
+        let r = render("```tree\nprojekt\n  src\n  docs\n```\n", Path::new("/p/n.md"), None);
+        assert!(r.html.contains("<pre class=\"tree\">projekt\n├── src\n└── docs\n</pre>"), "{}", r.html);
     }
 
     #[test]

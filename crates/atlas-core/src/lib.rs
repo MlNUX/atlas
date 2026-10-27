@@ -9,6 +9,7 @@
 
 pub mod actions;
 pub mod annotations;
+pub mod assets;
 pub mod calendar;
 pub mod config;
 pub mod extensions;
@@ -17,6 +18,7 @@ pub mod finder;
 pub mod fs_tree;
 pub mod identity;
 pub mod ilias;
+pub mod latex_ocr;
 pub mod listing;
 pub mod markdown;
 pub mod notes;
@@ -29,7 +31,9 @@ pub mod relations;
 pub mod search;
 pub mod secret;
 pub mod session;
+pub mod spell;
 pub mod symbols;
 pub mod terminal;
 pub mod textfile;
+pub mod tree;
 pub mod watcher;

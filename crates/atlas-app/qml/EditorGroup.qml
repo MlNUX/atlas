@@ -61,6 +61,7 @@ Rectangle {
             if (line) tabs[index].reveal(line)
             if (state && state.annot) tabs[index].applyState({ annot: state.annot })
             if (state && state.processor) tabs[index].applyState({ processor: state.processor })
+            if (state && state.find) tabs[index].applyState({ find: state.find })
             if (state && (path.startsWith("calendar:") || path.startsWith("ilias:")) && Object.keys(state).length) tabs[index].applyState(state)
             current = index
             changed()
@@ -206,7 +207,28 @@ Rectangle {
     TapHandler {
         gesturePolicy: TapHandler.DragThreshold
         grabPermissions: PointerHandler.TakeOverForbidden
-        onTapped: group.activated()
+        onTapped: {
+            group.activated()
+            Qt.callLater(group.focusAfterTap)
+        }
+    }
+
+    /// After a click into this split: the keyboard goes to its tab when the
+    /// focus is elsewhere – and in a PDF also when a button of its toolbar
+    /// took it, so the arrow keys turn pages without clicking a page first.
+    /// Text fields (page number, search) keep it.
+    function focusAfterTap() {
+        const tab = group.currentTab
+        const w = group.Window.window
+        if (!tab || !w) return
+        const f = w.activeFocusItem
+        let inside = false
+        for (let p = f; p; p = p.parent) {
+            // A menu or dialog the click opened keeps it.
+            if (p === Overlay.overlay) return
+            if (p === tab) { inside = true; break }
+        }
+        if (!inside || (tab.kind === "pdf" && f.cursorPosition === undefined && f !== tab.viewerItem)) tab.takeFocus()
     }
 
     ColumnLayout {
@@ -369,7 +391,11 @@ Rectangle {
                             onReleased: if (drag.active) ghost.Drag.drop()
                             onClicked: (mouse) => {
                                 if (mouse.button === Qt.MiddleButton) group.closeTab(tabItem.index)
-                                else { group.current = tabItem.index; group.activated() }
+                                else {
+                                    group.current = tabItem.index
+                                    group.activated()
+                                    if (group.currentTab) group.currentTab.takeFocus()
+                                }
                             }
                             onDoubleClicked: if (tabItem.tab) { tabItem.tab.preview = false; group.changed() }
                         }
@@ -494,7 +520,21 @@ Rectangle {
         }
     }
 
-    onCurrentChanged: { for (let i = 0; i < tabs.length; ++i) tabs[i].visible = (i === current) }
+    // The tab switched to takes the keyboard focus if the focus was in this
+    // split (or nowhere) – not when a file is opened from the tree with the
+    // keyboard, which keeps it there.
+    onCurrentChanged: {
+        const take = focusWasHere()
+        for (let i = 0; i < tabs.length; ++i) tabs[i].visible = (i === current)
+        if (take) Qt.callLater(() => { if (group.currentTab) group.currentTab.takeFocus() })
+    }
+    function focusWasHere() {
+        const w = group.Window.window
+        const f = w ? w.activeFocusItem : null
+        if (!f || f === w.contentItem) return group.active
+        for (let p = f; p; p = p.parent) if (p === group) return true
+        return false
+    }
     onTabsChanged: { for (let i = 0; i < tabs.length; ++i) tabs[i].visible = (i === current) }
 
     // Back/forward with the extra mouse buttons.
@@ -523,6 +563,9 @@ Rectangle {
         onEntered: (event) => {
             const tabMove = !!group.tabDrag(event.source)
             if (!tabMove && group.currentTab && ["dir", "trash", "terminal", "calendar"].indexOf(group.currentTab.kind) >= 0) event.accepted = false
+            // A note being edited takes files itself (inserted as pictures/links).
+            const v = group.currentTab ? group.currentTab.viewerItem : null
+            if (!tabMove && group.currentTab && group.currentTab.kind === "markdown" && v && v.mode !== "preview") event.accepted = false
         }
         onDropped: (event) => {
             // From the drop itself: `drag` and `containsDrag` are reset by then.

@@ -27,7 +27,8 @@ code { font: 0.9em/1.4 monospace; background: var(--raised); padding: 0.1em 0.35
 pre { background: #0b111d; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; overflow: auto; }
 pre code { background: none; padding: 0; }
 pre code.hljs { background: none; padding: 0; }
-pre.mermaid { background: #f6f6f6; color: #1f1f1f; text-align: center; }
+/* Diagrams on the page's own background (colours in preview.js). */
+pre.mermaid { background: transparent; border-color: var(--border); color: var(--text); text-align: center; }
 
 /* Quotes as cards; PDF quotes get the gold bar and their source as a chip. */
 blockquote {
@@ -36,6 +37,9 @@ blockquote {
   border-left: 3px solid var(--quote); border-radius: 8px;
 }
 blockquote > p:first-child::before { content: "“ "; color: var(--quote); font-weight: 700; font-size: 1.2em; }
+/* The closing mark goes after the quoted text, not after a PDF source chip. */
+blockquote > p:last-child:not(:has(> a[data-atlas-annot]))::after,
+blockquote > p:has(+ p:last-child > a[data-atlas-annot])::after { content: " ”"; color: var(--quote); font-weight: 700; font-size: 1.2em; }
 blockquote p { margin: 0.35em 0; }
 a[data-atlas-annot] {
   display: inline-block; color: var(--strong); background: var(--raised); border: 1px solid var(--border);
@@ -49,10 +53,27 @@ th, td { border: 1px solid var(--border); padding: 6px 12px; }
 th { background: var(--raised); color: var(--strong); }
 tr:nth-child(even) td { background: #121c2e; }
 img { max-width: 100%; border-radius: 6px; }
+/* Pictures with a button to enlarge them. */
+.img-box { position: relative; display: inline-block; max-width: 100%; }
+.img-zoom {
+  position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 7px; cursor: zoom-in;
+  font-size: 16px; line-height: 1; color: var(--strong); background: rgba(15, 23, 38, 0.8); border: 1px solid var(--border);
+  opacity: 0; transition: opacity 0.15s;
+}
+.img-box:hover .img-zoom { opacity: 1; }
+.img-zoom:hover { border-color: var(--accent); }
+/* A picture with its caption below (e.g. a figure quoted from a PDF:
+   picture, line break, *caption*). */
+p:has(> .img-box + em:last-child), p:has(> img + em:last-child) { text-align: center; }
+p:has(> .img-box) > em:last-child, p:has(> img) > em:last-child {
+  display: block; margin-top: 6px; font-size: 0.85em; font-style: normal; color: var(--muted);
+}
 hr { border: 0; border-top: 1px solid var(--border); }
 /* Task lists: no bullets, the box takes the bullet's place. */
 li:has(> input[type=checkbox]), li:has(> p > input[type=checkbox]) { list-style: none; margin: 0.2em 0; }
 ul:has(> li > input[type=checkbox]), ul:has(> li > p > input[type=checkbox]) { padding-left: 0.3em; }
+/* Nested checklists: clearly indented under their item. */
+li ul:has(> li > input[type=checkbox]), li ul:has(> li > p > input[type=checkbox]) { padding-left: 1.7em; }
 input[type=checkbox] {
   appearance: none; flex: none; width: 17px; height: 17px; margin: 0 0.55em 0 0;
   vertical-align: -3px; border: 1.5px solid #4a5874; border-radius: 5px; background: var(--raised);
@@ -79,6 +100,30 @@ li:has(> input[type=checkbox]:checked), li:has(> p > input[type=checkbox]:checke
 .tag:nth-of-type(5n+3) { color: #7fdcaa; background: rgba(52, 194, 122, 0.14); border-color: rgba(52, 194, 122, 0.3); }
 .tag:nth-of-type(5n+4) { color: #ff9ca1; background: rgba(242, 87, 95, 0.14); border-color: rgba(242, 87, 95, 0.3); }
 .tag:nth-of-type(5n+5) { color: #f3cf74; background: rgba(224, 179, 58, 0.14); border-color: rgba(224, 179, 58, 0.3); }
+.tag.inline { margin: 0; padding: 0 6px; font-size: 0.85em; }
+
+/* Code blocks: copy / run buttons, shown on hover. */
+.code-box { position: relative; }
+.code-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s; }
+.code-box:hover .code-tools { opacity: 1; }
+.code-tools button {
+  font: 12px system-ui, sans-serif; color: var(--text); background: var(--raised); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 9px; cursor: pointer;
+}
+.code-tools button:hover { border-color: var(--accent); color: var(--strong); }
+pre.tree { font: 0.9em/1.45 monospace; }
+
+/* Folding sections under a heading. */
+h1, h2, h3, h4, h5, h6 { position: relative; }
+.fold {
+  position: absolute; left: -1.3em; top: 0.1em; width: 1em; cursor: pointer; color: var(--muted);
+  opacity: 0; transition: opacity 0.15s, transform 0.15s; font-size: 0.8em;
+}
+.fold::before { content: "▾"; }
+h1:hover > .fold, h2:hover > .fold, h3:hover > .fold, h4:hover > .fold, h5:hover > .fold, h6:hover > .fold, .folded > .fold { opacity: 1; }
+.folded > .fold { transform: rotate(-90deg); }
+.folded::after { content: " …"; color: var(--muted); font-weight: 400; }
+.hidden-by-fold { display: none !important; }
 .math.display { display: block; text-align: center; margin: 1em 0; overflow-x: auto; }
 .math-error { color: var(--error); font-family: monospace; }
 a.line-marker { display: block; height: 0; }
@@ -104,6 +149,12 @@ table.print-frame > * > tr > td { padding: 0; border: 0; background: none; }
   h1, h2, h3 { break-after: avoid; }
   pre, blockquote, table:not(.print-frame), img, pre.mermaid { break-inside: avoid; }
   a.broken::after { content: none; }
+  .code-tools, .fold, .img-zoom { display: none; }
+  .hidden-by-fold { display: revert !important; }
   input.task { -webkit-print-color-adjust: exact; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Hits of the project search. */
+mark.search-hit { background: rgba(255, 196, 0, 0.32); color: inherit; border-radius: 2px; padding: 0 1px; }
+mark.search-hit.current { background: rgba(255, 170, 0, 0.75); color: #111; box-shadow: 0 0 0 2px rgba(255, 170, 0, 0.45); }

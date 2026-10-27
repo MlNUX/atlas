@@ -11,6 +11,7 @@ use anyhow::{Context, Result};
 use glib::translate::ToGlibPtr;
 use poppler_sys as ffi;
 
+use super::formulas::Glyph;
 use super::{Backend, LinkTarget, OutlineItem, PageLink, SearchHit, scaled_height};
 
 #[derive(Default)]
@@ -66,10 +67,106 @@ impl Backend for PopplerBackend {
         Ok((width_px, height_px, bgra))
     }
 
+    fn clip_gray(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)> {
+        let (w, h, rgb) = self.clip_rgb(path, page, area, scale)?;
+        // Grey like OpenCV's RGB2GRAY (0.299 R + 0.587 G + 0.114 B).
+        let gray = rgb
+            .chunks(3)
+            .map(|px| {
+                let v = 0.299 * f32::from(px[0]) + 0.587 * f32::from(px[1]) + 0.114 * f32::from(px[2]);
+                v.round().clamp(0.0, 255.0) as u8
+            })
+            .collect();
+        Ok((w, h, gray))
+    }
+
+    fn clip_rgb(&mut self, path: &Path, page: usize, area: [f64; 4], scale: f64) -> Result<(u32, u32, Vec<u8>)> {
+        let doc = self.doc(path)?;
+        let page = page_at(doc, page as i64).context("page out of range")?;
+        let (x0, x1) = (area[0].min(area[2]), area[0].max(area[2]));
+        let (y0, y1) = (area[1].min(area[3]), area[1].max(area[3]));
+        let (w, h) = (((x1 - x0) * scale).ceil() as i32, ((y1 - y0) * scale).ceil() as i32);
+        if w < 2 || h < 2 || w > 8000 || h > 8000 {
+            anyhow::bail!("Bereich zu klein oder zu groß ({w}×{h} Pixel)");
+        }
+        let mut surface = cairo::ImageSurface::create(cairo::Format::Rgb24, w, h)?;
+        {
+            let cr = cairo::Context::new(&surface)?;
+            cr.set_source_rgb(1.0, 1.0, 1.0);
+            cr.paint()?;
+            cr.scale(scale, scale);
+            cr.translate(-x0, -y0);
+            page.render(&cr);
+        }
+        surface.flush();
+        let stride = surface.stride() as usize;
+        let data = surface.data().context("cairo surface data")?;
+        // BGRx to RGB.
+        let mut rgb = Vec::with_capacity((w * h * 3) as usize);
+        for row in data.chunks(stride).take(h as usize) {
+            for px in row[..w as usize * 4].chunks(4) {
+                rgb.extend_from_slice(&[px[2], px[1], px[0]]);
+            }
+        }
+        Ok((w as u32, h as u32, rgb))
+    }
+
     fn text(&mut self, path: &Path, page: usize) -> Result<String> {
         let doc = self.doc(path)?;
         let page = page_at(doc, page as i64).context("page out of range")?;
         Ok(page.text().map(|t| t.to_string()).unwrap_or_default())
+    }
+
+    fn glyphs(&mut self, path: &Path, page: usize) -> Result<Vec<Glyph>> {
+        let doc = self.doc(path)?;
+        let page = page_at(doc, page as i64).context("page out of range")?;
+        let chars: Vec<char> = page.text().map(|t| t.chars().collect()).unwrap_or_default();
+        let page_ptr: *mut ffi::PopplerPage = page.to_glib_none().0;
+        let mut rects: Vec<[f64; 4]> = Vec::new();
+        let mut fonts: Vec<(String, f64)> = vec![(String::new(), 0.0); chars.len()];
+        // SAFETY: poppler hands out a g_malloc'ed array of `n` rectangles
+        // and a list of attributes (character ranges, inclusive) that
+        // poppler_page_free_text_attributes frees.
+        unsafe {
+            let mut layout: *mut ffi::PopplerRectangle = std::ptr::null_mut();
+            let mut n: std::ffi::c_uint = 0;
+            if ffi::poppler_page_get_text_layout(page_ptr, &mut layout, &mut n) != 0 && !layout.is_null() {
+                rects =
+                    std::slice::from_raw_parts(layout, n as usize).iter().map(|r| [r.x1, r.y1, r.x2, r.y2]).collect();
+            }
+            glib::ffi::g_free(layout.cast());
+            let list = ffi::poppler_page_get_text_attributes(page_ptr);
+            let mut item = list;
+            while !item.is_null() {
+                let attr = (*item).data as *const ffi::PopplerTextAttributes;
+                if !attr.is_null() {
+                    let name = if (*attr).font_name.is_null() {
+                        String::new()
+                    } else {
+                        std::ffi::CStr::from_ptr((*attr).font_name).to_string_lossy().into_owned()
+                    };
+                    let start = (*attr).start_index.max(0) as usize;
+                    let end = ((*attr).end_index.max(0) as usize).min(chars.len().saturating_sub(1));
+                    for slot in fonts.iter_mut().take(end + 1).skip(start) {
+                        *slot = (name.clone(), (*attr).font_size);
+                    }
+                }
+                item = (*item).next;
+            }
+            ffi::poppler_page_free_text_attributes(list);
+        }
+        // Without a rectangle for every character no formula can be placed.
+        if rects.len() != chars.len() {
+            log::debug!("pdf: {} characters but {} rectangles", chars.len(), rects.len());
+            rects = vec![[0.0; 4]; chars.len()];
+            fonts.iter_mut().for_each(|f| f.0.clear());
+        }
+        Ok(chars
+            .into_iter()
+            .zip(rects)
+            .zip(fonts)
+            .map(|((ch, rect), (font, size))| Glyph { ch, rect, font, size })
+            .collect())
     }
 
     fn outline(&mut self, path: &Path) -> Result<Vec<OutlineItem>> {

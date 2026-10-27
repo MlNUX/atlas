@@ -35,10 +35,23 @@ pub mod qobject {
         /// "", "loading", "exact", "changed", "moved", "new" or "error".
         #[qproperty(QString, status, READ, NOTIFY)]
         #[qproperty(QString, error, READ, NOTIFY)]
-        /// All annotations as a JSON list (format: docs/data-format.md).
-        #[qproperty(QString, annotations_json, cxx_name = "annotationsJson", READ, NOTIFY)]
+        /// The annotations except freehand strokes, as a JSON list (format:
+        /// docs/data-format.md); changes only when one of them does.
+        #[qproperty(QString, markup_json, cxx_name = "markupJson", READ, NOTIFY)]
         #[qproperty(i32, count, READ, NOTIFY)]
         type PdfAnnotations = super::PdfAnnotationsRust;
+
+        /// The annotations of these pages (JSON list of page numbers, from
+        /// 1) changed: read them with `pageJson`. So an edit costs the page
+        /// it is on, not the whole document.
+        #[qsignal]
+        #[cxx_name = "pagesChanged"]
+        fn pages_changed(self: Pin<&mut PdfAnnotations>, pages: QString);
+
+        /// The annotations of `page` (from 1) as a JSON list.
+        #[qinvokable]
+        #[cxx_name = "pageJson"]
+        fn page_json(self: &PdfAnnotations, page: i32) -> QString;
 
         /// Adds an annotation (JSON with kind, page, rects, text, comment,
         /// color, ink, width, title, group); returns its ID ("" on error).
@@ -114,8 +127,10 @@ pub struct PdfAnnotationsRust {
     store_dir: QString,
     status: QString,
     error: QString,
-    annotations_json: QString,
+    markup_json: QString,
     count: i32,
+    /// JSON of each page's annotations as last published.
+    published: std::collections::BTreeMap<u32, String>,
 
     /// Where the annotations are stored and what they are.
     file: Option<PathBuf>,
@@ -208,12 +223,41 @@ impl qobject::PdfAnnotations {
     }
 
     fn publish(mut self: Pin<&mut Self>) {
-        let json = serde_json::to_string(&self.data.annotations).unwrap_or_else(|_| "[]".into());
+        let mut by_page: std::collections::BTreeMap<u32, Vec<&Annotation>> = Default::default();
+        for a in &self.data.annotations {
+            by_page.entry(a.page).or_default().push(a);
+        }
+        let pages: std::collections::BTreeMap<u32, String> = by_page
+            .into_iter()
+            .map(|(page, list)| (page, serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())))
+            .collect();
+        let changed: Vec<u32> = pages
+            .iter()
+            .filter(|(page, json)| self.published.get(page) != Some(json))
+            .map(|(page, _)| *page)
+            .chain(self.published.keys().filter(|page| !pages.contains_key(page)).copied())
+            .collect();
+        let markup: Vec<&Annotation> = self.data.annotations.iter().filter(|a| a.kind != Kind::Ink).collect();
+        let markup = qs(serde_json::to_string(&markup).unwrap_or_else(|_| "[]".into()));
         let count = self.data.annotations.len() as i32;
-        self.as_mut().rust_mut().annotations_json = qs(json);
-        self.as_mut().rust_mut().count = count;
-        self.as_mut().annotations_json_changed();
-        self.count_changed();
+        self.as_mut().rust_mut().published = pages;
+        if markup != self.markup_json {
+            self.as_mut().rust_mut().markup_json = markup;
+            self.as_mut().markup_json_changed();
+        }
+        if count != self.count {
+            self.as_mut().rust_mut().count = count;
+            self.as_mut().count_changed();
+        }
+        if !changed.is_empty() {
+            let json = serde_json::to_string(&changed).unwrap_or_else(|_| "[]".into());
+            self.pages_changed(qs(json));
+        }
+    }
+
+    pub fn page_json(&self, page: i32) -> QString {
+        let page = u32::try_from(page).unwrap_or(0);
+        qs(self.published.get(&page).map_or("[]", String::as_str))
     }
 
     pub fn reload(mut self: Pin<&mut Self>) {

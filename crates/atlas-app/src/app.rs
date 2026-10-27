@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use atlas_core::config::{Config, EditorConfig, EditorLaunch, editor_launch};
 use atlas_core::finder;
@@ -65,6 +65,8 @@ pub mod qobject {
         #[qproperty(QString, context_modules, cxx_name = "contextModules", READ, NOTIFY)]
         /// Numbers in file names by value (`[files] natural_sort`).
         #[qproperty(bool, natural_sort, cxx_name = "naturalSort", READ, WRITE = set_natural_sort, NOTIFY)]
+        /// Spellcheck in notes (`[editor] spellcheck`).
+        #[qproperty(bool, spellcheck, READ, WRITE = set_spellcheck, NOTIFY)]
         /// Momentum scrolling after touchpad swipes (`[files] touchpad_fling`).
         #[qproperty(bool, touchpad_fling, cxx_name = "touchpadFling", READ, WRITE = set_touchpad_fling, NOTIFY)]
         /// Last chosen order of folder views as JSON {key, ascending}
@@ -117,6 +119,28 @@ pub mod qobject {
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
         fn set_natural_sort(self: Pin<&mut AppController>, on: bool);
         fn set_touchpad_fling(self: Pin<&mut AppController>, on: bool);
+        fn set_spellcheck(self: Pin<&mut AppController>, on: bool);
+
+        /// Misspelled words of the Markdown `text`: JSON `[[start, length]]`
+        /// in characters (UTF-16); "null" if no dictionary was found.
+        #[qinvokable]
+        #[cxx_name = "spellCheck"]
+        fn spell_check(self: &AppController, text: &QString) -> QString;
+
+        /// Up to five suggestions for `word`.
+        #[qinvokable]
+        #[cxx_name = "spellSuggest"]
+        fn spell_suggest(self: &AppController, word: &QString) -> QStringList;
+
+        /// Adds `word` to the personal dictionary (config folder).
+        #[qinvokable]
+        #[cxx_name = "spellAdd"]
+        fn spell_add(self: &AppController, word: &QString);
+
+        /// The dictionaries in use ("de_DE, en_US"; "" if none was found).
+        #[qinvokable]
+        #[cxx_name = "spellLanguages"]
+        fn spell_languages(self: &AppController) -> QString;
 
         /// Changes `[ilias]`: `base_url`, `download_dir` or
         /// `show_in_places` ("true"/"false").
@@ -194,6 +218,70 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "iliasDebugLog"]
         fn ilias_debug_log(self: &AppController) -> QString;
+
+        /// Remembers the university login for ILIAS: the user name in
+        /// `[ilias]`, the password only encrypted with systemd-creds
+        /// (otherwise nothing). Then `iliasLoginStored`.
+        #[qinvokable]
+        #[cxx_name = "iliasRememberLogin"]
+        fn ilias_remember_login(self: &AppController, user: &QString, password: &QString);
+
+        #[qsignal]
+        #[cxx_name = "iliasLoginStored"]
+        fn ilias_login_stored(self: Pin<&mut AppController>, ok: bool, message: QString);
+
+        /// Forgets the remembered login (password and allowed login page).
+        #[qinvokable]
+        #[cxx_name = "iliasForgetLogin"]
+        fn ilias_forget_login(self: Pin<&mut AppController>);
+
+        /// Decrypts the remembered login, in the background; then
+        /// `iliasLoginReady` (empty password if none or on failure).
+        #[qinvokable]
+        #[cxx_name = "iliasFetchLogin"]
+        fn ilias_fetch_login(self: &AppController);
+
+        #[qsignal]
+        #[cxx_name = "iliasLoginReady"]
+        fn ilias_login_ready(self: Pin<&mut AppController>, user: QString, password: QString, error: QString);
+
+        /// Recognizes the formula in `area` (JSON `[x0, y0, x1, y1]`,
+        /// points) of `page` (0-based) of PDF `path` as LaTeX (built-in
+        /// pix2tex model, downloaded on first use), in the background; then
+        /// `latexRecognized` with `request`.
+        #[qinvokable]
+        #[cxx_name = "latexFromPdf"]
+        fn latex_from_pdf(self: &AppController, request: i32, path: &QString, page: i32, area: &QString);
+
+        /// What the recognition of `request` is doing (the first time:
+        /// downloading the model).
+        #[qsignal]
+        #[cxx_name = "latexProgress"]
+        fn latex_progress(self: Pin<&mut AppController>, request: i32, text: QString);
+
+        /// `latex` (tidied) or `error` for `request`.
+        #[qsignal]
+        #[cxx_name = "latexRecognized"]
+        fn latex_recognized(self: Pin<&mut AppController>, request: i32, latex: QString, error: QString);
+
+        /// Whether the formula model is loaded already (later recognitions
+        /// are quick).
+        #[qinvokable]
+        #[cxx_name = "latexOcrWarm"]
+        fn latex_ocr_warm(self: &AppController) -> bool;
+
+        /// Atlas' state folder (`$XDG_STATE_HOME/atlas`) and config folder.
+        #[qinvokable]
+        #[cxx_name = "stateDir"]
+        fn state_dir(self: &AppController) -> QString;
+        #[qinvokable]
+        #[cxx_name = "configDir"]
+        fn config_dir(self: &AppController) -> QString;
+
+        /// Re-reads `[ilias]` into `iliasConfig`.
+        #[qinvokable]
+        #[cxx_name = "reloadIliasConfig"]
+        fn reload_ilias_config(self: Pin<&mut AppController>);
 
         /// Signs out: forgets the web session (all its cookies).
         #[qinvokable]
@@ -666,6 +754,33 @@ pub mod qobject {
         #[cxx_name = "copyToClipboard"]
         fn copy_to_clipboard(self: &AppController, text: &QString);
 
+        /// Saves `area` (JSON `[x0, y0, x1, y1]`, points) of page `page`
+        /// (from 1) of `pdf` as picture into the `assets/` folder for `note`
+        /// and returns the Markdown for the note: the picture and a link
+        /// to the page as its source ("" on failure).
+        #[qinvokable]
+        #[cxx_name = "pdfAreaToNote"]
+        fn pdf_area_to_note(self: &AppController, pdf: &QString, page: i32, area: &QString, note: &QString) -> QString;
+
+        /// The tree of folder `path` as text (`├──`), 3 levels deep.
+        #[qinvokable]
+        #[cxx_name = "folderTree"]
+        fn folder_tree(self: &AppController, path: &QString) -> QString;
+
+        /// Pasting into the note `note`: files on the clipboard are copied
+        /// into the project's `assets/` folder, a picture (screenshot) is
+        /// saved there as PNG; returns the Markdown for them ("" if the
+        /// clipboard holds neither: then text is pasted as usual).
+        #[qinvokable]
+        #[cxx_name = "pasteIntoNote"]
+        fn paste_into_note(self: &AppController, note: &QString) -> QString;
+
+        /// Files dropped on the note `note` (JSON list of paths or file
+        /// URLs): copied into `assets/` like pasted ones; the Markdown.
+        #[qinvokable]
+        #[cxx_name = "importIntoNote"]
+        fn import_into_note(self: &AppController, note: &QString, paths: &QString) -> QString;
+
         /// Saves a PNG of `window` (a QQuickWindow), used by `--screenshot`.
         #[qinvokable]
         #[cxx_name = "saveWindowImage"]
@@ -718,6 +833,7 @@ pub struct AppControllerRust {
     context_modules: QString,
     natural_sort: bool,
     touchpad_fling: bool,
+    spellcheck: bool,
     folder_sort: QString,
     ilias_config: QString,
     /// Watches the file managers' places files.
@@ -789,6 +905,7 @@ impl Default for AppControllerRust {
             context_modules: context_json(&Config::load().context),
             natural_sort: Config::load().files.natural_sort,
             touchpad_fling: Config::load().files.touchpad_fling,
+            spellcheck: Config::load().editor.spellcheck.unwrap_or(true),
             folder_sort: folder_sort_json(&Config::load().files),
             ilias_config: ilias_json(&Config::load().ilias),
             places_watcher: None,
@@ -950,6 +1067,48 @@ impl qobject::AppController {
         self.as_mut().touchpad_fling_changed();
     }
 
+    pub fn set_spellcheck(mut self: Pin<&mut Self>, on: bool) {
+        if self.spellcheck == on {
+            return;
+        }
+        let mut config = Config::load().editor;
+        config.spellcheck = if on { None } else { Some(false) };
+        if let Err(err) = Config::save_editor(&config) {
+            log::warn!("cannot save [editor]: {err:#}");
+        }
+        self.as_mut().rust_mut().spellcheck = on;
+        self.as_mut().spellcheck_changed();
+    }
+
+    pub fn spell_check(&self, text: &QString) -> QString {
+        let text = text.to_string();
+        with_speller(|checker| {
+            let bad = checker.misspelled(&text);
+            let list: Vec<[usize; 2]> =
+                atlas_core::spell::utf16_ranges(&text, &bad).into_iter().map(|(s, l)| [s, l]).collect();
+            serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())
+        })
+        .map_or_else(|| qs("null"), qs)
+    }
+
+    pub fn spell_suggest(&self, word: &QString) -> QStringList {
+        let mut out = QStringList::default();
+        for s in with_speller(|c| c.suggest(&word.to_string(), 5)).unwrap_or_default() {
+            out.append(qs(s));
+        }
+        out
+    }
+
+    pub fn spell_add(&self, word: &QString) {
+        if let Some(Err(err)) = with_speller(|c| c.add(&word.to_string())) {
+            log::warn!("spellcheck: {err:#}");
+        }
+    }
+
+    pub fn spell_languages(&self) -> QString {
+        qs(with_speller(|c| c.languages().join(", ")).unwrap_or_default())
+    }
+
     pub fn set_ilias_config(mut self: Pin<&mut Self>, key: &QString, value: &QString) {
         let mut config = Config::load().ilias;
         let value = value.to_string();
@@ -960,6 +1119,7 @@ impl qobject::AppController {
             }
             "download_dir" => config.download_dir = value,
             "show_in_places" => config.show_in_places = value == "true",
+            "login_host" => config.login_host = value.trim().to_lowercase(),
             other => {
                 log::warn!("unknown ILIAS setting {other}");
                 return;
@@ -1071,6 +1231,107 @@ impl qobject::AppController {
             atlas_core::ilias::trace("(noch nichts protokolliert)");
         }
         qs(path.to_string_lossy())
+    }
+
+    pub fn ilias_remember_login(&self, user: &QString, password: &QString) {
+        let (user, password) = (user.to_string().trim().to_owned(), password.to_string());
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let result = (|| -> anyhow::Result<()> {
+                if user.is_empty() {
+                    anyhow::bail!("Benutzername fehlt");
+                }
+                ilias_secret().store_encrypted(&password)?;
+                let mut config = Config::load().ilias;
+                config.user = user;
+                Config::save_ilias(&config)
+            })();
+            let (ok, message) = match result {
+                Ok(()) => (true, "Anmeldung verschlüsselt gespeichert (systemd-creds)".to_owned()),
+                Err(err) => (false, format!("{err:#}")),
+            };
+            atlas_core::ilias::trace(&format!("Anmeldedaten merken: {message}"));
+            let _ = thread.queue(move |mut app| {
+                app.as_mut().reload_ilias_config();
+                app.ilias_login_stored(ok, qs(message));
+            });
+        });
+    }
+
+    pub fn ilias_forget_login(mut self: Pin<&mut Self>) {
+        if let Err(err) = ilias_secret().forget() {
+            log::warn!("cannot forget the ILIAS login: {err:#}");
+        }
+        let mut config = Config::load().ilias;
+        config.login_host.clear();
+        if let Err(err) = Config::save_ilias(&config) {
+            log::warn!("cannot save [ilias]: {err:#}");
+        }
+        atlas_core::ilias::trace("Anmeldedaten vergessen");
+        self.as_mut().reload_ilias_config();
+    }
+
+    pub fn ilias_fetch_login(&self) {
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let user = Config::load().ilias.user;
+            let (password, error) = match ilias_secret().load() {
+                Ok(Some((p, atlas_core::secret::Kind::Encrypted))) => (p, String::new()),
+                Ok(Some(_)) => (String::new(), "nicht verschlüsselt gespeichert".to_owned()),
+                Ok(None) => (String::new(), String::new()),
+                Err(err) => (String::new(), format!("{err:#}")),
+            };
+            if !error.is_empty() {
+                atlas_core::ilias::trace(&format!("Anmeldedaten nicht lesbar: {error}"));
+            }
+            let _ = thread.queue(move |app| app.ilias_login_ready(qs(user), qs(password), qs(error)));
+        });
+    }
+
+    pub fn latex_from_pdf(&self, request: i32, path: &QString, page: i32, area: &QString) {
+        let thread = self.qt_thread();
+        let Ok([x0, y0, x1, y1]) = serde_json::from_str::<[f64; 4]>(&area.to_string()) else {
+            log::warn!("latexFromPdf: bad area {area}");
+            return;
+        };
+        atlas_core::pdf::PdfService::get().formula_clip(
+            path_of(path),
+            page.max(0) as usize,
+            [x0, y0, x1, y1],
+            move |result| {
+                // The recognition takes a while: not on the PDF thread.
+                std::thread::spawn(move || {
+                    let outcome = result.and_then(|(w, h, pixels)| {
+                        ensure_latex_models(&|text| {
+                            let _ = thread.queue(move |app| app.latex_progress(request, qs(text)));
+                        })?;
+                        atlas_core::latex_ocr::recognize_gray(w, h, pixels).map(|t| atlas_core::pdf::formulas::tidy(&t))
+                    });
+                    let (latex, error) = match outcome {
+                        Ok(l) => (l, String::new()),
+                        Err(e) => (String::new(), format!("{e:#}")),
+                    };
+                    let _ = thread.queue(move |app| app.latex_recognized(request, qs(latex), qs(error)));
+                });
+            },
+        );
+    }
+
+    pub fn latex_ocr_warm(&self) -> bool {
+        atlas_core::latex_ocr::is_running()
+    }
+
+    pub fn state_dir(&self) -> QString {
+        qs(atlas_core::paths::state_root().to_string_lossy())
+    }
+
+    pub fn config_dir(&self) -> QString {
+        qs(atlas_core::config::config_dir().to_string_lossy())
+    }
+
+    pub fn reload_ilias_config(mut self: Pin<&mut Self>) {
+        self.as_mut().rust_mut().ilias_config = ilias_json(&Config::load().ilias);
+        self.as_mut().ilias_config_changed();
     }
 
     pub fn ilias_logout(&self) {
@@ -1665,7 +1926,7 @@ impl qobject::AppController {
         if let Err(err) = atlas_core::config::split_words(&command) {
             return qs(format!("{err:#}"));
         }
-        let editor = EditorConfig { command, terminal: Some(terminal) };
+        let editor = EditorConfig { command, terminal: Some(terminal), ..Config::load().editor };
         match Config::save_editor(&editor) {
             Ok(()) => QString::default(),
             Err(err) => qs(format!("{err:#}")),
@@ -2614,6 +2875,89 @@ impl qobject::AppController {
         qs(file.to_string_lossy())
     }
 
+    pub fn pdf_area_to_note(&self, pdf: &QString, page: i32, area: &QString, note: &QString) -> QString {
+        use atlas_core::assets;
+        let (pdf, note) = (path_of(pdf), path_of(note));
+        let Ok(area) = serde_json::from_str::<[f64; 4]>(&area.to_string()) else { return QString::default() };
+        let page = page.max(1) as u32;
+        let dir = assets::assets_dir(self.root.as_deref(), &note);
+        if let Err(err) = std::fs::create_dir_all(&dir) {
+            log::warn!("cannot create {}: {err}", dir.display());
+            return QString::default();
+        }
+        let stem = pdf.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "pdf".into());
+        let name = assets::new_image_name(Path::new(&format!("{stem}-s{page}.md")), "png");
+        let target = assets::unique_path(&dir, &name);
+        // About 220 dpi: sharp in notes and when printed.
+        if let Err(err) = atlas_core::pdf::PdfService::get().save_area_png(&pdf, page as usize - 1, area, 3.0, &target)
+        {
+            log::warn!("cannot save the picture: {err:#}");
+            return QString::default();
+        }
+        let file_name =
+            pdf.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().replace(['[', ']'], "");
+        let source = match &self.root {
+            Some(root) if pdf.starts_with(root) && note.starts_with(root) => {
+                format!("/{}", self.relative(&pdf).to_string_lossy())
+            }
+            _ => atlas_core::markdown::relative_path(note.parent().unwrap_or(Path::new("/")), &pdf)
+                .to_string_lossy()
+                .into_owned(),
+        };
+        let label = format!("{file_name}, S. {page}");
+        // The source as caption under the picture (same paragraph).
+        qs(format!(
+            "![{label}]({})\n*[{label}]({})*",
+            assets::link_from(&note, &target),
+            atlas_core::annotations::link(&source, page, None)
+        ))
+    }
+
+    pub fn folder_tree(&self, path: &QString) -> QString {
+        qs(atlas_core::tree::of_folder(&path_of(path), 3, 300))
+    }
+
+    pub fn paste_into_note(&self, note: &QString) -> QString {
+        let note = path_of(note);
+        let root = self.root.as_deref();
+        let files: Vec<PathBuf> =
+            crate::qt_helpers::clipboard_files().iter().map(|p| PathBuf::from(p.to_string())).collect();
+        if !files.is_empty() {
+            return qs(self.import_files(&note, &files));
+        }
+        let dir = atlas_core::assets::assets_dir(root, &note);
+        if std::fs::create_dir_all(&dir).is_err() {
+            return QString::default();
+        }
+        let target = atlas_core::assets::unique_path(&dir, &atlas_core::assets::new_image_name(&note, "png"));
+        if crate::qt_helpers::clipboard_save_image(&qs(target.to_string_lossy())) {
+            log::info!("picture from the clipboard saved as {}", target.display());
+            qs(atlas_core::assets::image_markdown(&note, &target))
+        } else {
+            QString::default()
+        }
+    }
+
+    pub fn import_into_note(&self, note: &QString, paths: &QString) -> QString {
+        let list: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
+        let files: Vec<PathBuf> = list
+            .iter()
+            .map(|p| PathBuf::from(p.strip_prefix("file://").map(percent_decode).unwrap_or_else(|| p.clone())))
+            .collect();
+        qs(self.import_files(&path_of(note), &files))
+    }
+
+    fn import_files(&self, note: &Path, files: &[PathBuf]) -> String {
+        let mut out = Vec::new();
+        for file in files.iter().filter(|f| f.is_file()) {
+            match atlas_core::assets::import(self.root.as_deref(), note, file) {
+                Ok(markdown) => out.push(markdown),
+                Err(err) => log::warn!("cannot insert {}: {err:#}", file.display()),
+            }
+        }
+        out.join("\n")
+    }
+
     pub fn copy_to_clipboard(&self, text: &QString) {
         crate::qt_helpers::clipboard_set_text(text);
     }
@@ -2735,8 +3079,17 @@ fn percent_decode(s: &str) -> String {
 }
 
 /// `[ilias]` for QML.
+/// The remembered university login for ILIAS (encrypted only).
+fn ilias_secret() -> atlas_core::secret::SecretStore {
+    atlas_core::secret::SecretStore::default_for("ilias")
+}
+
 fn ilias_json(c: &atlas_core::config::IliasConfig) -> QString {
-    let json = serde_json::json!({ "base_url": c.base_url, "download_dir": c.download_dir, "show_in_places": c.show_in_places });
+    let saved = ilias_secret().kind() == Some(atlas_core::secret::Kind::Encrypted);
+    let json = serde_json::json!({
+        "base_url": c.base_url, "download_dir": c.download_dir, "show_in_places": c.show_in_places,
+        "user": c.user, "login_host": c.login_host, "login_saved": saved && !c.user.is_empty(),
+    });
     QString::from(json.to_string().as_str())
 }
 
@@ -2748,6 +3101,45 @@ fn folder_sort_json(f: &atlas_core::config::FilesConfig) -> QString {
 /// `[context]` for QML.
 fn context_json(c: &atlas_core::config::ContextConfig) -> QString {
     QString::from(serde_json::to_string(c).unwrap_or_else(|_| "{}".into()).as_str())
+}
+
+/// Runs `f` with the spellchecker, loaded on first use (about 0.1 s);
+/// `None` if no dictionary was found.
+fn with_speller<T>(f: impl FnOnce(&mut atlas_core::spell::Checker) -> T) -> Option<T> {
+    use atlas_core::spell::{Checker, dictionary_dirs};
+    static SPELLER: OnceLock<Mutex<Option<Checker>>> = OnceLock::new();
+    let speller = SPELLER.get_or_init(|| {
+        let personal = atlas_core::config::config_dir().join("dictionary.txt");
+        Mutex::new(
+            Checker::load(&dictionary_dirs(), Some(personal)).inspect_err(|e| log::info!("spellcheck: {e:#}")).ok(),
+        )
+    });
+    let mut guard = speller.lock().unwrap_or_else(|e| e.into_inner());
+    guard.as_mut().map(f)
+}
+
+/// Downloads the formula model the first time (see
+/// [`atlas_core::latex_ocr`]), telling `progress` about it now and then.
+pub(crate) fn ensure_latex_models(progress: &dyn Fn(String)) -> anyhow::Result<()> {
+    use atlas_core::latex_ocr;
+    use std::time::{Duration, Instant};
+    let dir = latex_ocr::model_dir();
+    if latex_ocr::models_present(&dir) {
+        return Ok(());
+    }
+    let last = std::sync::Mutex::new(Instant::now() - Duration::from_secs(1));
+    latex_ocr::download_models(&dir, &|file, received, total| {
+        let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
+        if last.elapsed() < Duration::from_millis(250) {
+            return;
+        }
+        *last = Instant::now();
+        let mb = |b: u64| b as f64 / 1_048_576.0;
+        progress(match total {
+            Some(t) => format!("Lade das Formelmodell (einmalig): {file} {:.0} von {:.0} MB", mb(received), mb(t)),
+            None => format!("Lade das Formelmodell (einmalig): {file} {:.0} MB", mb(received)),
+        });
+    })
 }
 
 #[cfg(test)]

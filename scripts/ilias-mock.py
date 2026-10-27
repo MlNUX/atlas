@@ -126,10 +126,22 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(url.query)
         logged_in = "sid=1" in (self.headers.get("Cookie") or "")
         if url.path == "/login.php":
-            return self.send(200, b'<!doctype html><html><body><h1>Anmeldung</h1><a id="login" href="/dologin">Anmelden mit KIT-Konto</a>'
-                                  b'<form action="/login.php?cmd=post"><input type="password" name="pw"></form></body></html>')
+            error = b'<p class="error">Falsches Passwort</p>' if q.get("error") else b""
+            return self.send(200, b'<!doctype html><html><body><h1>Anmeldung</h1>' + error +
+                                  b'<a id="login" href="/dologin">Anmelden mit KIT-Konto</a>'
+                                  b'<form action="/dologin" method="get"><input type="text" name="j_username">'
+                                  b'<input type="password" name="j_password"><button type="submit" name="_eventId_proceed">Anmelden</button></form></body></html>')
         if url.path == "/dologin":
+            # With the form: only the right password (the link without one
+            # stands for an existing single sign-on).
+            if "j_username" in q and (q.get("j_username") != ["uxtest"] or q.get("j_password") != ["geheim"]):
+                state["failed"] = state.get("failed", 0) + 1
+                return self.redirect("/login.php?error=1")
+            if "j_username" in q:
+                state["form_logins"] = state.get("form_logins", 0) + 1
             return self.redirect("/ilias.php?baseClass=ilDashboardGUI&cmd=show", [("Set-Cookie", "sid=1; Path=/")])
+        if url.path == "/stats":
+            return self.send(200, ('{"form_logins": %d, "failed": %d}' % (state.get("form_logins", 0), state.get("failed", 0))).encode(), "application/json")
         if url.path == "/logout.php" or (q.get("cmd") or [""])[0] == "doLogout":
             return self.redirect("/login.php", [("Set-Cookie", "sid=; Path=/; Max-Age=0")])
         if url.path == "/bump":

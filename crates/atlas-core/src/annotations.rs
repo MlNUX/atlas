@@ -385,15 +385,41 @@ pub fn quote_markdown(text: &str, comment: &str, file_name: &str, link_path: &st
 /// Keeps quoted PDF text from turning into Markdown structure.
 fn escape_quote(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
-    for (i, c) in line.chars().enumerate() {
+    let mut first = true;
+    let mut rest = line;
+    while let Some(c) = rest.chars().next() {
+        // Formulas recognised as LaTeX stay as they are (`$…$`, `$$ … $$`).
+        if c == '$'
+            && let Some(len) = formula_len(rest)
+        {
+            out.push_str(&rest[..len]);
+            rest = &rest[len..];
+            first = false;
+            continue;
+        }
         if matches!(c, '*' | '_' | '`' | '[' | ']' | '<' | '>' | '\\' | '$')
-            || (i == 0 && matches!(c, '#' | '-' | '+' | '|'))
+            || (first && matches!(c, '#' | '-' | '+' | '|'))
         {
             out.push('\\');
         }
         out.push(c);
+        rest = &rest[c.len_utf8()..];
+        first = false;
     }
     out
+}
+
+/// Length of the formula at the start of `text` – `$x^2$` or `$$ … $$`
+/// with LaTeX inside (a backslash, `^`, `_` or braces) – or `None` (a
+/// price like `$5` is text).
+fn formula_len(text: &str) -> Option<usize> {
+    let (open, inner_start) = if text.starts_with("$$") { ("$$", 2) } else { ("$", 1) };
+    let close = text[inner_start..].find(open)? + inner_start;
+    let inner = &text[inner_start..close];
+    let display = open == "$$";
+    let tight = !inner.starts_with(char::is_whitespace) && !inner.ends_with(char::is_whitespace);
+    let latex = inner.contains(['\\', '^', '_', '{']);
+    (!inner.trim().is_empty() && latex && (display || tight)).then_some(close + open.len())
 }
 
 /// Annotations by page (for the viewer), keeping the file order.
@@ -411,6 +437,16 @@ mod tests {
 
     fn fp(hash: &str) -> Fingerprint {
         Fingerprint { blake3: hash.into(), size: 10, pages: 3, pdf_id: Some("abc".into()) }
+    }
+
+    #[test]
+    fn quotes_keep_latex_formulas_and_escape_the_rest() {
+        let text = r"Für $K_{n}=\{z\in\mathbb{C}\}$ gilt *nichts*, Preis $5 und $10, $$ \sum_{k} x $$ Ende";
+        assert_eq!(
+            escape_quote(text),
+            r"Für $K_{n}=\{z\in\mathbb{C}\}$ gilt \*nichts\*, Preis \$5 und \$10, $$ \sum_{k} x $$ Ende"
+        );
+        assert_eq!(escape_quote("- a_b"), r"\- a\_b");
     }
 
     fn highlight(page: u32) -> Annotation {

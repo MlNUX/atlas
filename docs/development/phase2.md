@@ -5,7 +5,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Phase 2 – Vertiefte Arbeitsabläufe: Fortschritt
 
-Umsetzung nach [PHASES.md](../PHASES.md) und [CALENDAR.md](../CALENDAR.md);
+Umsetzung nach [Phasenkonzept](../concept/phases.md) und [Kalenderkonzept](../concept/calendar.md);
 nach jedem Schritt ein Commit.
 
 ## Entscheidungen zu Beginn (2026-10-19)
@@ -51,7 +51,7 @@ Kern: `atlas_core::annotations` (Datenmodell, Ablage, Zuordnung, Zitate) und
 - Seitenleiste **Anmerkungen**: alle Anmerkungen nach Seite, Klick springt
   hin; Lesezeichen auch in den Seitenminiaturen.
 - **Nicht destruktiv**: alles liegt in `.atlas/annotations/` (Format in
-  [data-format.md](data-format.md)); die PDF bleibt unverändert.
+  [data-format.md](../data-format.md)); die PDF bleibt unverändert.
 - **Zuordnung** über Projektpfad, Fingerabdruck (BLAKE3, Größe, Seitenzahl,
   permanente PDF-ID) und Seite: Verschieben/Umbenennen in Atlas passt den
   Pfad an, externes Verschieben wird über den Fingerabdruck erkannt, eine
@@ -127,7 +127,7 @@ Session, Vervollständigung).
 
 Kern: `atlas_core::actions` (Format, Dateimuster, Platzhalter, Vorbereitung
 des Befehls, Heuristik für destruktive Befehle) mit Tests; Format in
-[actions.md](actions.md).
+[actions.md](../actions.md).
 
 - **Deklarativ in YAML** (`version: 1`): `.atlas/actions.yaml` für das
   Projekt, `~/.config/atlas/actions.yaml` für alle Projekte; Projektaktionen
@@ -168,7 +168,7 @@ Statuszeile).
 
 Kern: `atlas_core::extensions` (Manifest, Freigabe, Dateiverarbeitung mit
 Cache, Exporter, Ausführung mit Zeitlimit) mit Tests; Format in
-[extensions.md](extensions.md).
+[extensions.md](../extensions.md).
 
 - **Klar versioniertes Format**: Ordner mit `extension.yaml`,
   `atlas_extension: 1`; neuere Formate werden abgelehnt statt falsch
@@ -209,7 +209,7 @@ Export mit Öffnen des Ergebnisses).
 Kern: `atlas_core::calendar` (Einträge, iCalendar-Lesen/-Schreiben mit
 Erhalt fremder Daten, Wiederholungen, Vorkommen in einem Zeitraum,
 Erinnerungen, Markdown-Checklisten) mit Tests; Format in
-[data-format.md](data-format.md#kalender-calendar).
+[data-format.md](../data-format.md#kalender-calendar).
 
 - **Eigener Tab** „Kalender“ (📅 in der Titelleiste, Strg+P → „Kalender
   öffnen“, `atlas PROJEKT --open calendar:`); Explorer und Projektbaum
@@ -330,8 +330,8 @@ bedienbar; der Cache wird nur in kurzen Transaktionen geschrieben.
   „Als Aufgabe einplanen“, Suche, Dateilink folgt Umbenennung, Tab in der
   Session, Löschen.
 - Dokumentiert: Dateiformate und `[calendar]` in
-  [data-format.md](data-format.md), Tastenkürzel in
-  [shortcuts.md](shortcuts.md).
+  [data-format.md](../data-format.md), Tastenkürzel in
+  [shortcuts.md](../shortcuts.md).
 
 #### Abnahmekriterien
 
@@ -355,7 +355,7 @@ native Desktop-Benachrichtigungen bleiben wie geplant für später.
 ### Nachtrag – Design nach dem Gesamt-Mockup
 
 Oberfläche an das dunkle „Navy“-Mockup angeglichen (Screenshot:
-[previews/14-atlas-design-navy.png](../previews/14-atlas-design-navy.png)):
+[mockups/14-atlas-design-navy.png](../concept/mockups/14-atlas-design-navy.png)):
 
 - **Farben und Maße** zentral in `qml/Theme.qml`; Splits, Terminal und
   Kontextleiste als abgerundete Karten mit kleinem Abstand.
@@ -392,7 +392,7 @@ Oberfläche an das dunkle „Navy“-Mockup angeglichen (Screenshot:
   Einstellungen, Eigenschaften, Erweiterungen, Kalender, Konflikte,
   Umbenennen, Bestätigungen, Kontextmenüs.
 - **Sessionfenster** nach dem Mockup
-  ([previews/15-atlas-sessions-navy.png](../previews/15-atlas-sessions-navy.png)):
+  ([mockups/15-atlas-sessions-navy.png](../concept/mockups/15-atlas-sessions-navy.png)):
   Suche, alle Sessions mit Symbol nach Inhalt (PDF, Notizen, Code, leer),
   „3 Tabs · 2 Splits“, aktive Session markiert („Automatisch gespeichert“),
   sonst Zeit der letzten Speicherung; ⋮ je Session zum Umbenennen und
@@ -433,7 +433,7 @@ Behoben:
 Neu gestaltet:
 
 - **Schnellansicht** nach
-  [previews/03-schnellansicht-dark.png](../previews/03-schnellansicht-dark.png):
+  [mockups/03-schnellansicht-dark.png](../concept/mockups/03-schnellansicht-dark.png):
   Kopfzeile „Schnellansicht – Name“ mit Seitenwechsel, Zoom und „Ganze
   Seite“, das Dokument ohne eigene Leisten (PDFs ganzseitig), rechts eine
   Infospalte (Art, Größe, Änderung, Ordner; bei PDFs Seiten, Abmessungen und
@@ -651,7 +651,7 @@ stehen, bis Enter gedrückt wird (wie bei eigenen Aktionen).
 - `packaging/arch/PKGBUILD` baut das Archiv des Tags `v$pkgver` und ist
   bereit fürs AUR (`atlas-workspace`, mit `.SRCINFO`).
 - README für die Veröffentlichung neu geschrieben, mit echten Screenshots;
-  die Konzept-Mockups stehen jetzt in [design.md](design.md).
+  die Konzept-Mockups stehen jetzt in [design.md](../concept/design.md).
 - `CHANGELOG.md` und GitHub-CI (`nix flake check`).
 
 ### Nachtrag – Eine Session je Projektordner
@@ -784,7 +784,7 @@ nginx stand dann als großes Bild im Einstellungsfenster. Jetzt:
 ### Nachtrag – Google-Kalender
 
 Alternativ zu Nextcloud lässt sich ein Google-Konto verbinden
-(`provider = "google"`; Einrichtung: [google-kalender.md](google-kalender.md)).
+(`provider = "google"`; Einrichtung: [google-kalender.md](../google-kalender.md)).
 
 - **Anmeldung** mit OAuth 2.0 für installierte Apps
   (`atlas_core::calendar::google`): der Browser öffnet Googles Anmeldeseite,
@@ -1054,7 +1054,7 @@ im Editor, Mausrad im Editor unverändert).
   wird zu einem sicheren Pfadteil (keine Schrägstriche, keine führenden
   Punkte), der Pfad bleibt im Download-Ordner.
 - **Fehlersuche:** Der Knopf mit dem Dokument in der ILIAS-Leiste öffnet
-  `debug.log` (siehe [data-format.md](data-format.md)): was das
+  `debug.log` (siehe [data-format.md](../data-format.md)): was das
   Anmeldefenster lud und wie es geprüft wurde, welche Cookies das Profil
   hat (nur Namen), jede Seite mit Ziel, Titel und Anmelde-Urteil samt
   Grund, was darauf gefunden wurde, und Downloads. Seiten, auf denen etwas

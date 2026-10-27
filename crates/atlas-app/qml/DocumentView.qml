@@ -49,6 +49,15 @@ Item {
     signal closeRequested()
 
     function refresh() { revision++ }
+    /// Keyboard focus to the viewer, e.g. when the tab is switched to.
+    function takeFocus() {
+        const v = viewer.item
+        if (!v) return
+        if (typeof v.focusContent === "function") v.focusContent()
+        else if (typeof v.focusTerminal === "function") v.focusTerminal()
+        else if (typeof v.focusText === "function") v.focusText()
+        else v.forceActiveFocus()
+    }
     /// Edits not yet written to the file (text and Markdown tabs).
     function hasUnsavedChanges() {
         const v = viewer.item

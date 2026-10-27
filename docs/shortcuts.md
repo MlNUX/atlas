@@ -12,7 +12,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 | Strg+P | Arbeitsleiste: Dateien, Ordner, Notizen, Aktionen (`>` Aktionen, `#` Tags, `@` Zitate und PDF-Anmerkungen, `!` Termine, `:` Zeile, `?` Volltext, `pfad:42`) |
 | Strg+Umschalt+P | Arbeitsleiste mit Aktionen |
 | Strg+O | Projektordner öffnen |
-| Strg+Umschalt+F | Projektweite Suche |
+| Strg+Umschalt+F | Projektweite Suche (Fenster; ↑/↓ wählen, Enter öffnen, Strg+Enter im Split, Esc schließt) |
 | Strg+Umschalt+E | Explorer |
 | Strg+B | Seitenleiste ein-/ausblenden |
 | Strg+` | Terminal-Panel ein-/ausblenden |

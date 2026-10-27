@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
     let (tx, rx) = crossbeam_channel::unbounded();
     let _handle = search::start(
         &root,
-        Query { pattern, ..Default::default() },
+        Query::new(pattern),
         move |batch| {
             for m in batch {
                 println!(
