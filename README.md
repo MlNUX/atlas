@@ -72,8 +72,14 @@ Dann in `configuration.nix` (oder `home.packages` in Home Manager):
 
 Oder `nix profile install github:MlNUX/atlas`.
 
-**Arch Linux** – aus dem AUR: `yay -S atlas-workspace` (oder
-`packaging/arch/PKGBUILD` mit `makepkg -si` bauen).
+**Arch Linux** – mit dem mitgelieferten PKGBUILD bauen (es lädt das
+Release-Archiv der Version und baut daraus das Paket `atlas-workspace`):
+
+```sh
+git clone https://github.com/MlNUX/atlas.git
+cd atlas/packaging/arch
+makepkg -si
+```
 
 **Aus dem Quellcode** – benötigt Rust ≥ 1.85, einen C++-Compiler, clang,
 pkg-config, Qt 6 (Base, Declarative, Wayland, SVG, Image Formats,

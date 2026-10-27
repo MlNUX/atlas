@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Minux
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# AUR-Paket atlas-workspace. Baut das Release-Archiv des Tags v$pkgver.
+# Arch-Paket atlas-workspace (makepkg -si). Baut das Release-Archiv des Tags v$pkgver.
 # Nach einem neuen Tag: pkgver anpassen, `updpkgsums` und
 # `makepkg --printsrcinfo > .SRCINFO` ausführen.
 
