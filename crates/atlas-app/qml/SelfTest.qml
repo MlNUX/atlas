@@ -1556,12 +1556,12 @@ Item {
                 // Fingers lifted (Wayland's axis stop): the momentum starts at
                 // once, not after a pause.
                 app.sendWheel(window, tp.x, tp.y, 0, 2 | 16 | 32)
-                check("Touchpad: Schwung setzt beim Loslassen sofort ein", v.fling.count === test.flings + 1 && v.pagesView.flicking,
+                check("Touchpad: Schwung setzt beim Loslassen sofort ein", v.fling.count === test.flings + 1 && v.fling.gliding,
                       v.fling.count - test.flings)
                 // libinput reports a "hold" while the fingers leave the touchpad:
                 // that must not stop the momentum it just started.
                 app.touchpadHeld()
-                check("Touchpad: Finger abheben stoppt den Schwung nicht", v.pagesView.flicking)
+                check("Touchpad: Finger abheben stoppt den Schwung nicht", v.fling.gliding)
                 test.flingDirect = v.pagesView.contentY - test.flingY
                 // Markdown → PDF with the preview (no pandoc).
                 test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
@@ -1709,12 +1709,12 @@ Item {
                 const ed = editor.activeTab.viewerItem.editorItem
                 check("Editor: Touchpad-Schwung", ed.fling.count === test.flings + 1, ed.fling.count)
                 // Fingers put down on the touchpad (hold gesture) stop it.
-                const f = ed.fling.flickable
                 ed.scrollToExactLine(60)
-                f.flick(0, -4000)
-                const was = f.flicking
+                ed.fling.glide(0, -4)
+                ed.fling.flingStart = 0
+                const was = ed.fling.gliding
                 app.touchpadHeld()
-                check("Finger auflegen stoppt den Schwung", was && !f.flicking, was + " " + f.flicking)
+                check("Finger auflegen stoppt den Schwung", was && !ed.fling.gliding, was + " " + ed.fling.gliding)
                 fileActions.calendar.remove(test.modEvent)
             },
             () => {

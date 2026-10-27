@@ -81,7 +81,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Scrollen wie im Browser** (PDF, Editor, Dateiliste, Projektbaum): Das
   Touchpad bewegt den Inhalt genau mit den Fingern, auch ganz langsame
   Bewegungen unter einem Pixel, einmal pro Bild; beim Loslassen gleitet die
-  Ansicht sofort weiter (Wayland meldet das Ende der Geste). Das Mausrad
+  Ansicht sofort weiter (Wayland meldet das Ende der Geste) und läuft aus
+  wie in Firefox – mit Reibung (pro Millisekunde ein fester Anteil der
+  Geschwindigkeit, `apz.fling_friction`) statt gleichmäßigem Abbremsen mit
+  hartem Halt. Das Mausrad
   scrollt weich statt in Sprüngen. Vorher hielt Atlas Touchpad-Schritte von
   genau 10, 20, 30 … Pixeln für Mausrad-Rasten (Qt meldet unter Wayland
   das 12-Fache der Bewegung als Winkel) und sprang dabei um eine ganze

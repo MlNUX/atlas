@@ -15,7 +15,9 @@ import QtQuick
 //   (ScrollBegin … ScrollEnd), mouse wheels never do.
 // - Momentum (#4): Wayland sends no kinetic scrolling; when the fingers
 //   leave the touchpad (ScrollEnd) the view glides on with the speed of the
-//   last moments, slowing down; touching again stops it.
+//   last moments and slows down like Firefox does (friction: a fixed share
+//   of the speed per millisecond, so it runs out long and soft instead of
+//   stopping hard); touching again stops it.
 // - Mouse wheel: each notch scrolls `wheelStep` pixels, animated over a
 //   few frames instead of jumping.
 //
@@ -42,7 +44,17 @@ Item {
     /// hold gesture) stops the momentum.
     property var app: null
     /// Momentum relative to the swipe speed.
-    readonly property real boost: 1.6
+    readonly property real boost: 1.0
+    /// Share of the speed lost per millisecond (Firefox: apz.fling_friction).
+    readonly property real friction: 0.002
+    /// Below this speed (px/ms) the glide ends (apz.fling_stopped_threshold).
+    readonly property real stopSpeed: 0.01
+    /// Fastest glide (px/ms).
+    readonly property real maxSpeed: 8
+    /// Speed of the glide in px/ms (positive: content moves down/right).
+    property real glideX: 0
+    property real glideY: 0
+    readonly property bool gliding: glideX !== 0 || glideY !== 0
 
     /// Recent touchpad steps: {t, dx, dy} in pixels (content moves by -d).
     property var samples: []
@@ -79,6 +91,7 @@ Item {
             endTimer.stop()
             samples = []
             wheelX = wheelY = 0
+            glideX = glideY = 0
             flickable.cancelFlick()
         } else if (event.phase === Qt.ScrollEnd) {
             inGesture = false
@@ -88,6 +101,7 @@ Item {
         return event.pixelDelta.x === 0 && event.pixelDelta.y === 0 && event.angleDelta.x === 0 && event.angleDelta.y === 0
     }
     function sample(dx, dy) {
+        glideX = glideY = 0
         flickable.cancelFlick()
         const now = Date.now()
         samples = samples.filter(s => now - s.t < 100).concat([{ t: now, dx: dx, dy: dy }])
@@ -100,7 +114,21 @@ Item {
         endTimer.stop()
         samples = []
         wheelX = wheelY = 0
+        glideX = glideY = 0
         flickable.cancelFlick()
+    }
+    /// Starts gliding with (vx, vy) px/ms.
+    function glide(vx, vy) {
+        const clamp = (v) => Math.max(-maxSpeed, Math.min(maxSpeed, v))
+        glideX = clamp(vx)
+        glideY = clamp(vy)
+        count += 1
+        flingStart = Date.now()
+    }
+    // A drag (mouse or touch) takes over.
+    Connections {
+        target: fling.flickable
+        function onDraggingChanged() { if (fling.flickable.dragging) fling.glideX = fling.glideY = 0 }
     }
     /// When the last fling started (ms since the epoch).
     property real flingStart: 0
@@ -122,19 +150,13 @@ Item {
         if (!fling.active || s.length < 2) return
         // Steps arrive every few milliseconds; synthetic ones may come at
         // once, so assume at least 8 ms between them.
-        const span = Math.max(s[s.length - 1].t - s[0].t, 8 * (s.length - 1)) / 1000
+        const span = Math.max(s[s.length - 1].t - s[0].t, 8 * (s.length - 1))
         let dx = 0, dy = 0
         for (const p of s) { dx += p.dx; dy += p.dy }
+        // px/ms; slow swipes stop where the fingers left off.
         const vx = dx / span * fling.boost, vy = dy / span * fling.boost
-        if (Math.abs(vx) < 300 && Math.abs(vy) < 300) return
-        fling.count += 1
-        fling.flingStart = Date.now()
-        // A higher limit only for this fling: mouse wheels stay as they are.
-        const f = fling.flickable
-        const limit = f.maximumFlickVelocity
-        f.maximumFlickVelocity = 8000
-        f.flick(vx, vy)
-        f.maximumFlickVelocity = limit
+        if (Math.abs(vx) < 0.3 && Math.abs(vy) < 0.3) return
+        fling.glide(vx, vy)
     }
 
     // No step for a moment: the fingers left the touchpad (without an end
@@ -166,6 +188,18 @@ Item {
         pendingX = pendingY = 0
         if (x || y) move(-x, -y)
     }
+    /// Moves the glide on by `dt` ms: the exact distance of a speed that
+    /// loses `friction` of itself per millisecond; ends at a border or
+    /// when slow.
+    function glideStep(dt) {
+        const keep = Math.pow(1 - friction, dt)
+        const along = (1 - keep) / -Math.log(1 - friction)
+        const f = flickable
+        const x0 = f.contentX, y0 = f.contentY
+        move(-glideX * along, -glideY * along)
+        glideX = Math.abs(f.contentX - x0) < 0.01 || Math.abs(glideX * keep) < stopSpeed ? 0 : glideX * keep
+        glideY = Math.abs(f.contentY - y0) < 0.01 || Math.abs(glideY * keep) < stopSpeed ? 0 : glideY * keep
+    }
     /// Applies all waiting movement at once (wheel animation included).
     function settle() {
         flush()
@@ -184,18 +218,19 @@ Item {
             pendingY += d.y
         } else {
             // A notch during a fling ends it; notches add up.
-            if (flickable.flicking) stop()
+            if (gliding || flickable.flicking) stop()
             wheelX += event.angleDelta.x / 120 * wheelStep
             wheelY += event.angleDelta.y / 120 * wheelStep
         }
     }
 
-    // Once per frame: the touchpad movement at once, wheel notches eased
-    // in (most of a notch within about 120 ms, like browsers do).
+    // Once per frame: the touchpad movement at once, the glide, wheel
+    // notches eased in (most of a notch within about 120 ms, like browsers).
     FrameAnimation {
-        running: fling.pendingX !== 0 || fling.pendingY !== 0 || fling.wheelX !== 0 || fling.wheelY !== 0
+        running: fling.pendingX !== 0 || fling.pendingY !== 0 || fling.wheelX !== 0 || fling.wheelY !== 0 || fling.gliding
         onTriggered: {
             fling.flush()
+            if (fling.gliding) fling.glideStep(Math.min(Math.max(frameTime * 1000, 1), 50))
             if (fling.wheelX === 0 && fling.wheelY === 0) return
             const k = 1 - Math.exp(-Math.max(frameTime, 0.004) / 0.045)
             let x = fling.wheelX * k, y = fling.wheelY * k
