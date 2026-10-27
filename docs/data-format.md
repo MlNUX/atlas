@@ -237,6 +237,12 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 
 `ATLAS_STATE_DIR` und `ATLAS_CONFIG_DIR` ersetzen die beiden Ordner (Tests).
 
+Die Wörterbücher der Rechtschreibprüfung (`de_DE` und `en_US`, je `.dic` und
+`.aff`, Hunspell) sucht Atlas in `ATLAS_HUNSPELL_DIRS` (mit `:` getrennt; im
+Nix-Paket fest eingebaut), `$XDG_DATA_DIRS/hunspell`,
+`~/.nix-profile/share/hunspell`, `/run/current-system/sw/share/hunspell`,
+`/usr/share/hunspell`, `/usr/share/myspell/dicts` und `/usr/share/myspell`.
+
 ### `config.toml`
 
 ```toml
