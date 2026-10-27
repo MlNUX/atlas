@@ -1,0 +1,43 @@
+
+name: Arch Linux Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arch-build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm \
+            git rust cargo clang pkgconf \
+            qt6-base qt6-declarative qt6-wayland \
+            qt6-svg qt6-imageformats qt6-webengine \
+            qt6-webchannel qt6-positioning \
+            syntax-highlighting poppler-glib \
+            cairo glib2 fontconfig wayland \
+            ripgrep onnxruntime
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Atlas
+        env:
+          QMAKE: /usr/bin/qmake6
+          ATLAS_RG_BIN: /usr/bin/rg
+        run: |
+          cargo build --locked --release -p atlas-app
+
+      - name: Test Atlas Core
+        run: |
+          cargo test --locked --release -p atlas-core
