@@ -35,6 +35,20 @@ Item {
         const pixel = (p, a) => p !== 0 && (a === 0 || a % 120 !== 0)
         return pixel(event.pixelDelta.y, event.angleDelta.y) || pixel(event.pixelDelta.x, event.angleDelta.x)
     }
+    /// Handles the phase of a touchpad gesture: lifting the fingers
+    /// (ScrollEnd, Wayland's axis stop) starts the momentum at once instead
+    /// of after a pause; a new gesture stops it. True if the event was only
+    /// that (no movement).
+    function phase(event) {
+        if (event.phase === Qt.ScrollBegin) {
+            endTimer.stop()
+            samples = []
+            flickable.cancelFlick()
+        } else if (event.phase === Qt.ScrollEnd) {
+            finish()
+        }
+        return event.pixelDelta.x === 0 && event.pixelDelta.y === 0 && event.angleDelta.x === 0 && event.angleDelta.y === 0
+    }
     function sample(dx, dy) {
         flickable.cancelFlick()
         const now = Date.now()
@@ -52,29 +66,34 @@ Item {
         function onTouchpadHeld() { fling.stop() }
     }
 
-    // No step for a moment: the fingers left the touchpad.
+    /// The swipe ended: glide on with its speed.
+    function finish() {
+        endTimer.stop()
+        const s = fling.samples
+        fling.samples = []
+        if (!fling.active || s.length < 2) return
+        // Steps arrive every few milliseconds; synthetic ones may come at
+        // once, so assume at least 8 ms between them.
+        const span = Math.max(s[s.length - 1].t - s[0].t, 8 * (s.length - 1)) / 1000
+        let dx = 0, dy = 0
+        for (const p of s) { dx += p.dx; dy += p.dy }
+        const vx = dx / span * fling.boost, vy = dy / span * fling.boost
+        if (Math.abs(vx) < 300 && Math.abs(vy) < 300) return
+        fling.count += 1
+        // A higher limit only for this fling: mouse wheels stay as they are.
+        const f = fling.flickable
+        const limit = f.maximumFlickVelocity
+        f.maximumFlickVelocity = 8000
+        f.flick(vx, vy)
+        f.maximumFlickVelocity = limit
+    }
+
+    // No step for a moment: the fingers left the touchpad (without an end
+    // phase, e.g. on X11).
     Timer {
         id: endTimer
         interval: 70
-        onTriggered: {
-            const s = fling.samples
-            fling.samples = []
-            if (!fling.active || s.length < 2) return
-            // Steps arrive every few milliseconds; synthetic ones may come at
-            // once, so assume at least 8 ms between them.
-            const span = Math.max(s[s.length - 1].t - s[0].t, 8 * (s.length - 1)) / 1000
-            let dx = 0, dy = 0
-            for (const p of s) { dx += p.dx; dy += p.dy }
-            const vx = dx / span * fling.boost, vy = dy / span * fling.boost
-            if (Math.abs(vx) < 300 && Math.abs(vy) < 300) return
-            fling.count += 1
-            // A higher limit only for this fling: mouse wheels stay as they are.
-            const f = fling.flickable
-            const limit = f.maximumFlickVelocity
-            f.maximumFlickVelocity = 8000
-            f.flick(vx, vy)
-            f.maximumFlickVelocity = limit
-        }
+        onTriggered: fling.finish()
     }
 
     // Only watches: the Flickable below scrolls as always (blocking: false
@@ -87,6 +106,7 @@ Item {
         acceptedPointerTypes: PointerDevice.AllPointerTypes
         acceptedModifiers: Qt.NoModifier
         onWheel: (event) => {
+            if (fling.phase(event)) return
             if (fling.isTouchpad(event)) fling.sample(event.pixelDelta.x, event.pixelDelta.y)
             // Any other step (e.g. the start of a new gesture) ends a fling.
             else if (fling.flickable.flicking) fling.stop()

@@ -78,6 +78,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Esc schließt.
 
 ### Geändert
+- **Touchpad-Scrollen flüssiger**: Der Schwung setzt sofort ein, wenn die
+  Finger das Touchpad verlassen (Wayland meldet das Ende der Geste) –
+  vorher wartete Atlas 70 ms ohne Bewegung ab, das sah wie ein kurzes
+  Hängen aus. In PDFs werden die vielen kleinen Touchpad-Schritte einmal
+  pro Bild angewendet statt jeder einzeln (weniger Layout-Arbeit, kein
+  Ruckeln).
 - **Suchfenster übersichtlicher**: Groß/klein, ganzes Wort und regulärer
   Ausdruck als kleine Schalter im Suchfeld; die Typfilter zeigen ihre
   Trefferzahl; Dateimuster und Build-Ordner unter „Weitere Filter“. Pro

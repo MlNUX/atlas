@@ -1529,6 +1529,11 @@ Item {
                 test.flings = v.fling.count
                 app.sendWheel(window, tp.x, tp.y, -40, 2 | 4 | 16)
                 for (let i = 0; i < 5; ++i) app.sendWheel(window, tp.x, tp.y, -40, 2 | 16)
+                // Fingers lifted (Wayland's axis stop): the momentum starts at
+                // once, not after a pause.
+                app.sendWheel(window, tp.x, tp.y, 0, 2 | 16 | 32)
+                check("Touchpad: Schwung setzt beim Loslassen sofort ein", v.fling.count === test.flings + 1 && v.pagesView.flicking,
+                      v.fling.count - test.flings)
                 test.flingDirect = v.pagesView.contentY - test.flingY
                 // Markdown → PDF with the preview (no pandoc).
                 test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
