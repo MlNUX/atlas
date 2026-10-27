@@ -105,6 +105,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 
 ### Behoben
+- Rechtschreibprüfung: keine Flut von „QTextCursor::setPosition: Position …
+  out of range“ mehr im Terminal. Beim Laden einer anderen Datei (oder
+  derselben nach einer Änderung) wurden kurz die Unterstreichungen des
+  alten, längeren Texts gezeichnet.
 - PDF im Split: Ein Klick irgendwo in den Split (Leiste, Rand neben den
   Seiten, Knöpfe) gibt die Pfeiltasten der PDF – vorher musste man erst in
   eine Seite klicken, und ein angeklickter Knopf behielt die Tasten.

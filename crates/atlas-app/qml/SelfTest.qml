@@ -424,6 +424,12 @@ Item {
                 app.spellAdd("Tippfeler")
                 ed.updateSpelling()
                 check("Rechtschreibprüfung: eigenes Wörterbuch", !flagged(), JSON.stringify(ed.spellRanges.slice(-3)))
+                // Ranges of an older, longer text are not drawn (no positions
+                // past the end: "QTextCursor::setPosition: … out of range").
+                ed.spellRanges = [[ed.text.length + 10, 5]]
+                ed.updateSpellMarks()
+                check("Rechtschreibprüfung: alte Stellen hinter dem Textende ignoriert", ed.spellMarks.length === 0, JSON.stringify(ed.spellMarks))
+                ed.updateSpelling()
                 // A picture (cut out of a PDF) for the preview's picture window.
                 ed.insertText("\n\n" + app.pdfAreaToNote(path("docs/umbenannt.pdf"), 1, JSON.stringify([0, 0, 300, 200]), ed.source), true)
                 ed.insertText("\n\n## Abschnitt\n\n> Zitat", true)

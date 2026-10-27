@@ -134,6 +134,9 @@ Rectangle {
         const top = flick.contentY
         const cursor = area.cursorPosition
         loading = true
+        // Underlines of the old text would point past the new one.
+        root.spellRanges = []
+        root.spellMarks = []
         root.lastText = doc.text()
         area.text = root.lastText
         loading = false
@@ -276,6 +279,8 @@ Rectangle {
         const top = flick.contentY - 40, bottom = flick.contentY + flick.height + 40
         const marks = []
         for (const r of spellRanges) {
+            // Ranges of an older text (checked again shortly).
+            if (r[0] + r[1] > area.length) break
             const a = area.positionToRectangle(r[0])
             if (a.y > bottom) break
             if (a.y + a.height < top) continue
@@ -690,7 +695,7 @@ Rectangle {
                         if (root.autosave) autosaveTimer.restart()
                         if (root.showSymbols) symbolTimer.restart()
                         // Old underlines would sit in the wrong place until checked again.
-                        if (root.spellOn) { root.spellMarks = []; spellTimer.restart() }
+                        if (root.spellOn) { root.spellRanges = []; root.spellMarks = []; spellTimer.restart() }
                     }
                     onCursorPositionChanged: if (root.wikiCompletion) completionTimer.restart()
                     Keys.onPressed: (event) => {
