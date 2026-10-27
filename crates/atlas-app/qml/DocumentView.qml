@@ -270,6 +270,10 @@ Item {
                 source: "file://" + view.path
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
+                // Decoded at most at screen size: a 24-megapixel photo
+                // would take about 92 MiB in full (larger ones scale down,
+                // smaller ones stay as they are).
+                sourceSize: Qt.size(Screen.width * Screen.devicePixelRatio, Screen.height * Screen.devicePixelRatio)
             }
         }
     }

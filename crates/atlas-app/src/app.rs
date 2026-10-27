@@ -137,6 +137,11 @@ pub mod qobject {
         #[cxx_name = "spellAdd"]
         fn spell_add(self: &AppController, word: &QString);
 
+        /// Viewers keeping `path` open in the PDF service (smoke test).
+        #[qinvokable]
+        #[cxx_name = "pdfUsers"]
+        fn pdf_users(self: &AppController, path: &QString) -> i32;
+
         /// The dictionaries in use ("de_DE, en_US"; "" if none was found).
         #[qinvokable]
         #[cxx_name = "spellLanguages"]
@@ -1078,6 +1083,10 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().spellcheck = on;
         self.as_mut().spellcheck_changed();
+    }
+
+    pub fn pdf_users(&self, path: &QString) -> i32 {
+        atlas_core::pdf::PdfService::get().users_of(std::path::Path::new(&path.to_string())) as i32
     }
 
     pub fn spell_check(&self, text: &QString) -> QString {

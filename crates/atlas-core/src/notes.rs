@@ -310,7 +310,14 @@ fn walker(root: &Path) -> ignore::Walk {
         .git_global(false)
         .parents(true)
         .require_git(false)
-        .filter_entry(|e| e.file_name() != crate::project::ATLAS_DIR && e.file_name() != ".git")
+        // Not .atlas, .git and build or dependency folders (node_modules,
+        // target, …: the same as the quick open list skips).
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !(e.file_name() == crate::project::ATLAS_DIR
+                    || e.file_name() == ".git"
+                    || (e.file_type().is_some_and(|t| t.is_dir()) && crate::finder::is_build_dir(e.file_name())))
+        })
         .build()
 }
 
@@ -680,9 +687,11 @@ mod tests {
         let b = write(root, "docs/b.md", "---\ntags: [architektur]\n---\n# Start\n[A](../notes/a.md)\n");
         write(root, "target/ignored.md", "[P](/src/parser.rs)");
         write(root, ".gitignore", "target/\n");
+        // Dependencies are skipped without an ignore file too.
+        write(root, "web/node_modules/pkg/README.md", "[P](/src/parser.rs)");
 
         let mut index = NoteIndex::build(root);
-        assert_eq!(index.len(), 2, "ignored folders are skipped");
+        assert_eq!(index.len(), 2, "ignored and dependency folders are skipped");
         assert_eq!(
             index.backlinks(&parser),
             vec![Backlink {

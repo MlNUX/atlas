@@ -35,6 +35,8 @@ Item {
     property var steps: []
     property string annotId
     property string pdfBefore
+    property string memPdf
+    property int memBase
     property string calUid
     property var term: null
     property var moved: null
@@ -1513,8 +1515,9 @@ Item {
                 check("Zitat aus PDF: Formel als LaTeX im Zitat", !!a && a.text.indexOf("$\\frac{a}{b}$") >= 0, a ? a.text : "kein Zitat")
                 sendToNote.close()
                 if (a) v.removeAnnot(a.id)
-                const md = app.pdfAreaToNote(path("docs/quelle.pdf"), 2, JSON.stringify([60, 200, 300, 300]), path("notes/zitate.md"))
-                const m = /^!\[quelle\.pdf, S\. 2\]\(\.\.\/(assets\/quelle-s2-[0-9-]+\.png)\)\n\*\[quelle\.pdf, S\. 2\]\(\/docs\/quelle\.pdf#page=2\)\*$/.exec(md)
+                // (quelle.pdf was renamed further up.)
+                const md = app.pdfAreaToNote(path("docs/umbenannt.pdf"), 2, JSON.stringify([60, 200, 300, 300]), path("notes/zitate.md"))
+                const m = /^!\[umbenannt\.pdf, S\. 2\]\(\.\.\/(assets\/umbenannt-s2-[0-9-]+\.png)\)\n\*\[umbenannt\.pdf, S\. 2\]\(\/docs\/umbenannt\.pdf#page=2\)\*$/.exec(md)
                 check("Bild aus PDF als Zitat: PNG in assets/, Bildunterschrift mit Link auf die Seite", !!m && app.exists(path(m[1])), md)
             },
             () => {
@@ -2031,6 +2034,42 @@ Item {
                 check("Offene Session lässt sich nicht entfernen", !app.forgetProject(test.firstRoot))
                 check("Andere Session aus der Liste entfernt", app.forgetProject(test.before)
                       && JSON.parse(app.allSessions()).length === 1, app.allSessions())
+            },
+            () => {
+                // ---- Memory: a closed PDF tab lets go of its document (other
+                // users, e.g. thumbnails of an open folder view, keep theirs).
+                test.memPdf = path("docs/umbenannt.pdf")
+                test.memBase = app.pdfUsers(test.memPdf)
+                editor.open(test.memPdf, 0, "split")
+            },
+            () => {
+                check("PDF-Tab hält sein Dokument offen", app.pdfUsers(test.memPdf) === test.memBase + 1, test.memBase + " → " + app.pdfUsers(test.memPdf))
+                editor.activeGroup.closeCurrent()
+            },
+            () => {
+                check("Geschlossener PDF-Tab gibt das Dokument frei", app.pdfUsers(test.memPdf) === test.memBase, test.memBase + " → " + app.pdfUsers(test.memPdf))
+                // A note in edit mode starts no preview page.
+                const note = fileActions.ops.newFile(path("notes"), "speicher.md")
+                editor.open(note, 0, "split", { mode: "edit" })
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Markdown im Bearbeiten-Modus lädt keine Vorschau", md.mode === "edit" && md.previewItem.url.toString() === "" && !md.pageReady,
+                      md.mode + " " + md.previewItem.url)
+                md.mode = "preview"
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => md.pageReady)) return
+                check("Vorschau lädt beim ersten Anzeigen", md.pageReady && md.previewItem.url.toString() !== "", md.previewItem.url)
+                md.mode = "edit"
+                check("Verdeckte Vorschau wird verworfen", md.discardPreview() && !md.pageReady)
+                md.mode = "preview"
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => md.pageReady)) return
+                check("Verworfene Vorschau lädt beim Zeigen neu", md.pageReady)
             },
         ]
         timer.start()

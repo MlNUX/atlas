@@ -174,6 +174,16 @@ pub struct PdfDocumentRust {
     search_cancel: CancelToken,
     select_cancel: CancelToken,
     select_request: i32,
+    /// The document this viewer keeps open in the PDF service.
+    retained: Option<PathBuf>,
+}
+
+impl Drop for PdfDocumentRust {
+    fn drop(&mut self) {
+        if let Some(path) = self.retained.take() {
+            PdfService::get().release(&path);
+        }
+    }
 }
 
 impl Default for PdfDocumentRust {
@@ -192,6 +202,7 @@ impl Default for PdfDocumentRust {
             search_cancel: CancelToken::default(),
             select_cancel: CancelToken::default(),
             select_request: 0,
+            retained: None,
         }
     }
 }
@@ -214,6 +225,19 @@ impl qobject::PdfDocument {
         self.as_mut().rust_mut().generation += 1;
         let generation = self.generation;
         let path = PathBuf::from(self.source.to_string());
+        // Keep the new document open, let go of the old one.
+        if self.retained.as_deref() != Some(path.as_path()) {
+            if !path.as_os_str().is_empty() {
+                PdfService::get().retain(&path);
+            }
+            let old = std::mem::replace(
+                &mut self.as_mut().rust_mut().retained,
+                (!path.as_os_str().is_empty()).then(|| path.clone()),
+            );
+            if let Some(old) = old {
+                PdfService::get().release(&old);
+            }
+        }
         if path.as_os_str().is_empty() {
             self.set_status("", "");
             return;
@@ -492,7 +516,9 @@ mod page_cache {
 
     use cxx_qt_lib::QImage;
 
-    const CACHE_BYTES: usize = 256 << 20;
+    /// Pixels kept for scrolling back (counted as 4 bytes each; images a
+    /// viewer still shows share them).
+    const CACHE_BYTES: usize = 128 << 20;
 
     #[derive(Clone, PartialEq)]
     pub struct Key {
@@ -546,17 +572,24 @@ mod page_cache {
         }
         CACHE.with(|c| {
             let mut c = c.borrow_mut();
-            if let Some(at) = c.0.iter().position(|e| e.key == key)
-                && let Some(old) = c.0.remove(at)
-            {
+            // The same page, and every page of an older version of the file.
+            let mut freed = 0;
+            c.0.retain(|e| {
+                let stale = e.key.path == key.path
+                    && (e.key.modified != key.modified || (e.key.page == key.page && e.key == key));
+                if stale {
+                    freed += e.bytes;
+                }
+                !stale
+            });
+            c.1 -= freed;
+            // Room first, then the new one: the budget is never exceeded.
+            while c.1 + bytes > CACHE_BYTES {
+                let Some(old) = c.0.pop_front() else { break };
                 c.1 -= old.bytes;
             }
             c.1 += bytes;
             c.0.push_back(Entry { key, image: image.clone(), height, bytes });
-            while c.1 > CACHE_BYTES {
-                let Some(old) = c.0.pop_front() else { break };
-                c.1 -= old.bytes;
-            }
         })
     }
 }

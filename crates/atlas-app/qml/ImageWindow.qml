@@ -29,6 +29,9 @@ Dialog {
     topPadding: 0
     title: ""
 
+    // The picture (full size, for 1:1) leaves memory with the window.
+    onClosed: source = ""
+
     function show(url, text) {
         source = url
         caption = text || ""

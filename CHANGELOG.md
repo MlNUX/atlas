@@ -10,6 +10,28 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Geändert
+- **Weniger Arbeitsspeicher:**
+  - Geschlossene PDFs werden freigegeben: Schließt der letzte Tab einer
+    PDF, schließen alle PDF-Threads das Dokument; jeder hält ohnehin nur
+    noch wenige offen (die zuletzt benutzten). Vorher blieb jede einmal
+    geöffnete PDF bis zum Beenden bis zu viermal im Speicher.
+  - Die Markdown-Vorschau (ein Chromium-Fenster) entsteht erst, wenn sie
+    gezeigt wird – Notizen im Bearbeiten-Modus und nach dem Start noch
+    nicht angesehene Tabs brauchen keine; nach 5 Minuten verdeckt wird
+    sie verworfen und beim Zeigen neu geladen.
+  - Bilder im Bild-Tab werden höchstens in Bildschirmgröße geladen (ein
+    Foto mit 24 Megapixeln brauchte sonst rund 92 MiB); das Vergrößern-
+    Fenster gibt sein Bild beim Schließen frei.
+  - Seitenbilder der PDF-Ansicht: Zwischenspeicher 128 statt 256 MB, ältere
+    Fassungen einer geänderten Datei fliegen sofort raus, die Grenze wird
+    nie überschritten.
+  - PDF-Text der Suche: Zwischenspeicher hält seine 64 MB wirklich ein
+    (vorher erst nach dem Einfügen geprüft); pro PDF höchstens 32 MB Text.
+  - Das Formelmodell verlässt den Speicher nach 3 Minuten ohne Nutzung.
+  - Der Notizindex überspringt Build- und Abhängigkeitsordner
+    (`node_modules`, `target`, …) auch ohne `.gitignore`.
+
 ## [1.1.2] – 2026-10-27
 
 ### Neu

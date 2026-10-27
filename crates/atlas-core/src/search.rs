@@ -321,32 +321,73 @@ fn pdf_files(root: &Path, globs: &[String]) -> Vec<PathBuf> {
 
 /// Largest PDF whose text is searched.
 const MAX_PDF_SIZE: u64 = 200 * 1024 * 1024;
-/// Upper bound of the cached PDF text (bytes).
+/// Upper bound of the cached PDF text (bytes, counted with what the strings
+/// reserve).
 const PDF_CACHE_BYTES: usize = 64 * 1024 * 1024;
+/// Text read from one PDF at most; pages beyond are not searched (a
+/// normal book has a few MB).
+const PDF_TEXT_BYTES: usize = 32 * 1024 * 1024;
 
-type PdfCache = HashMap<PathBuf, (SystemTime, u64, Arc<Vec<String>>)>;
+struct CachedText {
+    stamp: (SystemTime, u64),
+    pages: Arc<Vec<String>>,
+    bytes: usize,
+    used: u64,
+}
+
+/// PDF text by path, within a byte budget: the least recently used goes
+/// first; a text larger than half the budget is not kept.
+#[derive(Default)]
+struct PdfTextCache {
+    entries: HashMap<PathBuf, CachedText>,
+    bytes: usize,
+    clock: u64,
+}
+
+impl PdfTextCache {
+    fn get(&mut self, path: &Path, stamp: (SystemTime, u64)) -> Option<Arc<Vec<String>>> {
+        self.clock += 1;
+        let clock = self.clock;
+        let entry = self.entries.get_mut(path).filter(|e| e.stamp == stamp)?;
+        entry.used = clock;
+        Some(entry.pages.clone())
+    }
+
+    fn insert(&mut self, path: &Path, stamp: (SystemTime, u64), pages: Arc<Vec<String>>, budget: usize) {
+        if let Some(old) = self.entries.remove(path) {
+            self.bytes -= old.bytes;
+        }
+        let bytes =
+            path.as_os_str().len() + pages.iter().map(|p| p.capacity() + std::mem::size_of::<String>()).sum::<usize>();
+        if bytes > budget / 2 {
+            return;
+        }
+        while self.bytes + bytes > budget {
+            let Some(oldest) = self.entries.iter().min_by_key(|(_, e)| e.used).map(|(p, _)| p.clone()) else { break };
+            if let Some(gone) = self.entries.remove(&oldest) {
+                self.bytes -= gone.bytes;
+            }
+        }
+        self.clock += 1;
+        self.bytes += bytes;
+        self.entries.insert(path.to_path_buf(), CachedText { stamp, pages, bytes, used: self.clock });
+    }
+}
 
 /// The text of each page of `path`, cached by modification time and size.
 fn pdf_text(path: &Path) -> Option<Arc<Vec<String>>> {
-    static CACHE: OnceLock<Mutex<PdfCache>> = OnceLock::new();
+    static CACHE: OnceLock<Mutex<PdfTextCache>> = OnceLock::new();
     let meta = std::fs::metadata(path).ok()?;
     if meta.len() > MAX_PDF_SIZE {
         return None;
     }
     let stamp = (meta.modified().ok()?, meta.len());
     let cache = CACHE.get_or_init(Mutex::default);
-    if let Some((time, len, pages)) = cache.lock().ok()?.get(path)
-        && (*time, *len) == stamp
-    {
-        return Some(pages.clone());
+    if let Some(pages) = cache.lock().ok()?.get(path, stamp) {
+        return Some(pages);
     }
-    let pages = Arc::new(crate::pdf::page_texts(path).ok()?);
-    let mut cache = cache.lock().ok()?;
-    let size: usize = cache.values().map(|(_, _, p)| p.iter().map(String::len).sum::<usize>()).sum();
-    if size > PDF_CACHE_BYTES {
-        cache.clear();
-    }
-    cache.insert(path.to_path_buf(), (stamp.0, stamp.1, pages.clone()));
+    let pages = Arc::new(crate::pdf::page_texts(path, PDF_TEXT_BYTES).ok()?);
+    cache.lock().ok()?.insert(path, stamp, pages.clone(), PDF_CACHE_BYTES);
     Some(pages)
 }
 
@@ -578,5 +619,25 @@ mod tests {
         assert_eq!(kind_of(Path::new("main.rs")), "code");
         assert_eq!(kind_of(Path::new("arbeit.tex")), "latex");
         assert_eq!(kind_of(Path::new("Makefile")), "other");
+    }
+
+    #[test]
+    fn pdf_text_cache_stays_within_budget() {
+        let mut cache = PdfTextCache::default();
+        let stamp = (SystemTime::UNIX_EPOCH, 1);
+        // Each entry: 300 bytes of text + a String + the path = 325.
+        let text = |n: usize| Arc::new(vec!["x".repeat(n)]);
+        cache.insert(Path::new("a"), stamp, text(300), 900);
+        cache.insert(Path::new("b"), stamp, text(300), 900);
+        // "a" used last: "b" goes when "c" needs room.
+        assert!(cache.get(Path::new("a"), stamp).is_some());
+        cache.insert(Path::new("c"), stamp, text(300), 900);
+        assert!(cache.bytes <= 900, "{}", cache.bytes);
+        assert!(cache.get(Path::new("a"), stamp).is_some() && cache.get(Path::new("b"), stamp).is_none());
+        // Too large for the cache: not kept, nothing pushed out.
+        cache.insert(Path::new("d"), stamp, text(800), 900);
+        assert!(cache.get(Path::new("d"), stamp).is_none() && cache.get(Path::new("c"), stamp).is_some());
+        // A changed file is read anew.
+        assert!(cache.get(Path::new("a"), (SystemTime::UNIX_EPOCH, 2)).is_none());
     }
 }

@@ -21,6 +21,37 @@ Rectangle {
     property bool showBacklinks: false
     property var info: ({ tags: [], headings: [], broken: 0 })
     property bool pageReady: false
+
+    // ---- memory of the preview (Chromium): created when first shown,
+    // discarded after a while out of sight, reloaded when shown again.
+    readonly property bool previewShown: root.visible && root.mode !== "edit"
+    property bool previewWanted: false
+    /// Out of sight this long, the preview page is discarded.
+    property int discardAfter: 5 * 60 * 1000
+    // Decided a moment later: a new tab becomes visible before it applies
+    // its state (a restored tab may be in edit mode).
+    onPreviewShownChanged: Qt.callLater(updatePreview)
+    function updatePreview() {
+        if (previewShown) {
+            previewWanted = true
+            discardTimer.stop()
+            if (web.lifecycleState !== WebEngineView.LifecycleState.Active) {
+                web.lifecycleState = WebEngineView.LifecycleState.Active
+                // A discarded page loads again (if Qt did not start that).
+                Qt.callLater(() => { if (!root.pageReady && !web.loading) web.reload() })
+            }
+        } else if (previewWanted) {
+            discardTimer.restart()
+        }
+    }
+    /// Frees the page of a hidden preview (it reloads when shown again).
+    function discardPreview() {
+        if (previewShown || !pageReady) return false
+        pageReady = false
+        web.lifecycleState = WebEngineView.LifecycleState.Discarded
+        return true
+    }
+    Timer { id: discardTimer; interval: root.discardAfter; onTriggered: root.discardPreview() }
     property int previewLine: 1
     /// When the editor last moved because the preview was scrolled (no echo).
     property real syncedFromPreview: 0
@@ -185,7 +216,11 @@ Rectangle {
 
     onSourceChanged: Qt.callLater(render)
     onLineChanged: reveal(line)
-    Component.onCompleted: Qt.callLater(checkAttention)
+    Component.onCompleted: {
+        // After the tab applied its state (a restored tab may be in edit mode).
+        Qt.callLater(updatePreview)
+        Qt.callLater(checkAttention)
+    }
 
     Connections {
         target: root.app
@@ -338,7 +373,10 @@ Rectangle {
                 id: web
                 SplitView.fillWidth: true
                 visible: root.mode !== "edit"
-                url: "atlas://app/web/preview.html"
+                // Loaded only once the preview is shown (a tab in edit mode,
+                // or one never looked at after a session restore, starts no
+                // browser page).
+                url: root.previewWanted ? "atlas://app/web/preview.html" : ""
                 backgroundColor: Theme.editor
                 settings.localContentCanAccessFileUrls: true
                 settings.localContentCanAccessRemoteUrls: false
