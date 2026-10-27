@@ -16,10 +16,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
     PDF, schließen alle PDF-Threads das Dokument; jeder hält ohnehin nur
     noch wenige offen (die zuletzt benutzten). Vorher blieb jede einmal
     geöffnete PDF bis zum Beenden bis zu viermal im Speicher.
-  - Die Markdown-Vorschau (ein Chromium-Fenster) entsteht erst, wenn sie
-    gezeigt wird – Notizen im Bearbeiten-Modus und nach dem Start noch
-    nicht angesehene Tabs brauchen keine; nach 5 Minuten verdeckt wird
-    sie verworfen und beim Zeigen neu geladen.
+  - Die Markdown-Vorschau (ein Chromium-Browser mit eigenem Prozess)
+    entsteht erst, wenn sie gezeigt wird – Notizen im Bearbeiten-Modus und
+    nach dem Start noch nicht angesehene Tabs brauchen keine; nach
+    5 Minuten verdeckt wird sie geschlossen und beim Zeigen neu erstellt.
   - Bilder im Bild-Tab werden höchstens in Bildschirmgröße geladen (ein
     Foto mit 24 Megapixeln brauchte sonst rund 92 MiB); das Vergrößern-
     Fenster gibt sein Bild beim Schließen frei.

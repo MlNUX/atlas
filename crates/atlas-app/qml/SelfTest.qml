@@ -2054,22 +2054,22 @@ Item {
             },
             () => {
                 const md = editor.activeTab.viewerItem
-                check("Markdown im Bearbeiten-Modus lädt keine Vorschau", md.mode === "edit" && md.previewItem.url.toString() === "" && !md.pageReady,
-                      md.mode + " " + md.previewItem.url)
+                check("Markdown im Bearbeiten-Modus hat keine Vorschau (kein Browser)", md.mode === "edit" && !md.previewItem && !md.pageReady,
+                      md.mode + " " + md.previewItem)
                 md.mode = "preview"
             },
             () => {
                 const md = editor.activeTab.viewerItem
                 if (waitFor(() => md.pageReady)) return
-                check("Vorschau lädt beim ersten Anzeigen", md.pageReady && md.previewItem.url.toString() !== "", md.previewItem.url)
+                check("Vorschau entsteht beim ersten Anzeigen", md.pageReady && !!md.previewItem)
                 md.mode = "edit"
-                check("Verdeckte Vorschau wird verworfen", md.discardPreview() && !md.pageReady)
+                check("Verdeckte Vorschau wird verworfen", md.discardPreview() && !md.pageReady && !md.previewItem)
                 md.mode = "preview"
             },
             () => {
                 const md = editor.activeTab.viewerItem
                 if (waitFor(() => md.pageReady)) return
-                check("Verworfene Vorschau lädt beim Zeigen neu", md.pageReady)
+                check("Verworfene Vorschau entsteht beim Zeigen neu", md.pageReady && !!md.previewItem)
             },
         ]
         timer.start()

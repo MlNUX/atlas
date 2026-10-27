@@ -23,10 +23,11 @@ Rectangle {
     property bool pageReady: false
 
     // ---- memory of the preview (Chromium): created when first shown,
-    // discarded after a while out of sight, reloaded when shown again.
+    // destroyed after a while out of sight (with its browser process),
+    // created again when shown.
     readonly property bool previewShown: root.visible && root.mode !== "edit"
     property bool previewWanted: false
-    /// Out of sight this long, the preview page is discarded.
+    /// Out of sight this long, the preview is destroyed.
     property int discardAfter: 5 * 60 * 1000
     // Decided a moment later: a new tab becomes visible before it applies
     // its state (a restored tab may be in edit mode).
@@ -35,22 +36,19 @@ Rectangle {
         if (previewShown) {
             previewWanted = true
             discardTimer.stop()
-            if (web.lifecycleState !== WebEngineView.LifecycleState.Active) {
-                web.lifecycleState = WebEngineView.LifecycleState.Active
-                // A discarded page loads again (if Qt did not start that).
-                Qt.callLater(() => { if (!root.pageReady && !web.loading) web.reload() })
-            }
         } else if (previewWanted) {
             discardTimer.restart()
         }
     }
-    /// Frees the page of a hidden preview (it reloads when shown again).
+    /// Destroys a hidden preview (it is created again when shown).
     function discardPreview() {
-        if (previewShown || !pageReady) return false
+        if (previewShown || !previewWanted) return false
         pageReady = false
-        web.lifecycleState = WebEngineView.LifecycleState.Discarded
+        previewWanted = false
         return true
     }
+    /// The preview (WebEngineView), null while there is none.
+    readonly property var web: webLoader.item
     Timer { id: discardTimer; interval: root.discardAfter; onTriggered: root.discardPreview() }
     property int previewLine: 1
     /// When the editor last moved because the preview was scrolled (no echo).
@@ -68,6 +66,7 @@ Rectangle {
         // Lined up in the middle of the view, where one reads: the preview
         // sets type larger, so heights differ further up and down.
         onTriggered: {
+            if (!root.web || !root.pageReady) return
             const mid = Math.round(Math.min(editor.viewHeight, web.height) / 2)
             web.runJavaScript("atlas.follow(" + editor.exactLineAt(mid) + "," + mid + ")")
         }
@@ -140,8 +139,8 @@ Rectangle {
     readonly property alias imageWindowItem: imageWindow
     ImageWindow { id: imageWindow }
 
-    readonly property alias previewItem: web
-    readonly property alias previewRepaint: webRepaint
+    readonly property var previewItem: webLoader.item
+    readonly property var previewRepaint: webLoader.item ? webLoader.item.repaint : null
     readonly property alias contextPanelItem: contextPanel
 
     color: Theme.editor
@@ -369,56 +368,62 @@ Rectangle {
                 onScrollYChanged: if (root.mode === "split" && root.pageReady && Date.now() - root.syncedFromPreview > 200) followTimer.restart()
             }
 
-            WebEngineView {
-                id: web
+            // Created only once the preview is shown (a tab in edit mode, or
+            // one not looked at since a session restore, starts no browser).
+            Loader {
+                id: webLoader
                 SplitView.fillWidth: true
                 visible: root.mode !== "edit"
-                // Loaded only once the preview is shown (a tab in edit mode,
-                // or one never looked at after a session restore, starts no
-                // browser page).
-                url: root.previewWanted ? "atlas://app/web/preview.html" : ""
-                backgroundColor: Theme.editor
-                settings.localContentCanAccessFileUrls: true
-                settings.localContentCanAccessRemoteUrls: false
-                settings.javascriptCanOpenWindows: false
-                settings.focusOnNavigationEnabled: false
-                onLoadingChanged: (request) => {
-                    if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus) return
-                    root.pageReady = true
-                    root.render()
-                    if (root.previewLine > 1) web.runJavaScript("atlas.scrollToLine(" + root.previewLine + ")")
-                    root.applyHits()
-                }
-                // Links inside the page never navigate it.
-                onNavigationRequested: (request) => {
-                    if (request.url.toString() !== "atlas://app/web/preview.html") request.reject()
-                }
-                onNewWindowRequested: (request) => Qt.openUrlExternally(request.requestedUrl)
-                onJavaScriptConsoleMessage: (level, text, lineNumber, sourceId) => {
-                    if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
-                    else if (text.startsWith("atlas:copy:")) {
-                        root.app.copyToClipboard(JSON.parse(text.slice(11)).text)
-                        root.message(qsTr("Code kopiert"))
-                    }
-                    else if (text.startsWith("atlas:run:")) root.runCode(JSON.parse(text.slice(10)).code)
-                    else if (text.startsWith("atlas:image:")) root.showImage(JSON.parse(text.slice(12)))
-                    else if (text.startsWith("atlas:task:")) {
-                        const t = JSON.parse(text.slice(11))
-                        if (!editor.toggleTask(t.line, t.checked)) root.render()
-                    }
-                    else if (text.startsWith("atlas:scroll:")) {
-                        const s = JSON.parse(text.slice(13))
-                        root.previewLine = s.line
-                        root.previewY = s.y
-                        // Split view: the editor follows the preview (#7).
-                        if (root.mode === "split" && s.exact) {
-                            root.syncedFromPreview = Date.now()
-                            editor.scrollToExactLine(s.exact, s.at || 0)
+                active: root.previewWanted
+                sourceComponent: Component {
+                    WebEngineView {
+                        id: webView
+                        readonly property alias repaint: webRepaint
+                        url: "atlas://app/web/preview.html"
+                        backgroundColor: Theme.editor
+                        settings.localContentCanAccessFileUrls: true
+                        settings.localContentCanAccessRemoteUrls: false
+                        settings.javascriptCanOpenWindows: false
+                        settings.focusOnNavigationEnabled: false
+                        onLoadingChanged: (request) => {
+                            if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus) return
+                            root.pageReady = true
+                            root.render()
+                            if (root.previewLine > 1) webView.runJavaScript("atlas.scrollToLine(" + root.previewLine + ")")
+                            root.applyHits()
                         }
-                    } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
+                        // Links inside the page never navigate it.
+                        onNavigationRequested: (request) => {
+                            if (request.url.toString() !== "atlas://app/web/preview.html") request.reject()
+                        }
+                        onNewWindowRequested: (request) => Qt.openUrlExternally(request.requestedUrl)
+                        onJavaScriptConsoleMessage: (level, text, lineNumber, sourceId) => {
+                            if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
+                            else if (text.startsWith("atlas:copy:")) {
+                                root.app.copyToClipboard(JSON.parse(text.slice(11)).text)
+                                root.message(qsTr("Code kopiert"))
+                            }
+                            else if (text.startsWith("atlas:run:")) root.runCode(JSON.parse(text.slice(10)).code)
+                            else if (text.startsWith("atlas:image:")) root.showImage(JSON.parse(text.slice(12)))
+                            else if (text.startsWith("atlas:task:")) {
+                                const t = JSON.parse(text.slice(11))
+                                if (!editor.toggleTask(t.line, t.checked)) root.render()
+                            }
+                            else if (text.startsWith("atlas:scroll:")) {
+                                const s = JSON.parse(text.slice(13))
+                                root.previewLine = s.line
+                                root.previewY = s.y
+                                // Split view: the editor follows the preview (#7).
+                                if (root.mode === "split" && s.exact) {
+                                    root.syncedFromPreview = Date.now()
+                                    editor.scrollToExactLine(s.exact, s.at || 0)
+                                }
+                            } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
+                        }
+                        // Never stays black after a workspace switch (#2).
+                        WebRepaint { id: webRepaint }
+                    }
                 }
-                // Never stays black after a workspace switch (#2).
-                WebRepaint { id: webRepaint }
             }
 
             // ---- backlinks and local graph
