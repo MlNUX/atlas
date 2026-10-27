@@ -695,13 +695,6 @@ Rectangle {
     /// Pixels per wheel notch and per arrow key.
     readonly property int wheelStep: 160
     readonly property int arrowStep: 80
-    /// Touchpad movement not yet shown (applied once per frame).
-    property point pendingScroll: Qt.point(0, 0)
-    function flushScroll() {
-        const p = pendingScroll
-        pendingScroll = Qt.point(0, 0)
-        if (p.x || p.y) scrollBy(-p.x, -p.y)
-    }
     /// Scrolls the pages by (dx, dy) pixels, within bounds.
     function scrollBy(dx, dy) {
         pages.cancelFlick()
@@ -1371,7 +1364,7 @@ Rectangle {
                             // positions of pages it has not laid out). Pages are
                             // centred in the content, so a page narrower than the
                             // view must not move sideways either.
-                            root.flushScroll()
+                            pagesFling.flush()
                             pagesFling.stop()
                             pages.cancelFlick()
                             // The handler lives in the list's content: its event
@@ -1411,47 +1404,19 @@ Rectangle {
                             event.accepted = true
                         }
                     }
-                    // Momentum after touchpad swipes (#4); the wheel handler below
-                    // scrolls and reports the steps.
+                    // Touchpad and plain wheel (see TouchpadFling): the touchpad
+                    // follows the fingers and glides on (#4); a wheel notch scrolls
+                    // `wheelStep` (more than the list would: a few lines per notch
+                    // felt sluggish on long documents), eased in.
                     TouchpadFling {
                         id: pagesFling
                         parent: pages
+                        anchors.fill: parent
                         flickable: pages
-                        handleWheel: false
+                        wheelStep: root.wheelStep
+                        scroller: (dx, dy) => root.scrollBy(dx, dy)
                         active: !root.app || root.app.touchpadFling
                         app: root.app
-                    }
-                    // Plain wheel: scroll faster than the list would (a few lines
-                    // per notch felt sluggish on long documents). Touchpads keep
-                    // their own pixel deltas, a bit amplified.
-                    WheelHandler {
-                        acceptedDevices: PointerDevice.AllDevices
-                        acceptedPointerTypes: PointerDevice.AllPointerTypes
-                        acceptedModifiers: Qt.NoModifier
-                        onWheel: (event) => {
-                            event.accepted = true
-                            // Fingers lifted: the momentum starts at once (after
-                            // the movement still waiting for its frame).
-                            if (event.phase === Qt.ScrollEnd) root.flushScroll()
-                            if (pagesFling.phase(event)) return
-                            const delta = (angle, pixel) => pixel !== 0 && (angle === 0 || angle % 120 !== 0)
-                                ? pixel * 1.5 : angle / 120 * root.wheelStep
-                            const dx = delta(event.angleDelta.x, event.pixelDelta.x)
-                            const dy = delta(event.angleDelta.y, event.pixelDelta.y)
-                            // Touchpad: measured for the momentum after the swipe,
-                            // and moved once per frame (it sends several steps per
-                            // frame; each would lay out the pages anew).
-                            if (pagesFling.isTouchpad(event)) {
-                                pagesFling.sample(dx, dy)
-                                root.pendingScroll = Qt.point(root.pendingScroll.x + dx, root.pendingScroll.y + dy)
-                            } else {
-                                root.scrollBy(-dx, -dy)
-                            }
-                        }
-                    }
-                    FrameAnimation {
-                        running: root.pendingScroll.x !== 0 || root.pendingScroll.y !== 0
-                        onTriggered: root.flushScroll()
                     }
 
                     delegate: Item {

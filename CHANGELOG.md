@@ -78,12 +78,14 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Esc schließt.
 
 ### Geändert
-- **Touchpad-Scrollen flüssiger**: Der Schwung setzt sofort ein, wenn die
-  Finger das Touchpad verlassen (Wayland meldet das Ende der Geste) –
-  vorher wartete Atlas 70 ms ohne Bewegung ab, das sah wie ein kurzes
-  Hängen aus. In PDFs werden die vielen kleinen Touchpad-Schritte einmal
-  pro Bild angewendet statt jeder einzeln (weniger Layout-Arbeit, kein
-  Ruckeln).
+- **Scrollen wie im Browser** (PDF, Editor, Dateiliste, Projektbaum): Das
+  Touchpad bewegt den Inhalt genau mit den Fingern, auch ganz langsame
+  Bewegungen unter einem Pixel, einmal pro Bild; beim Loslassen gleitet die
+  Ansicht sofort weiter (Wayland meldet das Ende der Geste). Das Mausrad
+  scrollt weich statt in Sprüngen. Vorher hielt Atlas Touchpad-Schritte von
+  genau 10, 20, 30 … Pixeln für Mausrad-Rasten (Qt meldet unter Wayland
+  das 12-Fache der Bewegung als Winkel) und sprang dabei um eine ganze
+  Stufe; Schritte unter einem Pixel gingen verloren.
 - **Suchfenster übersichtlicher**: Groß/klein, ganzes Wort und regulärer
   Ausdruck als kleine Schalter im Suchfeld; die Typfilter zeigen ihre
   Trefferzahl; Dateimuster und Build-Ordner unter „Weitere Filter“. Pro

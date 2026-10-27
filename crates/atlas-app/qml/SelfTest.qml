@@ -737,8 +737,24 @@ Item {
                 const y0 = v.pagesView.contentY
                 app.sendWheel(window, p.x, p.y, -120, false)
                 check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
+                // (Eased in over a few frames, like a browser: settled here.)
+                check("Mausrad: Stufe wird weich gescrollt", Math.abs(v.fling.wheelY + v.wheelStep) < 1, v.fling.wheelY)
+                v.fling.settle()
                 check("Mausrad scrollt eine große Stufe", v.pagesView.contentY - y0 >= v.wheelStep - 1, y0 + " → " + v.pagesView.contentY)
+                // Touchpad as Qt on Wayland reports it: 10 px with an angle delta
+                // of 120 – a touchpad step, not a wheel notch (it made the view
+                // jump by a whole notch).
+                const y1 = v.pagesView.contentY
+                app.sendWheel(window, p.x, p.y, -10, 64 | 16 | 4)
+                app.sendWheel(window, p.x, p.y, -10, 64 | 16)
+                app.sendWheel(window, p.x, p.y, -10, 64 | 16)
+                v.fling.flush()
+                check("Touchpad unter Wayland: Ansicht folgt den Fingern genau", Math.abs(v.pagesView.contentY - y1 - 30) < 1 && v.fling.wheelY === 0,
+                      y1 + " → " + v.pagesView.contentY)
+                app.sendWheel(window, p.x, p.y, 0, 2 | 16 | 32)
+                v.fling.stop()
                 app.sendWheel(window, p.x, p.y, 120, false)
+                v.fling.settle()
                 // Dark mode: one switch for all PDFs, stored in config.toml.
                 app.pdfDark = true
                 check("PDF-Dunkelmodus: Seiten invertiert, Papier dunkel", v.dark && Qt.colorEqual(v.paperColor, "#262626"), v.paperColor)

@@ -3,22 +3,39 @@
 
 import QtQuick
 
-// Momentum for touchpad scrolling (#4). Wayland compositors send no
-// kinetic scrolling: when the fingers leave the touchpad the content stops
-// at once. This measures the speed of the last moments of a two-finger
-// swipe and lets the Flickable glide on, slowing down; touching again
-// stops it. Mouse wheels (whole notches) are left alone.
+// Scrolling with touchpad and mouse wheel over a Flickable, meant to feel
+// like a web browser:
 //
-// Either it watches the wheel events itself (`handleWheel`, for plain
-// Flickables, which keep scrolling as before) or a view with its own wheel
-// handling reports each step with sample().
+// - Touchpad: the content follows the fingers exactly, also very slow
+//   movements, applied once per frame. Qt on Wayland sends each step's
+//   movement as pixelDelta rounded to whole pixels (0 for slow movements)
+//   and as angleDelta = 12 × the exact movement – so a touchpad step of
+//   exactly 10 px looks like a wheel notch (120) and must not be taken for
+//   one (it made the view jump). Touchpad gestures come in scroll phases
+//   (ScrollBegin … ScrollEnd), mouse wheels never do.
+// - Momentum (#4): Wayland sends no kinetic scrolling; when the fingers
+//   leave the touchpad (ScrollEnd) the view glides on with the speed of the
+//   last moments, slowing down; touching again stops it.
+// - Mouse wheel: each notch scrolls `wheelStep` pixels, animated over a
+//   few frames instead of jumping.
+//
+// With `handleWheel` it takes the wheel events of the area it covers
+// (anchors.fill the Flickable); a view with its own wheel handling can
+// report touchpad steps with sample() instead.
 Item {
     id: fling
     required property Flickable flickable
-    /// The setting (Einstellungen → Dateien).
+    /// The setting (Einstellungen → Dateien): momentum after swipes.
     property bool active: true
-    /// Watch the wheel here; false: the view calls sample() itself.
+    /// Scroll here; false: the view handles the wheel and calls sample().
     property bool handleWheel: true
+    /// Pixels per mouse wheel notch.
+    property real wheelStep: 100
+    /// Content pixels per touchpad pixel.
+    property real touchpadScale: 1.0
+    /// Moves the content by (dx, dy) pixels (down/right positive); the
+    /// default keeps the Flickable within its bounds.
+    property var scroller: null
     /// How often a fling was started (for the smoke test).
     property int count: 0
     /// AppController: its touchpadHeld signal (fingers put down, Wayland
@@ -27,24 +44,45 @@ Item {
     /// Momentum relative to the swipe speed.
     readonly property real boost: 1.6
 
-    /// Recent steps: {t, dx, dy} in pixels (content moves by -d).
+    /// Recent touchpad steps: {t, dx, dy} in pixels (content moves by -d).
     property var samples: []
+    /// Movement waiting for the next frame: touchpad (at once) and the rest
+    /// of wheel notches (eased in).
+    property real pendingX: 0
+    property real pendingY: 0
+    property real wheelX: 0
+    property real wheelY: 0
+    /// A touchpad gesture is going on (ScrollBegin seen, no ScrollEnd yet).
+    property bool inGesture: false
 
-    /// A touchpad step; true if it was one (pixel delta, no whole notch).
+    /// A touchpad step: in a scroll phase, or with a pixel delta (mouse
+    /// wheels have neither).
     function isTouchpad(event) {
-        const pixel = (p, a) => p !== 0 && (a === 0 || a % 120 !== 0)
-        return pixel(event.pixelDelta.y, event.angleDelta.y) || pixel(event.pixelDelta.x, event.angleDelta.x)
+        return event.phase === Qt.ScrollBegin || event.phase === Qt.ScrollUpdate || event.phase === Qt.ScrollEnd
+            || event.pixelDelta.x !== 0 || event.pixelDelta.y !== 0
     }
+    /// Movement of a touchpad step in pixels (positive: content moves
+    /// down/right, i.e. towards the start): the exact value behind
+    /// angleDelta if there is one, else the pixel delta.
+    function touchpadDelta(event) {
+        const exact = (angle, pixel) => angle !== 0 ? angle / 12 : pixel
+        return Qt.point(exact(event.angleDelta.x, event.pixelDelta.x) * touchpadScale,
+                        exact(event.angleDelta.y, event.pixelDelta.y) * touchpadScale)
+    }
+
     /// Handles the phase of a touchpad gesture: lifting the fingers
-    /// (ScrollEnd, Wayland's axis stop) starts the momentum at once instead
-    /// of after a pause; a new gesture stops it. True if the event was only
-    /// that (no movement).
+    /// (ScrollEnd, Wayland's axis stop) starts the momentum at once; a new
+    /// gesture stops it. True if the event was only that (no movement).
     function phase(event) {
         if (event.phase === Qt.ScrollBegin) {
+            inGesture = true
             endTimer.stop()
             samples = []
+            wheelX = wheelY = 0
             flickable.cancelFlick()
         } else if (event.phase === Qt.ScrollEnd) {
+            inGesture = false
+            flush()
             finish()
         }
         return event.pixelDelta.x === 0 && event.pixelDelta.y === 0 && event.angleDelta.x === 0 && event.angleDelta.y === 0
@@ -53,11 +91,15 @@ Item {
         flickable.cancelFlick()
         const now = Date.now()
         samples = samples.filter(s => now - s.t < 100).concat([{ t: now, dx: dx, dy: dy }])
+        // Without phases (X11) the end is a pause; with them ScrollEnd, and a
+        // longer pause in case a compositor never sends it.
+        endTimer.interval = inGesture ? 250 : 70
         endTimer.restart()
     }
     function stop() {
         endTimer.stop()
         samples = []
+        wheelX = wheelY = 0
         flickable.cancelFlick()
     }
     Connections {
@@ -96,20 +138,78 @@ Item {
         onTriggered: fling.finish()
     }
 
-    // Only watches: the Flickable below scrolls as always (blocking: false
-    // passes every wheel event on).
+    /// Moves the content (down/right positive), within bounds.
+    function move(dx, dy) {
+        if (scroller) { scroller(dx, dy); return }
+        const f = flickable
+        if (dy) {
+            const minY = f.originY - f.topMargin
+            const maxY = Math.max(minY, f.originY + f.contentHeight + f.bottomMargin - f.height)
+            f.contentY = Math.max(minY, Math.min(maxY, f.contentY + dy))
+        }
+        if (dx) {
+            const minX = f.originX - f.leftMargin
+            const maxX = Math.max(minX, f.originX + f.contentWidth + f.rightMargin - f.width)
+            f.contentX = Math.max(minX, Math.min(maxX, f.contentX + dx))
+        }
+    }
+    /// Applies the touchpad movement waiting for its frame.
+    function flush() {
+        const x = pendingX, y = pendingY
+        pendingX = pendingY = 0
+        if (x || y) move(-x, -y)
+    }
+    /// Applies all waiting movement at once (wheel animation included).
+    function settle() {
+        flush()
+        const x = wheelX, y = wheelY
+        wheelX = wheelY = 0
+        if (x || y) move(-x, -y)
+    }
+    /// One wheel event (touchpad or mouse) as this view scrolls.
+    function scroll(event) {
+        if (phase(event)) return
+        if (isTouchpad(event)) {
+            const d = touchpadDelta(event)
+            wheelX = wheelY = 0
+            sample(d.x, d.y)
+            pendingX += d.x
+            pendingY += d.y
+        } else {
+            // A notch during a fling ends it; notches add up.
+            if (flickable.flicking) stop()
+            wheelX += event.angleDelta.x / 120 * wheelStep
+            wheelY += event.angleDelta.y / 120 * wheelStep
+        }
+    }
+
+    // Once per frame: the touchpad movement at once, wheel notches eased
+    // in (most of a notch within about 120 ms, like browsers do).
+    FrameAnimation {
+        running: fling.pendingX !== 0 || fling.pendingY !== 0 || fling.wheelX !== 0 || fling.wheelY !== 0
+        onTriggered: {
+            fling.flush()
+            if (fling.wheelX === 0 && fling.wheelY === 0) return
+            const k = 1 - Math.exp(-Math.max(frameTime, 0.004) / 0.045)
+            let x = fling.wheelX * k, y = fling.wheelY * k
+            // The last bit at once (no endless crawl).
+            if (Math.abs(fling.wheelX - x) < 0.5) x = fling.wheelX
+            if (Math.abs(fling.wheelY - y) < 0.5) y = fling.wheelY
+            fling.wheelX -= x
+            fling.wheelY -= y
+            fling.move(-x, -y)
+        }
+    }
+
     WheelHandler {
-        enabled: fling.handleWheel && fling.active
-        blocking: false
+        enabled: fling.handleWheel
         target: null
         acceptedDevices: PointerDevice.AllDevices
         acceptedPointerTypes: PointerDevice.AllPointerTypes
         acceptedModifiers: Qt.NoModifier
         onWheel: (event) => {
-            if (fling.phase(event)) return
-            if (fling.isTouchpad(event)) fling.sample(event.pixelDelta.x, event.pixelDelta.y)
-            // Any other step (e.g. the start of a new gesture) ends a fling.
-            else if (fling.flickable.flicking) fling.stop()
+            fling.scroll(event)
+            event.accepted = true
         }
     }
 }

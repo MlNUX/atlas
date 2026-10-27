@@ -79,16 +79,19 @@ void sendWheel(QObject* window, double x, double y, int delta, int flags)
     // flags: 1 Ctrl held, 2 touchpad-like (pixel delta only, in a scroll
     // phase), 4 the gesture's ScrollBegin, 8 wheel notches in a scroll phase,
     // 16 from a "touchpad" device with finger pointer type (as Qt on Wayland
-    // reports even mouse wheels), 32 the gesture's ScrollEnd (fingers lifted).
+    // reports even mouse wheels), 32 the gesture's ScrollEnd (fingers lifted),
+    // 64 a touchpad step as Qt on Wayland sends it: pixel delta and an angle
+    // delta of 12 × the movement, in a scroll phase.
     static QPointingDevice touchpad(QStringLiteral("touchpad"), 0x7a71, QInputDevice::DeviceType::TouchPad,
                                     QPointingDevice::PointerType::Finger, QInputDevice::Capability::Position
                                         | QInputDevice::Capability::Scroll, 10, 0);
-    const bool pixel = flags & 2;
+    const bool pixel = flags & (2 | 64);
     const Qt::ScrollPhase phase = (flags & 32) ? Qt::ScrollEnd
         : (flags & 4)                          ? Qt::ScrollBegin
-        : (flags & (2 | 8))                    ? Qt::ScrollUpdate
+        : (flags & (2 | 8 | 64))               ? Qt::ScrollUpdate
                                                : Qt::NoScrollPhase;
-    QWheelEvent event(local, w->mapToGlobal(local), pixel ? QPoint(0, delta) : QPoint(), pixel ? QPoint() : QPoint(0, delta),
+    const QPoint angle = (flags & 64) ? QPoint(0, delta * 12) : pixel ? QPoint() : QPoint(0, delta);
+    QWheelEvent event(local, w->mapToGlobal(local), pixel ? QPoint(0, delta) : QPoint(), angle,
                       Qt::NoButton, (flags & 1) ? Qt::ControlModifier : Qt::NoModifier, phase, false,
                       Qt::MouseEventNotSynthesized, (flags & 16) ? &touchpad : QPointingDevice::primaryPointingDevice());
     QCoreApplication::sendEvent(w, &event);
