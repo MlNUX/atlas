@@ -104,6 +104,30 @@ QMAKE=qmake6 cargo build --release -p atlas-app
 ./target/release/atlas ~/Pfad/zum/Projekt
 ```
 
+### Rechtschreibprüfung
+
+Atlas prüft Notizen auf Deutsch und Englisch mit den Hunspell-Wörterbüchern
+des Systems (`de_DE` und `en_US`, je eine `.dic`- und `.aff`-Datei). Fehlen
+sie, meldet Atlas beim Start `spellcheck: Keine Wörterbücher gefunden` und
+lässt die Prüfung aus – sonst läuft alles normal.
+
+- **Nix:** Das Paket (`nix run`, `nix build`) und `nix develop` bringen die
+  Wörterbücher mit. Ein `cargo run` außerhalb von `nix develop` findet sie
+  nicht.
+- **Arch Linux:** `sudo pacman -S hunspell-de hunspell-en_us` (beim
+  AUR-Paket als optionale Abhängigkeit vorgeschlagen).
+- **Debian/Ubuntu:** `sudo apt install hunspell-de-de hunspell-en-us`;
+  **Fedora:** `sudo dnf install hunspell-de hunspell-en-US`.
+- **Eigener Ordner:** `ATLAS_HUNSPELL_DIRS=/pfad/zum/ordner atlas` (mehrere
+  Ordner mit `:` getrennt).
+
+Gesucht wird außerdem in `/usr/share/hunspell`, `/usr/share/myspell`,
+`$XDG_DATA_DIRS/hunspell`, `~/.nix-profile/share/hunspell` und
+`/run/current-system/sw/share/hunspell`. Eigene Wörter („Zum Wörterbuch
+hinzufügen“ im Rechtsklickmenü) landen in `dictionary.txt` im
+Konfigurationsordner; abschalten lässt sich die Prüfung mit
+`spellcheck = false` unter `[editor]` in der `config.toml`.
+
 ## Erste Schritte
 
 ```sh
