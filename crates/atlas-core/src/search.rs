@@ -82,9 +82,9 @@ pub const KINDS: &[(&str, &[&str])] = &[
     (
         "code",
         &[
-            "rs", "py", "js", "mjs", "ts", "tsx", "jsx", "qml", "c", "h", "cc", "cpp", "cxx", "hpp", "java", "kt", "go",
-            "sh", "bash", "zsh", "fish", "nix", "toml", "json", "yaml", "yml", "xml", "html", "css", "scss", "lua",
-            "rb", "php", "sql", "swift", "cs", "r", "jl", "hs", "ml", "ex", "exs", "dart", "vue", "svelte", "m",
+            "rs", "py", "js", "mjs", "ts", "tsx", "jsx", "qml", "c", "h", "cc", "cpp", "cxx", "hpp", "java", "kt",
+            "go", "sh", "bash", "zsh", "fish", "nix", "toml", "json", "yaml", "yml", "xml", "html", "css", "scss",
+            "lua", "rb", "php", "sql", "swift", "cs", "r", "jl", "hs", "ml", "ex", "exs", "dart", "vue", "svelte", "m",
             "ipynb", "cmake", "mk", "gradle",
         ],
     ),
@@ -400,11 +400,7 @@ fn clip_line(line: &str, first: usize, ranges: &[(usize, usize)]) -> (String, Ve
     while !line.is_char_boundary(to) {
         to -= 1;
     }
-    let ranges = ranges
-        .iter()
-        .filter(|(s, e)| *s >= from && *e <= to)
-        .map(|(s, e)| (s - from, e - from))
-        .collect();
+    let ranges = ranges.iter().filter(|(s, e)| *s >= from && *e <= to).map(|(s, e)| (s - from, e - from)).collect();
     (line[from..to].to_owned(), ranges)
 }
 

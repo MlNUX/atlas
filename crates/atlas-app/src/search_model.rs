@@ -292,7 +292,8 @@ impl qobject::SearchModel {
         let first = self.matches.len() as i32;
         let last = first + batch.len() as i32 - 1;
         // The last file goes on: its header shows a new number of hits.
-        let grown = self.matches.last().filter(|m| m.path == batch[0].path).and_then(|_| self.file_starts.last().copied());
+        let grown =
+            self.matches.last().filter(|m| m.path == batch[0].path).and_then(|_| self.file_starts.last().copied());
         self.as_mut().begin_insert_rows(&QModelIndex::default(), first, last);
         {
             let mut this = self.as_mut().rust_mut();
@@ -321,7 +322,8 @@ impl qobject::SearchModel {
 
     pub fn entry(&self, row: i32) -> QString {
         let Some(m) = usize::try_from(row).ok().and_then(|r| self.matches.get(r)) else { return QString::from("{}") };
-        let ranges: Vec<Value> = m.ranges.iter().map(|&(s, e)| json!([utf16_len(&m.text, s), utf16_len(&m.text, e)])).collect();
+        let ranges: Vec<Value> =
+            m.ranges.iter().map(|&(s, e)| json!([utf16_len(&m.text, s), utf16_len(&m.text, e)])).collect();
         let entry = json!({
             "path": m.path.to_string_lossy(),
             "relative": m.relative,
@@ -359,8 +361,7 @@ impl qobject::SearchModel {
                 QVariant::from(&first)
             }
             ROLE_RANGES => {
-                let ranges: Vec<String> =
-                    m.ranges.iter().map(|&(s, e)| format!("{},{}", utf16(s), utf16(e))).collect();
+                let ranges: Vec<String> = m.ranges.iter().map(|&(s, e)| format!("{},{}", utf16(s), utf16(e))).collect();
                 QVariant::from(&QString::from(ranges.join(",").as_str()))
             }
             ROLE_PDF => QVariant::from(&m.pdf),
@@ -416,7 +417,8 @@ fn text_context(path: &Path, line: i32, radius: i32) -> Vec<(usize, String)> {
         .skip(first - 1)
         .take(last + 1 - first)
         .map(|(i, bytes)| {
-            let text: String = String::from_utf8_lossy(&bytes).trim_end_matches('\r').chars().take(CONTEXT_LINE_CHARS).collect();
+            let text: String =
+                String::from_utf8_lossy(&bytes).trim_end_matches('\r').chars().take(CONTEXT_LINE_CHARS).collect();
             (i + 1, text)
         })
         .collect()

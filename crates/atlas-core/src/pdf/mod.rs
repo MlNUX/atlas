@@ -644,16 +644,23 @@ pub(crate) mod tests {
         let service = PdfService::get();
         let pages_a = service.open_blocking(&a).unwrap().page_sizes.len();
         let pages_b = service.open_blocking(&b).unwrap().page_sizes.len();
-        let until = Instant::now() + Duration::from_secs(std::env::var("STRESS_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(30));
+        let until = Instant::now()
+            + Duration::from_secs(std::env::var("STRESS_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(30));
         let mut rounds = 0;
         while Instant::now() < until {
             let (tx, rx) = crossbeam_channel::unbounded();
             for i in 0..12 {
                 let (path, n) = if i % 2 == 0 { (&a, pages_a) } else { (&b, pages_b) };
                 let tx = tx.clone();
-                service.render(path.clone(), (rounds * 7 + i) % n, 600 + (i as u32 % 3) * 300, CancelToken::default(), move |r| {
-                    let _ = tx.send(r.map(|_| ()));
-                });
+                service.render(
+                    path.clone(),
+                    (rounds * 7 + i) % n,
+                    600 + (i as u32 % 3) * 300,
+                    CancelToken::default(),
+                    move |r| {
+                        let _ = tx.send(r.map(|_| ()));
+                    },
+                );
             }
             for page in 0..3 {
                 let _ = service.text_blocking(&a, page % pages_a);
