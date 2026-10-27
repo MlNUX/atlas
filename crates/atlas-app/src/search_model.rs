@@ -39,6 +39,7 @@ pub mod qobject {
         #[qproperty(i32, files, READ, NOTIFY)]
         #[qproperty(i32, elapsed_ms, cxx_name = "elapsedMs", READ, NOTIFY)]
         #[qproperty(bool, truncated, READ, NOTIFY)]
+        #[qproperty(QString, kind_counts, cxx_name = "kindCounts", READ, NOTIFY)]
         #[qproperty(QString, error, READ, NOTIFY)]
         type SearchModel = super::SearchModelRust;
 
@@ -115,6 +116,7 @@ const ROLE_FIRST_IN_FILE: i32 = 0x0107;
 const ROLE_RANGES: i32 = 0x0108;
 const ROLE_PDF: i32 = 0x0109;
 const ROLE_FILE_HITS: i32 = 0x010a;
+const ROLE_INDEX_IN_FILE: i32 = 0x010b;
 
 #[derive(Default)]
 pub struct SearchModelRust {
@@ -123,11 +125,13 @@ pub struct SearchModelRust {
     files: i32,
     elapsed_ms: i32,
     truncated: bool,
+    kind_counts: QString,
     error: QString,
 
     matches: Vec<Match>,
     /// Row of the first match of each file, in order.
     file_starts: Vec<usize>,
+    kinds: std::collections::BTreeMap<&'static str, usize>,
     handle: Option<SearchHandle>,
     generation: u64,
 }
@@ -183,6 +187,9 @@ impl SearchModelRust {
     /// Index of the file of `row` in `file_starts`.
     fn file_of(&self, row: usize) -> usize {
         self.file_starts.partition_point(|&start| start <= row).saturating_sub(1)
+    }
+    fn index_in_file(&self, row: usize) -> usize {
+        row - self.file_starts.get(self.file_of(row)).copied().unwrap_or(0)
     }
     fn file_hits(&self, row: usize) -> usize {
         let file = self.file_of(row);
@@ -261,6 +268,8 @@ impl qobject::SearchModel {
             this.generation += 1;
             this.matches.clear();
             this.file_starts.clear();
+            this.kinds.clear();
+            this.kind_counts = QString::from("{}");
             this.count = 0;
             this.files = 0;
             this.elapsed_ms = 0;
@@ -268,6 +277,7 @@ impl qobject::SearchModel {
             this.error = QString::default();
         }
         self.as_mut().end_reset_model();
+        self.as_mut().kind_counts_changed();
         self.as_mut().count_changed();
         self.as_mut().files_changed();
         self.as_mut().elapsed_ms_changed();
@@ -291,8 +301,11 @@ impl qobject::SearchModel {
                     let row = this.matches.len();
                     this.file_starts.push(row);
                 }
+                *this.kinds.entry(search::kind_of(&m.path)).or_default() += 1;
                 this.matches.push(m);
             }
+            let counts = json!(this.kinds).to_string();
+            this.kind_counts = QString::from(counts.as_str());
             this.count = this.matches.len() as i32;
             this.files = this.file_starts.len() as i32;
         }
@@ -301,6 +314,7 @@ impl qobject::SearchModel {
             let index = self.index(row as i32, 0, &QModelIndex::default());
             self.as_mut().data_changed(&index, &index, &QVector::<i32>::default());
         }
+        self.as_mut().kind_counts_changed();
         self.as_mut().count_changed();
         self.as_mut().files_changed();
     }
@@ -315,6 +329,8 @@ impl qobject::SearchModel {
             "text": m.text,
             "pdf": m.pdf,
             "ranges": ranges,
+            "index": self.index_in_file(row as usize),
+            "fileHits": self.file_hits(row as usize),
         });
         QString::from(entry.to_string().as_str())
     }
@@ -349,6 +365,7 @@ impl qobject::SearchModel {
             }
             ROLE_PDF => QVariant::from(&m.pdf),
             ROLE_FILE_HITS => QVariant::from(&(self.file_hits(row) as i32)),
+            ROLE_INDEX_IN_FILE => QVariant::from(&(self.index_in_file(row) as i32)),
             _ => QVariant::default(),
         }
     }
@@ -366,6 +383,7 @@ impl qobject::SearchModel {
             (ROLE_RANGES, "matchRanges"),
             (ROLE_PDF, "isPdf"),
             (ROLE_FILE_HITS, "fileHits"),
+            (ROLE_INDEX_IN_FILE, "indexInFile"),
         ] {
             roles.insert(role, QByteArray::from(name));
         }

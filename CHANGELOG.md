@@ -78,6 +78,11 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Esc schließt.
 
 ### Geändert
+- **Suchfenster übersichtlicher**: Groß/klein, ganzes Wort und regulärer
+  Ausdruck als kleine Schalter im Suchfeld; die Typfilter zeigen ihre
+  Trefferzahl; Dateimuster und Build-Ordner unter „Weitere Filter“. Pro
+  Datei erst drei Treffer („+ N weitere“ klappt den Rest auf), alle Dateien
+  auf einen Klick ein- und ausklappen, Tastenhilfe in der Fußzeile.
 - **PDFs schneller**:
   - Zoomen und Größe ändern ruckeln nicht mehr (die Seite wird skaliert
     statt bei jedem Bild neu gemalt): 16 statt bis zu 115 ms pro Schritt.
@@ -92,6 +97,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Phasenberichte unter `docs/development/`, Übersicht in `docs/README.md`.
 
 ### Behoben
+- PDF im Split: Ein Klick irgendwo in den Split (Leiste, Rand neben den
+  Seiten, Knöpfe) gibt die Pfeiltasten der PDF – vorher musste man erst in
+  eine Seite klicken, und ein angeklickter Knopf behielt die Tasten.
 - **PDF-Präsentation:** Beim ersten Start blieb die Seite manchmal in
   Tab-Größe oben links im schwarzen Vollbild (der Tab setzte die Größe der
   Ansicht zurück). Jetzt wandert nur der sichtbare Inhalt ins

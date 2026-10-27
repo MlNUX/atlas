@@ -207,7 +207,28 @@ Rectangle {
     TapHandler {
         gesturePolicy: TapHandler.DragThreshold
         grabPermissions: PointerHandler.TakeOverForbidden
-        onTapped: group.activated()
+        onTapped: {
+            group.activated()
+            Qt.callLater(group.focusAfterTap)
+        }
+    }
+
+    /// After a click into this split: the keyboard goes to its tab when the
+    /// focus is elsewhere – and in a PDF also when a button of its toolbar
+    /// took it, so the arrow keys turn pages without clicking a page first.
+    /// Text fields (page number, search) keep it.
+    function focusAfterTap() {
+        const tab = group.currentTab
+        const w = group.Window.window
+        if (!tab || !w) return
+        const f = w.activeFocusItem
+        let inside = false
+        for (let p = f; p; p = p.parent) {
+            // A menu or dialog the click opened keeps it.
+            if (p === Overlay.overlay) return
+            if (p === tab) { inside = true; break }
+        }
+        if (!inside || (tab.kind === "pdf" && f.cursorPosition === undefined && f !== tab.viewerItem)) tab.takeFocus()
     }
 
     ColumnLayout {

@@ -243,6 +243,12 @@ Item {
             () => {
                 const v = editor.activeTab.viewerItem
                 check("PDF-Ansicht", !!v && !!v.annotationStore, editor.activeTab.kind)
+                // A click into the split (not on a page) gives the PDF the keys.
+                projectTree.forceActiveFocus()
+                editor.activeGroup.focusAfterTap()
+                let inPdf = false
+                for (let p = window.activeFocusItem; p; p = p.parent) if (p === v) inPdf = true
+                check("Klick in den PDF-Split: Pfeiltasten ohne Klick auf die Seite", inPdf, window.activeFocusItem)
                 check("Anmerkungen geladen", v.annotationStore.status === "new", v.annotationStore.status)
                 // Drag over both lines of page 1.
                 v.dragStart = { page: 0, x: 60, y: 120 }

@@ -91,6 +91,14 @@ pub const KINDS: &[(&str, &[&str])] = &[
     ("text", &["txt", "csv", "tsv", "log", "org", "rst", "adoc", "ini", "cfg", "conf", "srt"]),
 ];
 
+/// The document type of `path` (a name from [`KINDS`]), `"other"` for
+/// other files.
+pub fn kind_of(path: &Path) -> &'static str {
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else { return "other" };
+    let ext = ext.to_ascii_lowercase();
+    KINDS.iter().find(|(_, exts)| exts.contains(&ext.as_str())).map_or("other", |(name, _)| name)
+}
+
 /// Applies a type filter to `query`: only files of `kinds` (names from
 /// [`KINDS`]); no kinds means all files.
 pub fn restrict_to_kinds(query: &mut Query, kinds: &[&str]) {
@@ -565,5 +573,14 @@ mod tests {
         std::fs::write(d.path().join("b.rs"), "x\n").unwrap();
         let (m, _) = run(d.path(), q);
         assert_eq!(m.iter().map(|m| m.relative.as_str()).collect::<Vec<_>>(), ["a.md"]);
+    }
+
+    #[test]
+    fn kind_of_files() {
+        assert_eq!(kind_of(Path::new("a/B.MD")), "markdown");
+        assert_eq!(kind_of(Path::new("skript.pdf")), "pdf");
+        assert_eq!(kind_of(Path::new("main.rs")), "code");
+        assert_eq!(kind_of(Path::new("arbeit.tex")), "latex");
+        assert_eq!(kind_of(Path::new("Makefile")), "other");
     }
 }

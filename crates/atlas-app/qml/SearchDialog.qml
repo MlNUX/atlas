@@ -36,7 +36,16 @@ Dialog {
         { key: "text", label: qsTr("Text"), icon: "file-text" }
     ]
     property var kinds: []
-    property var collapsed: ({})
+    readonly property var kindCounts: { try { return JSON.parse(model.kindCounts || "{}") } catch (e) { return {} } }
+    /// Files folded: all (`foldAll`) except those in `toggled`, or the
+    /// other way round.
+    property bool foldAll: false
+    property var toggled: ({})
+    /// Files showing all hits (otherwise the first `perFile`).
+    property var expanded: ({})
+    readonly property int perFile: 3
+    /// The file pattern and build folder options are shown.
+    property bool showMore: false
     property int currentRow: -1
     /// Query and options of the results shown (Enter opens a hit only
     /// when nothing changed since).
@@ -82,6 +91,7 @@ Dialog {
         wholeWord.checked = !!state.wholeWord
         globs.text = state.globs || ""
         buildDirs.checked = !!state.buildDirs
+        showMore = !!globs.text || buildDirs.checked
         kinds = Array.isArray(state.kinds) ? state.kinds : []
         if (query.text) run()
         else model.clear()
@@ -94,7 +104,9 @@ Dialog {
     function signature() { return JSON.stringify([query.text, options(), projectRoot]) }
     function run() {
         debounce.stop()
-        collapsed = ({})
+        foldAll = false
+        toggled = ({})
+        expanded = ({})
         currentRow = -1
         shownSignature = signature()
         model.search(projectRoot, query.text, JSON.stringify(options()))
@@ -110,14 +122,19 @@ Dialog {
     function entry(row) {
         try { return JSON.parse(model.entry(row)) } catch (e) { return {} }
     }
-    /// Moves the selection by `step` hits, past folded files.
+    function isFolded(path) { return foldAll !== !!toggled[path] }
+    /// The hit is not in the list (folded file, or beyond the first hits).
+    function isHidden(e) { return isFolded(e.path) || (e.index >= perFile && !expanded[e.path]) }
+    /// Moves the selection by `step` hits, past hidden ones.
     function moveSelection(step) {
         let row = currentRow
-        for (let i = 0; i < model.count; ++i) {
-            row += step
-            if (row < 0 || row >= model.count) return
-            if (!collapsed[entry(row).path]) break
+        const dir = step > 0 ? 1 : -1
+        for (let n = Math.abs(step); n > 0;) {
+            row += dir
+            if (row < 0 || row >= model.count) { row -= dir; break }
+            if (!isHidden(entry(row))) --n
         }
+        if (row < 0 || isHidden(entry(row))) return
         currentRow = row
         results.positionViewAtIndex(row, ListView.Contain)
     }
@@ -138,10 +155,20 @@ Dialog {
         else run()
     }
     function toggleFile(path) {
-        const c = Object.assign({}, collapsed)
-        if (c[path]) delete c[path]
-        else c[path] = true
-        collapsed = c
+        const t = Object.assign({}, toggled)
+        if (t[path]) delete t[path]
+        else t[path] = true
+        toggled = t
+    }
+    function setFoldAll(on) {
+        foldAll = on
+        toggled = ({})
+    }
+    function showAllOf(path, on) {
+        const x = Object.assign({}, expanded)
+        if (on) x[path] = true
+        else delete x[path]
+        expanded = x
     }
 
     function escapeHtml(s) {
@@ -208,6 +235,8 @@ Dialog {
         id: chip
         property string iconName
         property string tip
+        /// A number after the label (hits), none below 0.
+        property int count: -1
         checkable: true
         focusPolicy: Qt.NoFocus
         implicitHeight: 28
@@ -233,7 +262,42 @@ Dialog {
                     color: chip.checked ? Theme.textStrong : Theme.text
                     font.pixelSize: Theme.smallFontSize
                 }
+                Text {
+                    visible: chip.count >= 0
+                    text: chip.count
+                    color: chip.checked ? Theme.accent : Theme.textFaint
+                    font.pixelSize: Theme.smallFontSize
+                }
             }
+        }
+    }
+
+    // Small toggle inside the search field (case, whole word, regex).
+    component FieldToggle: AbstractButton {
+        id: toggle
+        property string tip
+        checkable: true
+        focusPolicy: Qt.NoFocus
+        hoverEnabled: true
+        implicitWidth: 30
+        implicitHeight: 24
+        ToolTip.visible: hovered
+        ToolTip.text: tip
+        ToolTip.delay: 400
+        background: Rectangle {
+            radius: 5
+            color: toggle.checked ? Theme.accentSoft : toggle.hovered ? Theme.hover : "transparent"
+            border.width: toggle.checked ? 1 : 0
+            border.color: Theme.accent
+        }
+        contentItem: Text {
+            text: toggle.text
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            color: toggle.checked ? Theme.textStrong : Theme.textMuted
+            font.pixelSize: Theme.smallFontSize
+            font.family: Theme.monoFont
+            font.underline: toggle.objectName === "searchWord"
         }
     }
 
@@ -243,67 +307,64 @@ Dialog {
         // ---- title
         RowLayout {
             Layout.fillWidth: true
-            Layout.margins: 16
+            Layout.leftMargin: 16
+            Layout.rightMargin: 10
+            Layout.topMargin: 12
             Layout.bottomMargin: 10
-            spacing: 12
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: 10
-                color: Theme.accentSoft
-                Icon { anchors.centerIn: parent; name: "search"; size: 20; color: Theme.accent }
-            }
-            ColumnLayout {
+            spacing: 10
+            Icon { name: "search"; size: 18; color: Theme.accent }
+            Text { text: qsTr("Suche im Projekt"); color: Theme.textStrong; font.pixelSize: 15; font.weight: Font.DemiBold }
+            Text {
                 Layout.fillWidth: true
-                spacing: 2
-                Text { text: qsTr("Suche im Projekt"); color: Theme.textStrong; font.pixelSize: 16; font.weight: Font.DemiBold }
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Textdateien und PDFs · .gitignore wird berücksichtigt · ↑↓ wählen, Enter öffnet, Strg+Enter im Split")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                }
+                text: dialog.projectRoot ? dialog.projectRoot.split("/").pop() : ""
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideRight
             }
             IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
         }
 
-        // ---- query and options
+        // ---- query and filters
         ColumnLayout {
             Layout.fillWidth: true
             Layout.leftMargin: 16
             Layout.rightMargin: 16
-            spacing: 8
+            Layout.bottomMargin: 12
+            spacing: 10
 
-            RowLayout {
+            TextField {
+                id: query
+                objectName: "searchQuery"
                 Layout.fillWidth: true
-                spacing: 8
-                TextField {
-                    id: query
-                    objectName: "searchQuery"
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("Suchen in %1 …").arg(dialog.projectRoot ? dialog.projectRoot.split("/").pop() : qsTr("Projekt"))
-                    selectByMouse: true
-                    font.pixelSize: Theme.fontSize + 2
-                    leftPadding: 34
-                    Icon { anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 16 }
-                    onTextEdited: debounce.restart()
-                    Keys.onUpPressed: dialog.moveSelection(-1)
-                    Keys.onDownPressed: dialog.moveSelection(1)
-                    Keys.onPressed: (event) => {
-                        if (event.key === Qt.Key_PageDown) { dialog.moveSelection(10); event.accepted = true }
-                        else if (event.key === Qt.Key_PageUp) { dialog.moveSelection(-10); event.accepted = true }
-                    }
-                    Keys.onReturnPressed: (event) => dialog.acceptQuery((event.modifiers & Qt.ControlModifier) !== 0)
-                    Keys.onEnterPressed: (event) => dialog.acceptQuery((event.modifiers & Qt.ControlModifier) !== 0)
-                    Keys.onEscapePressed: {
-                        if (dialog.model.running) dialog.model.cancel()
-                        else dialog.close()
-                    }
+                placeholderText: qsTr("Suchbegriff – durchsucht Notizen, Code und den Text aller PDFs")
+                selectByMouse: true
+                font.pixelSize: Theme.fontSize + 2
+                leftPadding: 36
+                rightPadding: fieldToggles.width + 12
+                Icon { anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 16 }
+                Row {
+                    id: fieldToggles
+                    anchors.right: parent.right
+                    anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    FieldToggle { id: caseSensitive; objectName: "searchCase"; text: "Aa"; tip: qsTr("Groß-/Kleinschreibung beachten (aus: wird ignoriert)"); onToggled: debounce.restart() }
+                    FieldToggle { id: wholeWord; objectName: "searchWord"; text: "ab"; tip: qsTr("Nur ganze Wörter"); onToggled: debounce.restart() }
+                    FieldToggle { id: regex; objectName: "searchRegex"; text: ".*"; tip: qsTr("Regulärer Ausdruck"); onToggled: debounce.restart() }
                 }
-                Chip { id: caseSensitive; objectName: "searchCase"; text: "Aa"; tip: qsTr("Groß-/Kleinschreibung beachten (aus: wird ignoriert)"); onToggled: debounce.restart() }
-                Chip { id: wholeWord; objectName: "searchWord"; text: qsTr("Ganzes Wort"); tip: qsTr("Nur ganze Wörter finden"); onToggled: debounce.restart() }
-                Chip { id: regex; objectName: "searchRegex"; text: ".*"; tip: qsTr("Regulärer Ausdruck"); onToggled: debounce.restart() }
+                onTextEdited: debounce.restart()
+                Keys.onUpPressed: dialog.moveSelection(-1)
+                Keys.onDownPressed: dialog.moveSelection(1)
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_PageDown) { dialog.moveSelection(10); event.accepted = true }
+                    else if (event.key === Qt.Key_PageUp) { dialog.moveSelection(-10); event.accepted = true }
+                }
+                Keys.onReturnPressed: (event) => dialog.acceptQuery((event.modifiers & Qt.ControlModifier) !== 0)
+                Keys.onEnterPressed: (event) => dialog.acceptQuery((event.modifiers & Qt.ControlModifier) !== 0)
+                Keys.onEscapePressed: {
+                    if (dialog.model.running) dialog.model.cancel()
+                    else dialog.close()
+                }
             }
 
             RowLayout {
@@ -312,6 +373,7 @@ Dialog {
                 Chip {
                     text: qsTr("Alle")
                     checked: dialog.kinds.length === 0
+                    count: dialog.kinds.length === 0 && dialog.model.count > 0 ? dialog.model.count : -1
                     onClicked: { dialog.kinds = []; debounce.restart() }
                 }
                 Repeater {
@@ -322,34 +384,34 @@ Dialog {
                         text: modelData.label
                         iconName: modelData.icon
                         checked: dialog.kinds.indexOf(modelData.key) >= 0
+                        count: dialog.kindCounts[modelData.key] || -1
                         onClicked: dialog.toggleKind(modelData.key)
                     }
                 }
                 Item { Layout.fillWidth: true }
+                Chip {
+                    id: moreButton
+                    text: (globs.text || buildDirs.checked) ? qsTr("Weitere Filter •") : qsTr("Weitere Filter")
+                    iconName: dialog.showMore ? "chevron-down" : "chevron-right"
+                    checked: dialog.showMore
+                    tip: qsTr("Dateimuster und Build-Ordner")
+                    onClicked: dialog.showMore = !dialog.showMore
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                visible: dialog.showMore
+                spacing: 8
                 TextField {
                     id: globs
-                    Layout.preferredWidth: 240
-                    placeholderText: qsTr("Dateimuster, z. B. notes/**, !alt/**")
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Dateimuster, durch Komma getrennt – z. B. notes/**, !alt/**, *.tex")
                     selectByMouse: true
                     font.pixelSize: Theme.smallFontSize
                     onTextEdited: debounce.restart()
                 }
-                Chip { id: buildDirs; text: qsTr("Build-Ordner"); tip: qsTr("Build- und Abhängigkeitsordner einbeziehen (target, node_modules, …)"); onToggled: debounce.restart() }
-            }
-
-            Label {
-                Layout.fillWidth: true
-                Layout.topMargin: 2
-                Layout.bottomMargin: 8
-                color: dialog.model.error ? Theme.error : Theme.textMuted
-                font.pixelSize: Theme.smallFontSize
-                elide: Text.ElideRight
-                text: dialog.model.error ? dialog.model.error
-                    : dialog.model.running ? qsTr("Suche läuft … %1 Treffer in %2 Dateien").arg(dialog.model.count).arg(dialog.model.files)
-                    : query.text.length === 0 ? qsTr("Suchbegriff eingeben")
-                    : dialog.model.count === 0 ? qsTr("Keine Treffer")
-                    : qsTr("%1 Treffer in %2 Dateien · %3 ms%4").arg(dialog.model.count).arg(dialog.model.files)
-                        .arg(dialog.model.elapsedMs).arg(dialog.model.truncated ? qsTr(" (gekürzt)") : "")
+                Chip { id: buildDirs; text: qsTr("Build-Ordner einbeziehen"); tip: qsTr("target, node_modules, build, … mit durchsuchen"); onToggled: debounce.restart() }
             }
         }
 
@@ -361,142 +423,213 @@ Dialog {
             Layout.fillHeight: true
             orientation: Qt.Horizontal
 
-            ListView {
-                id: results
-                objectName: "searchResults"
+            ColumnLayout {
                 SplitView.preferredWidth: dialog.width * 0.55
-                SplitView.minimumWidth: 280
-                clip: true
-                model: dialog.model
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar {}
+                SplitView.minimumWidth: 300
+                spacing: 0
 
-                delegate: Column {
-                    id: hit
-                    required property int index
-                    required property string path
-                    required property string relativePath
-                    required property int line
-                    required property string text
-                    required property string matchRanges
-                    required property bool firstInFile
-                    required property bool isPdf
-                    required property int fileHits
-                    readonly property bool folded: !!dialog.collapsed[path]
-                    readonly property bool current: index === dialog.currentRow
-                    width: ListView.view.width
+                // Summary and fold buttons.
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 34
+                    Layout.leftMargin: 14
+                    Layout.rightMargin: 8
+                    spacing: 4
+                    Label {
+                        Layout.fillWidth: true
+                        color: dialog.model.error ? Theme.error : Theme.textMuted
+                        font.pixelSize: Theme.smallFontSize
+                        elide: Text.ElideRight
+                        text: dialog.model.error ? dialog.model.error
+                            : dialog.model.running ? qsTr("Suche läuft … %1 Treffer in %2 Dateien").arg(dialog.model.count).arg(dialog.model.files)
+                            : query.text.length === 0 ? ""
+                            : dialog.model.count === 0 ? qsTr("Keine Treffer")
+                            : qsTr("<b>%1</b> Treffer in <b>%2</b> Dateien%4 · %3 ms").arg(dialog.model.count).arg(dialog.model.files)
+                                .arg(dialog.model.elapsedMs).arg(dialog.model.truncated ? qsTr(" (gekürzt)") : "")
+                    }
+                    IconButton {
+                        visible: dialog.model.files > 1
+                        iconName: "collapse"
+                        iconSize: 14
+                        tip: dialog.foldAll ? qsTr("Alle Dateien aufklappen") : qsTr("Alle Dateien einklappen")
+                        onClicked: dialog.setFoldAll(!dialog.foldAll)
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
-                    // File header.
-                    Rectangle {
-                        visible: hit.firstInFile
-                        width: parent.width
-                        height: visible ? 30 : 0
-                        color: headerArea.containsMouse ? Theme.hover : Theme.panel
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 12
-                            spacing: 6
-                            Icon { name: hit.folded ? "chevron-right" : "chevron-down"; size: 12 }
-                            Icon { name: dialog.fileIcon(hit.path, hit.isPdf); size: 15; color: hit.isPdf ? "#e5534b" : Theme.textMuted }
-                            Text {
-                                text: hit.relativePath.split("/").pop()
-                                color: Theme.textStrong
-                                font.pixelSize: Theme.fontSize
-                                font.weight: Font.DemiBold
+                ListView {
+                    id: results
+                    objectName: "searchResults"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    model: dialog.model
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {}
+
+                    delegate: Column {
+                        id: hit
+                        required property int index
+                        required property string path
+                        required property string relativePath
+                        required property int line
+                        required property string text
+                        required property string matchRanges
+                        required property bool firstInFile
+                        required property bool isPdf
+                        required property int fileHits
+                        required property int indexInFile
+                        readonly property bool folded: dialog.isFolded(path)
+                        readonly property bool all: !!dialog.expanded[path]
+                        readonly property bool current: index === dialog.currentRow
+                        width: ListView.view.width
+
+                        // Space between files.
+                        Item { visible: hit.firstInFile && hit.index > 0; width: 1; height: visible ? 6 : 0 }
+                        // File header.
+                        Rectangle {
+                            visible: hit.firstInFile
+                            width: parent.width
+                            height: visible ? 32 : 0
+                            color: headerArea.containsMouse ? Theme.hover : Theme.panel
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 12
+                                spacing: 6
+                                Icon { name: hit.folded ? "chevron-right" : "chevron-down"; size: 12 }
+                                Icon { name: dialog.fileIcon(hit.path, hit.isPdf); size: 15; color: hit.isPdf ? "#e5534b" : Theme.textMuted }
+                                Text {
+                                    text: hit.relativePath.split("/").pop()
+                                    color: Theme.textStrong
+                                    font.pixelSize: Theme.fontSize
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: hit.relativePath.indexOf("/") >= 0 ? hit.relativePath.slice(0, hit.relativePath.lastIndexOf("/")) : ""
+                                    color: Theme.textFaint
+                                    font.pixelSize: Theme.smallFontSize
+                                    elide: Text.ElideMiddle
+                                }
+                                Rectangle {
+                                    Layout.preferredHeight: 18
+                                    Layout.preferredWidth: Math.max(22, hitCount.implicitWidth + 12)
+                                    radius: 9
+                                    color: Theme.raised
+                                    Text { id: hitCount; anchors.centerIn: parent; text: hit.fileHits; color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
+                                }
                             }
+                            MouseArea {
+                                id: headerArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: dialog.toggleFile(hit.path)
+                            }
+                        }
+                        // The hit.
+                        Rectangle {
+                            visible: !hit.folded && (hit.indexInFile < dialog.perFile || hit.all)
+                            width: parent.width
+                            height: visible ? 24 : 0
+                            color: hit.current ? Theme.selection : area.containsMouse ? Theme.hover : "transparent"
+                            Rectangle { visible: hit.current; width: 3; height: parent.height; color: Theme.accent }
                             Text {
-                                Layout.fillWidth: true
-                                text: hit.relativePath.indexOf("/") >= 0 ? hit.relativePath.slice(0, hit.relativePath.lastIndexOf("/")) : ""
+                                id: lineNumber
+                                x: 28
+                                width: 52
+                                height: parent.height
+                                verticalAlignment: Text.AlignVCenter
+                                horizontalAlignment: Text.AlignRight
+                                text: hit.isPdf ? qsTr("S. %1").arg(hit.line) : hit.line
                                 color: Theme.textFaint
                                 font.pixelSize: Theme.smallFontSize
-                                elide: Text.ElideMiddle
+                                font.family: Theme.monoFont
                             }
-                            Rectangle {
-                                Layout.preferredHeight: 18
-                                Layout.preferredWidth: Math.max(22, hitCount.implicitWidth + 12)
-                                radius: 9
-                                color: Theme.raised
-                                Text { id: hitCount; anchors.centerIn: parent; text: hit.fileHits; color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
+                            Text {
+                                anchors.left: lineNumber.right
+                                anchors.leftMargin: 10
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
+                                height: parent.height
+                                verticalAlignment: Text.AlignVCenter
+                                clip: true
+                                textFormat: Text.RichText
+                                wrapMode: Text.NoWrap
+                                color: Theme.text
+                                font.pixelSize: Theme.fontSize
+                                text: {
+                                    const ranges = dialog.rangesOf(hit.matchRanges)
+                                    const first = ranges.length ? ranges[0][0] : 0
+                                    // Leading space trimmed, some context before the hit.
+                                    const indent = hit.text.length - hit.text.replace(/^\s+/, "").length
+                                    return dialog.marked(hit.text, ranges, Math.max(indent, first - 40), 260, hit.current, indent)
+                                }
+                            }
+                            MouseArea {
+                                id: area
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                onClicked: (mouse) => {
+                                    if (mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier)) dialog.openRow(hit.index, true)
+                                    else { dialog.currentRow = hit.index; query.forceActiveFocus() }
+                                }
+                                onDoubleClicked: dialog.openRow(hit.index, false)
                             }
                         }
-                        MouseArea {
-                            id: headerArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: dialog.toggleFile(hit.path)
+                        // "N more" below the first hits of a file (or "fewer").
+                        Rectangle {
+                            readonly property int more: hit.fileHits - dialog.perFile
+                            visible: !hit.folded && more > 0
+                                && (hit.all ? hit.indexInFile === hit.fileHits - 1 : hit.indexInFile === dialog.perFile - 1)
+                            width: parent.width
+                            height: visible ? 24 : 0
+                            color: moreArea.containsMouse ? Theme.hover : "transparent"
+                            Text {
+                                x: 90
+                                height: parent.height
+                                verticalAlignment: Text.AlignVCenter
+                                text: hit.all ? qsTr("Weniger anzeigen")
+                                : parent.more === 1 ? qsTr("+ 1 weiterer Treffer in dieser Datei")
+                                : qsTr("+ %1 weitere Treffer in dieser Datei").arg(parent.more)
+                                color: Theme.accent
+                                font.pixelSize: Theme.smallFontSize
+                            }
+                            MouseArea {
+                                id: moreArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    dialog.showAllOf(hit.path, !hit.all)
+                                    // The selection must stay visible.
+                                    if (hit.all === false && dialog.currentRow >= 0 && dialog.isHidden(dialog.entry(dialog.currentRow)))
+                                        dialog.currentRow = hit.index - hit.indexInFile
+                                }
+                            }
                         }
                     }
-                    // The hit.
-                    Rectangle {
-                        visible: !hit.folded
-                        width: parent.width
-                        height: visible ? 24 : 0
-                        color: hit.current ? Theme.selection : area.containsMouse ? Theme.hover : "transparent"
-                        Rectangle { visible: hit.current; width: 3; height: parent.height; color: Theme.accent }
+
+                    // Empty states.
+                    Column {
+                        anchors.centerIn: parent
+                        visible: results.count === 0 && !dialog.model.running
+                        spacing: 8
+                        width: Math.min(parent.width - 48, 420)
+                        Icon { anchors.horizontalCenter: parent.horizontalCenter; name: "search"; size: 36; color: Theme.textFaint }
                         Text {
-                            id: lineNumber
-                            x: 28
-                            width: 52
-                            height: parent.height
-                            verticalAlignment: Text.AlignVCenter
-                            horizontalAlignment: Text.AlignRight
-                            text: hit.isPdf ? qsTr("S. %1").arg(hit.line) : hit.line
-                            color: Theme.textFaint
-                            font.pixelSize: Theme.smallFontSize
-                            font.family: Theme.monoFont
-                        }
-                        Text {
-                            anchors.left: lineNumber.right
-                            anchors.leftMargin: 10
-                            anchors.right: parent.right
-                            anchors.rightMargin: 8
-                            height: parent.height
-                            verticalAlignment: Text.AlignVCenter
-                            clip: true
-                            textFormat: Text.RichText
-                            wrapMode: Text.NoWrap
-                            color: Theme.text
-                            font.pixelSize: Theme.fontSize
-                            text: {
-                                const ranges = dialog.rangesOf(hit.matchRanges)
-                                const first = ranges.length ? ranges[0][0] : 0
-                                // Leading space trimmed, some context before the hit.
-                                const indent = hit.text.length - hit.text.replace(/^\s+/, "").length
-                                return dialog.marked(hit.text, ranges, Math.max(indent, first - 40), 260, hit.current, indent)
-                            }
-                        }
-                        MouseArea {
-                            id: area
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                            onClicked: (mouse) => {
-                                if (mouse.button === Qt.MiddleButton || (mouse.modifiers & Qt.ControlModifier)) dialog.openRow(hit.index, true)
-                                else { dialog.currentRow = hit.index; query.forceActiveFocus() }
-                            }
-                            onDoubleClicked: dialog.openRow(hit.index, false)
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            color: Theme.textMuted
+                            text: query.text.length === 0
+                                ? qsTr("Durchsucht Notizen, Code und den Text aller PDFs im Projekt. Mit den Filtern oben auf Dokumenttypen beschränken.")
+                                : qsTr("Keine Treffer für „%1“.").arg(query.text)
                         }
                     }
                 }
 
-                // Empty states.
-                Column {
-                    anchors.centerIn: parent
-                    visible: results.count === 0 && !dialog.model.running
-                    spacing: 8
-                    width: Math.min(parent.width - 48, 420)
-                    Icon { anchors.horizontalCenter: parent.horizontalCenter; name: "search"; size: 36; color: Theme.textFaint }
-                    Text {
-                        width: parent.width
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.WordWrap
-                        color: Theme.textMuted
-                        text: query.text.length === 0
-                            ? qsTr("Durchsucht Notizen, Code und den Text aller PDFs im Projekt. Mit den Filtern oben auf Dokumenttypen beschränken.")
-                            : qsTr("Keine Treffer für „%1“.").arg(query.text)
-                    }
-                }
             }
 
             // Preview of the selected hit.
@@ -607,6 +740,19 @@ Dialog {
                     color: Theme.textFaint
                 }
             }
+        }
+
+        // ---- keys
+        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
+        Text {
+            Layout.fillWidth: true
+            Layout.leftMargin: 16
+            Layout.topMargin: 7
+            Layout.bottomMargin: 8
+            text: qsTr("↑ ↓ Treffer wählen   ·   Enter öffnen   ·   Strg+Enter im Split   ·   Esc schließen   ·   .gitignore wird berücksichtigt")
+            color: Theme.textFaint
+            font.pixelSize: Theme.smallFontSize
+            elide: Text.ElideRight
         }
     }
 }
