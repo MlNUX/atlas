@@ -10,6 +10,8 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+## [1.1.2] – 2026-10-27
+
 ### Neu
 - **Neue Projektsuche** (Strg+Umschalt+F) in einem großen Fenster vor
   Atlas statt in der Seitenleiste: Filter nach Dokumenttyp (Markdown, PDF,
@@ -314,7 +316,8 @@ Erste öffentliche Version.
 - Nix-Flake mit Paket, App, Overlay und Entwicklungsumgebung.
 - PKGBUILD für das AUR (`atlas-workspace`).
 
-[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.1...HEAD
+[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/MlNUX/atlas/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/MlNUX/atlas/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/MlNUX/atlas/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/MlNUX/atlas/releases/tag/v1.0.0
