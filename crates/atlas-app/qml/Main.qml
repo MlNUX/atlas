@@ -313,7 +313,7 @@ ApplicationWindow {
         id: searchDialog
         model: searchModel
         projectRoot: app.projectRoot
-        onOpenRequested: (path, line, newPane, state) => editor.open(path, line, newPane ? "split" : "temporary", state)
+        onOpenRequested: (path, line, newPane, state) => editor.open(path, line, newPane ? "split" : "tab", state)
     }
 
     SettingsDialog {

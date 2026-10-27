@@ -88,7 +88,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Ausdruck als kleine Schalter im Suchfeld; die Typfilter zeigen ihre
   Trefferzahl; Dateimuster und Build-Ordner unter „Weitere Filter“. Pro
   Datei erst drei Treffer („+ N weitere“ klappt den Rest auf), alle Dateien
-  auf einen Klick ein- und ausklappen, Tastenhilfe in der Fußzeile.
+  auf einen Klick ein- und ausklappen, Tastenhilfe in der Fußzeile. „Öffnen“ öffnet den Treffer als
+  festen Tab im aktiven Split, „Im Split“ (Strg+Enter) daneben – kein
+  temporäres Fenster mehr.
 - **PDFs schneller**:
   - Zoomen und Größe ändern ruckeln nicht mehr (die Seite wird skaliert
     statt bei jedem Bild neu gemalt): 16 statt bis zu 115 ms pro Schritt.

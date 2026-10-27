@@ -196,6 +196,8 @@ Item {
             },
             () => {
                 const v = editor.activeTab.viewerItem
+                check("Suchtreffer öffnet als fester Tab im aktiven Split", !editor.activeTab.preview && !editor.activeGroup.temporary,
+                      editor.activeTab.preview + " " + editor.activeGroup.temporary)
                 check("PDF-Treffer öffnet die Seite und markiert das Wort", editor.activeTab.path === path("docs/quelle.pdf")
                       && v.searchQuery === "Zweite Zeile" && v.hits.length >= 1 && !searchPanel.visible,
                       editor.activeTab.path + " " + (v && v.searchQuery) + " " + (v && v.hits.length))
