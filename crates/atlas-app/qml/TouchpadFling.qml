@@ -102,10 +102,16 @@ Item {
         wheelX = wheelY = 0
         flickable.cancelFlick()
     }
+    /// When the last fling started (ms since the epoch).
+    property real flingStart: 0
+    /// Holds this soon after a fling started are the fingers leaving the
+    /// touchpad (one lifts a moment after the other and rests briefly),
+    /// not a touch to stop it.
+    readonly property int holdGrace: 250
     Connections {
         target: fling.app
         ignoreUnknownSignals: true
-        function onTouchpadHeld() { fling.stop() }
+        function onTouchpadHeld() { if (Date.now() - fling.flingStart >= fling.holdGrace) fling.stop() }
     }
 
     /// The swipe ended: glide on with its speed.
@@ -122,6 +128,7 @@ Item {
         const vx = dx / span * fling.boost, vy = dy / span * fling.boost
         if (Math.abs(vx) < 300 && Math.abs(vy) < 300) return
         fling.count += 1
+        fling.flingStart = Date.now()
         // A higher limit only for this fling: mouse wheels stay as they are.
         const f = fling.flickable
         const limit = f.maximumFlickVelocity

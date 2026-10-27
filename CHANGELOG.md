@@ -85,7 +85,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   scrollt weich statt in Sprüngen. Vorher hielt Atlas Touchpad-Schritte von
   genau 10, 20, 30 … Pixeln für Mausrad-Rasten (Qt meldet unter Wayland
   das 12-Fache der Bewegung als Winkel) und sprang dabei um eine ganze
-  Stufe; Schritte unter einem Pixel gingen verloren.
+  Stufe; Schritte unter einem Pixel gingen verloren. Das Abheben der Finger
+  (libinput meldet dabei kurz ein „Festhalten“) beendet den Schwung nicht
+  mehr; erst ein echtes Auflegen hält ihn an.
 - **Suchfenster übersichtlicher**: Groß/klein, ganzes Wort und regulärer
   Ausdruck als kleine Schalter im Suchfeld; die Typfilter zeigen ihre
   Trefferzahl; Dateimuster und Build-Ordner unter „Weitere Filter“. Pro

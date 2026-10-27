@@ -1558,6 +1558,10 @@ Item {
                 app.sendWheel(window, tp.x, tp.y, 0, 2 | 16 | 32)
                 check("Touchpad: Schwung setzt beim Loslassen sofort ein", v.fling.count === test.flings + 1 && v.pagesView.flicking,
                       v.fling.count - test.flings)
+                // libinput reports a "hold" while the fingers leave the touchpad:
+                // that must not stop the momentum it just started.
+                app.touchpadHeld()
+                check("Touchpad: Finger abheben stoppt den Schwung nicht", v.pagesView.flicking)
                 test.flingDirect = v.pagesView.contentY - test.flingY
                 // Markdown → PDF with the preview (no pandoc).
                 test.mdPdf = app.projectRoot.replace(/\/[^/]+$/, "") + "/export-idee.pdf"
