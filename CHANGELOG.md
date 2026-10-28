@@ -24,10 +24,18 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   - **Befehle** mit Tastenkürzel (`keybinding`) und Platz im Kontextmenü
     oder in der Arbeitsleiste (`menu`) – auch für eigene Aktionen.
   - Neuere API-Versionen werden erkannt und mit Hinweis nicht geladen.
-- **Test-Plugin** zum Ausprobieren: ein Klick in den Einstellungen
-  installiert eine Beispiel-Erweiterung mit Befehlen (Strg+Alt+T),
-  Einstellungen, einer Anzeige und einem Exporter. Die Einstellungen von
-  Erweiterungen stehen jetzt direkt im Einstellungsdialog.
+- **Ansichten** für Erweiterungen (`views`): eine HTML-Seite der
+  Erweiterung als Tab, mit einer Brücke zu Atlas (Dateien lesen, schreiben,
+  umbenennen, in den Papierkorb, öffnen). Jeder Pfad wird gegen die
+  angemeldeten Rechte geprüft; ins Netz nur mit `network`.
+- **Mitgelieferte Erweiterungen**, mit einem Klick installiert (in den
+  Einstellungen, im Erweiterungsdialog, in der Arbeitsleiste):
+  - **bnki-Karten**: Karteikarten für die bnki-App schreiben (Strg+Alt+B) –
+    mit Vorschau für Formeln und Code; jeder Stapel ist eine CSV-Datei im
+    Projekt, sofort gespeichert und direkt in bnki importierbar.
+  - **Test-Plugin**: Befehle (Strg+Alt+T), Einstellungen, Anzeige und
+    Exporter zum Ausprobieren.
+- Die Einstellungen von Erweiterungen stehen direkt im Einstellungsdialog.
 
 ### Sicherheit
 - **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht

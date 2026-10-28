@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Test-Plugin: zeigt alles, was eine Erweiterung mit API 2 kann
-# (docs/extensions.md). Atlas installiert es über „Erweiterungen“ →
-# „Test-Plugin installieren“ nach ~/.config/atlas/extensions/test-plugin/.
+# (docs/extensions.md). Atlas installiert es über „Mitgeliefert“ in den
+# Einstellungen nach ~/.config/atlas/extensions/test-plugin/.
 atlas_api: 2
 name: test-plugin
 title: Test-Plugin

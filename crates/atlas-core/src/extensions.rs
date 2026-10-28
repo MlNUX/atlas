@@ -12,7 +12,10 @@
 //!   sequence and a place in the menus),
 //! - **processors** that show files Atlas cannot display itself (a command
 //!   turns them into Markdown, text or a PDF),
-//! - **exporters** that write a file in another format, and
+//! - **exporters** that write a file in another format,
+//! - **views**: an HTML page of the extension shown as a tab, talking to
+//!   Atlas through a small bridge ([`call`]) whose file access is limited
+//!   by the declared permissions, and
 //! - **settings** the user fills in (in Atlas), passed to the commands.
 //!
 //! Version 2 also declares **permissions** (programs it runs, files,
@@ -212,6 +215,29 @@ pub struct Exporter {
     globs: globset::GlobSet,
 }
 
+/// A tab showing an HTML page of the extension (API 2). It opens on a file
+/// matching `applies_to` („Anzeigen mit“) or on the project folder.
+#[derive(Debug, Clone)]
+pub struct View {
+    /// `view:<extension>/<id>`: the processor ID of the tab.
+    pub id: String,
+    pub name: String,
+    pub extension: String,
+    /// The page, relative to the extension folder.
+    pub page: String,
+    pub applies_to: Vec<String>,
+    /// Opened automatically for matching files.
+    pub auto: bool,
+    pub keybinding: Option<String>,
+    globs: Option<globset::GlobSet>,
+}
+
+impl View {
+    pub fn applies(&self, file: &Path, project: Option<&Path>) -> bool {
+        self.globs.as_ref().is_some_and(|g| matches(g, file, project))
+    }
+}
+
 /// Setting values for one command: placeholders, environment, and the
 /// secrets that are read just before it runs (environment name, store).
 #[derive(Debug, Clone, Default)]
@@ -264,6 +290,7 @@ pub struct Extension {
     pub actions: Vec<Action>,
     pub processors: Vec<Processor>,
     pub exporters: Vec<Exporter>,
+    pub views: Vec<View>,
     pub errors: Vec<String>,
 }
 
@@ -602,6 +629,33 @@ fn check_command(command: &Command, settings: &[Setting], permissions: &Permissi
     Ok(())
 }
 
+fn parse_view(entry: &Yaml, ext: &str, dir: &Path) -> Result<View> {
+    let name = entry["name"].as_str().filter(|n| !n.trim().is_empty()).context("„name“ fehlt")?.trim();
+    let page = entry["page"].as_str().map(str::trim).context("„page“ (HTML-Datei der Erweiterung) fehlt")?;
+    let relative = Path::new(page);
+    if relative.is_absolute() || relative.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+        bail!("„page“ muss im Ordner der Erweiterung liegen");
+    }
+    if !dir.join(relative).is_file() {
+        bail!("„{page}“ fehlt");
+    }
+    let applies_to = strings(&entry["applies_to"]);
+    let keybinding = match entry["keybinding"].as_str() {
+        Some(k) => Some(actions::keybinding(k)?),
+        None => None,
+    };
+    Ok(View {
+        id: format!("view:{ext}/{}", entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| slug(name))),
+        name: name.to_owned(),
+        extension: ext.to_owned(),
+        page: page.to_owned(),
+        globs: if applies_to.is_empty() { None } else { Some(globs(&applies_to)?) },
+        applies_to,
+        auto: entry["auto"].as_bool().unwrap_or(false),
+        keybinding,
+    })
+}
+
 fn valid_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 64 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
@@ -625,6 +679,7 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         actions: Vec::new(),
         processors: Vec::new(),
         exporters: Vec::new(),
+        views: Vec::new(),
         errors: Vec::new(),
     };
     let bytes = match std::fs::read(&manifest) {
@@ -723,6 +778,14 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         match parse_exporter(entry, &name, dir) {
             Ok(e) => ext.exporters.push(e),
             Err(err) => ext.errors.push(format!("Exporter {}: {err:#}", i + 1)),
+        }
+    }
+    if ext.api >= 2 {
+        for (i, entry) in doc["views"].as_vec().into_iter().flatten().enumerate() {
+            match parse_view(entry, &name, dir) {
+                Ok(v) => ext.views.push(v),
+                Err(err) => ext.errors.push(format!("Ansicht {}: {err:#}", i + 1)),
+            }
         }
     }
     if let Some(permissions) = &ext.permissions {
@@ -939,24 +1002,50 @@ pub fn migrate_legacy(user_root: &Path) -> Vec<(String, String)> {
     renamed
 }
 
-/// The test plugin that comes with Atlas (`crates/atlas-core/test-plugin/`):
-/// file name, content, executable.
-const TEST_PLUGIN: &[(&str, &str, bool)] = &[
-    (MANIFEST, include_str!("../test-plugin/extension.yaml"), false),
-    ("gruss.sh", include_str!("../test-plugin/gruss.sh"), true),
-    ("zaehlen.sh", include_str!("../test-plugin/zaehlen.sh"), true),
-    ("anzeigen.sh", include_str!("../test-plugin/anzeigen.sh"), true),
-    ("export.sh", include_str!("../test-plugin/export.sh"), true),
-];
+/// An extension that comes with Atlas (`crates/atlas-core/bundled/<name>/`),
+/// embedded in the program and installed on request.
+pub struct Bundled {
+    pub name: &'static str,
+    pub title: &'static str,
+    pub description: &'static str,
+    /// File name, content, executable.
+    files: &'static [(&'static str, &'static str, bool)],
+}
+
 pub const TEST_PLUGIN_NAME: &str = "test-plugin";
 
-/// Installs (or updates) the test plugin among the user's extensions;
-/// returns its folder. Its settings are kept.
-pub fn install_test_plugin(user_root: &Path) -> Result<PathBuf> {
+pub const BUNDLED: &[Bundled] = &[
+    Bundled {
+        name: TEST_PLUGIN_NAME,
+        title: "Test-Plugin",
+        description: "Zeigt alles, was Erweiterungen können: Befehle, Einstellungen, Anzeige, Exporter.",
+        files: &[
+            (MANIFEST, include_str!("../bundled/test-plugin/extension.yaml"), false),
+            ("gruss.sh", include_str!("../bundled/test-plugin/gruss.sh"), true),
+            ("zaehlen.sh", include_str!("../bundled/test-plugin/zaehlen.sh"), true),
+            ("anzeigen.sh", include_str!("../bundled/test-plugin/anzeigen.sh"), true),
+            ("export.sh", include_str!("../bundled/test-plugin/export.sh"), true),
+        ],
+    },
+    Bundled {
+        name: "bnki",
+        title: "bnki-Karten",
+        description: "Karteikarten für bnki schreiben – jeder Stapel eine CSV-Datei im Projekt.",
+        files: &[
+            (MANIFEST, include_str!("../bundled/bnki/extension.yaml"), false),
+            ("editor.html", include_str!("../bundled/bnki/editor.html"), false),
+        ],
+    },
+];
+
+/// Installs (or updates) the bundled extension `name` among the user's
+/// extensions; returns its folder. Its settings are kept.
+pub fn install_bundled(user_root: &Path, name: &str) -> Result<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
-    let dir = user_root.join(TEST_PLUGIN_NAME);
-    for (name, content, executable) in TEST_PLUGIN {
-        let path = dir.join(name);
+    let bundled = BUNDLED.iter().find(|b| b.name == name).with_context(|| format!("„{name}“ kommt nicht mit Atlas"))?;
+    let dir = user_root.join(bundled.name);
+    for (file, content, executable) in bundled.files {
+        let path = dir.join(file);
         crate::paths::write_atomic(&path, content.as_bytes())?;
         let mode = if *executable { 0o755 } else { 0o644 };
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
@@ -1119,7 +1208,11 @@ impl Trust {
 
 pub fn status(ext: &Extension, trust: &Trust, disabled: &[String]) -> Status {
     if ext.hash.is_empty()
-        || (ext.actions.is_empty() && ext.processors.is_empty() && ext.exporters.is_empty() && !ext.errors.is_empty())
+        || (ext.actions.is_empty()
+            && ext.processors.is_empty()
+            && ext.exporters.is_empty()
+            && ext.views.is_empty()
+            && !ext.errors.is_empty())
     {
         Status::Broken
     } else if disabled.contains(&ext.name) {
@@ -1312,6 +1405,150 @@ impl Exporter {
     }
 }
 
+// ------------------------------------------------------------------- bridge
+
+/// Largest file a view reads or writes through the bridge.
+const MAX_BRIDGE_FILE: u64 = 32 * 1024 * 1024;
+
+/// `path` (absolute, or relative to the project) if the extension may use
+/// it: inside the project (`files: project`), the home folder (`home`) or
+/// anywhere (`all`). Links are followed before checking, so a link in the
+/// project cannot lead outside.
+pub fn scoped_path(ext: &Extension, project: Option<&Path>, path: &str) -> Result<PathBuf> {
+    let access = ext.permissions.as_ref().map(|p| p.files).unwrap_or(FileAccess::None);
+    let root = match access {
+        FileAccess::None => bail!("„{}“ hat keinen Dateizugriff angemeldet", ext.title),
+        FileAccess::Project => project.context("kein Projekt geöffnet")?.to_path_buf(),
+        FileAccess::Home => dirs::home_dir().context("kein persönlicher Ordner")?,
+        FileAccess::All => PathBuf::from("/"),
+    };
+    let wanted = Path::new(path);
+    let joined = if wanted.is_absolute() {
+        wanted.to_path_buf()
+    } else {
+        project.context("ohne Projekt nur absolute Pfade")?.join(wanted)
+    };
+    if joined.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        bail!("„..“ ist in Pfaden nicht erlaubt");
+    }
+    // The nearest existing folder decides (the file may not exist yet).
+    let mut existing = joined.as_path();
+    let mut rest = Vec::new();
+    while !existing.exists() {
+        rest.push(existing.file_name().context("ungültiger Pfad")?.to_owned());
+        existing = existing.parent().context("ungültiger Pfad")?;
+    }
+    let mut real = existing.canonicalize()?;
+    for part in rest.into_iter().rev() {
+        real.push(part);
+    }
+    let root = root.canonicalize().unwrap_or(root);
+    if !real.starts_with(&root) {
+        bail!("„{}“ liegt außerhalb dessen, was „{}“ angemeldet hat ({})", path, ext.title, access.as_str());
+    }
+    Ok(real)
+}
+
+/// Answers a request of a view's page (`atlas.call(method, params)`):
+///
+/// - `context`: project, settings (without secrets), permissions
+/// - `listFiles {dir, pattern?}`: entries of a folder
+/// - `readFile {path}` → text, `writeFile {path, text}` (atomic, creates
+///   folders), `exists {path}`
+/// - `renameFile {path, name}` → new path, `trashFile {path}`
+///
+/// Paths are checked with [`scoped_path`]. Opening files, messages and the
+/// theme are answered by the user interface.
+pub fn call(
+    ext: &Extension,
+    project: Option<&Path>,
+    settings: &toml::Table,
+    method: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let text = |key: &str| params[key].as_str().with_context(|| format!("„{key}“ fehlt"));
+    let path = |key: &str| -> Result<PathBuf> { scoped_path(ext, project, text(key)?) };
+    Ok(match method {
+        "context" => {
+            let values: serde_json::Map<String, serde_json::Value> = ext
+                .setting_values(settings)
+                .into_iter()
+                .filter(|(s, _)| s.kind != SettingKind::Secret)
+                .map(|(s, v)| (s.key.clone(), serde_json::to_value(v).unwrap_or_default()))
+                .collect();
+            json!({
+                "extension": ext.name,
+                "project": project.map(|p| p.to_string_lossy().into_owned()),
+                "settings": values,
+                "files": ext.permissions.as_ref().map(|p| p.files.as_str()).unwrap_or("none"),
+            })
+        }
+        "listFiles" => {
+            let dir = path("dir")?;
+            let pattern = match params["pattern"].as_str() {
+                Some(p) => Some(globs(&[p.to_owned()])?),
+                None => None,
+            };
+            let mut out = Vec::new();
+            if dir.is_dir() {
+                for entry in std::fs::read_dir(&dir)?.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    let meta = entry.metadata()?;
+                    if name.starts_with('.') || pattern.as_ref().is_some_and(|g| !meta.is_dir() && !g.is_match(&name)) {
+                        continue;
+                    }
+                    let modified = meta
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or_default();
+                    out.push(json!({
+                        "name": name,
+                        "path": entry.path().to_string_lossy(),
+                        "dir": meta.is_dir(),
+                        "size": meta.len(),
+                        "modified": modified,
+                    }));
+                }
+            }
+            out.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+            json!(out)
+        }
+        "readFile" => {
+            let file = path("path")?;
+            if std::fs::metadata(&file).with_context(|| format!("{} fehlt", file.display()))?.len() > MAX_BRIDGE_FILE {
+                bail!("{} ist zu groß", file.display());
+            }
+            json!(std::fs::read_to_string(&file).with_context(|| format!("{} ist nicht lesbar", file.display()))?)
+        }
+        "writeFile" => {
+            let file = path("path")?;
+            let content = text("text")?;
+            if content.len() as u64 > MAX_BRIDGE_FILE {
+                bail!("zu viel Text");
+            }
+            if file.is_dir() {
+                bail!("{} ist ein Ordner", file.display());
+            }
+            crate::paths::write_atomic(&file, content.as_bytes())?;
+            json!(file.to_string_lossy())
+        }
+        "exists" => json!(path("path")?.exists()),
+        "renameFile" => {
+            let file = path("path")?;
+            let renamed = crate::fileops::rename(&file, text("name")?)?;
+            json!(scoped_path(ext, project, &renamed.to_string_lossy())?.to_string_lossy())
+        }
+        "trashFile" => {
+            crate::fileops::trash(&[path("path")?])?;
+            json!(true)
+        }
+        other => bail!("unbekannte Anfrage „{other}“"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1377,7 +1614,7 @@ mod tests {
     fn test_plugin_installs_and_runs() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("extensions");
-        let ext_dir = install_test_plugin(&root).unwrap();
+        let ext_dir = install_bundled(&root, TEST_PLUGIN_NAME).unwrap();
         let mut ext = load(&ext_dir, Location::User);
         assert!(ext.errors.is_empty(), "{:?}", ext.errors);
         assert_eq!((ext.api, ext.settings.len(), ext.actions.len()), (2, 5, 2));
@@ -1414,8 +1651,56 @@ mod tests {
         assert_eq!(text.matches("SERVUS aus dem Test-Plugin!").count(), 2, "{text}");
 
         // Installing again updates the files and keeps the settings.
-        install_test_plugin(&root).unwrap();
+        install_bundled(&root, TEST_PLUGIN_NAME).unwrap();
         assert!(load_settings(&config).contains_key(TEST_PLUGIN_NAME));
+    }
+
+    #[test]
+    fn bnki_view_and_bridge_stay_in_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = install_bundled(&dir.path().join("extensions"), "bnki").unwrap();
+        let ext = load(&ext_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        assert_eq!(ext.views.len(), 1);
+        let view = &ext.views[0];
+        assert_eq!((view.id.as_str(), view.page.as_str()), ("view:bnki/editor", "editor.html"));
+        assert_eq!(view.keybinding.as_deref(), Some("Ctrl+Alt+B"));
+        let project = dir.path().join("projekt");
+        std::fs::create_dir(&project).unwrap();
+        assert!(view.applies(&project.join("stapel.csv"), Some(&project)));
+        assert!(!view.applies(&project.join("notiz.md"), Some(&project)));
+
+        let settings = toml::Table::new();
+        let call = |method: &str, params: serde_json::Value| call(&ext, Some(&project), &settings, method, &params);
+        let ctx = call("context", serde_json::json!({})).unwrap();
+        assert_eq!(ctx["settings"]["ordner"], "bnki");
+        assert_eq!(ctx["files"], "project");
+
+        // A deck: written (folder created), listed, read, renamed.
+        let csv = "front;back;hint;tags\nFrage;Antwort;;bio\n";
+        let written = call("writeFile", serde_json::json!({ "path": "bnki/Bio.csv", "text": csv })).unwrap();
+        let real = project.canonicalize().unwrap().join("bnki/Bio.csv");
+        assert_eq!(written, real.to_string_lossy().as_ref());
+        let listed = call("listFiles", serde_json::json!({ "dir": "bnki", "pattern": "*.csv" })).unwrap();
+        assert_eq!(listed[0]["name"], "Bio.csv");
+        assert_eq!(call("readFile", serde_json::json!({ "path": written })).unwrap(), csv);
+        assert_eq!(call("exists", serde_json::json!({ "path": "bnki/Bio.csv" })).unwrap(), true);
+        let renamed = call("renameFile", serde_json::json!({ "path": "bnki/Bio.csv", "name": "Zelle.csv" })).unwrap();
+        assert!(renamed.as_str().unwrap().ends_with("/bnki/Zelle.csv"));
+
+        // Outside the project: refused – also through „..“ or a link.
+        for path in ["/etc/passwd", "../geheim.txt", "bnki/../../geheim.txt"] {
+            let err = call("readFile", serde_json::json!({ "path": path })).unwrap_err().to_string();
+            assert!(err.contains("außerhalb") || err.contains(".."), "{path}: {err}");
+        }
+        std::fs::write(dir.path().join("geheim.txt"), "x").unwrap();
+        std::os::unix::fs::symlink(dir.path(), project.join("raus")).unwrap();
+        assert!(call("readFile", serde_json::json!({ "path": "raus/geheim.txt" })).is_err());
+        assert!(call("writeFile", serde_json::json!({ "path": "raus/neu.txt", "text": "x" })).is_err());
+        assert!(!dir.path().join("neu.txt").exists());
+        assert!(call("unbekannt", serde_json::json!({})).is_err());
+        // Without a project nothing is reachable.
+        assert!(super::call(&ext, None, &settings, "readFile", &serde_json::json!({ "path": "/etc/passwd" })).is_err());
     }
 
     #[test]
@@ -1458,7 +1743,8 @@ processors:
         assert_eq!(ext.actions[0].keybinding.as_deref(), Some("Ctrl+Alt+J"));
         assert_eq!((ext.actions[0].in_menu, ext.actions[0].in_palette), (false, true));
         assert_eq!(ext.processors.len(), 1, "sh is not declared");
-        for wanted in ["zahl", "„curl“ fehlt", "„sh“ fehlt", "ATLAS_SETTING_TOKEN", "„{setting:anders}“ fehlt"] {
+        for wanted in ["zahl", "„curl“ fehlt", "„sh“ fehlt", "ATLAS_SETTING_TOKEN", "„{setting:anders}“ fehlt"]
+        {
             assert!(ext.errors.iter().any(|e| e.contains(wanted)), "{wanted}: {:?}", ext.errors);
         }
 

@@ -34,6 +34,8 @@ Item {
     /// Open `path` in a tab with viewer state (e.g. `{processor: id}`).
     signal openWithState(string path, var state)
     signal extensionsRequested()
+    /// Show `path` in the explorer (e.g. asked by an extension view).
+    signal revealRequested(string path)
     /// Open a terminal in `dir`; `where`: "panel", "tab" or "split".
     signal openTerminalRequested(string dir, string where)
     /// Put `text` (terminal output) into a note; `cwd` suggests a folder.

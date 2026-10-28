@@ -719,13 +719,42 @@ pub mod qobject {
         /// it, a secret is a text); error text or "".
         #[qinvokable]
         #[cxx_name = "setExtensionSetting"]
-        fn set_extension_setting(self: Pin<&mut AppController>, name: &QString, key: &QString, value: &QString) -> QString;
+        fn set_extension_setting(
+            self: Pin<&mut AppController>,
+            name: &QString,
+            key: &QString,
+            value: &QString,
+        ) -> QString;
 
-        /// Installs (or updates) the test plugin that comes with Atlas;
-        /// error text or "".
+        /// Extensions that come with Atlas: JSON list of {name, title,
+        /// description, installed}.
         #[qinvokable]
-        #[cxx_name = "installTestPlugin"]
-        fn install_test_plugin(self: Pin<&mut AppController>) -> QString;
+        #[cxx_name = "bundledExtensions"]
+        fn bundled_extensions(self: &AppController) -> QString;
+
+        /// Installs (or updates) the bundled extension `name`; error text
+        /// or "".
+        #[qinvokable]
+        #[cxx_name = "installBundled"]
+        fn install_bundled(self: Pin<&mut AppController>, name: &QString) -> QString;
+
+        /// Views of active extensions: JSON list of {id, name, extension,
+        /// keybinding}.
+        #[qinvokable]
+        #[cxx_name = "extensionViews"]
+        fn extension_views(self: &AppController) -> QString;
+
+        /// The page of view `id` (`view:<extension>/<id>`): JSON {url, name,
+        /// extension, network} or {error}.
+        #[qinvokable]
+        #[cxx_name = "extensionView"]
+        fn extension_view(self: &AppController, id: &QString) -> QString;
+
+        /// A request of a view's page (see atlas_core::extensions::call):
+        /// JSON {ok, value} or {ok: false, error}.
+        #[qinvokable]
+        #[cxx_name = "extensionCall"]
+        fn extension_call(self: &AppController, name: &QString, method: &QString, params: &QString) -> QString;
 
         /// Key sequences of actions and active extensions: JSON list of
         /// {sequence, id, name}.
@@ -2625,7 +2654,18 @@ impl qobject::AppController {
                         taken.push((key, format!("Erweiterung {}", e.name)));
                     }
                 }
+                let mut view_errors = Vec::new();
+                for view in &mut e.views {
+                    let Some(key) = view.keybinding.clone() else { continue };
+                    if let Some((_, owner)) = taken.iter().find(|(k, _)| *k == key) {
+                        view_errors.push(format!("„{}“: {key} ist schon belegt ({owner})", view.name));
+                        view.keybinding = None;
+                    } else if status == extensions::Status::Active {
+                        taken.push((key, format!("Erweiterung {}", e.name)));
+                    }
+                }
                 e.errors.extend(errors);
+                e.errors.extend(view_errors);
                 (e, status)
             })
             .collect()
@@ -2678,6 +2718,9 @@ impl qobject::AppController {
                     "exporters": e.exporters.iter().map(|x| serde_json::json!({
                         "name": x.name, "applies_to": x.applies_to, "target": x.target, "command": commands(&x.command),
                     })).collect::<Vec<_>>(),
+                    "views": e.views.iter().map(|v| serde_json::json!({
+                        "id": v.id, "name": v.name, "page": v.page, "applies_to": v.applies_to, "keybinding": v.keybinding,
+                    })).collect::<Vec<_>>(),
                 })
             })
             .collect();
@@ -2709,25 +2752,97 @@ impl qobject::AppController {
         result
     }
 
-    pub fn install_test_plugin(mut self: Pin<&mut Self>) -> QString {
+    pub fn bundled_extensions(&self) -> QString {
         let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
-        let result = match atlas_core::extensions::install_test_plugin(&root) {
+        let list: Vec<_> = atlas_core::extensions::BUNDLED
+            .iter()
+            .map(|b| {
+                serde_json::json!({
+                    "name": b.name, "title": b.title, "description": b.description,
+                    "installed": root.join(b.name).join(atlas_core::extensions::MANIFEST).is_file(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn install_bundled(mut self: Pin<&mut Self>, name: &QString) -> QString {
+        let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
+        let result = match atlas_core::extensions::install_bundled(&root, &name.to_string()) {
             Ok(_) => QString::default(),
-            Err(err) => qs(format!("Test-Plugin: {err:#}")),
+            Err(err) => qs(format!("{err:#}")),
         };
         self.as_mut().refresh_extensions();
         result
     }
 
+    pub fn extension_views(&self) -> QString {
+        let list: Vec<_> = self
+            .active_extensions()
+            .iter()
+            .flat_map(|e| e.views.iter())
+            .map(|v| serde_json::json!({ "id": v.id, "name": v.name, "extension": v.extension, "keybinding": v.keybinding }))
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn extension_view(&self, id: &QString) -> QString {
+        let id = id.to_string();
+        let found = self
+            .active_extensions()
+            .into_iter()
+            .find_map(|e| e.views.iter().find(|v| v.id == id).cloned().map(|v| (v, e)));
+        let result = match found {
+            None => {
+                serde_json::json!({ "error": format!("Die Ansicht „{id}“ ist nicht (mehr) aktiv – Erweiterung ausgeschaltet, nicht freigegeben oder entfernt.") })
+            }
+            Some((view, ext)) => {
+                crate::qt_helpers::set_extension_dir(&qs(&ext.name), &qs(ext.dir.to_string_lossy()));
+                let page: String = view.page.split('/').map(|p| url_escape(p)).collect::<Vec<_>>().join("/");
+                serde_json::json!({
+                    "url": format!("atlas://app/ext/{}/{page}", ext.name),
+                    "name": view.name,
+                    "extension": ext.name,
+                    "network": ext.permissions.as_ref().is_some_and(|p| !p.network.is_empty()),
+                })
+            }
+        };
+        qs(result.to_string())
+    }
+
+    pub fn extension_call(&self, name: &QString, method: &QString, params: &QString) -> QString {
+        let name = name.to_string();
+        let result = (|| -> anyhow::Result<serde_json::Value> {
+            let ext = self
+                .active_extensions()
+                .into_iter()
+                .find(|e| e.name == name)
+                .ok_or_else(|| anyhow::anyhow!("Die Erweiterung „{name}“ ist nicht aktiv."))?;
+            let params: serde_json::Value = serde_json::from_str(&params.to_string()).unwrap_or_default();
+            let settings = atlas_core::extensions::load_settings(&atlas_core::config::config_dir());
+            atlas_core::extensions::call(&ext, self.root.as_deref(), &settings, &method.to_string(), &params)
+        })();
+        qs(match result {
+            Ok(value) => serde_json::json!({ "ok": true, "value": value }),
+            Err(err) => serde_json::json!({ "ok": false, "error": format!("{err:#}") }),
+        }
+        .to_string())
+    }
+
     pub fn keybindings(&self) -> QString {
         let (actions, _) = self.load_actions();
         let mut seen = std::collections::HashSet::new();
-        let list: Vec<_> = actions
+        let mut list: Vec<_> = actions
             .iter()
             .filter_map(|a| a.keybinding.as_ref().map(|k| (k, a)))
             .filter(|(k, _)| seen.insert(k.to_string()))
             .map(|(k, a)| serde_json::json!({ "sequence": k, "id": a.id, "name": a.name }))
             .collect();
+        for ext in self.active_extensions() {
+            for view in ext.views.iter().filter(|v| v.keybinding.as_ref().is_some_and(|k| seen.insert(k.clone()))) {
+                list.push(serde_json::json!({ "sequence": view.keybinding, "id": view.id, "name": view.name }));
+            }
+        }
         qs(serde_json::Value::from(list).to_string())
     }
 
@@ -2798,6 +2913,13 @@ impl qobject::AppController {
             .map(|p| {
                 serde_json::json!({ "id": p.id, "name": p.name, "extension": p.extension, "output": p.output.as_str(), "auto": p.auto })
             })
+            .chain(
+                self.active_extensions()
+                    .iter()
+                    .flat_map(|e| e.views.iter())
+                    .filter(|v| v.applies(&file, self.root.as_deref()))
+                    .map(|v| serde_json::json!({ "id": v.id, "name": v.name, "extension": v.extension, "output": "view", "auto": v.auto })),
+            )
             .collect();
         qs(serde_json::Value::from(list).to_string())
     }
@@ -3153,6 +3275,17 @@ pub fn file_kind(path: &Path) -> &'static str {
             if buf[..n].contains(&0) { "binary" } else { "text" }
         }
     }
+}
+
+/// `segment` for a URL path (everything but unreserved characters escaped).
+fn url_escape(segment: &str) -> String {
+    segment
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 fn percent_decode(s: &str) -> String {

@@ -30,9 +30,12 @@ Dialog {
     property int extensionCount: 0
     /// Extensions with settings (shown with their form).
     property var configurable: []
+    /// Extensions that come with Atlas.
+    property var bundled: []
     function reloadExtensions() {
         let list = []
         try { list = JSON.parse(dialog.app.extensions()) } catch (e) {}
+        try { bundled = JSON.parse(dialog.app.bundledExtensions()) } catch (e) { bundled = [] }
         extensionCount = list.length
         configurable = list.filter(e => e.settings.length > 0 && e.status !== "broken")
     }
@@ -521,29 +524,55 @@ Dialog {
                         }
                     }
                 }
+                // Extensions that come with Atlas, installed with one click.
                 Card {
                     Layout.fillWidth: true
-                    visible: dialog.configurable.length === 0
-                    implicitHeight: noExtRow.implicitHeight + 24
-                    RowLayout {
-                        id: noExtRow
-                        anchors.fill: parent
+                    implicitHeight: bundledColumn.implicitHeight + 24
+                    ColumnLayout {
+                        id: bundledColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
                         anchors.margins: 12
-                        spacing: 12
-                        Icon { name: "grid"; size: 18; color: Theme.accent }
+                        spacing: 8
                         Text {
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
                             color: Theme.textMuted
                             font.pixelSize: Theme.smallFontSize
-                            text: qsTr("Keine Erweiterung mit Einstellungen installiert. Das Test-Plugin zeigt, wie es aussieht.")
+                            text: dialog.configurable.length === 0
+                                ? qsTr("Keine Erweiterung mit Einstellungen installiert. Mitgeliefert:")
+                                : qsTr("Mitgeliefert:")
                         }
-                        Button {
-                            text: qsTr("Test-Plugin installieren")
-                            onClicked: {
-                                const error = dialog.app.installTestPlugin()
-                                if (dialog.actions) dialog.actions.showMessage(error || qsTr("Test-Plugin installiert – Strg+Alt+T grüßt"))
-                                dialog.reloadExtensions()
+                        Repeater {
+                            model: dialog.bundled
+                            RowLayout {
+                                id: bundledRow
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 12
+                                Icon { name: "grid"; size: 18; color: Theme.accent }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+                                    Text { text: bundledRow.modelData.title; color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: bundledRow.modelData.description
+                                        color: Theme.textMuted
+                                        font.pixelSize: Theme.smallFontSize
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                                Button {
+                                    text: bundledRow.modelData.installed ? qsTr("Aktualisieren") : qsTr("Installieren")
+                                    flat: bundledRow.modelData.installed
+                                    onClicked: {
+                                        const error = dialog.app.installBundled(bundledRow.modelData.name)
+                                        if (dialog.actions) dialog.actions.showMessage(error || qsTr("„%1“ installiert").arg(bundledRow.modelData.title))
+                                        dialog.reloadExtensions()
+                                    }
+                                }
                             }
                         }
                     }

@@ -22,13 +22,31 @@ Kontextmenü (Aktionen → Erweiterungen …): Status, Beiträge, die genauen
 Befehle, Ein-/Ausschalten (in `config.toml`), Manifest öffnen, neue
 Erweiterung aus einer Vorlage anlegen.
 
-## Test-Plugin
+## Mitgelieferte Erweiterungen
 
-Atlas bringt ein Beispiel mit, das alles aus API 2 vorführt:
-„Test-Plugin installieren“ in den Einstellungen (Abschnitt
-„Erweiterungen“), im Erweiterungsdialog oder in der Arbeitsleiste legt es
-unter `~/.config/atlas/extensions/test-plugin/` an (erneut: aktualisiert,
-Einstellungen bleiben). Quelle: `crates/atlas-core/test-plugin/`.
+In den Einstellungen (Abschnitt „Erweiterungen“), im Erweiterungsdialog
+(„Mitgeliefert …“) und in der Arbeitsleiste installiert ein Klick sie nach
+`~/.config/atlas/extensions/<name>/`; erneut installieren aktualisiert die
+Dateien, die Einstellungen bleiben. Quelle: `crates/atlas-core/bundled/`.
+
+### bnki-Karten
+
+Karteikarten für die bnki-App schreiben, in einem eigenen Tab
+(**Strg+Alt+B**, „Öffnen: bnki-Karten“ in der Arbeitsleiste, oder auf einer
+CSV-Datei „Anzeigen mit → bnki-Karten“).
+
+- Jeder Stapel ist eine CSV-Datei (`front;back;hint;tags`) im Ordner
+  `bnki/` des Projekts (Einstellung „Ordner der Stapel“). Jede Änderung
+  wird sofort gespeichert; ein gelöschter Stapel liegt im Papierkorb.
+- Vorschau wie in der App: Formeln `$…$` und `$$…$$` (KaTeX von Atlas,
+  ohne Internet), Codeblöcke mit ` ``` `.
+- Aufs Handy: „Im Explorer“ zeigt die Datei; in bnki „Stapel öffnen →
+  CSV importieren“.
+- Rechte: nur Dateien im Projekt, kein Netzwerk, keine Programme.
+
+### Test-Plugin
+
+Ein Beispiel, das Befehle, Einstellungen, Anzeige und Exporter vorführt.
 
 - „Test-Plugin: Grüßen“ (Strg+Alt+T, Arbeitsleiste und Kontextmenü)
   gibt die Begrüßung aus den Einstellungen im Terminal aus.
@@ -93,6 +111,55 @@ im Format 1 sind keine Rechte angemeldet, ihre Befehle dürfen alles, was du
 darfst. Braucht eine Erweiterung eine neuere API, als Atlas kennt
 (`atlas_api: 3`), lädt Atlas sie nicht und sagt das.
 
+### Ansichten
+
+Eine Ansicht ist eine HTML-Seite der Erweiterung, die Atlas als Tab zeigt
+– für eigene Editoren und Werkzeuge:
+
+```yaml
+views:
+  - id: editor
+    name: bnki-Karten
+    page: editor.html           # im Ordner der Erweiterung
+    applies_to: "*.csv"         # optional: „Anzeigen mit“ für solche Dateien
+    auto: false                 # true: passende Dateien gleich so öffnen
+    keybinding: Ctrl+Alt+B      # optional
+```
+
+Geöffnet wird sie über die Arbeitsleiste („Öffnen: …“) oder das Kürzel
+auf dem Projektordner, über „Anzeigen mit“ auf einer passenden Datei. Die
+Seite läuft im Prozess von Chromium (wie die Markdown-Vorschau), unter
+`atlas://app/ext/<name>/…`; sie erreicht nur Dateien ihres eigenen Ordners
+und das Netz nur mit `network` in den Rechten. Mit Atlas spricht sie über
+die Brücke:
+
+```html
+<script src="atlas://app/web/extension.js"></script>
+<script>
+  atlas.ready.then(async (ctx) => {        // {extension, project, file, settings, files, theme}
+    const text = await atlas.call("readFile", { path: "notizen/a.md" })
+    await atlas.call("writeFile", { path: "export/a.txt", text })
+  })
+</script>
+```
+
+| Anfrage | Ergebnis |
+|---|---|
+| `context` | Projekt, Datei oder Ordner des Tabs (`file`), Einstellungen (ohne Geheimnisse), `files` |
+| `listFiles {dir, pattern?}` | Einträge `{name, path, dir, size, modified}` |
+| `readFile {path}` / `writeFile {path, text}` | Text; Schreiben ist atomar und legt Ordner an |
+| `exists {path}` | `true`/`false` |
+| `renameFile {path, name}` | neuer Pfad |
+| `trashFile {path}` | in den Papierkorb |
+| `atlas.open(path)`, `atlas.reveal(path)`, `atlas.message(text)` | Datei in Atlas öffnen, im Explorer zeigen, Meldung |
+
+Pfade sind absolut oder relativ zum Projekt. Atlas prüft **jeden** Pfad
+gegen `permissions: files` – `project` heißt nur im Projekt (auch nicht
+über symbolische Links oder `..` hinaus), `home` im persönlichen Ordner,
+`none` gar nicht. Die Farben von Atlas stehen als CSS-Variablen bereit
+(`--atlas-editor`, `--atlas-text`, `--atlas-accent`, …), KaTeX unter
+`atlas://app/web/vendor/katex/`.
+
 ### Rechte
 
 `permissions` sagt, was die Erweiterung braucht; Atlas zeigt es in der
@@ -105,9 +172,10 @@ Liste und vor der Freigabe einer Projekt-Erweiterung.
   selbst in `run` stehen). Shell-Befehle
   (`shell: true`) brauchen `sh` in der Liste. Andere Befehle lädt Atlas
   nicht und meldet sie als Fehler.
-- **`files`** und **`network`** sind Angaben der Erweiterung. Ihre Skripte
-  können sie (noch) überschreiten; eine Sandbox, die sie durchsetzt, ist
-  geplant.
+- **`files`** und **`network`** gelten für Ansichten: Ihre Seite kommt nur
+  an Dateien, die `files` erlaubt, und ins Netz nur mit `network`. Für
+  Skripte der Erweiterung sind es Angaben, die sie (noch) überschreiten
+  können; eine Sandbox, die sie durchsetzt, ist geplant.
 
 ### Befehle
 

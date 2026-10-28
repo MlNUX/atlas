@@ -21,6 +21,7 @@ const QML_FILES: &[&str] = &[
     "qml/EntryDialog.qml",
     "qml/ExtensionsDialog.qml",
     "qml/ExtensionSettings.qml",
+    "qml/ExtensionView.qml",
     "qml/FileActions.qml",
     "qml/FolderView.qml",
     "qml/Icon.qml",

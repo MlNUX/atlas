@@ -41,6 +41,8 @@ Dialog {
         return e.actions.map(a => "▶ " + a.name + (a.keybinding ? " [" + a.keybinding + "]" : "") + ":  " + a.command)
             .concat(e.processors.map(p => "👁 " + p.name + " (" + p.applies_to.join(", ") + " → " + p.output + "):  " + p.command))
             .concat(e.exporters.map(x => "⇪ " + x.name + " (→ ." + x.target + "):  " + x.command))
+            .concat((e.views || []).map(v => "▣ " + v.name + (v.keybinding ? " [" + v.keybinding + "]" : "") + ":  " + qsTr("Ansicht %1").arg(v.page)
+                + (v.applies_to.length ? " (" + v.applies_to.join(", ") + ")" : "")))
     }
 
     /// What the extension says it needs (API 2), as lines.
@@ -147,9 +149,9 @@ Dialog {
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: qsTr("%1 Aktion(en) · %2 Anzeige(n) · %3 Exporter · %4")
+                        text: qsTr("%1 Aktion(en) · %2 Anzeige(n) · %3 Exporter · %4 Ansicht(en) · %5")
                             .arg(card.modelData.actions.length).arg(card.modelData.processors.length)
-                            .arg(card.modelData.exporters.length).arg(card.modelData.name)
+                            .arg(card.modelData.exporters.length).arg((card.modelData.views || []).length).arg(card.modelData.name)
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
                     }
@@ -257,12 +259,26 @@ Dialog {
             IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: dialog.reload() }
             Item { Layout.fillWidth: true }
             Button {
-                text: qsTr("Test-Plugin installieren")
+                id: bundledButton
+                text: qsTr("Mitgeliefert …")
                 flat: true
-                onClicked: {
-                    const error = dialog.app.installTestPlugin()
-                    if (dialog.actions) dialog.actions.showMessage(error || qsTr("Test-Plugin installiert – Strg+Alt+T grüßt"))
-                    dialog.reload()
+                onClicked: bundledMenu.popup(bundledButton, 0, bundledButton.height)
+                Menu {
+                    id: bundledMenu
+                    Instantiator {
+                        model: bundledMenu.visible ? JSON.parse(dialog.app.bundledExtensions()) : []
+                        delegate: MenuItem {
+                            required property var modelData
+                            text: (modelData.installed ? qsTr("Aktualisieren: %1") : qsTr("Installieren: %1")).arg(modelData.title)
+                            onTriggered: {
+                                const error = dialog.app.installBundled(modelData.name)
+                                if (dialog.actions) dialog.actions.showMessage(error || qsTr("„%1“ installiert").arg(modelData.title))
+                                dialog.reload()
+                            }
+                        }
+                        onObjectAdded: (index, object) => bundledMenu.insertItem(index, object)
+                        onObjectRemoved: (index, object) => bundledMenu.removeItem(object)
+                    }
                 }
             }
             Button { text: qsTr("Neue Erweiterung …"); onClicked: dialog.askNew() }

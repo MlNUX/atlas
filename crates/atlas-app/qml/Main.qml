@@ -56,6 +56,7 @@ ApplicationWindow {
         }
         function onOpenWithState(path, state) { editor.open(path, 0, "tab", state) }
         function onExtensionsRequested() { extensionsDialog.open() }
+        function onRevealRequested(path) { window.revealInTree(path) }
         function onRunInTerminalTab(command, cwd) {
             editor.open("terminal:" + cwd + "#" + (++window.terminalTabs), 0, "tab", { command: command })
         }
@@ -185,8 +186,7 @@ ApplicationWindow {
             { name: qsTr("Neue Frist …"), run: () => window.newCalendarEntry("deadline") },
             { name: qsTr("Neue Aufgabe …"), run: () => window.newCalendarEntry("task") },
             { name: qsTr("Einstellungen …"), hint: qsTr("Orte, Editor, Kalender"), run: () => settingsDialog.open() },
-            { name: qsTr("Test-Plugin installieren"), hint: qsTr("Beispiel-Erweiterung"),
-              run: () => { const error = app.installTestPlugin(); fileActions.showMessage(error || qsTr("Test-Plugin installiert – Strg+Alt+T grüßt")) } },
+
             { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
         ]
         if (calendar.connected) {
@@ -245,6 +245,13 @@ ApplicationWindow {
             for (const p of fileActions.processorsFor(current))
                 list.push({ name: qsTr("Anzeigen mit: %1").arg(p.name), hint: p.extension, run: () => editor.open(current, 0, "tab", { processor: p.id }) })
         }
+        // Extensions that come with Atlas.
+        for (const b of JSON.parse(app.bundledExtensions()))
+            list.push({ name: (b.installed ? qsTr("Erweiterung aktualisieren: %1") : qsTr("Erweiterung installieren: %1")).arg(b.title), hint: qsTr("mitgeliefert"),
+                        run: () => { const error = app.installBundled(b.name); fileActions.showMessage(error || qsTr("„%1“ installiert").arg(b.title)) } })
+        // Views of extensions, opened on the project.
+        for (const v of JSON.parse(app.extensionViews()))
+            list.push({ name: qsTr("Öffnen: %1").arg(v.name), hint: v.keybinding || v.extension, run: () => window.openExtensionView(v.id, "") })
         list.push({ name: qsTr("Erweiterungen verwalten …"), run: () => extensionsDialog.open() })
         list.push({ name: qsTr("Neue Erweiterung …"), run: () => { extensionsDialog.open(); extensionsDialog.askNew() } })
         return list
@@ -623,9 +630,18 @@ ApplicationWindow {
             onActivated: window.runKeyAction(modelData)
         }
     }
+    /// Opens view `id` of an extension on `path` if it fits, otherwise on
+    /// the project.
+    function openExtensionView(id, path) {
+        const fits = path && fileActions.processorsFor(path).some(p => p.id === id)
+        const target = fits ? path : app.projectRoot
+        if (target) editor.open(target, 0, "tab", { processor: id })
+        else fileActions.showMessage(qsTr("Erst einen Projektordner öffnen"))
+    }
     function runKeyAction(binding) {
         const tab = editor.activeTab
         const current = tab && tab.path && app.exists(tab.path) ? tab.path : ""
+        if (binding.id.startsWith("view:")) return window.openExtensionView(binding.id, current)
         const viewer = tab ? tab.viewerItem : null
         const textEditor = viewer && viewer.editorItem ? viewer.editorItem : viewer && viewer.currentLine ? viewer : null
         const line = textEditor && textEditor.currentLine ? textEditor.currentLine() : 0

@@ -55,7 +55,9 @@ Rectangle {
     /// click opens a file for good, like a double click.
     function openTab(path, line, mode, state) {
         if (mode === "preview" && !group.temporary) mode = "tab"
-        let index = indexOfPath(path)
+        // A view of an extension is a tab of its own beside the file.
+        const wantsView = !!(state && state.processor && String(state.processor).startsWith("view:"))
+        let index = tabs.findIndex(t => t.path === path && (t.processor || "").startsWith("view:") === wantsView)
         if (index >= 0) {
             if (mode !== "preview") tabs[index].preview = false
             if (line) tabs[index].reveal(line)
@@ -78,6 +80,7 @@ Rectangle {
             return tab
         }
         const props = { app: group.app, actions: group.actions, path: path, line: line || 0, preview: mode === "preview" }
+        if (wantsView) props.processor = state.processor
         const tab = group.editorArea ? group.editorArea.createDocument(props, content) : tabComponent.createObject(content, props)
         tab.parent = content
         if (state) tab.applyState(state)

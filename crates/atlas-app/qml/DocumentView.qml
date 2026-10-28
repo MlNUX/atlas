@@ -27,7 +27,8 @@ Item {
     /// Files without own viewer use an automatic processor if one fits.
     readonly property bool processed: processor !== ""
         || (kind === "binary" && JSON.parse(app.processorsFor(path)).some(p => p.auto))
-    readonly property string title: kind === "trash" ? qsTr("Papierkorb")
+    readonly property string title: processor.startsWith("view:") && viewer.item && viewer.item.title ? viewer.item.title
+        : kind === "trash" ? qsTr("Papierkorb")
         : kind === "calendar" ? qsTr("Kalender")
         : kind === "ilias" ? "ILIAS"
         : kind === "terminal" ? (viewer.item && viewer.item.title ? viewer.item.title : qsTr("Terminal"))
@@ -123,7 +124,8 @@ Item {
     Loader {
         id: viewer
         anchors.fill: parent
-        sourceComponent: view.kind === "trash" ? trashComponent
+        sourceComponent: view.processor.startsWith("view:") && view.kind !== "missing" ? extensionViewComponent
+            : view.kind === "trash" ? trashComponent
             : view.kind === "dir" ? folderComponent
             : view.kind === "terminal" ? terminalComponent
             : view.kind === "calendar" ? calendarComponent
@@ -146,6 +148,16 @@ Item {
         }
     }
 
+    Component {
+        id: extensionViewComponent
+        // A view of an extension on this file or folder.
+        ExtensionView {
+            source: view.path
+            viewId: view.processor
+            app: view.app
+            actions: view.actions
+        }
+    }
     Component {
         id: trashComponent
         TrashView { actions: view.actions }

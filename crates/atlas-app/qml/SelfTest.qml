@@ -66,6 +66,8 @@ Item {
     property var fullscreenTab: null
     property var folderTab: null
     property var imageView: null
+    property var bnkiView: null
+    property var bnkiPage: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -514,7 +516,7 @@ Item {
                 app.setExtensionSetting("nb", "gruss", "null")
                 check("Einstellung zurückgesetzt", greetArgv().slice(-1)[0] === "hallo", greetArgv().join(" "))
                 // The test plugin: installed with one click, its settings in the settings dialog.
-                check("Test-Plugin installiert", app.installTestPlugin() === "")
+                check("Test-Plugin installiert", app.installBundled("test-plugin") === "")
                 const tp = JSON.parse(app.extensions()).find(e => e.name === "test-plugin") || {}
                 check("Test-Plugin aktiv, mit fünf Einstellungen", tp.status === "active" && (tp.settings || []).length === 5 && tp.errors.length === 0,
                       JSON.stringify([tp.status, tp.errors]))
@@ -534,6 +536,36 @@ Item {
                       tab ? tab.kind + " " + tab.processed + " " + tab.viewerItem : "kein Tab")
                 check("Export geöffnet", !!editor.viewerFor(path("notes/idee.txt")))
                 check("Export geschrieben", app.readTextFile(path("notes/idee.txt")).indexOf("Autosave-Test") >= 0)
+                // ---- Extension views: the bnki plugin in a tab
+                check("bnki-Karten installiert", app.installBundled("bnki") === "")
+                check("bnki: Ansicht mit Strg+Alt+B", JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+B" && k.id === "view:bnki/editor"), app.keybindings())
+                window.openExtensionView("view:bnki/editor", "")
+            },
+            () => {
+                const v = editor.activeTab ? editor.activeTab.viewerItem : null
+                if (waitFor(() => !!v && v.started === true)) return
+                check("bnki: Tab mit der Seite der Erweiterung", !!v && v.viewId === "view:bnki/editor" && editor.activeTab.title === "bnki-Karten" && v.started === true,
+                      editor.activeTab ? editor.activeTab.title + " " + (v ? v.started + " " + JSON.stringify(v.pageErrors) : "") : "kein Tab")
+                check("bnki: Ordner ohne Projekt-Ordner bleibt unangetastet", !app.exists(path("bnki")))
+                test.bnkiView = v
+                if (v) v.webItem.runJavaScript("createDeck('Biologie').then(() => { $('front').value = 'Was ist $E=mc^2$?'; $('back').value = 'Energie'; $('tags').value = 'physik';"
+                    + " $('cardForm').requestSubmit(); return true })")
+            },
+            () => {
+                const csv = app.readTextFile(path("bnki/Biologie.csv"))
+                if (waitFor(() => csv.indexOf("Energie") > 0)) return
+                check("bnki: Stapel als CSV-Datei im Projekt gespeichert", csv === "front;back;hint;tags\nWas ist $E=mc^2$?;Energie;;physik\n", JSON.stringify(csv))
+                const outside = JSON.parse(app.extensionCall("bnki", "readFile", JSON.stringify({ path: "/etc/hostname" })))
+                check("bnki: Dateien außerhalb des Projekts gesperrt", outside.ok === false && outside.error.indexOf("außerhalb") >= 0, JSON.stringify(outside))
+                test.bnkiView.webItem.runJavaScript("[typeof katex, document.querySelector('#cardList .katex') !== null, getComputedStyle(document.body).backgroundColor]",
+                    (r) => { test.bnkiPage = r })
+                editor.open(path("bnki/Biologie.csv"), 0, "tab", { processor: "view:bnki/editor" })
+            },
+            () => {
+                if (waitFor(() => !!test.bnkiPage)) return
+                check("bnki: KaTeX von Atlas, Formel in der Liste gesetzt", !!test.bnkiPage && test.bnkiPage[0] === "function" && test.bnkiPage[1] === true, JSON.stringify(test.bnkiPage))
+                const tab = editor.activeTab
+                check("bnki: CSV-Datei mit „Anzeigen mit“ als eigener Tab", !!tab && tab.title === "bnki-Karten – Biologie.csv" && tab.path === path("bnki/Biologie.csv"), tab ? tab.title : "kein Tab")
                 // ---- Phase 2: project calendar
                 window.openCalendar({ mode: "week", date: "2026-10-19" })
             },
