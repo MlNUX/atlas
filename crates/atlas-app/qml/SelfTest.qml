@@ -563,7 +563,8 @@ Item {
             },
             () => {
                 if (waitFor(() => !!test.bnkiPage)) return
-                check("bnki: KaTeX von Atlas, Formel in der Liste gesetzt", !!test.bnkiPage && test.bnkiPage[0] === "function" && test.bnkiPage[1] === true, JSON.stringify(test.bnkiPage))
+                check("bnki: KaTeX von Atlas, Formel in der Liste gesetzt", !!test.bnkiPage && test.bnkiPage[0] === "object" && test.bnkiPage[1] === true, JSON.stringify(test.bnkiPage))
+                check("bnki: Farben von Atlas", !!test.bnkiPage && test.bnkiPage[2] === "rgb(15, 23, 38)", JSON.stringify(test.bnkiPage))
                 const tab = editor.activeTab
                 check("bnki: CSV-Datei mit „Anzeigen mit“ als eigener Tab", !!tab && tab.title === "bnki-Karten – Biologie.csv" && tab.path === path("bnki/Biologie.csv"), tab ? tab.title : "kein Tab")
                 // ---- Phase 2: project calendar
