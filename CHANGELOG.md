@@ -15,7 +15,8 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   mehr nur für die `extension.yaml`: Ein Skript, das die Erweiterung
   aufruft (`{extension}/…`), ließ sich nach der Freigabe austauschen und
   lief ohne neue Nachfrage. Jetzt sperrt jede Änderung einer Datei, eines
-  Ausführrechts oder eines Link-Ziels die Erweiterung wieder; geprüft wird
+  Ausführrechts oder eines Link-Ziels (bei Links auf Ordner auch deren
+  Inhalt) die Erweiterung wieder; geprüft wird
   bei jeder Ausführung. Bereits freigegebene Projekt-Erweiterungen müssen
   einmal neu freigegeben werden.
 

@@ -92,7 +92,8 @@ Erweiterungen, die mit einem Projekt kommen, können beim Öffnen von Dateien
 Befehle ausführen. Atlas aktiviert sie deshalb erst, wenn sie geprüft und
 freigegeben wurden; der Dialog zeigt dabei alle Befehle. Die Freigabe gilt
 für den Ordner und **jede Datei darin** – Manifest, Skripte, Unterordner,
-Ausführrechte und das Ziel symbolischer Links
+Ausführrechte und das Ziel symbolischer Links, bei einem Link auf einen
+Ordner auch alles darin
 (`$XDG_STATE_HOME/atlas/trusted-extensions.json`, BLAKE3 über den ganzen
 Ordner). Ändert sich irgendetwas davon, ist die Erweiterung wieder
 gesperrt, bis sie erneut freigegeben wird; geprüft wird bei jeder

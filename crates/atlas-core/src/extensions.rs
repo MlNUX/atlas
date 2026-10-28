@@ -552,15 +552,25 @@ fn file_hash(path: &Path, meta: &std::fs::Metadata) -> Result<String> {
 
 /// BLAKE3 over the whole extension folder: every file's relative path,
 /// executable bit and content, every symbolic link's target (a link to a
-/// file also with that file's content) – so a trusted extension whose
-/// script changed is untrusted again, not only one whose manifest changed.
+/// file also with that file's content, a link to a folder with everything
+/// in it) – so a trusted extension whose script changed is untrusted again,
+/// not only one whose manifest changed.
 pub fn folder_hash(dir: &Path) -> Result<String> {
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"atlas-extension-folder-v2\0");
     let (mut files, mut bytes) = (0usize, 0u64);
-    let mut stack = vec![PathBuf::new()];
-    while let Some(rel) = stack.pop() {
+    // Folders on the current path, so that a link loop ends.
+    let mut stack = vec![(PathBuf::new(), Vec::<(u64, u64)>::new())];
+    while let Some((rel, mut parents)) = stack.pop() {
+        let meta = std::fs::metadata(dir.join(&rel))?;
+        if parents.contains(&(meta.dev(), meta.ino())) {
+            hasher.update(b"C");
+            hasher.update(rel.as_os_str().as_encoded_bytes());
+            hasher.update(b"\0");
+            continue;
+        }
+        parents.push((meta.dev(), meta.ino()));
         let mut entries: Vec<_> = std::fs::read_dir(dir.join(&rel))
             .with_context(|| format!("{} nicht lesbar", dir.join(&rel).display()))?
             .collect::<std::io::Result<_>>()?;
@@ -577,9 +587,14 @@ pub fn folder_hash(dir: &Path) -> Result<String> {
                 hasher.update(b"\0");
                 hasher.update(std::fs::read_link(&path)?.as_os_str().as_encoded_bytes());
                 hasher.update(b"\0");
-                // What it points to: a file counts with its content.
+                // What it points to: a file counts with its content, a
+                // folder with everything in it.
                 match std::fs::metadata(&path) {
                     Ok(m) if m.is_file() => Some(m),
+                    Ok(m) if m.is_dir() => {
+                        subdirs.push(rel.clone());
+                        None
+                    }
                     _ => None,
                 }
             } else if link.is_dir() {
@@ -603,7 +618,7 @@ pub fn folder_hash(dir: &Path) -> Result<String> {
             }
         }
         subdirs.reverse();
-        stack.extend(subdirs);
+        stack.extend(subdirs.into_iter().map(|rel| (rel, parents.clone())));
     }
     Ok(format!("v2:{}", hasher.finalize().to_hex()))
 }
@@ -963,6 +978,19 @@ mod tests {
         assert!(active());
         std::fs::write(&outside, "echo 2").unwrap();
         assert!(!active(), "the file a link points to counts too");
+        // A link to a folder counts with everything in it.
+        let werkzeuge = dir.path().join("werkzeuge");
+        std::fs::create_dir(&werkzeuge).unwrap();
+        std::fs::write(werkzeuge.join("run.sh"), "echo 1").unwrap();
+        std::os::unix::fs::symlink(&werkzeuge, ext_dir.join("werkzeuge")).unwrap();
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        assert!(active());
+        std::fs::write(werkzeuge.join("run.sh"), "echo 2").unwrap();
+        assert!(!active(), "a file behind a folder link counts too");
+        // A link loop ends instead of hanging.
+        std::os::unix::fs::symlink(&ext_dir, werkzeuge.join("zurueck")).unwrap();
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        assert!(active());
     }
 
     #[test]
