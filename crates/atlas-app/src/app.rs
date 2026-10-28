@@ -715,6 +715,17 @@ pub mod qobject {
         #[cxx_name = "refreshExtensions"]
         fn refresh_extensions(self: Pin<&mut AppController>);
 
+        /// Sets one setting of extension `name` (`value`: JSON; null resets
+        /// it, a secret is a text); error text or "".
+        #[qinvokable]
+        #[cxx_name = "setExtensionSetting"]
+        fn set_extension_setting(self: Pin<&mut AppController>, name: &QString, key: &QString, value: &QString) -> QString;
+
+        /// Key sequences of actions and active extensions: JSON list of
+        /// {sequence, id, name}.
+        #[qinvokable]
+        fn keybindings(self: &AppController) -> QString;
+
         /// Processors of active extensions for `path`: JSON list of {id,
         /// name, extension, output, auto}.
         #[qinvokable]
@@ -2578,18 +2589,37 @@ impl qobject::AppController {
         (actions, errors)
     }
 
-    /// All extensions with their status.
+    /// All extensions with their status and the user's settings. A key
+    /// sequence that an action or an earlier extension already uses is
+    /// dropped (with an error).
     fn extension_list(&self) -> Vec<(atlas_core::extensions::Extension, atlas_core::extensions::Status)> {
         use atlas_core::extensions;
+        let config_dir = atlas_core::config::config_dir();
         let project_root = self.project.as_ref().map(|p| extensions::project_root(&p.atlas_dir()));
-        let found =
-            extensions::discover(&extensions::user_root(&atlas_core::config::config_dir()), project_root.as_deref());
+        let found = extensions::discover(&extensions::user_root(&config_dir), project_root.as_deref());
         let trust = extensions::Trust::load(&atlas_core::paths::state_root());
         let disabled = Config::load().extensions.disabled;
+        let settings = extensions::load_settings(&config_dir);
+        let atlas_dir = self.project.as_ref().map(|p| p.atlas_dir());
+        let (own, _) = atlas_core::actions::load(atlas_dir.as_deref(), &config_dir);
+        let mut taken: Vec<(String, String)> =
+            own.iter().filter_map(|a| a.keybinding.clone().map(|k| (k, a.source.label()))).collect();
         found
             .into_iter()
-            .map(|e| {
+            .map(|mut e| {
+                e.apply_settings(&settings);
                 let status = extensions::status(&e, &trust, &disabled);
+                let mut errors = Vec::new();
+                for action in &mut e.actions {
+                    let Some(key) = action.keybinding.clone() else { continue };
+                    if let Some((_, owner)) = taken.iter().find(|(k, _)| *k == key) {
+                        errors.push(format!("„{}“: {key} ist schon belegt ({owner})", action.name));
+                        action.keybinding = None;
+                    } else if status == extensions::Status::Active {
+                        taken.push((key, format!("Erweiterung {}", e.name)));
+                    }
+                }
+                e.errors.extend(errors);
                 (e, status)
             })
             .collect()
@@ -2605,6 +2635,7 @@ impl qobject::AppController {
 
     pub fn extensions(&self) -> QString {
         use atlas_core::extensions::Location;
+        let settings = atlas_core::extensions::load_settings(&atlas_core::config::config_dir());
         let list: Vec<_> = self
             .extension_list()
             .iter()
@@ -2613,17 +2644,28 @@ impl qobject::AppController {
                     atlas_core::actions::Command::Argv(argv) => argv.join(" "),
                     atlas_core::actions::Command::Shell(s) => format!("sh -c {s}"),
                 };
+                let values = e.setting_values(&settings);
                 serde_json::json!({
                     "name": e.name,
                     "title": e.title,
                     "version": e.version,
                     "description": e.description,
+                    "api": e.api,
+                    "permissions": e.permissions.as_ref().map(|p| serde_json::json!({
+                        "run": p.run, "files": p.files.as_str(), "network": p.network,
+                    })),
+                    "settings": values.iter().map(|(s, value)| serde_json::json!({
+                        "key": s.key, "title": s.title, "description": s.description, "type": s.kind.as_str(),
+                        "choices": s.choices, "value": value, "default": s.default,
+                    })).collect::<Vec<_>>(),
                     "dir": e.dir.to_string_lossy(),
                     "manifest": e.dir.join(atlas_core::extensions::MANIFEST).to_string_lossy(),
                     "location": if e.location == Location::User { "user" } else { "project" },
                     "status": status.as_str(),
                     "errors": e.errors,
-                    "actions": e.actions.iter().map(|a| serde_json::json!({ "name": a.name, "command": commands(&a.command) })).collect::<Vec<_>>(),
+                    "actions": e.actions.iter().map(|a| serde_json::json!({
+                        "name": a.name, "command": commands(&a.command), "keybinding": a.keybinding,
+                    })).collect::<Vec<_>>(),
                     "processors": e.processors.iter().map(|p| serde_json::json!({
                         "name": p.name, "applies_to": p.applies_to, "output": p.output.as_str(), "command": commands(&p.command),
                     })).collect::<Vec<_>>(),
@@ -2645,6 +2687,32 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().untrusted_extensions = names;
         self.untrusted_extensions_changed();
+    }
+
+    pub fn set_extension_setting(mut self: Pin<&mut Self>, name: &QString, key: &QString, value: &QString) -> QString {
+        let (name, key) = (name.to_string(), key.to_string());
+        let Some((ext, _)) = self.extension_list().into_iter().find(|(e, _)| e.name == name) else {
+            return qs(format!("Die Erweiterung „{name}“ gibt es nicht (mehr)."));
+        };
+        let config_dir = atlas_core::config::config_dir();
+        let result = match atlas_core::extensions::save_setting_json(&config_dir, &ext, &key, &value.to_string()) {
+            Ok(()) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        };
+        self.as_mut().refresh_extensions();
+        result
+    }
+
+    pub fn keybindings(&self) -> QString {
+        let (actions, _) = self.load_actions();
+        let mut seen = std::collections::HashSet::new();
+        let list: Vec<_> = actions
+            .iter()
+            .filter_map(|a| a.keybinding.as_ref().map(|k| (k, a)))
+            .filter(|(k, _)| seen.insert(k.to_string()))
+            .map(|(k, a)| serde_json::json!({ "sequence": k, "id": a.id, "name": a.name }))
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
     }
 
     pub fn trust_extension(mut self: Pin<&mut Self>, name: &QString) -> bool {
@@ -2806,6 +2874,9 @@ impl qobject::AppController {
                     "name": name,
                     "description": a.description,
                     "source": a.source.label(),
+                    "menu": a.in_menu,
+                    "palette": a.in_palette,
+                    "keybinding": a.keybinding,
                 })
             })
             .collect();

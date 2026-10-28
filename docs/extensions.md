@@ -6,9 +6,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 # Erweiterungen
 
 Eine Erweiterung ist ein Ordner mit einer `extension.yaml`. Sie beschreibt
-deklarativ, was sie beiträgt; eigener Code läuft nur als Befehl (Programm
-oder Skript im Erweiterungsordner). Die Oberfläche von Atlas lässt sich in
-dieser ersten Ausbaustufe nicht verändern.
+deklarativ, was sie beiträgt und was sie dafür braucht; eigener Code läuft
+nur als Befehl (Programm oder Skript im Erweiterungsordner), immer in einem
+eigenen Prozess. Die Oberfläche von Atlas lässt sich (noch) nicht
+verändern.
 
 | Ort | Gilt für | Freigabe |
 |---|---|---|
@@ -21,25 +22,40 @@ Kontextmenü (Aktionen → Erweiterungen …): Status, Beiträge, die genauen
 Befehle, Ein-/Ausschalten (in `config.toml`), Manifest öffnen, neue
 Erweiterung aus einer Vorlage anlegen.
 
-## Format (Version 1)
+## Format (API 2)
 
 ```yaml
-atlas_extension: 1            # Pflicht: Formatversion
-name: pandoc-werkzeuge        # Buchstaben, Ziffern, - und _
-title: Pandoc-Werkzeuge
+atlas_api: 2                  # Pflicht: Version der Erweiterungs-API
+name: notizbuch               # Buchstaben, Ziffern, - und _
+title: Notizbuch-Werkzeuge
 version: 1.2.0
-description: Word-Dateien anzeigen und Markdown exportieren.
+description: Jupyter-Notebooks anzeigen und exportieren.
 
-actions:                      # wie in actions.yaml (docs/actions.md)
-  - name: Wörter zählen
-    applies_to: "*.md"
-    command: [wc, -w, "{file}"]
+permissions:                  # was die Erweiterung braucht (siehe unten)
+  run: [jupyter, pandoc]      # Programme, die ihre Befehle starten
+  files: project              # none, project (Standard), home oder all
+  network: false              # true oder Liste: [cloud.example.org]
+
+settings:                     # Werte, die du in Atlas einstellst
+  - key: format               # Kleinbuchstaben, Ziffern, - und _
+    title: Exportformat
+    description: Zielformat von „Notebook exportieren“.
+    type: choice              # string, path, bool, number, choice, secret
+    choices: [html, markdown]
+    default: html
+
+commands:                     # wie Aktionen in actions.yaml (docs/actions.md)
+  - name: Notebook exportieren
+    applies_to: "*.ipynb"
+    command: [jupyter, nbconvert, --to, "{setting:format}", "{file}"]
+    keybinding: Ctrl+Alt+J    # optional
+    menu: [context, palette]  # Standard: beides; none = nur per Kürzel
 
 processors:                   # Dateiverarbeitung
-  - name: Word-Dokument
-    applies_to: ["*.docx", "*.odt"]
+  - name: Notebook
+    applies_to: "*.ipynb"
     output: markdown          # markdown, text oder pdf
-    command: [pandoc, "{file}", -t, gfm]
+    command: [jupyter, nbconvert, --to, markdown, --stdout, "{file}"]
     auto: true                # beim Öffnen passender Dateien verwenden
     timeout: 30               # Sekunden
 
@@ -52,6 +68,55 @@ exporters:
     timeout: 300
 ```
 
+Erweiterungen im Format 1 (`atlas_extension: 1`, `actions:` statt
+`commands:`, ohne `permissions` und `settings`) laufen unverändert weiter;
+im Format 1 sind keine Rechte angemeldet, ihre Befehle dürfen alles, was du
+darfst. Braucht eine Erweiterung eine neuere API, als Atlas kennt
+(`atlas_api: 3`), lädt Atlas sie nicht und sagt das.
+
+### Rechte
+
+`permissions` sagt, was die Erweiterung braucht; Atlas zeigt es in der
+Liste und vor der Freigabe einer Projekt-Erweiterung.
+
+- **`run`** wird durchgesetzt: Ein Befehl darf nur ein Programm aus dieser
+  Liste starten, eine Datei der Erweiterung (`{extension}/…`) oder ein
+  Programm, das du in einer Einstellung (`type: string` oder `path`)
+  gewählt hast (`["{setting:python}", …]`; ihr Standardwert muss dann
+  selbst in `run` stehen). Shell-Befehle
+  (`shell: true`) brauchen `sh` in der Liste. Andere Befehle lädt Atlas
+  nicht und meldet sie als Fehler.
+- **`files`** und **`network`** sind Angaben der Erweiterung. Ihre Skripte
+  können sie (noch) überschreiten; eine Sandbox, die sie durchsetzt, ist
+  geplant.
+
+### Befehle
+
+Befehle haben das Format der [Aktionen](actions.md) und zusätzlich
+
+| Feld | Bedeutung |
+|---|---|
+| `keybinding` | Tastenkürzel, z. B. `Ctrl+Alt+J` (auch `Strg`, `Umschalt`). Es braucht Strg, Alt oder Meta oder eine F-Taste und darf kein Kürzel von Atlas sein. Der Befehl läuft auf dem aktiven Dokument, wenn er dazu passt, sonst auf dem Projekt. Ist das Kürzel schon belegt (eigene Aktionen gehen vor, dann die erste Erweiterung), meldet Atlas das bei der späteren. |
+| `menu` | wo der Befehl erscheint: `context` (Kontextmenü), `palette` (Arbeitsleiste), beides (Standard) oder `none` |
+
+`keybinding` und `menu` gelten genauso in `actions.yaml`.
+
+### Einstellungen
+
+Atlas zeigt die Einstellungen unter „Erweiterungen“ → „Einstellungen …“
+und speichert nur geänderte Werte in
+`~/.config/atlas/extension-settings.toml`. Befehle bekommen jeden Wert als
+Platzhalter `{setting:schlüssel}` und als Umgebungsvariable
+`ATLAS_SETTING_SCHLÜSSEL` (großgeschrieben, `-` wird `_`).
+
+| `type` | Wert |
+|---|---|
+| `string`, `path` | Text |
+| `bool` | `true` / `false` |
+| `number` | Zahl |
+| `choice` | einer der `choices` |
+| `secret` | Text, verschlüsselt gespeichert wie das Nextcloud-Passwort; nur als Umgebungsvariable und nur für Anzeigen und Exporter, nie als Platzhalter, nie für Befehle im Terminal |
+
 Für alle Befehle gelten die Regeln der Aktionen: Programm und Argumente
 ohne Shell, `shell: true` nur ausdrücklich, Platzhalter nach dem Zerlegen
 eingesetzt. Zusätzlich gibt es
@@ -60,6 +125,7 @@ eingesetzt. Zusätzlich gibt es
 |---|---|
 | `{output}` | Datei, in die das Ergebnis geschrieben wird (Verarbeitung: optional, Export: Pflicht) |
 | `{extension}` | Ordner der Erweiterung, z. B. `["{extension}/konvert.sh", "{file}"]` |
+| `{setting:schlüssel}` | Wert einer Einstellung (API 2) |
 
 ## Dateiverarbeitung
 

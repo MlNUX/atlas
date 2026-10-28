@@ -233,6 +233,8 @@ Standardkalender für neue Einträge in diesem Projekt; ohne Eintrag gilt
 | `$XDG_DATA_HOME/atlas/…/QtWebEngine/atlas-ilias/` | Web-Profil der ILIAS-Anmeldung (Cookies der Sitzung, kein Passwort) |
 | `$XDG_CONFIG_HOME/atlas/dictionary.txt` | eigenes Wörterbuch der Rechtschreibprüfung: ein Wort pro Zeile („zum Wörterbuch hinzufügen“) |
 | `<Projekt>/assets/` | in Notizen eingefügte Bilder (Strg+V, Ziehen, „Bild als Zitat“ aus PDFs); außerhalb eines Projekts `assets/` neben der Notiz |
+| `$XDG_CONFIG_HOME/atlas/extension-settings.toml` | Einstellungen der Erweiterungen: `[<name>]` mit `schlüssel = wert` (nur geänderte Werte; Geheimnisse nie hier) |
+| `$XDG_STATE_HOME/atlas/secrets/extension-<name>-<schlüssel>.cred` | Geheimnis einer Erweiterung (Einstellung `type: secret`), wie das Nextcloud-Passwort verschlüsselt (sonst `.secret`, Rechte 600) |
 | `$XDG_STATE_HOME/atlas/trusted-extensions.json` | freigegebene Projekt-Erweiterungen: Ordner → `v2:` + BLAKE3 über alle Dateien des Ordners (Pfade, Ausführrecht, Inhalt, Link-Ziele) |
 
 `ATLAS_STATE_DIR` und `ATLAS_CONFIG_DIR` ersetzen die beiden Ordner (Tests).

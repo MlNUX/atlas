@@ -149,7 +149,7 @@ ApplicationWindow {
         onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
         onSearchRequested: (text) => { searchDialog.setQuery(text) }
         onLineRequested: (line) => { if (editor.activeTab) editor.activeTab.reveal(line) }
-        onAboutToShow: actions = window.paletteActions()
+        onAboutToShow: { actions = window.paletteActions(); window.reloadActionKeys() }
     }
 
     /// Actions of the universal bar (Ctrl+P, ">" for actions only).
@@ -227,10 +227,10 @@ ApplicationWindow {
         const line = textEditor && textEditor.currentLine ? textEditor.currentLine() : 0
         for (const ctx of current ? [[current], []] : [[]]) {
             for (const a of fileActions.actionsFor(ctx)) {
-                if (seen[a.id]) continue
+                if (seen[a.id] || !a.palette) continue
                 seen[a.id] = true
                 const paths = ctx
-                list.push({ name: qsTr("Aktion: %1").arg(a.name), hint: ctx.length ? app.fileName(current) : a.source,
+                list.push({ name: qsTr("Aktion: %1").arg(a.name), hint: a.keybinding || (ctx.length ? app.fileName(current) : a.source),
                             run: () => fileActions.runAction(a.id, paths, line) })
             }
         }
@@ -480,6 +480,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        reloadActionKeys()
         if (app.projectRoot) restoreSession()
         else if (app.openFiles.length > 0) openCliFiles()
         else editor.addGroup()
@@ -601,6 +602,39 @@ ApplicationWindow {
     }
 
     // -------------------------------------------------------------- shortcuts
+
+    // Key sequences of actions and extensions (re-read when extensions or
+    // their settings change). The action runs on the active document if it
+    // fits, otherwise on the project.
+    property var actionKeys: []
+    function reloadActionKeys() { try { actionKeys = JSON.parse(app.keybindings()) } catch (e) { actionKeys = [] } }
+    Connections {
+        target: app
+        function onUntrustedExtensionsChanged() { window.reloadActionKeys() }
+    }
+    Instantiator {
+        model: window.actionKeys
+        delegate: Shortcut {
+            required property var modelData
+            sequence: modelData.sequence
+            context: Qt.ApplicationShortcut
+            onActivated: window.runKeyAction(modelData)
+        }
+    }
+    function runKeyAction(binding) {
+        const tab = editor.activeTab
+        const current = tab && tab.path && app.exists(tab.path) ? tab.path : ""
+        const viewer = tab ? tab.viewerItem : null
+        const textEditor = viewer && viewer.editorItem ? viewer.editorItem : viewer && viewer.currentLine ? viewer : null
+        const line = textEditor && textEditor.currentLine ? textEditor.currentLine() : 0
+        for (const ctx of current ? [[current], []] : [[]]) {
+            if (fileActions.actionsFor(ctx).some(a => a.id === binding.id)) {
+                fileActions.runAction(binding.id, ctx, line)
+                return
+            }
+        }
+        fileActions.showMessage(qsTr("„%1“ passt nicht zum aktiven Dokument").arg(binding.name))
+    }
 
     Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.askProject() }
     Shortcut { sequence: "Ctrl+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show("") }

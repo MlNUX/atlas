@@ -114,6 +114,16 @@ pub struct Action {
     globs: Option<globset::GlobSet>,
     /// Folder of the extension that defines the action (`{extension}`).
     pub base_dir: Option<PathBuf>,
+    /// Key sequence that runs the action (normalized, see [`keybinding`]).
+    pub keybinding: Option<String>,
+    /// Offered in the context menu (otherwise only palette and key).
+    pub in_menu: bool,
+    /// Offered in the command palette.
+    pub in_palette: bool,
+    /// More placeholders (`{setting:…}` of an extension) and environment
+    /// variables for the command.
+    pub extra: Vec<(String, String)>,
+    pub env: Vec<(String, String)>,
 }
 
 /// A problem in an action file (shown to the user, the rest still loads).
@@ -268,6 +278,25 @@ pub fn parse_action(entry: &Yaml, source: &Source) -> Result<Action> {
         Some(other) => bail!("unbekanntes „terminal: {other}“ (panel, tab)"),
     };
     let confirm = entry["confirm"].as_bool().or_else(|| entry["confirmation"].as_bool()).unwrap_or(false);
+    let keybinding = match scalar(&entry["keybinding"]).or_else(|| scalar(&entry["key"])) {
+        Some(k) => Some(keybinding(&k)?),
+        None => None,
+    };
+    let (in_menu, in_palette) = match strings(&entry["menu"]) {
+        None => (true, true),
+        Some(list) => {
+            let mut places = (false, false);
+            for place in &list {
+                match place.trim().to_ascii_lowercase().as_str() {
+                    "context" | "kontextmenü" => places.0 = true,
+                    "palette" | "arbeitsleiste" => places.1 = true,
+                    "none" | "keine" => {}
+                    other => bail!("unbekanntes „menu: {other}“ (context, palette, none)"),
+                }
+            }
+            places
+        }
+    };
     let id = entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| slug(name));
     let id = match source {
         Source::Extension(ext) => format!("{ext}/{id}"),
@@ -286,7 +315,142 @@ pub fn parse_action(entry: &Yaml, source: &Source) -> Result<Action> {
         placement,
         globs,
         base_dir: None,
+        keybinding,
+        in_menu,
+        in_palette,
+        extra: Vec::new(),
+        env: Vec::new(),
     })
+}
+
+/// Shortcuts of Atlas itself (docs/shortcuts.md) and of text fields; an
+/// action cannot take them over.
+const RESERVED_KEYS: &[&str] = &[
+    "Ctrl+P",
+    "Ctrl+Shift+P",
+    "Ctrl+O",
+    "Ctrl+Shift+F",
+    "Ctrl+Shift+E",
+    "Ctrl+B",
+    "Ctrl+`",
+    "Ctrl+Shift+`",
+    "Ctrl+\\",
+    "Ctrl+W",
+    "Ctrl+Tab",
+    "Ctrl+Shift+Tab",
+    "Alt+Left",
+    "Alt+Right",
+    "Alt+Up",
+    "Alt+Down",
+    "Alt+Return",
+    "Alt+Enter",
+    "F2",
+    "F3",
+    "Shift+F3",
+    "F5",
+    "Shift+F5",
+    "F11",
+    "Ctrl+A",
+    "Ctrl+C",
+    "Ctrl+X",
+    "Ctrl+V",
+    "Ctrl+Z",
+    "Ctrl+Y",
+    "Ctrl+Shift+Z",
+    "Ctrl+S",
+    "Ctrl+F",
+    "Ctrl+G",
+    "Ctrl+L",
+    "Ctrl+H",
+    "Ctrl+Q",
+    "Ctrl+D",
+    "Ctrl+0",
+    "Ctrl++",
+    "Ctrl+-",
+    "Ctrl+=",
+    "Ctrl+Return",
+    "Ctrl+Enter",
+    "Ctrl+Shift+C",
+    "Ctrl+Shift+V",
+    "Ctrl+Home",
+    "Ctrl+End",
+    "Ctrl+Left",
+    "Ctrl+Right",
+    "Ctrl+Backspace",
+    "Ctrl+Delete",
+    "Shift+Insert",
+];
+
+/// Checks and normalizes a key sequence: modifiers (Ctrl/Strg, Alt,
+/// Shift/Umschalt, Meta) in a fixed order, then one key. It needs Ctrl,
+/// Alt or Meta (or a function key), so typing is never taken over, and
+/// may not be one of Atlas's own shortcuts.
+pub fn keybinding(text: &str) -> Result<String> {
+    let parts: Vec<&str> = text.split('+').map(str::trim).collect();
+    // „Ctrl++“ splits into an empty last part: the key is „+“.
+    let (mods, key) = match parts.as_slice() {
+        [mods @ .., "", ""] => (mods, "+"),
+        [mods @ .., key] => (mods, *key),
+        [] => bail!("leeres Tastenkürzel"),
+    };
+    let (mut ctrl, mut alt, mut shift, mut meta) = (false, false, false, false);
+    for m in mods {
+        match m.to_ascii_lowercase().as_str() {
+            "ctrl" | "strg" | "control" => ctrl = true,
+            "alt" => alt = true,
+            "shift" | "umschalt" => shift = true,
+            "meta" | "super" => meta = true,
+            _ => bail!("unbekannte Taste „{m}“ in „{text}“"),
+        }
+    }
+    let key = match key.to_ascii_lowercase().as_str() {
+        "" => bail!("„{text}“: Taste fehlt"),
+        "enter" => "Return".to_owned(),
+        "esc" => "Escape".to_owned(),
+        "entf" | "del" => "Delete".to_owned(),
+        k if k.chars().count() == 1 => k.to_uppercase(),
+        k if k.len() <= 3 && k.starts_with('f') && k[1..].parse::<u8>().is_ok_and(|n| (1..=24).contains(&n)) => {
+            k.to_uppercase()
+        }
+        k if [
+            "left",
+            "right",
+            "up",
+            "down",
+            "home",
+            "end",
+            "pageup",
+            "pagedown",
+            "insert",
+            "delete",
+            "return",
+            "escape",
+            "space",
+            "tab",
+            "backspace",
+        ]
+        .contains(&k) =>
+        {
+            let mut c = k.chars();
+            c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+        }
+        _ => bail!("unbekannte Taste „{key}“ in „{text}“"),
+    };
+    let function_key = key.len() >= 2 && key.starts_with('F') && key[1..].parse::<u8>().is_ok();
+    if !(ctrl || alt || meta || function_key) {
+        bail!("„{text}“ braucht Strg, Alt oder Meta (oder eine F-Taste)");
+    }
+    let mut out = String::new();
+    for (on, name) in [(ctrl, "Ctrl+"), (alt, "Alt+"), (shift, "Shift+"), (meta, "Meta+")] {
+        if on {
+            out.push_str(name);
+        }
+    }
+    out.push_str(&key);
+    if RESERVED_KEYS.iter().any(|r| r.eq_ignore_ascii_case(&out)) {
+        bail!("„{out}“ ist ein Tastenkürzel von Atlas");
+    }
+    Ok(out)
 }
 
 fn uses_file(command: &Command) -> bool {
@@ -400,15 +564,15 @@ pub fn shell_quote(s: &str) -> String {
 }
 
 struct Values {
-    single: Vec<(&'static str, String)>,
+    single: Vec<(String, String)>,
     files: Vec<String>,
 }
 
-fn values(ctx: &Context, extra: &[(&'static str, String)]) -> Values {
+fn values(ctx: &Context, extra: &[(String, String)]) -> Values {
     let project = ctx.project.clone().unwrap_or_default();
     let first = ctx.paths.first().cloned();
     let s = |p: &Path| p.to_string_lossy().into_owned();
-    let mut single = vec![("{project}", s(&project)), ("{line}", ctx.line.max(1).to_string())];
+    let mut single = vec![("{project}".to_owned(), s(&project)), ("{line}".to_owned(), ctx.line.max(1).to_string())];
     if let Some(file) = &first {
         let dir = if file.is_dir() { file.clone() } else { file.parent().map(Path::to_path_buf).unwrap_or_default() };
         let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -416,17 +580,20 @@ fn values(ctx: &Context, extra: &[(&'static str, String)]) -> Values {
         let ext = file.extension().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let stem = if file.is_dir() { s(file) } else { s(&file.with_extension("")) };
         let relative = file.strip_prefix(&project).map(s).unwrap_or_else(|_| s(file));
-        single.extend([
-            ("{file}", s(file)),
-            ("{dir}", s(&dir)),
-            ("{name}", name),
-            ("{basename}", basename),
-            ("{ext}", ext),
-            ("{stem}", stem),
-            ("{relative}", relative),
-        ]);
+        single.extend(
+            [
+                ("{file}", s(file)),
+                ("{dir}", s(&dir)),
+                ("{name}", name),
+                ("{basename}", basename),
+                ("{ext}", ext),
+                ("{stem}", stem),
+                ("{relative}", relative),
+            ]
+            .map(|(k, v)| (k.to_owned(), v)),
+        );
     } else {
-        single.push(("{dir}", s(&project)));
+        single.push(("{dir}".to_owned(), s(&project)));
     }
     single.extend(extra.iter().cloned());
     Values { single, files: ctx.paths.iter().map(|p| s(p)).collect() }
@@ -459,9 +626,11 @@ fn substitute(text: &str, values: &Values, quote: bool) -> Result<String> {
             if !KNOWN.contains(&name) {
                 bail!("unbekannter Platzhalter {name}");
             }
-            if name != "{files}" && !values.single.iter().any(|(k, _)| *k == name) {
+            if name != "{files}" && !values.single.iter().any(|(k, _)| k == name) {
                 bail!("Platzhalter {name} ist hier nicht verfügbar");
             }
+        } else if name.starts_with("{setting:") && !values.single.iter().any(|(k, _)| k == name) {
+            bail!("unbekannte Einstellung {name}");
         }
         rest = &rest[start + 1..];
     }
@@ -586,11 +755,13 @@ pub struct Built {
     /// For display and confirmations.
     pub display: String,
     pub cwd: PathBuf,
+    /// Added to the environment.
+    pub env: Vec<(String, String)>,
 }
 
 /// Fills in `command` for `ctx`; `extra` adds placeholders such as
 /// `{output}` or `{extension}`. `cwd` defaults to the project.
-pub fn build(command: &Command, cwd: Option<&str>, ctx: &Context, extra: &[(&'static str, String)]) -> Result<Built> {
+pub fn build(command: &Command, cwd: Option<&str>, ctx: &Context, extra: &[(String, String)]) -> Result<Built> {
     let values = values(ctx, extra);
     let (argv, display): (Vec<String>, String) = match command {
         Command::Argv(argv) => {
@@ -624,16 +795,23 @@ pub fn build(command: &Command, cwd: Option<&str>, ctx: &Context, extra: &[(&'st
     if !cwd.is_dir() {
         bail!("Arbeitsordner {} existiert nicht", cwd.display());
     }
-    Ok(Built { argv, display, cwd })
+    Ok(Built { argv, display, cwd, env: Vec::new() })
 }
 
 impl Action {
     /// Builds the command for `ctx`.
     pub fn prepare(&self, ctx: &Context) -> Result<Prepared> {
-        let extra: Vec<_> = self.base_dir.iter().map(|d| ("{extension}", d.to_string_lossy().into_owned())).collect();
+        let mut extra: Vec<_> =
+            self.base_dir.iter().map(|d| ("{extension}".to_owned(), d.to_string_lossy().into_owned())).collect();
+        extra.extend(self.extra.iter().cloned());
         let built = build(&self.command, self.cwd.as_deref(), ctx, &extra)?;
         let destructive = looks_destructive(&self.command);
         let mut argv = vec!["sh".into(), "-c".into(), HOLD.into(), "atlas-action".into(), self.name.clone()];
+        // The terminal starts the command as is: its variables via env(1).
+        if !self.env.is_empty() {
+            argv.extend(["env".into(), "--".into()]);
+            argv.extend(self.env.iter().map(|(k, v)| format!("{k}={v}")));
+        }
         argv.extend(built.argv);
         Ok(Prepared {
             argv,
@@ -675,6 +853,22 @@ mod tests {
         assert_eq!(&p.argv[..2], &["sh".to_string(), "-c".to_string()]);
         assert_eq!(p.argv[p.argv.len() - 2..], ["bash".to_string(), sh.to_string_lossy().into_owned()]);
         assert!(prepare_script(&txt).is_err());
+    }
+
+    #[test]
+    fn keybindings_need_a_modifier_and_a_free_sequence() {
+        assert_eq!(keybinding("strg+alt+j").unwrap(), "Ctrl+Alt+J");
+        assert_eq!(keybinding("Umschalt+Strg+F7").unwrap(), "Ctrl+Shift+F7");
+        assert_eq!(keybinding("F9").unwrap(), "F9");
+        assert_eq!(
+            keybinding("Alt+Enter").map_err(|e| e.to_string()).unwrap_err(),
+            "„Alt+Return“ ist ein Tastenkürzel von Atlas"
+        );
+        assert!(keybinding("Ctrl+P").is_err(), "palette");
+        assert!(keybinding("Shift+A").is_err(), "typing");
+        assert!(keybinding("j").is_err());
+        assert!(keybinding("Ctrl+Hyper+J").is_err());
+        assert_eq!(keybinding("Ctrl+Alt++").unwrap(), "Ctrl+Alt++");
     }
 
     fn parse(yaml: &str) -> (Vec<Action>, Vec<LoadError>) {

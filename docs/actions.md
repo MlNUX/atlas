@@ -40,6 +40,8 @@ actions:
     cwd: "{dir}"                            # Standard: Projektordner
     confirm: false                          # vor dem Start fragen
     terminal: panel                         # panel (Standard) oder tab
+    keybinding: Ctrl+Alt+E                  # optional (siehe extensions.md)
+    menu: [context, palette]                # Standard: Kontextmenü und Arbeitsleiste
 ```
 
 ### Befehle

@@ -334,7 +334,7 @@ Item {
     function showMenu(paths, dir) {
         menu.paths = paths
         menu.dir = dir
-        menu.actionList = actionsFor(paths)
+        menu.actionList = actionsFor(paths).filter(a => a.menu)
         menu.processorList = paths.length === 1 ? processorsFor(paths[0]) : []
         menu.exporterList = exportersFor(paths)
         menu.canPaste = canPaste()

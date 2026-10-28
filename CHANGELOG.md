@@ -10,6 +10,21 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+- **Erweiterungen, API 2** (`atlas_api: 2`, docs/extensions.md); Format 1
+  läuft unverändert weiter:
+  - **Rechte** (`permissions`): welche Programme die Erweiterung startet,
+    welche Dateien sie braucht, ob sie ins Netz geht. Atlas zeigt sie in der
+    Liste und vor der Freigabe; Befehle mit nicht angemeldeten Programmen
+    werden abgelehnt.
+  - **Einstellungen** mit Typ (Text, Pfad, Schalter, Zahl, Auswahl,
+    Geheimnis), die Atlas als Formular zeigt; in Befehlen als
+    `{setting:…}` und `ATLAS_SETTING_…`, Geheimnisse verschlüsselt und nur
+    in der Umgebung.
+  - **Befehle** mit Tastenkürzel (`keybinding`) und Platz im Kontextmenü
+    oder in der Arbeitsleiste (`menu`) – auch für eigene Aktionen.
+  - Neuere API-Versionen werden erkannt und mit Hinweis nicht geladen.
+
 ### Sicherheit
 - **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht
   mehr nur für die `extension.yaml`: Ein Skript, das die Erweiterung

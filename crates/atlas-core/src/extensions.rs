@@ -3,20 +3,27 @@
 
 //! A small, declarative extension system.
 //!
-//! An extension is a folder with an `extension.yaml` (format version 1, see
-//! docs/extensions.md) – for the user in `$XDG_CONFIG_HOME/atlas/extensions/`
-//! or for one project in `.atlas/extensions/`. It can contribute
+//! An extension is a folder with an `extension.yaml` (API version 1 or 2,
+//! see docs/extensions.md) – for the user in
+//! `$XDG_CONFIG_HOME/atlas/extensions/` or for one project in
+//! `.atlas/extensions/`. It can contribute
 //!
-//! - **actions** (same format as `actions.yaml`),
+//! - **commands** (actions in the format of `actions.yaml`, with a key
+//!   sequence and a place in the menus),
 //! - **processors** that show files Atlas cannot display itself (a command
-//!   turns them into Markdown, text or a PDF), and
-//! - **exporters** that write a file in another format.
+//!   turns them into Markdown, text or a PDF),
+//! - **exporters** that write a file in another format, and
+//! - **settings** the user fills in (in Atlas), passed to the commands.
+//!
+//! Version 2 also declares **permissions** (programs it runs, files,
+//! network); the programs are checked when the manifest is read, the rest
+//! is shown before trusting the extension.
 //!
 //! Extensions cannot change the user interface. Commands follow the rules
 //! of actions: program plus arguments, a shell only with `shell: true`,
 //! placeholders filled in after splitting. Extensions that come with a
-//! project run only after the user trusted them; a changed manifest needs
-//! trust again.
+//! project run only after the user trusted them; any changed file of the
+//! extension needs trust again.
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
@@ -29,9 +36,12 @@ use yaml_rust2::Yaml;
 
 use crate::actions::{self, Action, Command, Context, LoadError, Source};
 
-pub const FORMAT_VERSION: i64 = 1;
+/// Newest extension API this Atlas understands (`atlas_api:`).
+pub const API_VERSION: i64 = 2;
 pub const MANIFEST: &str = "extension.yaml";
 pub const DIR: &str = "extensions";
+/// User settings of extensions, in the config folder.
+pub const SETTINGS_FILE: &str = "extension-settings.toml";
 /// Output of a processor or exporter that is kept (and shown on errors).
 const MAX_OUTPUT: usize = 16 * 1024 * 1024;
 
@@ -68,6 +78,103 @@ impl OutputKind {
     }
 }
 
+/// Which files an extension says it reads or writes (shown, not enforced).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileAccess {
+    None,
+    Project,
+    Home,
+    All,
+}
+
+impl FileAccess {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FileAccess::None => "none",
+            FileAccess::Project => "project",
+            FileAccess::Home => "home",
+            FileAccess::All => "all",
+        }
+    }
+}
+
+/// What an extension of API version 2 says it needs. Programs are checked
+/// when the manifest is read: a command may only start a program from
+/// `run`, a file of the extension, or one the user chose in a setting.
+/// Files and network are shown before trusting the extension (not yet
+/// enforced: scripts of the extension may do more).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Permissions {
+    pub run: Vec<String>,
+    pub files: FileAccess,
+    /// Hosts it connects to; `["*"]` for any.
+    pub network: Vec<String>,
+}
+
+/// Kind of a setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingKind {
+    String,
+    Path,
+    Bool,
+    Number,
+    Choice,
+    /// Kept encrypted like the Nextcloud password; only passed in the
+    /// environment of commands that do not run in a terminal.
+    Secret,
+}
+
+impl SettingKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SettingKind::String => "string",
+            SettingKind::Path => "path",
+            SettingKind::Bool => "bool",
+            SettingKind::Number => "number",
+            SettingKind::Choice => "choice",
+            SettingKind::Secret => "secret",
+        }
+    }
+}
+
+/// A value the user sets for an extension (`settings:` in the manifest).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Setting {
+    pub key: String,
+    pub title: String,
+    pub description: String,
+    pub kind: SettingKind,
+    /// Default (never set for secrets).
+    pub default: toml::Value,
+    pub choices: Vec<String>,
+}
+
+impl Setting {
+    /// `ATLAS_SETTING_<KEY>`.
+    pub fn env_name(&self) -> String {
+        format!("ATLAS_SETTING_{}", self.key.to_ascii_uppercase().replace('-', "_"))
+    }
+
+    /// Whether `value` fits this setting.
+    pub fn accepts(&self, value: &toml::Value) -> bool {
+        match (self.kind, value) {
+            (SettingKind::String | SettingKind::Path, toml::Value::String(_)) => true,
+            (SettingKind::Bool, toml::Value::Boolean(_)) => true,
+            (SettingKind::Number, toml::Value::Integer(_) | toml::Value::Float(_)) => true,
+            (SettingKind::Choice, toml::Value::String(s)) => self.choices.contains(s),
+            _ => false,
+        }
+    }
+}
+
+/// A setting value as text (placeholders and environment).
+fn setting_text(value: &toml::Value) -> String {
+    match value {
+        toml::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// Shows files of a type Atlas has no viewer for.
 #[derive(Debug, Clone)]
 pub struct Processor {
@@ -82,6 +189,7 @@ pub struct Processor {
     /// Used automatically when such a file is opened (otherwise offered).
     pub auto: bool,
     pub base_dir: PathBuf,
+    pub settings: Applied,
     globs: globset::GlobSet,
 }
 
@@ -100,7 +208,39 @@ pub struct Exporter {
     /// Open the result in Atlas afterwards.
     pub open: bool,
     pub base_dir: PathBuf,
+    pub settings: Applied,
     globs: globset::GlobSet,
+}
+
+/// Setting values for one command: placeholders, environment, and the
+/// secrets that are read just before it runs (environment name, store).
+#[derive(Debug, Clone, Default)]
+pub struct Applied {
+    pub extra: Vec<(String, String)>,
+    pub env: Vec<(String, String)>,
+    pub secrets: Vec<(String, String)>,
+}
+
+impl Applied {
+    fn placeholders(&self, output: &Path, base_dir: &Path) -> Vec<(String, String)> {
+        let mut extra = vec![
+            ("{output}".to_owned(), output.to_string_lossy().into_owned()),
+            ("{extension}".to_owned(), base_dir.to_string_lossy().into_owned()),
+        ];
+        extra.extend(self.extra.iter().cloned());
+        extra
+    }
+
+    /// The environment, with the secrets read now.
+    fn environment(&self) -> Result<Vec<(String, String)>> {
+        let mut env = self.env.clone();
+        for (name, store) in &self.secrets {
+            if let Some((secret, _)) = crate::secret::SecretStore::default_for(store).load()? {
+                env.push((name.clone(), secret));
+            }
+        }
+        Ok(env)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +249,12 @@ pub struct Extension {
     pub title: String,
     pub version: String,
     pub description: String,
+    /// API version of the manifest (1 or 2; 0 if unreadable).
+    pub api: i64,
+    /// Declared permissions (API 2); `None`: an extension of version 1,
+    /// which may run anything the user can.
+    pub permissions: Option<Permissions>,
+    pub settings: Vec<Setting>,
     pub dir: PathBuf,
     pub location: Location,
     /// What trust is bound to: for project extensions BLAKE3 over every
@@ -143,17 +289,35 @@ impl Status {
 }
 
 pub const TEMPLATE: &str = r#"# Atlas-Erweiterung (Format: docs/extensions.md)
-atlas_extension: 1
+atlas_api: 2
 name: beispiel
 title: Beispiel-Erweiterung
 version: 0.1.0
 description: Zeigt, was eine Erweiterung beitragen kann.
 
-# Aktionen wie in actions.yaml; {extension} ist dieser Ordner.
-actions:
+# Was die Erweiterung braucht; Atlas zeigt es vor der Freigabe. Befehle
+# dürfen nur Programme aus „run“ starten (und Dateien dieses Ordners).
+permissions:
+  run: [wc, od, pandoc]
+  files: project            # none, project, home oder all
+  network: false            # true oder Liste von Rechnern
+
+# Befehle: wie Aktionen in actions.yaml; {extension} ist dieser Ordner.
+commands:
   - name: Wörter zählen
     applies_to: "*.md"
     command: [wc, -w, "{file}"]
+    keybinding: Ctrl+Alt+W    # optional
+    menu: [context, palette]  # Standard: beides
+
+# Einstellungen: Atlas zeigt sie in „Erweiterungen“; in Befehlen als
+# {setting:schlüssel}, in der Umgebung als ATLAS_SETTING_SCHLÜSSEL.
+settings:
+  - key: format
+    title: Exportformat
+    type: choice              # string, path, bool, number, choice, secret
+    choices: [html, docx]
+    default: html
 
 # Dateiverarbeitung: Dateien anzeigen, für die Atlas keine Ansicht hat.
 # Ausgabe: markdown, text (Standardausgabe oder {output}) oder pdf ({output}).
@@ -165,7 +329,7 @@ processors:
 
 # Exporter: schreiben eine Datei in einem anderen Format nach {output}.
 exporters:
-  - name: HTML (pandoc)
+  - name: Export (pandoc)
     applies_to: "*.md"
     target: html
     command: [pandoc, "{file}", --standalone, -o, "{output}"]
@@ -187,9 +351,10 @@ pub fn starter(title: &str) -> (String, String) {
             "name: beispiel" => format!("name: {name}"),
             "title: Beispiel-Erweiterung" => format!("title: {}", yaml_text(title)),
             l if l.starts_with("description:") => "description: \"\"".to_owned(),
+            "  run: [wc, od, pandoc]" => "  run: []".to_owned(),
             l => l.to_owned(),
         };
-        examples |= line.starts_with("# Aktionen");
+        examples |= line.starts_with("# Befehle");
         if examples && !line.is_empty() && !line.starts_with('#') {
             out.push_str("# ");
         }
@@ -285,6 +450,7 @@ fn parse_processor(entry: &Yaml, ext: &str, dir: &Path) -> Result<Processor> {
         timeout: timeout(entry, 30),
         auto: entry["auto"].as_bool().unwrap_or(true),
         base_dir: dir.to_path_buf(),
+        settings: Applied::default(),
     })
 }
 
@@ -309,6 +475,7 @@ fn parse_exporter(entry: &Yaml, ext: &str, dir: &Path) -> Result<Exporter> {
         timeout: timeout(entry, 300),
         open: entry["open"].as_bool().unwrap_or(true),
         base_dir: dir.to_path_buf(),
+        settings: Applied::default(),
     })
 }
 
@@ -317,6 +484,122 @@ fn uses(command: &Command, placeholder: &str) -> bool {
         Command::Argv(argv) => argv.iter().any(|a| a.contains(placeholder)),
         Command::Shell(s) => s.contains(placeholder),
     }
+}
+
+fn parse_permissions(doc: &Yaml) -> Result<Permissions> {
+    let run = strings(&doc["run"]);
+    if let Some(bad) = run.iter().find(|p| p.trim().is_empty() || p.contains(char::is_whitespace)) {
+        bail!("„run“: „{bad}“ ist kein Programmname");
+    }
+    let files = match doc["files"].as_str().map(str::trim) {
+        None if doc["files"].as_bool() == Some(false) => FileAccess::None,
+        None | Some("project" | "projekt") => FileAccess::Project,
+        Some("none" | "keine") => FileAccess::None,
+        Some("home") => FileAccess::Home,
+        Some("all" | "alle") => FileAccess::All,
+        Some(other) => bail!("unbekanntes „files: {other}“ (none, project, home, all)"),
+    };
+    let network = match &doc["network"] {
+        Yaml::Boolean(true) => vec!["*".to_owned()],
+        Yaml::Boolean(false) | Yaml::BadValue | Yaml::Null => Vec::new(),
+        other => strings(other),
+    };
+    Ok(Permissions { run, files, network })
+}
+
+fn valid_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 64
+        && key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+fn parse_setting(entry: &Yaml) -> Result<Setting> {
+    let key = entry["key"].as_str().map(str::trim).context("„key“ fehlt")?;
+    if !valid_key(key) {
+        bail!("ungültiger Schlüssel „{key}“ (Kleinbuchstaben, Ziffern, - und _)");
+    }
+    let kind = match entry["type"].as_str().unwrap_or("string") {
+        "string" | "text" => SettingKind::String,
+        "path" | "pfad" => SettingKind::Path,
+        "bool" | "boolean" => SettingKind::Bool,
+        "number" | "zahl" => SettingKind::Number,
+        "choice" | "auswahl" => SettingKind::Choice,
+        "secret" | "passwort" => SettingKind::Secret,
+        other => bail!("„{key}“: unbekannter Typ „{other}“ (string, path, bool, number, choice, secret)"),
+    };
+    let choices = strings(&entry["choices"]);
+    if kind == SettingKind::Choice && choices.is_empty() {
+        bail!("„{key}“: Auswahl ohne „choices“");
+    }
+    let default = match (&entry["default"], kind) {
+        (Yaml::BadValue | Yaml::Null, SettingKind::Bool) => toml::Value::Boolean(false),
+        (Yaml::BadValue | Yaml::Null, SettingKind::Number) => toml::Value::Integer(0),
+        (Yaml::BadValue | Yaml::Null, SettingKind::Choice) => toml::Value::String(choices[0].clone()),
+        (Yaml::BadValue | Yaml::Null, _) => toml::Value::String(String::new()),
+        (_, SettingKind::Secret) => bail!("„{key}“: ein Geheimnis hat keinen Standardwert"),
+        (Yaml::Boolean(b), _) => toml::Value::Boolean(*b),
+        (Yaml::Integer(i), _) => toml::Value::Integer(*i),
+        (Yaml::Real(r), _) => toml::Value::Float(r.parse().unwrap_or_default()),
+        (Yaml::String(t), _) => toml::Value::String(t.clone()),
+        _ => bail!("„{key}“: unlesbarer Standardwert"),
+    };
+    let setting = Setting {
+        key: key.to_owned(),
+        title: entry["title"].as_str().unwrap_or(key).to_owned(),
+        description: entry["description"].as_str().unwrap_or_default().to_owned(),
+        kind,
+        default,
+        choices,
+    };
+    if kind != SettingKind::Secret && !setting.accepts(&setting.default) {
+        bail!("„{key}“: der Standardwert passt nicht zum Typ {}", kind.as_str());
+    }
+    Ok(setting)
+}
+
+/// `{setting:…}` placeholders used in `text`.
+fn setting_placeholders(text: &str) -> Vec<&str> {
+    text.match_indices("{setting:")
+        .filter_map(|(i, _)| text[i + 9..].find('}').map(|end| &text[i + 9..i + 9 + end]))
+        .collect()
+}
+
+/// Checks a command of an API 2 extension against its settings and
+/// permissions: placeholders name settings (secrets only reach the
+/// environment), and the program is declared in `run`, lies in the
+/// extension folder, or is chosen by the user in a setting.
+fn check_command(command: &Command, settings: &[Setting], permissions: &Permissions) -> Result<()> {
+    let texts: Vec<&str> = match command {
+        Command::Argv(argv) => argv.iter().map(String::as_str).collect(),
+        Command::Shell(line) => vec![line.as_str()],
+    };
+    for key in texts.iter().flat_map(|t| setting_placeholders(t)) {
+        match settings.iter().find(|s| s.key == key) {
+            None => bail!("unbekannte Einstellung {{setting:{key}}}"),
+            Some(s) if s.kind == SettingKind::Secret => {
+                bail!("das Geheimnis „{key}“ gibt es nur als Umgebungsvariable {}", s.env_name())
+            }
+            Some(_) => {}
+        }
+    }
+    let program = match command {
+        Command::Shell(_) => "sh",
+        Command::Argv(argv) => argv.first().map(String::as_str).unwrap_or_default(),
+    };
+    let allowed = permissions.run.iter().any(|p| p == program)
+        || (program.starts_with("{extension}/") && !program.contains(".."))
+        // A program the user chooses; its default must be declared too.
+        || (program.starts_with("{setting:")
+            && program.ends_with('}')
+            && settings.iter().any(|s| {
+                program[9..program.len() - 1] == s.key
+                    && matches!(s.kind, SettingKind::String | SettingKind::Path)
+                    && s.default.as_str().is_some_and(|d| d.is_empty() || permissions.run.iter().any(|p| p == d))
+            }));
+    if !allowed {
+        bail!("„{program}“ fehlt in „permissions: run“");
+    }
+    Ok(())
 }
 
 fn valid_name(name: &str) -> bool {
@@ -333,6 +616,9 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         title: fallback.clone(),
         version: String::new(),
         description: String::new(),
+        api: 0,
+        permissions: None,
+        settings: Vec::new(),
         dir: dir.to_path_buf(),
         location,
         hash: String::new(),
@@ -369,14 +655,17 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         ext.errors.push("leeres Manifest".into());
         return ext;
     };
-    match doc["atlas_extension"].as_i64() {
-        Some(v) if v > FORMAT_VERSION => {
-            ext.errors.push(format!("Format {v} ist neuer als diese Atlas-Version ({FORMAT_VERSION})"));
+    // `atlas_extension: 1` is the name version 1 used.
+    match doc["atlas_api"].as_i64().or_else(|| doc["atlas_extension"].as_i64()) {
+        Some(v) if v > API_VERSION => {
+            ext.errors.push(format!(
+                "braucht eine neuere Atlas-Version (Erweiterungs-API {v}, diese Version kann {API_VERSION})"
+            ));
             return ext;
         }
-        Some(_) => {}
-        None => {
-            ext.errors.push("„atlas_extension: 1“ fehlt".into());
+        Some(v) if v >= 1 => ext.api = v,
+        _ => {
+            ext.errors.push(format!("„atlas_api: {API_VERSION}“ fehlt"));
             return ext;
         }
     }
@@ -394,8 +683,32 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         .unwrap_or_default();
     ext.description = doc["description"].as_str().unwrap_or_default().to_owned();
 
+    if ext.api >= 2 {
+        match parse_permissions(&doc["permissions"]) {
+            Ok(p) => ext.permissions = Some(p),
+            Err(err) => {
+                // Without readable permissions nothing may run.
+                ext.errors.push(format!("permissions: {err:#}"));
+                return ext;
+            }
+        }
+        for (i, entry) in doc["settings"].as_vec().into_iter().flatten().enumerate() {
+            match parse_setting(entry) {
+                Ok(s) if ext.settings.iter().any(|o| o.key == s.key) => {
+                    ext.errors.push(format!("Einstellung {}: „{}“ gibt es zweimal", i + 1, s.key))
+                }
+                Ok(s) => ext.settings.push(s),
+                Err(err) => ext.errors.push(format!("Einstellung {}: {err:#}", i + 1)),
+            }
+        }
+    }
+
     let mut errors = Vec::new();
-    actions::parse_list(&doc["actions"], &Source::Extension(name.clone()), &manifest, &mut ext.actions, &mut errors);
+    let source = Source::Extension(name.clone());
+    // Version 2 calls them commands; `actions:` still works.
+    for list in ["actions", "commands"] {
+        actions::parse_list(&doc[list], &source, &manifest, &mut ext.actions, &mut errors);
+    }
     ext.errors.extend(errors.into_iter().map(|e: LoadError| e.message));
     for action in &mut ext.actions {
         action.base_dir = Some(dir.to_path_buf());
@@ -412,7 +725,127 @@ pub fn load(dir: &Path, location: Location) -> Extension {
             Err(err) => ext.errors.push(format!("Exporter {}: {err:#}", i + 1)),
         }
     }
+    if let Some(permissions) = &ext.permissions {
+        let settings = &ext.settings;
+        let mut errors = Vec::new();
+        let mut check = |what: String, command: &Command| match check_command(command, settings, permissions) {
+            Ok(()) => true,
+            Err(err) => {
+                errors.push(format!("{what}: {err:#}"));
+                false
+            }
+        };
+        ext.actions.retain(|a| check(format!("Befehl „{}“", a.name), &a.command));
+        ext.processors.retain(|p| check(format!("Verarbeitung „{}“", p.name), &p.command));
+        ext.exporters.retain(|x| check(format!("Exporter „{}“", x.name), &x.command));
+        ext.errors.extend(errors);
+    }
     ext
+}
+
+// ----------------------------------------------------------------- settings
+
+pub fn settings_file(config_dir: &Path) -> PathBuf {
+    config_dir.join(SETTINGS_FILE)
+}
+
+/// What the user set for all extensions: extension name → key → value.
+pub fn load_settings(config_dir: &Path) -> toml::Table {
+    let file = settings_file(config_dir);
+    match std::fs::read_to_string(&file) {
+        Ok(text) => text.parse().unwrap_or_else(|err| {
+            log::warn!("{} is not valid TOML: {err}", file.display());
+            toml::Table::new()
+        }),
+        Err(_) => toml::Table::new(),
+    }
+}
+
+/// Where the secret `key` of extension `ext` is kept.
+pub fn secret_store(ext: &str, key: &str) -> String {
+    format!("extension-{ext}-{key}")
+}
+
+/// Sets (or with `None` resets) one value; secrets go to the secret store,
+/// never into the file.
+pub fn save_setting(config_dir: &Path, ext: &Extension, key: &str, value: Option<toml::Value>) -> Result<()> {
+    let setting = ext.settings.iter().find(|s| s.key == key).with_context(|| format!("keine Einstellung „{key}“"))?;
+    if setting.kind == SettingKind::Secret {
+        let store = crate::secret::SecretStore::default_for(&secret_store(&ext.name, key));
+        return match value {
+            Some(toml::Value::String(secret)) if !secret.is_empty() => store.store(&secret).map(|_| ()),
+            None | Some(toml::Value::String(_)) => store.forget(),
+            Some(_) => bail!("ein Geheimnis ist ein Text"),
+        };
+    }
+    if let Some(v) = &value
+        && !setting.accepts(v)
+    {
+        bail!("„{v}“ passt nicht zu „{}“", setting.title);
+    }
+    let mut all = load_settings(config_dir);
+    let table = all.entry(ext.name.clone()).or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let toml::Value::Table(table) = table else { bail!("[{}] in {SETTINGS_FILE} ist keine Tabelle", ext.name) };
+    match value {
+        Some(v) => table.insert(key.to_owned(), v),
+        None => table.remove(key),
+    };
+    if table.is_empty() {
+        all.remove(&ext.name);
+    }
+    crate::paths::write_atomic(&settings_file(config_dir), toml::to_string_pretty(&all)?.as_bytes())
+}
+
+/// [`save_setting`] with the value as JSON (`null` resets it).
+pub fn save_setting_json(config_dir: &Path, ext: &Extension, key: &str, json: &str) -> Result<()> {
+    let value = match serde_json::from_str::<serde_json::Value>(json).context("kein gültiger Wert")? {
+        serde_json::Value::Null => None,
+        v => Some(toml::Value::try_from(v).context("kein gültiger Wert")?),
+    };
+    save_setting(config_dir, ext, key, value)
+}
+
+impl Extension {
+    /// Current value of each setting (secrets: whether one is stored).
+    pub fn setting_values(&self, all: &toml::Table) -> Vec<(&Setting, toml::Value)> {
+        let mine = all.get(&self.name).and_then(toml::Value::as_table);
+        self.settings
+            .iter()
+            .map(|s| {
+                let value = if s.kind == SettingKind::Secret {
+                    let store = crate::secret::SecretStore::default_for(&secret_store(&self.name, &s.key));
+                    toml::Value::Boolean(store.kind().is_some())
+                } else {
+                    mine.and_then(|t| t.get(&s.key)).filter(|v| s.accepts(v)).cloned().unwrap_or(s.default.clone())
+                };
+                (s, value)
+            })
+            .collect()
+    }
+
+    /// Hands the setting values to every command of the extension.
+    pub fn apply_settings(&mut self, all: &toml::Table) {
+        let mut applied = Applied::default();
+        for (setting, value) in self.setting_values(all) {
+            if setting.kind == SettingKind::Secret {
+                applied.secrets.push((setting.env_name(), secret_store(&self.name, &setting.key)));
+            } else {
+                let text = setting_text(&value);
+                applied.extra.push((format!("{{setting:{}}}", setting.key), text.clone()));
+                applied.env.push((setting.env_name(), text));
+            }
+        }
+        for action in &mut self.actions {
+            action.extra = applied.extra.clone();
+            action.env = applied.env.clone();
+        }
+        for p in &mut self.processors {
+            p.settings = applied.clone();
+        }
+        for x in &mut self.exporters {
+            x.settings = applied.clone();
+        }
+    }
 }
 
 fn scan(root: &Path, location: Location, out: &mut Vec<Extension>) {
@@ -689,6 +1122,7 @@ pub fn run(built: &actions::Built, timeout: Duration) -> Result<Finished> {
     let (program, args) = built.argv.split_first().context("leerer Befehl")?;
     let mut child = Process::new(program)
         .args(args)
+        .envs(built.env.iter().map(|(k, v)| (k, v)))
         .current_dir(&built.cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -756,7 +1190,7 @@ impl Processor {
     pub fn process(&self, file: &Path, project: Option<&Path>, cache_dir: &Path) -> Result<Processed> {
         let mut hasher = blake3::Hasher::new();
         hasher.update(self.id.as_bytes());
-        hasher.update(format!("{:?}", self.command).as_bytes());
+        hasher.update(format!("{:?}{:?}", self.command, self.settings.env).as_bytes());
         let source =
             std::fs::File::open(file).with_context(|| format!("{} kann nicht gelesen werden", file.display()))?;
         hasher.update_reader(source)?;
@@ -771,11 +1205,9 @@ impl Processor {
             let tmp =
                 cache_dir.join(format!(".{key}.tmp-{}-{run_id}.{}", std::process::id(), self.output.file_extension()));
             let ctx = Context { project: project.map(Path::to_path_buf), paths: vec![file.to_path_buf()], line: 0 };
-            let extra = [
-                ("{output}", tmp.to_string_lossy().into_owned()),
-                ("{extension}", self.base_dir.to_string_lossy().into_owned()),
-            ];
-            let built = actions::build(&self.command, self.cwd.as_deref(), &ctx, &extra)?;
+            let extra = self.settings.placeholders(&tmp, &self.base_dir);
+            let mut built = actions::build(&self.command, self.cwd.as_deref(), &ctx, &extra)?;
+            built.env = self.settings.environment()?;
             let finished = run(&built, self.timeout)?;
             if finished.code != Some(0) {
                 let _ = std::fs::remove_file(&tmp);
@@ -831,11 +1263,9 @@ impl Exporter {
             self.target
         ));
         let ctx = Context { project: project.map(Path::to_path_buf), paths: vec![file.to_path_buf()], line: 0 };
-        let extra = [
-            ("{output}", tmp.to_string_lossy().into_owned()),
-            ("{extension}", self.base_dir.to_string_lossy().into_owned()),
-        ];
-        let built = actions::build(&self.command, self.cwd.as_deref(), &ctx, &extra)?;
+        let extra = self.settings.placeholders(&tmp, &self.base_dir);
+        let mut built = actions::build(&self.command, self.cwd.as_deref(), &ctx, &extra)?;
+        built.env = self.settings.environment()?;
         let finished = run(&built, self.timeout);
         let finished = match finished {
             Ok(f) => f,
@@ -895,7 +1325,7 @@ mod tests {
         assert!(proj.errors.iter().any(|e| e.contains("applies_to")));
         assert!(proj.errors.iter().any(|e| e.contains("target")));
         assert!(proj.errors.iter().any(|e| e.contains("{output}")));
-        assert!(found[2].errors[0].contains("atlas_extension"));
+        assert!(found[2].errors[0].contains("atlas_api"));
 
         // A new extension: own name, examples only as comments.
         let (name, text) = starter("Projekt-Werkzeuge: PDF");
@@ -915,6 +1345,100 @@ mod tests {
         assert_eq!(template.actions[0].id, "beispiel/wörter-zählen");
         assert_eq!(template.actions[0].base_dir.as_deref(), Some(user.join("beispiel").as_path()));
         assert_eq!(template.processors[0].id, "beispiel/hexdump");
+    }
+
+    #[test]
+    fn api_2_declares_permissions_settings_and_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = write_ext(
+            dir.path(),
+            "nb",
+            r#"atlas_api: 2
+name: nb
+permissions: {run: [cat, jupyter], files: home, network: [cloud.example.org]}
+settings:
+- {key: format, type: choice, choices: [html, md], default: md}
+- {key: python, type: path, default: jupyter}
+- {key: anders, type: path, default: /tmp/fremd}
+- {key: token, type: secret}
+- {key: zahl, type: number, default: nein}
+commands:
+- {name: Umwandeln, applies_to: "*.ipynb", command: [jupyter, nbconvert, --to, "{setting:format}", "{file}"], keybinding: strg+alt+j, menu: palette}
+- {name: Python, command: ["{setting:python}", -V]}
+- {name: Anders, command: ["{setting:anders}", -V]}
+- {name: Fremd, command: [curl, x]}
+- {name: Shell, shell: true, command: "cat {file}"}
+- {name: Geheim, command: [cat, "{setting:token}"]}
+- {name: Skript, command: ["{extension}/run.sh"]}
+processors:
+- {name: Zeigen, applies_to: "*.ipynb", output: text, command: [sh, -c, "echo $ATLAS_SETTING_FORMAT"]}
+- {name: Katze, applies_to: "*.ipynb", output: text, command: [cat, "{file}"]}
+"#,
+        );
+        let mut ext = load(&ext_dir, Location::User);
+        assert_eq!(ext.api, 2);
+        let permissions = ext.permissions.clone().unwrap();
+        assert_eq!(permissions.files, FileAccess::Home);
+        assert_eq!(permissions.network, ["cloud.example.org"]);
+        let keys: Vec<_> = ext.settings.iter().map(|s| s.key.as_str()).collect();
+        assert_eq!(keys, ["format", "python", "anders", "token"], "{:?}", ext.errors);
+        let names: Vec<_> = ext.actions.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Umwandeln", "Python", "Skript"], "{:?}", ext.errors);
+        assert_eq!(ext.actions[0].keybinding.as_deref(), Some("Ctrl+Alt+J"));
+        assert_eq!((ext.actions[0].in_menu, ext.actions[0].in_palette), (false, true));
+        assert_eq!(ext.processors.len(), 1, "sh is not declared");
+        for wanted in ["zahl", "„curl“ fehlt", "„sh“ fehlt", "ATLAS_SETTING_TOKEN", "„{setting:anders}“ fehlt"] {
+            assert!(ext.errors.iter().any(|e| e.contains(wanted)), "{wanted}: {:?}", ext.errors);
+        }
+
+        // Settings: defaults, then the user's values (wrong types ignored).
+        let config = dir.path().join("config");
+        let ctx = Context { project: None, paths: vec![ext_dir.join("a.ipynb")], line: 0 };
+        let argv = |ext: &Extension| ext.actions[0].prepare(&ctx).unwrap().argv;
+        ext.apply_settings(&load_settings(&config));
+        assert!(argv(&ext).ends_with(&["--to".into(), "md".into(), ext_dir.join("a.ipynb").to_string_lossy().into()]));
+        assert!(argv(&ext).contains(&"ATLAS_SETTING_FORMAT=md".to_owned()));
+        save_setting(&config, &ext, "format", Some(toml::Value::String("html".into()))).unwrap();
+        assert!(save_setting(&config, &ext, "format", Some(toml::Value::String("pdf".into()))).is_err());
+        assert!(save_setting(&config, &ext, "fehlt", None).is_err());
+        ext.apply_settings(&load_settings(&config));
+        assert!(argv(&ext).contains(&"html".to_owned()));
+        save_setting(&config, &ext, "format", None).unwrap();
+        assert!(!settings_file(&config).exists() || load_settings(&config).is_empty());
+
+        // Processors get the values in their environment.
+        let mut ext = load(&ext_dir, Location::User);
+        ext.permissions.as_mut().unwrap().run.push("sh".into());
+        let _ = &ext;
+        let text = r#"atlas_api: 2
+name: env
+permissions: {run: [sh]}
+settings: [{key: format, type: choice, choices: [html, md], default: md}]
+processors:
+- name: Zeigen
+  applies_to: "*.txt"
+  output: text
+  command: [sh, -c, 'printf %s "$ATLAS_SETTING_FORMAT"']
+"#;
+        let env_dir = write_ext(dir.path(), "env", text);
+        let mut ext = load(&env_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        save_setting(&config, &ext, "format", Some(toml::Value::String("html".into()))).unwrap();
+        ext.apply_settings(&load_settings(&config));
+        let file = dir.path().join("x.txt");
+        std::fs::write(&file, "x").unwrap();
+        let out = ext.processors[0].process(&file, None, &dir.path().join("cache")).unwrap();
+        assert_eq!(out, Processed::Text("html".into()));
+
+        // Newer API: not loaded.
+        let future = write_ext(
+            dir.path(),
+            "neu",
+            "atlas_api: 3
+name: neu
+",
+        );
+        assert!(load(&future, Location::User).errors[0].contains("neuere Atlas-Version"));
     }
 
     #[test]

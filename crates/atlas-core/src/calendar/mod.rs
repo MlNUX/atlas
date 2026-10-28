@@ -29,6 +29,7 @@ pub fn password_from_command(command: &str, timeout: std::time::Duration) -> any
         display: program.clone(),
         // A missing home (build sandboxes) would make the start fail.
         cwd: dirs::home_dir().filter(|home| home.is_dir()).unwrap_or_else(|| std::path::PathBuf::from("/")),
+        env: Vec::new(),
     };
     let finished = crate::extensions::run(&built, timeout)?;
     if finished.code != Some(0) {

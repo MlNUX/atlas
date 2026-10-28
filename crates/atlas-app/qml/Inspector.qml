@@ -58,7 +58,7 @@ Rectangle {
         const seen = {}
         for (const paths of document ? [[document], []] : [[]])
             for (const a of actions.actionsFor(paths))
-                if (!seen[a.id]) { seen[a.id] = true; out.push(Object.assign({ paths: paths }, a)) }
+                if (!seen[a.id] && a.menu) { seen[a.id] = true; out.push(Object.assign({ paths: paths }, a)) }
         return out
     }
 

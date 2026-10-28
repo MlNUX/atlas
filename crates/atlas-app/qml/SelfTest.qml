@@ -498,6 +498,21 @@ Item {
                 app.setExtensionEnabled("demo", false)
                 check("Ausgeschaltet: keine Aktionen", projectActions().indexOf("Hallo") < 0, projectActions())
                 app.setExtensionEnabled("demo", true)
+                // API 2: permissions, settings, key sequences, menus.
+                const nb = JSON.parse(app.extensions()).find(e => e.name === "nb") || {}
+                check("API 2: Rechte gelesen", nb.api === 2 && !!nb.permissions && nb.permissions.run.join() === "echo" && nb.permissions.files === "project",
+                      JSON.stringify(nb.permissions))
+                check("API 2: nicht angemeldetes Programm abgelehnt", (nb.errors || []).some(e => e.indexOf("curl") >= 0), JSON.stringify(nb.errors))
+                const greet = fileActions.actionsFor([]).find(a => a.id === "nb/grüßen")
+                check("API 2: Befehl nur in der Arbeitsleiste, mit Kürzel", !!greet && greet.palette && !greet.menu && greet.keybinding === "Ctrl+Alt+G", JSON.stringify(greet))
+                check("API 2: Kürzel angemeldet", JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+G" && k.id === "nb/grüßen"), app.keybindings())
+                const greetArgv = () => JSON.parse(app.prepareAction("nb/grüßen", [], 0)).argv || []
+                check("Einstellung: Standardwert als Platzhalter und Variable",
+                      greetArgv().slice(-2).join(" ") === "echo hallo" && greetArgv().indexOf("ATLAS_SETTING_GRUSS=hallo") >= 0, greetArgv().join(" "))
+                check("Einstellung ändern", app.setExtensionSetting("nb", "gruss", JSON.stringify("servus")) === "" && greetArgv().slice(-1)[0] === "servus", greetArgv().join(" "))
+                check("Einstellung: falscher Typ abgelehnt", app.setExtensionSetting("nb", "gruss", "5") !== "")
+                app.setExtensionSetting("nb", "gruss", "null")
+                check("Einstellung zurückgesetzt", greetArgv().slice(-1)[0] === "hallo", greetArgv().join(" "))
                 editor.open(path("daten.dat"), 0, "tab")
                 const exporter = fileActions.exportersFor([note])[0]
                 check("Exporter für Markdown", !!exporter && exporter.output === path("notes/idee.txt"), JSON.stringify(exporter))
