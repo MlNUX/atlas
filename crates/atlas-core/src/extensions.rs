@@ -18,7 +18,7 @@
 //! project run only after the user trusted them; a changed manifest needs
 //! trust again.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -111,7 +111,9 @@ pub struct Extension {
     pub description: String,
     pub dir: PathBuf,
     pub location: Location,
-    /// BLAKE3 of the manifest (trust is bound to it).
+    /// What trust is bound to: for project extensions BLAKE3 over every
+    /// file of the folder (see [`folder_hash`]), for user extensions over
+    /// the manifest. Empty if it could not be computed.
     pub hash: String,
     pub actions: Vec<Action>,
     pub processors: Vec<Processor>,
@@ -346,7 +348,16 @@ pub fn load(dir: &Path, location: Location) -> Extension {
             return ext;
         }
     };
-    ext.hash = blake3::hash(&bytes).to_hex().to_string();
+    ext.hash = match location {
+        Location::User => blake3::hash(&bytes).to_hex().to_string(),
+        Location::Project => match folder_hash(dir) {
+            Ok(hash) => hash,
+            Err(err) => {
+                ext.errors.push(format!("{err:#}"));
+                String::new()
+            }
+        },
+    };
     let docs = match yaml_rust2::YamlLoader::load_from_str(&String::from_utf8_lossy(&bytes)) {
         Ok(d) => d,
         Err(err) => {
@@ -504,6 +515,98 @@ pub fn project_root(atlas_dir: &Path) -> PathBuf {
 }
 
 // -------------------------------------------------------------------- trust
+
+/// Largest extension folder that is checked (files, bytes).
+const MAX_FILES: usize = 10_000;
+const MAX_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Content hash of a file, remembered by its metadata: a change of the
+/// content always changes the ctime, which (unlike the mtime) cannot be set
+/// back by hand.
+fn file_hash(path: &Path, meta: &std::fs::Metadata) -> Result<String> {
+    use std::os::unix::fs::MetadataExt;
+    type Seen = HashMap<PathBuf, ((u64, u64, i64, i64, i64, i64), String)>;
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<Seen>> = std::sync::OnceLock::new();
+    let key = (
+        meta.dev(),
+        meta.ino(),
+        meta.size() as i64,
+        meta.mtime_nsec() + meta.mtime() * 1_000_000_000,
+        meta.ctime(),
+        meta.ctime_nsec(),
+    );
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some((k, hash)) = seen.lock().ok().and_then(|s| s.get(path).cloned())
+        && k == key
+    {
+        return Ok(hash);
+    }
+    let mut hasher = blake3::Hasher::new();
+    hasher.update_reader(std::fs::File::open(path)?)?;
+    let hash = hasher.finalize().to_hex().to_string();
+    if let Ok(mut s) = seen.lock() {
+        s.insert(path.to_path_buf(), (key, hash.clone()));
+    }
+    Ok(hash)
+}
+
+/// BLAKE3 over the whole extension folder: every file's relative path,
+/// executable bit and content, every symbolic link's target (a link to a
+/// file also with that file's content) – so a trusted extension whose
+/// script changed is untrusted again, not only one whose manifest changed.
+pub fn folder_hash(dir: &Path) -> Result<String> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"atlas-extension-folder-v2\0");
+    let (mut files, mut bytes) = (0usize, 0u64);
+    let mut stack = vec![PathBuf::new()];
+    while let Some(rel) = stack.pop() {
+        let mut entries: Vec<_> = std::fs::read_dir(dir.join(&rel))
+            .with_context(|| format!("{} nicht lesbar", dir.join(&rel).display()))?
+            .collect::<std::io::Result<_>>()?;
+        entries.sort_by_key(|e| e.file_name());
+        // Depth first, in name order (sub folders after the files).
+        let mut subdirs = Vec::new();
+        for entry in entries {
+            let rel = rel.join(entry.file_name());
+            let path = entry.path();
+            let link = std::fs::symlink_metadata(&path)?;
+            let kind = if link.file_type().is_symlink() {
+                hasher.update(b"L");
+                hasher.update(rel.as_os_str().as_encoded_bytes());
+                hasher.update(b"\0");
+                hasher.update(std::fs::read_link(&path)?.as_os_str().as_encoded_bytes());
+                hasher.update(b"\0");
+                // What it points to: a file counts with its content.
+                match std::fs::metadata(&path) {
+                    Ok(m) if m.is_file() => Some(m),
+                    _ => None,
+                }
+            } else if link.is_dir() {
+                subdirs.push(rel.clone());
+                None
+            } else if link.is_file() {
+                Some(link)
+            } else {
+                None
+            };
+            if let Some(meta) = kind {
+                files += 1;
+                bytes += meta.len();
+                if files > MAX_FILES || bytes > MAX_BYTES {
+                    bail!("Erweiterung zu groß zum Prüfen (mehr als {MAX_FILES} Dateien oder {} MB)", MAX_BYTES >> 20);
+                }
+                hasher.update(b"F");
+                hasher.update(rel.as_os_str().as_encoded_bytes());
+                hasher.update(if meta.permissions().mode() & 0o111 != 0 { b"\0x\0" } else { b"\0-\0" });
+                hasher.update(file_hash(&path, &meta)?.as_bytes());
+            }
+        }
+        subdirs.reverse();
+        stack.extend(subdirs);
+    }
+    Ok(format!("v2:{}", hasher.finalize().to_hex()))
+}
 
 /// Project extensions the user trusted: folder → manifest hash, in
 /// `$XDG_STATE_HOME/atlas/trusted-extensions.json`.
@@ -818,6 +921,48 @@ mod tests {
         assert_eq!(load(&root.join("core-2"), Location::User).title, "Core 2");
         assert!(root.join("beispiel-3").is_dir(), "own titles stay");
         assert!(migrate_legacy(root).is_empty(), "runs once");
+    }
+
+    #[test]
+    fn trust_covers_every_file_of_a_project_extension() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = write_ext(
+            dir.path(),
+            "skript",
+            "atlas_extension: 1\nname: skript\nactions:\n- {name: A, command: [\"{extension}/run.sh\"]}\n",
+        );
+        std::fs::create_dir(ext_dir.join("lib")).unwrap();
+        std::fs::write(ext_dir.join("run.sh"), "#!/bin/sh\necho harmlos\n").unwrap();
+        std::fs::write(ext_dir.join("lib/helfer.py"), "print(1)\n").unwrap();
+        let state = dir.path().join("state");
+        let mut trust = Trust::load(&state);
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        let active = || status(&load(&ext_dir, Location::Project), &Trust::load(&state), &[]) == Status::Active;
+        assert!(active());
+        // The script changes (same size even), the manifest does not.
+        std::fs::write(ext_dir.join("run.sh"), "#!/bin/sh\necho bösartig\n").unwrap();
+        assert!(!active(), "a changed script needs a new approval");
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        assert!(active());
+        // A file in a sub folder, a new file, the executable bit, a link.
+        std::fs::write(ext_dir.join("lib/helfer.py"), "print(2)\n").unwrap();
+        assert!(!active());
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        std::fs::write(ext_dir.join("neu.sh"), "x").unwrap();
+        assert!(!active());
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        std::fs::set_permissions(ext_dir.join("neu.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!active());
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        let outside = dir.path().join("draussen.sh");
+        std::fs::write(&outside, "echo 1").unwrap();
+        std::os::unix::fs::symlink(&outside, ext_dir.join("link.sh")).unwrap();
+        assert!(!active());
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        assert!(active());
+        std::fs::write(&outside, "echo 2").unwrap();
+        assert!(!active(), "the file a link points to counts too");
     }
 
     #[test]

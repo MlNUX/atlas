@@ -91,7 +91,11 @@ wird; ein abgebrochener Export lässt nichts halb Geschriebenes zurück und
 Erweiterungen, die mit einem Projekt kommen, können beim Öffnen von Dateien
 Befehle ausführen. Atlas aktiviert sie deshalb erst, wenn sie geprüft und
 freigegeben wurden; der Dialog zeigt dabei alle Befehle. Die Freigabe gilt
-für den Ordner und den Inhalt der `extension.yaml`
-(`$XDG_STATE_HOME/atlas/trusted-extensions.json`, BLAKE3 des Manifests) –
-ändert sich das Manifest, wird erneut gefragt. Globale Erweiterungen hat
-der Nutzer selbst installiert; sie sind sofort aktiv.
+für den Ordner und **jede Datei darin** – Manifest, Skripte, Unterordner,
+Ausführrechte und das Ziel symbolischer Links
+(`$XDG_STATE_HOME/atlas/trusted-extensions.json`, BLAKE3 über den ganzen
+Ordner). Ändert sich irgendetwas davon, ist die Erweiterung wieder
+gesperrt, bis sie erneut freigegeben wird; geprüft wird bei jeder
+Ausführung. Ordner mit mehr als 10 000 Dateien oder 512 MB lassen sich
+nicht prüfen und bleiben aus. Globale Erweiterungen hat der Nutzer selbst
+installiert; sie sind sofort aktiv.

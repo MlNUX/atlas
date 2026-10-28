@@ -283,7 +283,7 @@ Dialog {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 text: dialog.pending
-                    ? qsTr("„%1“ gehört zu diesem Projekt (%2). Nach der Freigabe kann Atlas folgende Befehle ausführen – Anzeigen auch automatisch beim Öffnen passender Dateien. Gib sie nur frei, wenn du dem Projekt vertraust.")
+                    ? qsTr("„%1“ gehört zu diesem Projekt (%2). Nach der Freigabe kann Atlas folgende Befehle ausführen – Anzeigen auch automatisch beim Öffnen passender Dateien. Gib sie nur frei, wenn du dem Projekt vertraust. Ändert sich danach eine Datei der Erweiterung, fragt Atlas erneut.")
                         .arg(dialog.pending.title).arg(dialog.pending.dir)
                     : ""
             }

@@ -10,6 +10,15 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Sicherheit
+- **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht
+  mehr nur für die `extension.yaml`: Ein Skript, das die Erweiterung
+  aufruft (`{extension}/…`), ließ sich nach der Freigabe austauschen und
+  lief ohne neue Nachfrage. Jetzt sperrt jede Änderung einer Datei, eines
+  Ausführrechts oder eines Link-Ziels die Erweiterung wieder; geprüft wird
+  bei jeder Ausführung. Bereits freigegebene Projekt-Erweiterungen müssen
+  einmal neu freigegeben werden.
+
 ### Geändert
 - **Weniger Arbeitsspeicher:**
   - Geschlossene PDFs werden freigegeben: Schließt der letzte Tab einer
