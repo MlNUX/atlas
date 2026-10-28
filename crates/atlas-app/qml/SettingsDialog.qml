@@ -28,10 +28,18 @@ Dialog {
     /// Read when the dialog opens.
     property string editorText
     property int extensionCount: 0
+    /// Extensions with settings (shown with their form).
+    property var configurable: []
+    function reloadExtensions() {
+        let list = []
+        try { list = JSON.parse(dialog.app.extensions()) } catch (e) {}
+        extensionCount = list.length
+        configurable = list.filter(e => e.settings.length > 0 && e.status !== "broken")
+    }
     onAboutToShow: {
         const command = dialog.app.editorCommand()
         editorText = command ? command : qsTr("Standard: $VISUAL, $EDITOR oder das Programm des Systems")
-        try { extensionCount = JSON.parse(dialog.app.extensions()).length } catch (e) { extensionCount = 0 }
+        reloadExtensions()
     }
     readonly property var calendar: dialog.actions ? dialog.actions.calendar : null
     /// The calendars offered for new events (for the smoke test).
@@ -465,6 +473,78 @@ Dialog {
                             title: qsTr("Aufgaben")
                             detail: qsTr("Offene Aufgaben abhaken und neue anlegen")
                             last: true
+                        }
+                    }
+                }
+
+                // Settings the extensions declare (API 2).
+                SectionLabel { text: qsTr("Erweiterungen"); Layout.topMargin: 10 }
+                Repeater {
+                    model: dialog.configurable
+                    Card {
+                        id: extCard
+                        required property var modelData
+                        Layout.fillWidth: true
+                        implicitHeight: extColumn.implicitHeight + 24
+                        ColumnLayout {
+                            id: extColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 12
+                            spacing: 8
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+                                Icon { name: "grid"; size: 18; color: Theme.accent }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: extCard.modelData.title
+                                    color: Theme.textStrong
+                                    font.pixelSize: Theme.fontSize
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: extCard.modelData.status === "active" ? qsTr("Aktiv")
+                                        : extCard.modelData.status === "disabled" ? qsTr("Ausgeschaltet") : qsTr("Nicht freigegeben")
+                                    color: extCard.modelData.status === "active" ? Theme.ok : Theme.textFaint
+                                    font.pixelSize: Theme.smallFontSize
+                                }
+                            }
+                            ExtensionSettings {
+                                Layout.fillWidth: true
+                                app: dialog.app
+                                actions: dialog.actions
+                                ext: extCard.modelData
+                                onChanged: dialog.reloadExtensions()
+                            }
+                        }
+                    }
+                }
+                Card {
+                    Layout.fillWidth: true
+                    visible: dialog.configurable.length === 0
+                    implicitHeight: noExtRow.implicitHeight + 24
+                    RowLayout {
+                        id: noExtRow
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+                        Icon { name: "grid"; size: 18; color: Theme.accent }
+                        Text {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.smallFontSize
+                            text: qsTr("Keine Erweiterung mit Einstellungen installiert. Das Test-Plugin zeigt, wie es aussieht.")
+                        }
+                        Button {
+                            text: qsTr("Test-Plugin installieren")
+                            onClicked: {
+                                const error = dialog.app.installTestPlugin()
+                                if (dialog.actions) dialog.actions.showMessage(error || qsTr("Test-Plugin installiert – Strg+Alt+T grüßt"))
+                                dialog.reloadExtensions()
+                            }
                         }
                     }
                 }

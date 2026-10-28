@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Test-Plugin: zeigt alles, was eine Erweiterung mit API 2 kann
+# (docs/extensions.md). Atlas installiert es über „Erweiterungen“ →
+# „Test-Plugin installieren“ nach ~/.config/atlas/extensions/test-plugin/.
+atlas_api: 2
+name: test-plugin
+title: Test-Plugin
+version: 1.0.0
+description: Beispiel für Erweiterungen mit API 2 – Befehle mit Tastenkürzel, Einstellungen, eine Anzeige und ein Exporter.
+
+permissions:
+  run: []                     # startet nur die Skripte in diesem Ordner
+  files: project
+  network: false
+
+settings:
+  - key: gruss
+    title: Begrüßung
+    description: "Text, den „Test-Plugin: Grüßen“ ausgibt."
+    type: string
+    default: Hallo
+  - key: gross
+    title: In Großbuchstaben
+    type: bool
+    default: false
+  - key: wiederholungen
+    title: Wiederholungen
+    description: Wie oft die Begrüßung erscheint (1 bis 20).
+    type: number
+    default: 1
+  - key: zaehlen
+    title: Zählen nach
+    description: "Was „Test-Plugin: Zählen“ zählt."
+    type: choice
+    choices: [Wörter, Zeilen, Zeichen]
+    default: Wörter
+  - key: token
+    title: Token (Test)
+    description: Ein Geheimnis zum Ausprobieren – verschlüsselt gespeichert; die Anzeige sagt nur, ob eins gesetzt ist.
+    type: secret
+
+commands:
+  - name: "Test-Plugin: Grüßen"
+    when: project
+    command: ["{extension}/gruss.sh", "{project}"]
+    keybinding: Ctrl+Alt+T
+  - name: "Test-Plugin: Zählen"
+    applies_to: ["*.md", "*.txt"]
+    command: ["{extension}/zaehlen.sh", "{file}"]
+    menu: context
+
+processors:
+  - name: Test-Plugin-Anzeige
+    applies_to: "*.testplugin"
+    output: markdown
+    command: ["{extension}/anzeigen.sh", "{file}"]
+
+exporters:
+  - name: Großbuchstaben (Test-Plugin)
+    applies_to: ["*.md", "*.txt"]
+    target: gross.txt
+    command: ["{extension}/export.sh", "{file}", "{output}"]

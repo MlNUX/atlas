@@ -22,6 +22,25 @@ Kontextmenü (Aktionen → Erweiterungen …): Status, Beiträge, die genauen
 Befehle, Ein-/Ausschalten (in `config.toml`), Manifest öffnen, neue
 Erweiterung aus einer Vorlage anlegen.
 
+## Test-Plugin
+
+Atlas bringt ein Beispiel mit, das alles aus API 2 vorführt:
+„Test-Plugin installieren“ in den Einstellungen (Abschnitt
+„Erweiterungen“), im Erweiterungsdialog oder in der Arbeitsleiste legt es
+unter `~/.config/atlas/extensions/test-plugin/` an (erneut: aktualisiert,
+Einstellungen bleiben). Quelle: `crates/atlas-core/test-plugin/`.
+
+- „Test-Plugin: Grüßen“ (Strg+Alt+T, Arbeitsleiste und Kontextmenü)
+  gibt die Begrüßung aus den Einstellungen im Terminal aus.
+- „Test-Plugin: Zählen“ (nur Kontextmenü von `.md`/`.txt`) zählt Wörter,
+  Zeilen oder Zeichen.
+- `*.testplugin`-Dateien zeigt es als Tabelle der Einstellungen; das Token
+  nur als „gesetzt“ oder „nicht gesetzt“.
+- „Exportieren als → Großbuchstaben“ schreibt `<name>.gross.txt`.
+
+Die Einstellungen (Text, Schalter, Zahl, Auswahl, Geheimnis) erscheinen in
+den Einstellungen von Atlas unter „Erweiterungen“.
+
 ## Format (API 2)
 
 ```yaml
@@ -103,8 +122,9 @@ Befehle haben das Format der [Aktionen](actions.md) und zusätzlich
 
 ### Einstellungen
 
-Atlas zeigt die Einstellungen unter „Erweiterungen“ → „Einstellungen …“
-und speichert nur geänderte Werte in
+Atlas zeigt die Einstellungen in seinen Einstellungen (Abschnitt
+„Erweiterungen“) und unter „Erweiterungen“ → „Einstellungen …“ und
+speichert nur geänderte Werte in
 `~/.config/atlas/extension-settings.toml`. Befehle bekommen jeden Wert als
 Platzhalter `{setting:schlüssel}` und als Umgebungsvariable
 `ATLAS_SETTING_SCHLÜSSEL` (großgeschrieben, `-` wird `_`).

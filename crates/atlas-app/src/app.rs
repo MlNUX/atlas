@@ -721,6 +721,12 @@ pub mod qobject {
         #[cxx_name = "setExtensionSetting"]
         fn set_extension_setting(self: Pin<&mut AppController>, name: &QString, key: &QString, value: &QString) -> QString;
 
+        /// Installs (or updates) the test plugin that comes with Atlas;
+        /// error text or "".
+        #[qinvokable]
+        #[cxx_name = "installTestPlugin"]
+        fn install_test_plugin(self: Pin<&mut AppController>) -> QString;
+
         /// Key sequences of actions and active extensions: JSON list of
         /// {sequence, id, name}.
         #[qinvokable]
@@ -2698,6 +2704,16 @@ impl qobject::AppController {
         let result = match atlas_core::extensions::save_setting_json(&config_dir, &ext, &key, &value.to_string()) {
             Ok(()) => QString::default(),
             Err(err) => qs(format!("{err:#}")),
+        };
+        self.as_mut().refresh_extensions();
+        result
+    }
+
+    pub fn install_test_plugin(mut self: Pin<&mut Self>) -> QString {
+        let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
+        let result = match atlas_core::extensions::install_test_plugin(&root) {
+            Ok(_) => QString::default(),
+            Err(err) => qs(format!("Test-Plugin: {err:#}")),
         };
         self.as_mut().refresh_extensions();
         result

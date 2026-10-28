@@ -939,6 +939,32 @@ pub fn migrate_legacy(user_root: &Path) -> Vec<(String, String)> {
     renamed
 }
 
+/// The test plugin that comes with Atlas (`crates/atlas-core/test-plugin/`):
+/// file name, content, executable.
+const TEST_PLUGIN: &[(&str, &str, bool)] = &[
+    (MANIFEST, include_str!("../test-plugin/extension.yaml"), false),
+    ("gruss.sh", include_str!("../test-plugin/gruss.sh"), true),
+    ("zaehlen.sh", include_str!("../test-plugin/zaehlen.sh"), true),
+    ("anzeigen.sh", include_str!("../test-plugin/anzeigen.sh"), true),
+    ("export.sh", include_str!("../test-plugin/export.sh"), true),
+];
+pub const TEST_PLUGIN_NAME: &str = "test-plugin";
+
+/// Installs (or updates) the test plugin among the user's extensions;
+/// returns its folder. Its settings are kept.
+pub fn install_test_plugin(user_root: &Path) -> Result<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = user_root.join(TEST_PLUGIN_NAME);
+    for (name, content, executable) in TEST_PLUGIN {
+        let path = dir.join(name);
+        crate::paths::write_atomic(&path, content.as_bytes())?;
+        let mode = if *executable { 0o755 } else { 0o644 };
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
+            .with_context(|| format!("{} kann nicht geändert werden", path.display()))?;
+    }
+    Ok(dir)
+}
+
 pub fn user_root(config_dir: &Path) -> PathBuf {
     config_dir.join(DIR)
 }
@@ -1345,6 +1371,51 @@ mod tests {
         assert_eq!(template.actions[0].id, "beispiel/wörter-zählen");
         assert_eq!(template.actions[0].base_dir.as_deref(), Some(user.join("beispiel").as_path()));
         assert_eq!(template.processors[0].id, "beispiel/hexdump");
+    }
+
+    #[test]
+    fn test_plugin_installs_and_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("extensions");
+        let ext_dir = install_test_plugin(&root).unwrap();
+        let mut ext = load(&ext_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        assert_eq!((ext.api, ext.settings.len(), ext.actions.len()), (2, 5, 2));
+        assert_eq!(ext.actions[0].keybinding.as_deref(), Some("Ctrl+Alt+T"));
+        let config = dir.path().join("config");
+        save_setting(&config, &ext, "gruss", Some(toml::Value::String("Servus".into()))).unwrap();
+        save_setting(&config, &ext, "gross", Some(toml::Value::Boolean(true))).unwrap();
+        save_setting(&config, &ext, "wiederholungen", Some(toml::Value::Integer(2))).unwrap();
+        ext.apply_settings(&load_settings(&config));
+
+        let file = dir.path().join("probe.testplugin");
+        std::fs::write(&file, "Inhalt").unwrap();
+        let Processed::Markdown(md) = ext.processors[0].process(&file, None, &dir.path().join("cache")).unwrap() else {
+            panic!("markdown expected")
+        };
+        assert!(md.contains("| Begrüßung | Servus |") && md.contains("| Token | nicht gesetzt |"), "{md}");
+
+        let note = dir.path().join("notiz.md");
+        std::fs::write(&note, "eins zwei\n").unwrap();
+        let out = ext.exporters[0].default_output(&note);
+        assert_eq!(out, dir.path().join("notiz.gross.txt"));
+        ext.exporters[0].export(&note, &out, None).unwrap();
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "EINS ZWEI\n");
+
+        // The greeting script with the settings in its environment.
+        let action = &ext.actions[0];
+        let ctx = Context { project: Some(dir.path().to_path_buf()), paths: Vec::new(), line: 0 };
+        let mut extra = vec![("{extension}".to_owned(), ext_dir.to_string_lossy().into_owned())];
+        extra.extend(action.extra.iter().cloned());
+        let mut built = actions::build(&action.command, None, &ctx, &extra).unwrap();
+        built.env = action.env.clone();
+        let finished = run(&built, Duration::from_secs(10)).unwrap();
+        let text = String::from_utf8_lossy(&finished.stdout);
+        assert_eq!(text.matches("SERVUS aus dem Test-Plugin!").count(), 2, "{text}");
+
+        // Installing again updates the files and keeps the settings.
+        install_test_plugin(&root).unwrap();
+        assert!(load_settings(&config).contains_key(TEST_PLUGIN_NAME));
     }
 
     #[test]

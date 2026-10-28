@@ -185,6 +185,8 @@ ApplicationWindow {
             { name: qsTr("Neue Frist …"), run: () => window.newCalendarEntry("deadline") },
             { name: qsTr("Neue Aufgabe …"), run: () => window.newCalendarEntry("task") },
             { name: qsTr("Einstellungen …"), hint: qsTr("Orte, Editor, Kalender"), run: () => settingsDialog.open() },
+            { name: qsTr("Test-Plugin installieren"), hint: qsTr("Beispiel-Erweiterung"),
+              run: () => { const error = app.installTestPlugin(); fileActions.showMessage(error || qsTr("Test-Plugin installiert – Strg+Alt+T grüßt")) } },
             { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
         ]
         if (calendar.connected) {

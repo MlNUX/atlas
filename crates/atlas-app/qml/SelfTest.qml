@@ -513,6 +513,15 @@ Item {
                 check("Einstellung: falscher Typ abgelehnt", app.setExtensionSetting("nb", "gruss", "5") !== "")
                 app.setExtensionSetting("nb", "gruss", "null")
                 check("Einstellung zurückgesetzt", greetArgv().slice(-1)[0] === "hallo", greetArgv().join(" "))
+                // The test plugin: installed with one click, its settings in the settings dialog.
+                check("Test-Plugin installiert", app.installTestPlugin() === "")
+                const tp = JSON.parse(app.extensions()).find(e => e.name === "test-plugin") || {}
+                check("Test-Plugin aktiv, mit fünf Einstellungen", tp.status === "active" && (tp.settings || []).length === 5 && tp.errors.length === 0,
+                      JSON.stringify([tp.status, tp.errors]))
+                check("Test-Plugin: Strg+Alt+T angemeldet", JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+T"), app.keybindings())
+                settingsDialog.reloadExtensions()
+                check("Einstellungsdialog zeigt die Einstellungen des Test-Plugins", settingsDialog.configurable.some(e => e.name === "test-plugin"),
+                      JSON.stringify(settingsDialog.configurable.map(e => e.name)))
                 editor.open(path("daten.dat"), 0, "tab")
                 const exporter = fileActions.exportersFor([note])[0]
                 check("Exporter für Markdown", !!exporter && exporter.output === path("notes/idee.txt"), JSON.stringify(exporter))

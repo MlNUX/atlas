@@ -256,6 +256,15 @@ Dialog {
             }
             IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: dialog.reload() }
             Item { Layout.fillWidth: true }
+            Button {
+                text: qsTr("Test-Plugin installieren")
+                flat: true
+                onClicked: {
+                    const error = dialog.app.installTestPlugin()
+                    if (dialog.actions) dialog.actions.showMessage(error || qsTr("Test-Plugin installiert – Strg+Alt+T grüßt"))
+                    dialog.reload()
+                }
+            }
             Button { text: qsTr("Neue Erweiterung …"); onClicked: dialog.askNew() }
             Button { text: qsTr("Schließen"); highlighted: true; onClicked: dialog.close() }
         }
@@ -394,89 +403,18 @@ Dialog {
             dialog.list = JSON.parse(dialog.app.extensions())
             ext = dialog.list.find(e => e.name === name) || null
         }
-        function store(key, value) {
-            const error = dialog.app.setExtensionSetting(name, key, JSON.stringify(value))
-            if (error && dialog.actions) dialog.actions.showMessage(error)
-            reload()
-        }
         anchors.centerIn: Overlay.overlay
         parent: Overlay.overlay
         width: Math.min(560, dialog.width)
         modal: true
         title: ext ? qsTr("Einstellungen: %1").arg(ext.title) : ""
         standardButtons: Dialog.Close
-        ColumnLayout {
+        ExtensionSettings {
             width: parent.width
-            spacing: 10
-            Repeater {
-                model: settingsDialog.ext ? settingsDialog.ext.settings : []
-                ColumnLayout {
-                    id: row
-                    required property var modelData
-                    Layout.fillWidth: true
-                    spacing: 3
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { text: row.modelData.title; color: Theme.textStrong; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Label {
-                            text: "ATLAS_SETTING_" + row.modelData.key.toUpperCase().replace(/-/g, "_")
-                            color: Theme.textFaint
-                            font.family: Theme.monoFont
-                            font.pixelSize: Theme.smallFontSize
-                        }
-                    }
-                    Label {
-                        Layout.fillWidth: true
-                        visible: text.length > 0
-                        text: row.modelData.description
-                        color: Theme.textMuted
-                        wrapMode: Text.Wrap
-                        font.pixelSize: Theme.smallFontSize
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        TextField {
-                            Layout.fillWidth: true
-                            visible: ["string", "path", "number", "secret"].indexOf(row.modelData.type) >= 0
-                            echoMode: row.modelData.type === "secret" ? TextInput.Password : TextInput.Normal
-                            text: row.modelData.type === "secret" ? "" : String(row.modelData.value)
-                            placeholderText: row.modelData.type === "secret"
-                                ? (row.modelData.value ? qsTr("gespeichert – neu eingeben zum Ersetzen") : qsTr("nicht gesetzt"))
-                                : String(row.modelData.default)
-                            validator: row.modelData.type === "number" ? numberCheck : null
-                            onEditingFinished: {
-                                const t = text.trim()
-                                if (row.modelData.type === "secret") { if (t) settingsDialog.store(row.modelData.key, t); return }
-                                if (row.modelData.type === "number") { if (t !== String(row.modelData.value)) settingsDialog.store(row.modelData.key, Number(t.replace(",", "."))); return }
-                                if (text !== String(row.modelData.value)) settingsDialog.store(row.modelData.key, text)
-                            }
-                        }
-                        CheckBox {
-                            visible: row.modelData.type === "bool"
-                            checked: row.modelData.value === true
-                            text: checked ? qsTr("An") : qsTr("Aus")
-                            onToggled: settingsDialog.store(row.modelData.key, checked)
-                        }
-                        ComboBox {
-                            Layout.fillWidth: true
-                            visible: row.modelData.type === "choice"
-                            model: row.modelData.choices
-                            currentIndex: row.modelData.choices.indexOf(String(row.modelData.value))
-                            onActivated: (i) => settingsDialog.store(row.modelData.key, row.modelData.choices[i])
-                        }
-                        Item { Layout.fillWidth: row.modelData.type === "bool" }
-                        Button {
-                            flat: true
-                            text: row.modelData.type === "secret" ? qsTr("Vergessen") : qsTr("Standard")
-                            enabled: row.modelData.type === "secret" ? row.modelData.value === true
-                                : JSON.stringify(row.modelData.value) !== JSON.stringify(row.modelData.default)
-                            onClicked: settingsDialog.store(row.modelData.key, null)
-                        }
-                    }
-                }
-            }
-            DoubleValidator { id: numberCheck; locale: "C" }
+            app: dialog.app
+            actions: dialog.actions
+            ext: settingsDialog.ext
+            onChanged: settingsDialog.reload()
         }
     }
 }

@@ -24,6 +24,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   - **Befehle** mit Tastenkürzel (`keybinding`) und Platz im Kontextmenü
     oder in der Arbeitsleiste (`menu`) – auch für eigene Aktionen.
   - Neuere API-Versionen werden erkannt und mit Hinweis nicht geladen.
+- **Test-Plugin** zum Ausprobieren: ein Klick in den Einstellungen
+  installiert eine Beispiel-Erweiterung mit Befehlen (Strg+Alt+T),
+  Einstellungen, einer Anzeige und einem Exporter. Die Einstellungen von
+  Erweiterungen stehen jetzt direkt im Einstellungsdialog.
 
 ### Sicherheit
 - **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht
