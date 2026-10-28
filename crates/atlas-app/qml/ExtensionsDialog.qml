@@ -16,6 +16,8 @@ Dialog {
     property var list: []
     /// Extension waiting for the trust confirmation.
     property var pending: null
+    /// Extension waiting for the uninstall confirmation.
+    property var removing: null
 
     anchors.centerIn: Overlay.overlay
     width: Math.min(760, Overlay.overlay ? Overlay.overlay.width - 60 : 760)
@@ -221,6 +223,11 @@ Dialog {
                             onClicked: card.expanded = !card.expanded
                         }
                         Button {
+                            text: qsTr("Deinstallieren …")
+                            flat: true
+                            onClicked: { dialog.removing = card.modelData; uninstallDialog.open() }
+                        }
+                        Button {
                             text: qsTr("Manifest öffnen")
                             flat: true
                             onClicked: { if (dialog.actions) dialog.actions.openRequested(card.modelData.manifest, false); dialog.close() }
@@ -320,6 +327,45 @@ Dialog {
                 Layout.fillWidth: true
                 placeholderText: qsTr("z. B. PDF-Werkzeuge")
                 onAccepted: newDialog.accept()
+            }
+        }
+    }
+
+    // Uninstalling: the folder goes to the trash, settings and secrets are
+    // forgotten.
+    Dialog {
+        id: uninstallDialog
+        anchors.centerIn: Overlay.overlay
+        parent: Overlay.overlay
+        width: Math.min(520, dialog.width)
+        modal: true
+        title: qsTr("Erweiterung deinstallieren?")
+        standardButtons: Dialog.Cancel
+        ColumnLayout {
+            width: parent.width
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: !dialog.removing ? ""
+                    : (dialog.removing.location === "project"
+                        ? qsTr("„%1“ gehört zu diesem Projekt. Ihr Ordner %2 kommt in den Papierkorb – auch für alle, mit denen du das Projekt teilst.")
+                        : qsTr("Der Ordner von „%1“ (%2) kommt in den Papierkorb."))
+                        .arg(dialog.removing.title).arg(dialog.removing.dir)
+                      + "\n\n" + qsTr("Ihre Einstellungen und gespeicherten Geheimnisse löscht Atlas. Dateien, die sie in deinen Projekten angelegt hat, bleiben.")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Button {
+                    text: qsTr("Deinstallieren")
+                    onClicked: {
+                        const title = dialog.removing ? dialog.removing.title : ""
+                        const error = dialog.removing ? dialog.app.uninstallExtension(dialog.removing.dir) : ""
+                        if (dialog.actions) dialog.actions.showMessage(error || qsTr("„%1“ deinstalliert – der Ordner liegt im Papierkorb").arg(title))
+                        uninstallDialog.close()
+                        dialog.reload()
+                    }
+                }
             }
         }
     }

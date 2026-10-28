@@ -738,6 +738,13 @@ pub mod qobject {
         #[cxx_name = "installBundled"]
         fn install_bundled(self: Pin<&mut AppController>, name: &QString) -> QString;
 
+        /// Uninstalls the extension in folder `dir`: the folder goes to the
+        /// trash, its settings, secrets and trust are forgotten; error text
+        /// or "".
+        #[qinvokable]
+        #[cxx_name = "uninstallExtension"]
+        fn uninstall_extension(self: Pin<&mut AppController>, dir: &QString) -> QString;
+
         /// Views of active extensions: JSON list of {id, name, extension,
         /// keybinding}.
         #[qinvokable]
@@ -2774,6 +2781,34 @@ impl qobject::AppController {
         };
         self.as_mut().refresh_extensions();
         result
+    }
+
+    pub fn uninstall_extension(mut self: Pin<&mut Self>, dir: &QString) -> QString {
+        use atlas_core::extensions;
+        let dir = path_of(dir);
+        let result = (|| -> anyhow::Result<()> {
+            let (ext, _) = self
+                .extension_list()
+                .into_iter()
+                .find(|(e, _)| e.dir == dir)
+                .ok_or_else(|| anyhow::anyhow!("Unter {} ist keine Erweiterung (mehr).", dir.display()))?;
+            atlas_core::fileops::trash(std::slice::from_ref(&ext.dir))?;
+            let mut trust = extensions::Trust::load(&atlas_core::paths::state_root());
+            extensions::forget(&ext, &atlas_core::config::config_dir(), &mut trust)?;
+            // A project extension of the same name may still be there.
+            if !self.extension_list().iter().any(|(e, _)| e.name == ext.name) {
+                let mut config = Config::load().extensions;
+                config.disabled.retain(|n| n != &ext.name);
+                Config::save_extensions(&config)?;
+            }
+            crate::qt_helpers::set_extension_dir(&qs(&ext.name), &QString::default());
+            Ok(())
+        })();
+        self.as_mut().refresh_extensions();
+        match result {
+            Ok(()) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        }
     }
 
     pub fn extension_views(&self) -> QString {

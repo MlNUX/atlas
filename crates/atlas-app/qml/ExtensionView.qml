@@ -19,7 +19,16 @@ Rectangle {
     required property string source
     /// `view:<extension>/<id>`.
     required property string viewId
-    readonly property var info: { try { return JSON.parse(root.app.extensionView(root.viewId)) } catch (e) { return { error: String(e) } } }
+    property var info: root.readInfo()
+    function readInfo() { try { return JSON.parse(root.app.extensionView(root.viewId)) } catch (e) { return { error: String(e) } } }
+    // Switched off, uninstalled or changed: the banner says so.
+    Connections {
+        target: root.app
+        function onUntrustedExtensionsChanged() {
+            const next = root.readInfo()
+            if (JSON.stringify(next) !== JSON.stringify(root.info)) root.info = next
+        }
+    }
     readonly property string title: info.name ? info.name + (root.app.fileKind(root.source) === "dir" ? "" : " – " + root.app.fileName(root.source)) : root.app.fileName(root.source)
     /// Error messages of the page since the last load.
     property var pageErrors: []

@@ -513,6 +513,20 @@ Dialog {
                                     color: extCard.modelData.status === "active" ? Theme.ok : Theme.textFaint
                                     font.pixelSize: Theme.smallFontSize
                                 }
+                                // Second click uninstalls (folder to the trash).
+                                Button {
+                                    id: uninstallButton
+                                    property bool armed: false
+                                    flat: true
+                                    text: armed ? qsTr("Wirklich deinstallieren?") : qsTr("Deinstallieren")
+                                    onClicked: {
+                                        if (!armed) { armed = true; disarm.restart(); return }
+                                        const error = dialog.app.uninstallExtension(extCard.modelData.dir)
+                                        if (dialog.actions) dialog.actions.showMessage(error || qsTr("„%1“ deinstalliert – der Ordner liegt im Papierkorb").arg(extCard.modelData.title))
+                                        dialog.reloadExtensions()
+                                    }
+                                    Timer { id: disarm; interval: 4000; onTriggered: uninstallButton.armed = false }
+                                }
                             }
                             ExtensionSettings {
                                 Layout.fillWidth: true

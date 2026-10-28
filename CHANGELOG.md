@@ -33,9 +33,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   - **bnki-Karten**: Karteikarten für die bnki-App schreiben (Strg+Alt+B) –
     mit Vorschau für Formeln und Code; jeder Stapel ist eine CSV-Datei im
     Projekt, sofort gespeichert und direkt in bnki importierbar.
-  - **Test-Plugin**: Befehle (Strg+Alt+T), Einstellungen, Anzeige und
-    Exporter zum Ausprobieren.
 - Die Einstellungen von Erweiterungen stehen direkt im Einstellungsdialog.
+- **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
+  der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
+  Freigabe werden gelöscht.
 
 ### Sicherheit
 - **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht

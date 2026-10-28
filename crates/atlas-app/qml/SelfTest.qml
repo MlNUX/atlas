@@ -515,15 +515,6 @@ Item {
                 check("Einstellung: falscher Typ abgelehnt", app.setExtensionSetting("nb", "gruss", "5") !== "")
                 app.setExtensionSetting("nb", "gruss", "null")
                 check("Einstellung zurückgesetzt", greetArgv().slice(-1)[0] === "hallo", greetArgv().join(" "))
-                // The test plugin: installed with one click, its settings in the settings dialog.
-                check("Test-Plugin installiert", app.installBundled("test-plugin") === "")
-                const tp = JSON.parse(app.extensions()).find(e => e.name === "test-plugin") || {}
-                check("Test-Plugin aktiv, mit fünf Einstellungen", tp.status === "active" && (tp.settings || []).length === 5 && tp.errors.length === 0,
-                      JSON.stringify([tp.status, tp.errors]))
-                check("Test-Plugin: Strg+Alt+T angemeldet", JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+T"), app.keybindings())
-                settingsDialog.reloadExtensions()
-                check("Einstellungsdialog zeigt die Einstellungen des Test-Plugins", settingsDialog.configurable.some(e => e.name === "test-plugin"),
-                      JSON.stringify(settingsDialog.configurable.map(e => e.name)))
                 editor.open(path("daten.dat"), 0, "tab")
                 const exporter = fileActions.exportersFor([note])[0]
                 check("Exporter für Markdown", !!exporter && exporter.output === path("notes/idee.txt"), JSON.stringify(exporter))
@@ -539,6 +530,9 @@ Item {
                 // ---- Extension views: the bnki plugin in a tab
                 check("bnki-Karten installiert", app.installBundled("bnki") === "")
                 check("bnki: Ansicht mit Strg+Alt+B", JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+B" && k.id === "view:bnki/editor"), app.keybindings())
+                settingsDialog.reloadExtensions()
+                check("Einstellungsdialog zeigt die Einstellungen von bnki-Karten", settingsDialog.configurable.some(e => e.name === "bnki"),
+                      JSON.stringify(settingsDialog.configurable.map(e => e.name)))
                 window.openExtensionView("view:bnki/editor", "")
             },
             () => {
@@ -567,6 +561,18 @@ Item {
                 check("bnki: Farben von Atlas", !!test.bnkiPage && test.bnkiPage[2] === "rgb(15, 23, 38)", JSON.stringify(test.bnkiPage))
                 const tab = editor.activeTab
                 check("bnki: CSV-Datei mit „Anzeigen mit“ als eigener Tab", !!tab && tab.title === "bnki-Karten – Biologie.csv" && tab.path === path("bnki/Biologie.csv"), tab ? tab.title : "kein Tab")
+                // Uninstalling: folder in the trash, settings gone, the decks stay.
+                const bnki = JSON.parse(app.extensions()).find(e => e.name === "bnki") || {}
+                app.setExtensionSetting("bnki", "ordner", JSON.stringify("karten"))
+                check("bnki deinstalliert", app.uninstallExtension(bnki.dir || "") === "" && !app.exists(bnki.dir || "/fehlt"))
+                check("Deinstalliert: nicht mehr in der Liste, Kürzel frei",
+                      !JSON.parse(app.extensions()).some(e => e.name === "bnki") && !JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+B"))
+                check("Deinstalliert: wieder installierbar", JSON.parse(app.bundledExtensions()).some(b => b.name === "bnki" && !b.installed))
+                check("Deinstalliert: offener Tab sagt es", !!tab && !!tab.viewerItem.info.error, tab ? JSON.stringify(tab.viewerItem.info) : "")
+                check("Deinstalliert: Stapel bleiben", app.readTextFile(path("bnki/Biologie.csv")).indexOf("Energie") > 0)
+                app.installBundled("bnki")
+                const fresh = JSON.parse(app.extensions()).find(e => e.name === "bnki") || { settings: [] }
+                check("Neu installiert: Einstellungen wie neu", (fresh.settings.find(x => x.key === "ordner") || {}).value === "bnki", JSON.stringify(fresh.settings))
                 // ---- Phase 2: project calendar
                 window.openCalendar({ mode: "week", date: "2026-10-19" })
             },

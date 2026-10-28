@@ -22,6 +22,13 @@ Kontextmenü (Aktionen → Erweiterungen …): Status, Beiträge, die genauen
 Befehle, Ein-/Ausschalten (in `config.toml`), Manifest öffnen, neue
 Erweiterung aus einer Vorlage anlegen.
 
+**Deinstallieren** („Deinstallieren …“ im Erweiterungsdialog oder in den
+Einstellungen): Der Ordner der Erweiterung kommt in den Papierkorb (von
+dort wiederherstellbar), ihre Einstellungen, gespeicherten Geheimnisse und
+ihre Freigabe löscht Atlas. Dateien, die sie in Projekten angelegt hat
+(z. B. die Stapel von bnki-Karten), bleiben. Eine Projekt-Erweiterung
+verschwindet damit für alle, die das Projekt teilen.
+
 ## Mitgelieferte Erweiterungen
 
 In den Einstellungen (Abschnitt „Erweiterungen“), im Erweiterungsdialog
@@ -43,21 +50,6 @@ CSV-Datei „Anzeigen mit → bnki-Karten“).
 - Aufs Handy: „Im Explorer“ zeigt die Datei; in bnki „Stapel öffnen →
   CSV importieren“.
 - Rechte: nur Dateien im Projekt, kein Netzwerk, keine Programme.
-
-### Test-Plugin
-
-Ein Beispiel, das Befehle, Einstellungen, Anzeige und Exporter vorführt.
-
-- „Test-Plugin: Grüßen“ (Strg+Alt+T, Arbeitsleiste und Kontextmenü)
-  gibt die Begrüßung aus den Einstellungen im Terminal aus.
-- „Test-Plugin: Zählen“ (nur Kontextmenü von `.md`/`.txt`) zählt Wörter,
-  Zeilen oder Zeichen.
-- `*.testplugin`-Dateien zeigt es als Tabelle der Einstellungen; das Token
-  nur als „gesetzt“ oder „nicht gesetzt“.
-- „Exportieren als → Großbuchstaben“ schreibt `<name>.gross.txt`.
-
-Die Einstellungen (Text, Schalter, Zahl, Auswahl, Geheimnis) erscheinen in
-den Einstellungen von Atlas unter „Erweiterungen“.
 
 ## Format (API 2)
 

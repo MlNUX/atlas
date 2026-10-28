@@ -868,6 +868,23 @@ pub fn save_setting_json(config_dir: &Path, ext: &Extension, key: &str, json: &s
     save_setting(config_dir, ext, key, value)
 }
 
+/// Forgets what Atlas keeps about `ext` outside its folder: its settings,
+/// its secrets and its trust. Uninstalling also moves the folder to the
+/// trash (done by the caller, so it can be restored from there).
+pub fn forget(ext: &Extension, config_dir: &Path, trust: &mut Trust) -> Result<()> {
+    for setting in ext.settings.iter().filter(|s| s.kind == SettingKind::Secret) {
+        crate::secret::SecretStore::default_for(&secret_store(&ext.name, &setting.key)).forget()?;
+    }
+    let mut all = load_settings(config_dir);
+    if all.remove(&ext.name).is_some() {
+        crate::paths::write_atomic(&settings_file(config_dir), toml::to_string_pretty(&all)?.as_bytes())?;
+    }
+    if ext.location == Location::Project {
+        trust.revoke(ext)?;
+    }
+    Ok(())
+}
+
 impl Extension {
     /// Current value of each setting (secrets: whether one is stored).
     pub fn setting_values(&self, all: &toml::Table) -> Vec<(&Setting, toml::Value)> {
@@ -1012,31 +1029,15 @@ pub struct Bundled {
     files: &'static [(&'static str, &'static str, bool)],
 }
 
-pub const TEST_PLUGIN_NAME: &str = "test-plugin";
-
-pub const BUNDLED: &[Bundled] = &[
-    Bundled {
-        name: TEST_PLUGIN_NAME,
-        title: "Test-Plugin",
-        description: "Zeigt alles, was Erweiterungen können: Befehle, Einstellungen, Anzeige, Exporter.",
-        files: &[
-            (MANIFEST, include_str!("../bundled/test-plugin/extension.yaml"), false),
-            ("gruss.sh", include_str!("../bundled/test-plugin/gruss.sh"), true),
-            ("zaehlen.sh", include_str!("../bundled/test-plugin/zaehlen.sh"), true),
-            ("anzeigen.sh", include_str!("../bundled/test-plugin/anzeigen.sh"), true),
-            ("export.sh", include_str!("../bundled/test-plugin/export.sh"), true),
-        ],
-    },
-    Bundled {
-        name: "bnki",
-        title: "bnki-Karten",
-        description: "Karteikarten für bnki schreiben – jeder Stapel eine CSV-Datei im Projekt.",
-        files: &[
-            (MANIFEST, include_str!("../bundled/bnki/extension.yaml"), false),
-            ("editor.html", include_str!("../bundled/bnki/editor.html"), false),
-        ],
-    },
-];
+pub const BUNDLED: &[Bundled] = &[Bundled {
+    name: "bnki",
+    title: "bnki-Karten",
+    description: "Karteikarten für bnki schreiben – jeder Stapel eine CSV-Datei im Projekt.",
+    files: &[
+        (MANIFEST, include_str!("../bundled/bnki/extension.yaml"), false),
+        ("editor.html", include_str!("../bundled/bnki/editor.html"), false),
+    ],
+}];
 
 /// Installs (or updates) the bundled extension `name` among the user's
 /// extensions; returns its folder. Its settings are kept.
@@ -1611,48 +1612,41 @@ mod tests {
     }
 
     #[test]
-    fn test_plugin_installs_and_runs() {
+    fn uninstalling_forgets_settings_and_trust() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("extensions");
-        let ext_dir = install_bundled(&root, TEST_PLUGIN_NAME).unwrap();
-        let mut ext = load(&ext_dir, Location::User);
-        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
-        assert_eq!((ext.api, ext.settings.len(), ext.actions.len()), (2, 5, 2));
-        assert_eq!(ext.actions[0].keybinding.as_deref(), Some("Ctrl+Alt+T"));
         let config = dir.path().join("config");
-        save_setting(&config, &ext, "gruss", Some(toml::Value::String("Servus".into()))).unwrap();
-        save_setting(&config, &ext, "gross", Some(toml::Value::Boolean(true))).unwrap();
-        save_setting(&config, &ext, "wiederholungen", Some(toml::Value::Integer(2))).unwrap();
-        ext.apply_settings(&load_settings(&config));
+        let ext_dir = install_bundled(&root, "bnki").unwrap();
+        let ext = load(&ext_dir, Location::User);
+        save_setting(&config, &ext, "ordner", Some(toml::Value::String("karten".into()))).unwrap();
+        let other = write_ext(
+            dir.path(),
+            "andere",
+            "atlas_api: 2\nname: andere\nsettings: [{key: x, default: a}]\ncommands: [{name: A, command: ['{extension}/a.sh']}]\n",
+        );
+        let other = load(&other, Location::User);
+        save_setting(&config, &other, "x", Some(toml::Value::String("b".into()))).unwrap();
+        let mut trust = Trust::load(&dir.path().join("state"));
+        forget(&ext, &config, &mut trust).unwrap();
+        let left = load_settings(&config);
+        assert!(!left.contains_key("bnki") && left.contains_key("andere"), "{left:?}");
 
-        let file = dir.path().join("probe.testplugin");
-        std::fs::write(&file, "Inhalt").unwrap();
-        let Processed::Markdown(md) = ext.processors[0].process(&file, None, &dir.path().join("cache")).unwrap() else {
-            panic!("markdown expected")
-        };
-        assert!(md.contains("| Begrüßung | Servus |") && md.contains("| Token | nicht gesetzt |"), "{md}");
+        // A project extension also loses its trust.
+        let project = write_ext(
+            &dir.path().join("p"),
+            "proj",
+            "atlas_api: 2\nname: proj\ncommands: [{name: A, command: ['{extension}/a.sh']}]\n",
+        );
+        let proj = load(&project, Location::Project);
+        trust.trust(&proj).unwrap();
+        assert!(Trust::load(&dir.path().join("state")).is_trusted(&proj));
+        forget(&proj, &config, &mut trust).unwrap();
+        assert!(!Trust::load(&dir.path().join("state")).is_trusted(&proj));
 
-        let note = dir.path().join("notiz.md");
-        std::fs::write(&note, "eins zwei\n").unwrap();
-        let out = ext.exporters[0].default_output(&note);
-        assert_eq!(out, dir.path().join("notiz.gross.txt"));
-        ext.exporters[0].export(&note, &out, None).unwrap();
-        assert_eq!(std::fs::read_to_string(&out).unwrap(), "EINS ZWEI\n");
-
-        // The greeting script with the settings in its environment.
-        let action = &ext.actions[0];
-        let ctx = Context { project: Some(dir.path().to_path_buf()), paths: Vec::new(), line: 0 };
-        let mut extra = vec![("{extension}".to_owned(), ext_dir.to_string_lossy().into_owned())];
-        extra.extend(action.extra.iter().cloned());
-        let mut built = actions::build(&action.command, None, &ctx, &extra).unwrap();
-        built.env = action.env.clone();
-        let finished = run(&built, Duration::from_secs(10)).unwrap();
-        let text = String::from_utf8_lossy(&finished.stdout);
-        assert_eq!(text.matches("SERVUS aus dem Test-Plugin!").count(), 2, "{text}");
-
-        // Installing again updates the files and keeps the settings.
-        install_bundled(&root, TEST_PLUGIN_NAME).unwrap();
-        assert!(load_settings(&config).contains_key(TEST_PLUGIN_NAME));
+        // Installed again: like new.
+        install_bundled(&root, "bnki").unwrap();
+        let again = load(&ext_dir, Location::User);
+        assert_eq!(again.setting_values(&load_settings(&config))[0].1.as_str(), Some("bnki"));
     }
 
     #[test]
