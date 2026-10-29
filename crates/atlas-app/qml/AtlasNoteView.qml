@@ -166,6 +166,18 @@ Rectangle {
                     }
                 }
             }
+            // Wheel and touchpad scroll like in the PDF viewer (TouchpadFling): a
+            // notch moves `wheelStep` pixels, eased in, instead of the list's few
+            // lines; the touchpad follows the fingers and glides on.
+            TouchpadFling {
+                id: noteFling
+                parent: list
+                anchors.fill: parent
+                flickable: list
+                wheelStep: 200
+                active: !root.app || root.app.touchpadFling
+                app: root.app
+            }
             // Ctrl+wheel zooms and keeps the spot under the mouse in place. Qt on
             // Wayland reports mouse wheels as touchpads with finger pointers and
             // high-resolution wheels with pixel deltas only: accept every device.
@@ -177,6 +189,8 @@ Rectangle {
                     event.accepted = true
                     const steps = root.wheelSteps(event)
                     if (!steps) return
+                    noteFling.flush()
+                    noteFling.stop()
                     list.cancelFlick()
                     // The handler sits in the content: convert to view coordinates.
                     const at = list.mapFromItem(list.contentItem, event.x, event.y)
