@@ -43,14 +43,15 @@ Item {
     /// AppController: its touchpadHeld signal (fingers put down, Wayland
     /// hold gesture) stops the momentum.
     property var app: null
-    /// Momentum relative to the swipe speed.
-    readonly property real boost: 1.0
-    /// Share of the speed lost per millisecond (Firefox: apz.fling_friction).
-    readonly property real friction: 0.002
+    /// Momentum relative to the swipe speed (a view may glide faster).
+    property real boost: 1.0
+    /// Share of the speed lost per millisecond (Firefox: apz.fling_friction);
+    /// lower glides longer.
+    property real friction: 0.002
     /// Below this speed (px/ms) the glide ends (apz.fling_stopped_threshold).
     readonly property real stopSpeed: 0.01
     /// Fastest glide (px/ms).
-    readonly property real maxSpeed: 8
+    property real maxSpeed: 8
     /// Speed of the glide in px/ms (positive: content moves down/right).
     property real glideX: 0
     property real glideY: 0

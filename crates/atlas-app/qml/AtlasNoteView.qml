@@ -175,6 +175,11 @@ Rectangle {
                 anchors.fill: parent
                 flickable: list
                 wheelStep: 200
+                // Notebook pages are tall: the glide after a swipe starts faster and
+                // runs a little longer than elsewhere.
+                boost: 1.4
+                friction: 0.0016
+                maxSpeed: 11
                 active: !root.app || root.app.touchpadFling
                 app: root.app
             }
