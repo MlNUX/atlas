@@ -37,6 +37,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Hintergrundbefehle neu starten:** Wurde ein Hintergrundbefehl beendet
+  und gleich wieder gestartet (z. B. „Jupyter-Server neu starten“), traf
+  das SIGKILL für den alten Prozess fünf Sekunden später den neuen.
 - **Jupyter 1.3.0:** Rückmeldung beim Start des Servers (Schritte mit
   Sekunden und Log-Zeile, dann „Jupyter-Server gestartet“). Umgebungen
   bauen und suchen läuft jetzt als Hintergrundbefehl von Atlas statt im

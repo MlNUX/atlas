@@ -149,20 +149,23 @@ pub fn stop(key: &str) -> bool {
     }
     signal(job, libc::SIGTERM);
     let key = key.to_owned();
+    // This job only: the key may get a new job (e.g. a restart) meanwhile.
+    let pid = job.child.id();
+    let still_running = move |jobs: &mut BTreeMap<String, Job>| {
+        jobs.get_mut(&key).filter(|j| j.child.id() == pid).is_some_and(|j| j.poll())
+    };
     std::thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(100));
-            let mut jobs = JOBS.lock().unwrap_or_else(|e| e.into_inner());
-            if !jobs.get_mut(&key).is_some_and(Job::poll) {
+            if !still_running(&mut JOBS.lock().unwrap_or_else(|e| e.into_inner())) {
                 return;
             }
         }
         let mut jobs = JOBS.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(job) = jobs.get_mut(&key)
-            && job.poll()
-        {
-            signal(job, libc::SIGKILL);
+        if still_running(&mut jobs) {
+            // SAFETY: plain system call; the group is this job's.
+            unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
         }
     });
     true
@@ -232,6 +235,16 @@ mod tests {
         start("test/fehler", "Fehler", &sh("exit 0"), dir.path(), &[]).unwrap();
         wait_until(|| status("test/fehler").unwrap().code == Some(0));
         assert!(status("test/unbekannt").is_none());
+
+        // Stopped and started again right away (a restart): the SIGKILL timer
+        // of the old job must not hit the new one.
+        start("test/neu", "Neu", &sh("sleep 30"), dir.path(), &[]).unwrap();
+        assert!(stop("test/neu"));
+        wait_until(|| !status("test/neu").unwrap().running);
+        start("test/neu", "Neu", &sh("sleep 30"), dir.path(), &[]).unwrap();
+        std::thread::sleep(Duration::from_millis(5600));
+        assert!(status("test/neu").unwrap().running, "the new job survives");
+        assert!(stop("test/neu"));
 
         start("test/ende", "Ende", &sh("sleep 30"), dir.path(), &[]).unwrap();
         stop_all();
