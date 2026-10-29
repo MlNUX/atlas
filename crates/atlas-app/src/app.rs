@@ -356,10 +356,17 @@ pub mod qobject {
         fn atlas_note_info(self: &AppController, path: &QString) -> QString;
 
         /// Page `index` of an `.atlasnote` rendered `width` pixels wide, as a
-        /// `file://` URL into the cache ("" if it cannot be rendered).
+        /// `file://` URL into the cache. Never blocks: "" while the page is
+        /// rendered on a background thread (ask again a moment later).
         #[qinvokable]
         #[cxx_name = "atlasNotePage"]
         fn atlas_note_page(self: &AppController, path: &QString, index: i32, width: i32) -> QString;
+
+        /// Any rendering of page `index` that exists already, at another size
+        /// ("" if none): shown scaled until `atlasNotePage` has the right one.
+        #[qinvokable]
+        #[cxx_name = "atlasNotePreview"]
+        fn atlas_note_preview(self: &AppController, path: &QString, index: i32) -> QString;
 
         /// Layout JSON of this device's session ("" if none).
         #[qinvokable]
@@ -1645,7 +1652,7 @@ impl qobject::AppController {
     }
 
     pub fn atlas_note_info(&self, path: &QString) -> QString {
-        let info = match atlas_core::atlasnote::NoteFile::open(&path_of(path)) {
+        let info = match atlas_core::atlasnote::NoteFile::open_cached(&path_of(path)) {
             Ok(note) => serde_json::json!({
                 "pages": note.notebook.pages.iter().map(|p| serde_json::json!({ "height": p.height })).collect::<Vec<_>>(),
                 "error": "",
@@ -1656,15 +1663,22 @@ impl qobject::AppController {
     }
 
     pub fn atlas_note_page(&self, path: &QString, index: i32, width: i32) -> QString {
-        let rendered = atlas_core::atlasnote::NoteFile::open(&path_of(path))
-            .and_then(|note| note.render_png(index.max(0) as usize, width.max(1) as u32));
-        match rendered {
-            Ok(file) => qs(format!("file://{}", file.display())),
-            Err(err) => {
-                log::warn!("cannot render page {index} of {}: {err:#}", path_of(path).display());
+        let Ok(note) = atlas_core::atlasnote::NoteFile::open_cached(&path_of(path)) else { return QString::default() };
+        let (index, width) = (index.max(0) as usize, width.max(1) as u32);
+        match note.rendered(index, width) {
+            Some(file) => qs(format!("file://{}", file.display())),
+            None => {
+                note.render_in_background(index, width);
                 QString::default()
             }
         }
+    }
+
+    pub fn atlas_note_preview(&self, path: &QString, index: i32) -> QString {
+        atlas_core::atlasnote::NoteFile::open_cached(&path_of(path))
+            .ok()
+            .and_then(|note| note.any_rendered(index.max(0) as usize))
+            .map_or_else(QString::default, |file| qs(format!("file://{}", file.display())))
     }
 
     fn session(&self) -> Option<ProjectSession> {

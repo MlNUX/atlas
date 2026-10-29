@@ -109,17 +109,52 @@ Rectangle {
                     height: parent.height
                     color: "#242528"
                     border.color: Theme.border
-                    Image {
+                    // Pages render on background threads; until the right size is
+                    // there, an existing rendering is shown scaled (or the plain page).
+                    // Both pictures decode off the UI thread.
+                    Item {
+                        id: picture
                         anchors.fill: parent
-                        // Renders on first use and then comes from the cache.
-                        source: {
-                            const url = root.app ? root.app.atlasNotePage(root.source, index, root.renderWidth) : ""
-                            return url ? url + "#" + root.revision : ""
+                        property string exact: ""
+                        property string preview: ""
+                        /// Polls while rendering; gives up on pages that cannot be rendered.
+                        property int attempts: 0
+                        function load() {
+                            if (!root.app) return
+                            attempts++
+                            exact = root.app.atlasNotePage(root.source, index, root.renderWidth)
+                            if (!exact) preview = root.app.atlasNotePreview(root.source, index)
                         }
-                        fillMode: Image.Stretch
-                        smooth: true
-                        mipmap: true
-                        cache: false
+                        Component.onCompleted: load()
+                        Connections {
+                            target: root
+                            function onRenderWidthChanged() { picture.attempts = 0; picture.load() }
+                            function onRevisionChanged() { picture.attempts = 0; picture.load() }
+                        }
+                        Timer {
+                            interval: 120
+                            repeat: true
+                            running: picture.exact === "" && picture.attempts < 150
+                            onTriggered: picture.load()
+                        }
+                        Image {
+                            anchors.fill: parent
+                            source: picture.preview
+                            visible: !exactImage.visible
+                            asynchronous: true
+                            fillMode: Image.Stretch
+                            smooth: true
+                        }
+                        Image {
+                            id: exactImage
+                            anchors.fill: parent
+                            source: picture.exact
+                            visible: status === Image.Ready
+                            asynchronous: true
+                            fillMode: Image.Stretch
+                            smooth: true
+                            mipmap: true
+                        }
                     }
                     Label {
                         anchors.right: parent.right

@@ -19,9 +19,11 @@
 //! modification time) and pages are rendered with cairo to PNG files there;
 //! the original file is never written.
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
@@ -201,7 +203,7 @@ impl NoteFile {
     /// PNG of page `index` at `width_px` pixels, rendered once and cached.
     pub fn render_png(&self, index: usize, width_px: u32) -> Result<PathBuf> {
         let width_px = width_px.clamp(100, 4000);
-        let out = self.dir.join("render").join(format!("{index}-{width_px}.png"));
+        let out = self.render_path(index, width_px);
         if out.is_file() {
             return Ok(out);
         }
@@ -211,6 +213,72 @@ impl NoteFile {
         image::save_buffer_with_format(&partial, &rgba, w, h, image::ColorType::Rgba8, image::ImageFormat::Png)?;
         std::fs::rename(&partial, &out)?;
         Ok(out)
+    }
+
+    fn render_path(&self, index: usize, width_px: u32) -> PathBuf {
+        self.dir.join("render").join(format!("{index}-{}.png", width_px.clamp(100, 4000)))
+    }
+
+    /// The PNG of page `index` at `width_px`, if it was rendered already.
+    pub fn rendered(&self, index: usize, width_px: u32) -> Option<PathBuf> {
+        Some(self.render_path(index, width_px)).filter(|p| p.is_file())
+    }
+
+    /// The widest PNG of page `index` rendered so far (a placeholder while the
+    /// requested size is rendered, e.g. after zooming).
+    pub fn any_rendered(&self, index: usize) -> Option<PathBuf> {
+        let prefix = format!("{index}-");
+        std::fs::read_dir(self.dir.join("render"))
+            .ok()?
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().into_string().ok()?;
+                let width: u32 = name.strip_prefix(&prefix)?.strip_suffix(".png")?.parse().ok()?;
+                Some((width, e.path()))
+            })
+            .max_by_key(|(width, _)| *width)
+            .map(|(_, path)| path)
+    }
+
+    /// Opens `path` once per version of the file and keeps the last few in memory,
+    /// so asking for pages does not read and check the archive again each time.
+    pub fn open_cached(path: &Path) -> Result<Arc<NoteFile>> {
+        static OPEN: OnceLock<Mutex<Vec<Arc<NoteFile>>>> = OnceLock::new();
+        let dir = cache_dir_for(path)?;
+        let open = OPEN.get_or_init(Default::default);
+        if let Some(note) = open.lock().unwrap().iter().find(|n| n.dir == dir) {
+            return Ok(note.clone());
+        }
+        let note = Arc::new(NoteFile::open(path)?);
+        let mut open = open.lock().unwrap();
+        open.retain(|n| n.dir != note.dir);
+        open.push(note.clone());
+        if open.len() > 8 {
+            open.remove(0);
+        }
+        Ok(note)
+    }
+
+    /// Queues page `index` for rendering on a background thread (nothing if it is
+    /// rendered or queued already). The newest request goes first, and only the
+    /// last few wait, so fast scrolling renders what is visible now.
+    pub fn render_in_background(self: &Arc<Self>, index: usize, width_px: u32) {
+        let width_px = width_px.clamp(100, 4000);
+        if index >= self.notebook.pages.len() || self.rendered(index, width_px).is_some() {
+            return;
+        }
+        let renderer = renderer();
+        let key = (self.dir.clone(), index, width_px);
+        let mut state = renderer.state.lock().unwrap();
+        if !state.queued.insert(key) {
+            return;
+        }
+        state.jobs.push((self.clone(), index, width_px));
+        while state.jobs.len() > MAX_QUEUED {
+            let (note, index, width) = state.jobs.remove(0);
+            state.queued.remove(&(note.dir.clone(), index, width));
+        }
+        renderer.wake.notify_one();
     }
 
     /// Page `index` as RGBA pixels, `width_px` wide.
@@ -349,6 +417,52 @@ impl NoteFile {
         cr.paint()?;
         Ok(())
     }
+}
+
+const MAX_QUEUED: usize = 12;
+const RENDER_THREADS: usize = 2;
+
+#[derive(Default)]
+struct RenderState {
+    jobs: Vec<(Arc<NoteFile>, usize, u32)>,
+    /// Queued or being rendered: (cache folder, page, width).
+    queued: HashSet<(PathBuf, usize, u32)>,
+}
+
+struct Renderer {
+    state: Mutex<RenderState>,
+    wake: Condvar,
+}
+
+fn renderer() -> &'static Renderer {
+    static RENDERER: OnceLock<&'static Renderer> = OnceLock::new();
+    RENDERER.get_or_init(|| {
+        let renderer: &'static Renderer =
+            Box::leak(Box::new(Renderer { state: Mutex::new(RenderState::default()), wake: Condvar::new() }));
+        for i in 0..RENDER_THREADS {
+            std::thread::Builder::new()
+                .name(format!("atlasnote-render-{i}"))
+                .spawn(move || {
+                    loop {
+                        let (note, index, width) = {
+                            let mut state = renderer.state.lock().unwrap();
+                            loop {
+                                if let Some(job) = state.jobs.pop() {
+                                    break job;
+                                }
+                                state = renderer.wake.wait(state).unwrap();
+                            }
+                        };
+                        if let Err(err) = note.render_png(index, width) {
+                            log::warn!("cannot render page {index} of an .atlasnote: {err:#}");
+                        }
+                        renderer.state.lock().unwrap().queued.remove(&(note.dir.clone(), index, width));
+                    }
+                })
+                .expect("render thread");
+        }
+        renderer
+    })
 }
 
 /// First line of a pattern with spacing `step`, centred with at least `margin` at both edges (as on the tablet).
@@ -525,6 +639,18 @@ mod tests {
         let file = note.render_png(0, 800).unwrap();
         assert!(file.is_file());
         assert_eq!(image::image_dimensions(&file).unwrap(), (800, 1132));
+        assert_eq!(note.rendered(0, 800), Some(file.clone()));
+        assert_eq!(note.any_rendered(0), Some(file));
+        // Background rendering: queued once, then available.
+        let shared = NoteFile::open_cached(&path).unwrap();
+        assert!(Arc::ptr_eq(&shared, &NoteFile::open_cached(&path).unwrap()));
+        shared.render_in_background(0, 600);
+        let start = std::time::Instant::now();
+        while shared.rendered(0, 600).is_none() {
+            assert!(start.elapsed().as_secs() < 20, "background render did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(shared.any_rendered(0).map(|p| image::image_dimensions(p).unwrap().0), Some(800));
     }
 
     #[test]
