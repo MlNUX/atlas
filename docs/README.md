@@ -12,6 +12,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 | [shortcuts.md](shortcuts.md) | alle Tastenkürzel |
 | [actions.md](actions.md) | eigene Aktionen (`actions.yaml`) |
 | [extensions.md](extensions.md) | Erweiterungen (`extension.yaml`) |
+| [extensions-guide.md](extensions-guide.md) | Erweiterungen entwickeln: Handbuch, Schnittstellen, Beispiel in Rust ([examples/atlas-tabelle](examples/atlas-tabelle/)) |
 | [google-kalender.md](google-kalender.md) | Google-Kalender einrichten |
 | [latex-ocr.md](latex-ocr.md) | Formeln aus PDFs als LaTeX |
 | [data-format.md](data-format.md) | alle Dateien, die Atlas anlegt, und `config.toml` |

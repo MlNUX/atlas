@@ -5,6 +5,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Erweiterungen
 
+> Ausführliche Anleitung mit Laufzeitvertrag, Brücken-Referenz, Debugging
+> und einem vollständigen Beispiel in Rust:
+> [extensions-guide.md](extensions-guide.md).
+
 Eine Erweiterung ist ein Ordner mit einer `extension.yaml`. Sie beschreibt
 deklarativ, was sie beiträgt und was sie dafür braucht; eigener Code läuft
 nur als Befehl (Programm oder Skript im Erweiterungsordner), immer in einem

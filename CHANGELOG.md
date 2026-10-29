@@ -37,6 +37,11 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Handbuch für Erweiterungen** (`docs/extensions-guide.md`): Laufzeitvertrag
+  für Programme (Start, Umgebung, Ausgabe, Fehler, Cache), vollständige
+  Manifest- und Brücken-Referenz, Rechte, Debugging, Weitergabe; mit einer
+  Beispiel-Erweiterung in Rust (`docs/examples/atlas-tabelle/`: CSV als
+  Tabelle anzeigen, auswerten, als HTML exportieren).
 - **`.atlasnote`-Dateien von Atlas Tablet öffnen** (auch `.atlasnote.zip`):
   Seiten untereinander mit Papier, Handschrift (inkl. Druckstärke),
   Textmarker, Bleistift, Textfeldern, eingefügten Bildern und

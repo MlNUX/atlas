@@ -129,7 +129,8 @@ Alle Kürzel: [docs/shortcuts.md](docs/shortcuts.md).
 - Einstellungen im Dialog (Menü oben rechts) oder in
   `~/.config/atlas/config.toml`.
 - Eigene Aktionen: [docs/actions.md](docs/actions.md), Erweiterungen:
-  [docs/extensions.md](docs/extensions.md).
+  [docs/extensions.md](docs/extensions.md); Handbuch zum Entwickeln mit
+  Beispiel in Rust: [docs/extensions-guide.md](docs/extensions-guide.md).
 - Projektdaten liegen in `.atlas/` im Projekt, gerätebezogene unter
   `~/.local/state/atlas`; alle Dateien und Optionen:
   [docs/data-format.md](docs/data-format.md).

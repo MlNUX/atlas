@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Beispiel-Erweiterung für Atlas in Rust (docs/extensions-guide.md).
+[package]
+name = "atlas-tabelle"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Eigener Workspace: das Beispiel gehört nicht zum Atlas-Workspace.
+[workspace]
+
+[profile.release]
+strip = true
