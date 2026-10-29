@@ -37,6 +37,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **`.atlasnote`-Dateien von Atlas Tablet öffnen** (auch `.atlasnote.zip`):
+  Seiten untereinander mit Papier, Handschrift (inkl. Druckstärke),
+  Textmarker, Bleistift, Textfeldern, eingefügten Bildern und
+  PDF-Hintergründen; Zoom mit Strg+Mausrad. Nur lesend: das Archiv wird
+  einmal in `~/.cache/atlas/atlasnote` entpackt und die Seiten werden dort
+  gerendert; die Datei selbst bleibt unverändert.
 
 ### Sicherheit
 - **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht
