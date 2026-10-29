@@ -114,7 +114,10 @@ code { font-family: var(--mono); font-size: .92em; }
 .notice { max-width: 1040px; margin: 12px auto 0; padding: 10px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
 .notice.error { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
 .notice-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.notice-row > span:first-child { flex: 1; min-width: 200px; }
+#notice-text { flex: 1; min-width: 200px; }
+#notice-detail { display: block; margin-top: 2px; font: 11.5px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notice.ok { border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); background: color-mix(in srgb, var(--ok) 8%, var(--surface)); }
+.notice-icon { color: var(--ok); font-weight: 700; }
 .notice.error #notice-text { color: var(--danger); }
 .notice-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .notice-actions button { border: 1px solid var(--border); background: var(--surface); border-radius: 6px; padding: 4px 10px; font-size: 12.5px; }

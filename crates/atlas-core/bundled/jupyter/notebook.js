@@ -119,11 +119,19 @@ function setSaved(kind, text) {
     s.title = text || "";
 }
 
-/// Hinweis unter der Werkzeugleiste; `actions`: [{label, run, primary}].
+/// Hinweis unter der Werkzeugleiste; `actions`: [{label, run, primary}],
+/// `busy`: mit Drehsymbol, `ok`: Erfolg (verschwindet nach ein paar
+/// Sekunden), `detail`: kleine Zeile darunter (z. B. die letzte Log-Zeile).
 function notice(text, opts = {}) {
+    clearTimeout(state.noticeTimer);
     $("notice").hidden = !text;
     $("notice").classList.toggle("error", !!opts.error);
+    $("notice").classList.toggle("ok", !!opts.ok);
+    $("notice-spin").hidden = !opts.busy;
+    $("notice-icon").hidden = !opts.ok;
     $("notice-text").textContent = text || "";
+    if (opts.detail) $("notice-text").appendChild(el("span", { id: "notice-detail", textContent: opts.detail }));
+    if (opts.ok) state.noticeTimer = setTimeout(() => notice(""), 3500);
     $("notice-actions").replaceChildren(...(opts.actions || []).map((a) => button(a.label, a.title || "", a.run, a.primary ? "primary" : "")));
     $("notice-log").hidden = !opts.log;
     $("notice-log").textContent = opts.log || "";
@@ -141,7 +149,7 @@ function setKernelState(s) {
         const spec = state.specs && state.specs.kernelspecs[state.session.kernel.name];
         label = (spec && spec.spec.display_name) || state.session.kernel.name;
         if (state.languageInfo && state.languageInfo.version) label += " · " + state.languageInfo.version.split(" ")[0];
-    } else if (s === "starting") label = "Kernel startet …";
+    } else if (s === "starting") label = state.startingLabel || "Kernel startet …";
     $("env-label").textContent = label;
     env.title = "Umgebung (Kernel) wählen" + (KERNEL_LABEL[s] ? ` – ${KERNEL_LABEL[s]}` : "");
     $("run-all").disabled = !connected;
@@ -793,6 +801,13 @@ async function connect(opts = {}) {
     const start = opts.start === undefined ? "server" : opts.start;
     let started = null;
     let since = 0;
+    const t0 = Date.now();
+    const busy = (text, label, detail) => {
+        notice(text, { busy: true, detail });
+        state.startingLabel = label;
+        setKernelState("starting");
+    };
+    busy("Verbinde mit dem Jupyter-Server …", "Verbinde …");
     for (;;) {
         let error;
         try {
@@ -804,23 +819,27 @@ async function connect(opts = {}) {
             error = e;
             state.online = false;
         }
-        setKernelState("off");
         const job = await serverJob();
         if (job && !sameDir(job.cwd, project())) {
-            notice("Beende den Jupyter-Server des vorigen Projekts …");
+            busy("Beende den Jupyter-Server des vorigen Projekts …", "Server wechselt …");
             await atlas.stopCommand(job.id);
             await sleep(1500);
             continue;
         }
         if (job) {
             const setup = job.id === "setup";
-            notice(setup ? "Jupyter wird im Projekt eingerichtet (.venv) …" : "Jupyter-Server startet …", { log: setup ? logTail(job.log, 4) : "" });
-            setKernelState("starting");
             if (!since) since = Date.now();
+            const secs = Math.round((Date.now() - since) / 1000);
+            busy(setup ? `Jupyter wird im Projekt eingerichtet (.venv) … ${secs} s` : `Jupyter-Server startet … ${secs} s`,
+                setup ? "Richte Jupyter ein …" : "Server startet …", lastLogLine(job.log));
+            state.announceReady = t0;
             if (Date.now() - since < (setup ? 900 : 120) * 1000) { await sleep(1000); continue; }
             notice("Der Jupyter-Server antwortet nicht.", { error: true, log: logTail(job.log), actions: [{ label: "Erneut versuchen", run: () => connect() }] });
             return;
         }
+        setKernelState("off");
+        state.startingLabel = "";
+        state.announceReady = 0;
         const retry = { label: "Erneut versuchen", run: () => connect() };
         const setupAction = { label: "Jupyter im Projekt einrichten", primary: true, title: "Legt im Projekt eine .venv mit jupyter_server und ipykernel an und startet den Server daraus", run: () => connect({ start: "setup" }) };
         if (started) {
@@ -848,11 +867,36 @@ async function connect(opts = {}) {
         }
         started = start;
         since = Date.now();
+        state.announceReady = t0;
+        busy(start === "setup" ? "Jupyter wird im Projekt eingerichtet (.venv) …" : "Starte den Jupyter-Server im Hintergrund …",
+            start === "setup" ? "Richte Jupyter ein …" : "Server startet …");
         await sleep(500);
     }
-    notice("");
     try { state.home = (await serverEnv()).home; } catch (e) { /* nur für Anzeige */ }
-    if (state.nb) await startSession();
+    if (!state.nb) { notice(""); return; }
+    if (state.announceReady) busy("Jupyter-Server läuft – Kernel startet …", "Kernel startet …");
+    else notice("");
+    state.startingLabel = "";
+    await startSession();
+}
+
+/// Letzte Zeile eines Server-Logs, ohne Zeitstempel („[I 2026-… ServerApp] “).
+function lastLogLine(log) {
+    const line = terminalText(log || "").trimEnd().split("\n").filter((l) => l.trim()).pop() || "";
+    return line.replace(/^\[[A-Z] [0-9-]+ [0-9:.]+ \w+\]\s*/, "").slice(0, 200);
+}
+
+/// Nach dem Start: eine kurze Erfolgsmeldung, sobald der Kernel antwortet
+/// (nur wenn kein anderer Hinweis dazwischen kam).
+function announceReady() {
+    if (!state.announceReady) return;
+    const secs = ((Date.now() - state.announceReady) / 1000).toFixed(1).replace(".", ",");
+    state.announceReady = 0;
+    const version = state.languageInfo && state.languageInfo.version ? ` · Python ${state.languageInfo.version.split(" ")[0]}` : "";
+    const label = state.session ? specLabel(state.session.kernel.name) : "";
+    if (!$("notice").hidden && $("notice-spin").hidden) return;
+    notice(`Jupyter-Server gestartet (${secs} s) – ${label}${version} ist bereit`, { ok: true });
+    atlas.message("Jupyter-Server gestartet");
 }
 
 /// Server neu starten oder nur beenden.
@@ -1085,6 +1129,7 @@ function onMessage(msg) {
             // Wie Jupyter: language_info steht im Notebook (ohne es dafür zu speichern).
             if (state.nb) state.nb.metadata.language_info = Object.assign({}, state.nb.metadata.language_info, c.language_info);
             setKernelState(state.kernelState);
+            announceReady();
         }
         return;
     }
@@ -1238,13 +1283,56 @@ function restartMenu() {
 
 // ------------------------------------------------- Aufgaben (im Server-Terminal)
 
-// Befehle laufen in einem Terminal des Jupyter-Servers (dieselbe Maschine,
-// derselbe Benutzer). Das Skript geht als base64 durch die Shell des
-// Benutzers (bash, zsh, fish …) nach sh; Marken grenzen die Ausgabe ab.
+// Befehle laufen als Hintergrundbefehl von Atlas: die Ansicht schreibt das
+// Skript nach .atlas/cache/jupyter/<art>.sh, der Befehl „task“ oder „probe“
+// der Erweiterung (job.sh) führt es aus, Ausgabe und Exit-Code kommen über
+// atlas.commandStatus. Das braucht keinen Jupyter-Server. Nur ein Atlas
+// ohne Hintergrundbefehle nimmt ein Terminal des Jupyter-Servers.
+
+const locks = {};
 
 /// Führt `script` (sh-Zeilen) aus. `onOutput(text)` bekommt die Ausgabe bis
-/// jetzt; löst mit {code, output} auf (130: abgebrochen, -1: Verbindung weg).
-async function shell(script, onOutput, control) {
+/// jetzt; löst mit {code, output} auf (130: abgebrochen, -1: nicht gestartet).
+/// `kind`: "task" (sichtbare Aufgaben) oder "probe" (Suchen); je Art läuft
+/// eines nach dem anderen.
+function shell(script, onOutput, control, kind = "task") {
+    const run = (locks[kind] || Promise.resolve()).then(() => runScript(script, onOutput, control, kind));
+    locks[kind] = run.catch(() => {});
+    return run;
+}
+
+async function runScript(script, onOutput, control, kind) {
+    try {
+        await atlas.commandStatus(kind);
+    } catch (e) {
+        return terminalShell(script, onOutput, control);
+    }
+    const path = `${project()}/.atlas/cache/jupyter/${kind}.sh`;
+    const text = `# Von der Notebook-Ansicht geschrieben, von job.sh ausgeführt.\n(\nset -e\n${script.join("\n")}\n) 2>&1\n`;
+    try {
+        await atlas.call("writeFile", { path, text });
+        await atlas.runCommand(kind);
+    } catch (e) {
+        return { code: -1, output: e.message };
+    }
+    let cancelled = false;
+    if (control) control.cancel = () => { cancelled = true; atlas.stopCommand(kind); };
+    let last = "";
+    for (;;) {
+        await sleep(400);
+        let st;
+        try { st = await atlas.commandStatus(kind); } catch (e) { return { code: -1, output: e.message }; }
+        const output = terminalText(st.log || "");
+        if (output !== last && onOutput) onOutput(output);
+        last = output;
+        if (!st.running) return { code: cancelled ? 130 : st.code == null ? -1 : st.code, output };
+    }
+}
+
+/// Wie runScript, aber in einem Terminal des Jupyter-Servers (für ein Atlas
+/// ohne Hintergrundbefehle). Das Skript geht als base64 durch die Shell des
+/// Benutzers nach sh; Marken grenzen die Ausgabe ab.
+async function terminalShell(script, onOutput, control) {
     let term;
     try {
         term = await api("POST", "/api/terminals");
@@ -1338,7 +1426,7 @@ function serverPythonLines() {
 /// Persönlicher Ordner und Python-Programm der Maschine (für Anzeige und Vorschläge).
 async function serverEnv() {
     if (state.serverEnvCache) return state.serverEnvCache;
-    const { code, output } = await shell(['echo "HOME\t$HOME"']);
+    const { code, output } = await shell(['echo "HOME\t$HOME"'], null, null, "probe");
     const home = code === 0 ? ((/^HOME\t(.*)$/m.exec(output) || [])[1] || "") : "";
     state.serverEnvCache = { home };
     return state.serverEnvCache;
@@ -1354,7 +1442,8 @@ function condaToolLines() {
     return [
         `T=""; TK=""`,
         `for c in micromamba mamba conda; do if command -v "$c" >/dev/null 2>&1; then T=$(command -v "$c"); TK=$c; break; fi; done`,
-        `if [ -z "$T" ]; then for c in "${MICROMAMBA_HOME}/bin/micromamba" "$HOME/miniforge3/bin/conda" "$HOME/mambaforge/bin/conda" "$HOME/miniconda3/bin/conda" "$HOME/anaconda3/bin/conda" "$HOME/micromamba/bin/micromamba" /opt/conda/bin/conda; do if [ -x "$c" ]; then T=$c; TK=$(basename "$c"); break; fi; done; fi`,
+        // Ohne Login-Shell (kein „conda init“ aus .bashrc): auch die üblichen Orte.
+        `if [ -z "$T" ]; then for c in "\${MAMBA_EXE:-}" "\${CONDA_EXE:-}" "${MICROMAMBA_HOME}/bin/micromamba" "$HOME/.local/bin/micromamba" "$HOME/bin/micromamba" "$HOME/micromamba/bin/micromamba" "$HOME/miniforge3/bin/conda" "$HOME/mambaforge/bin/conda" "$HOME/miniconda3/bin/conda" "$HOME/anaconda3/bin/conda" "$HOME/.miniconda3/bin/conda" /opt/miniforge3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda /opt/conda/bin/conda /usr/local/bin/micromamba; do if [ -n "$c" ] && [ -x "$c" ]; then T=$c; TK=$(basename "$c"); break; fi; done; fi`,
         `case "$T" in "${MICROMAMBA_HOME}"/*) export MAMBA_ROOT_PREFIX="${MICROMAMBA_HOME}" ;; esac`,
     ];
 }
@@ -1437,8 +1526,8 @@ async function discover() {
             }
         }).catch(() => {}));
     }
-    // Conda-Umgebungen (über das Terminal des Servers).
-    if (state.online) {
+    // Conda-Umgebungen (als Hintergrundbefehl, auch ohne Server).
+    {
         tasks.push(shell([
             ...condaToolLines(),
             `[ -n "$T" ] || exit 0`,
@@ -1448,14 +1537,14 @@ async function discover() {
             `  v=$(ls "$e/conda-meta" 2>/dev/null | sed -n 's/^python-\\([0-9][0-9.]*\\)-.*/\\1/p' | head -n 1)`,
             `  echo "CONDA	$e	$v"`,
             `done`,
-        ]).then(({ output }) => {
+        ], null, null, "probe").then(({ output }) => {
             for (const line of output.split("\n")) {
                 const [kind, a, b] = line.split("\t");
                 if (kind === "TOOL") { found.tool = a; found.toolPath = b; }
                 if (kind === "CONDA" && a) found.envs.push({ kind: "conda", path: a, name: /\/envs\/[^/]+$/.test(a) ? basename(a) : "base", version: b || "" });
             }
         }));
-        tasks.push(loadSpecs().then((s) => {
+        if (state.online) tasks.push(loadSpecs().then((s) => {
             found.kernels = Object.entries(s.kernelspecs).map(([name, k]) => ({ name, label: k.spec.display_name || name, python: (k.spec.argv || [])[0] || "", language: k.spec.language }));
         }).catch(() => {}));
     }

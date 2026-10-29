@@ -67,7 +67,7 @@ Rectangle {
             // Only commands of this extension, as from the palette (with
             // the same confirmation); `path` is the selection.
             if (!root.actions || !root.info.extension) return root.reply(request.id, false, qsTr("Hier können keine Befehle laufen."))
-            const error = root.actions.runAction(root.info.extension + "/" + String(p.id || ""), p.path ? [String(p.path)] : [], 0)
+            const error = root.actions.runAction(root.info.extension + "/" + String(p.id || ""), p.path ? [String(p.path)] : [], 0, true)
             return root.reply(request.id, !error, error || true)
         case "commandStatus":
             // A background command of this extension (`terminal: background`).

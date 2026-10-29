@@ -85,9 +85,12 @@ Tracebacks. Ausführen lassen sich einzelne Zellen und alle.
   - **+ Neue .venv** und **Pakete installieren** (pip in die aktive
     Umgebung).
 
-  Was dafür auf dem Rechner laufen muss, läuft in einem Terminal des
-  Jupyter-Servers; Fortschritt und Log stehen im Feld unten rechts, dort
-  lässt es sich auch abbrechen. Das Notebook merkt sich seine Umgebung
+  Was dafür auf dem Rechner laufen muss, läuft als Hintergrundbefehl von
+  Atlas (Skript unter `.atlas/cache/jupyter/`, ausgeführt von `job.sh`),
+  auch ohne laufenden Jupyter-Server; Fortschritt und Log stehen im Feld
+  unten rechts, dort lässt es sich auch abbrechen. conda und micromamba
+  sucht die Ansicht im `PATH` von Atlas und an den üblichen Orten
+  (`~/miniforge3`, `~/miniconda3`, `~/anaconda3`, `~/micromamba`, `/opt/…`). Das Notebook merkt sich seine Umgebung
   (`metadata.kernelspec`).
 - **Server:** Öffnet man ein Notebook, startet die Ansicht den
   Jupyter-Server von selbst im Hintergrund – ohne Terminal, nur auf
@@ -97,8 +100,10 @@ Tracebacks. Ausführen lassen sich einzelne Zellen und alle.
   dem Programm aus den Einstellungen („Jupyter-Programm“, Standard
   `jupyter`). Wechselt man das Projekt, löst der neue Server den alten ab.
   Neu starten oder beenden: unten in der Umgebungsauswahl, im Menü ⋯ oder
-  „Beenden: Jupyter-Server“ in der Arbeitsleiste. Startet er nicht, zeigt
-  die Ansicht die Meldung aus seinem Log.
+  „Beenden: Jupyter-Server“ in der Arbeitsleiste. Beim Start zeigt die
+  Ansicht, was gerade passiert (mit Sekunden und der letzten Zeile aus dem
+  Log des Servers) und meldet „Jupyter-Server gestartet“, sobald der Kernel
+  bereit ist; startet er nicht, steht die Meldung aus seinem Log da.
 - **Ohne Jupyter:** „Jupyter im Projekt einrichten“ legt eine `.venv` mit
   `jupyter_server` und `ipykernel` an (mit dem Python aus den
   Einstellungen) und startet danach den Server aus ihr.

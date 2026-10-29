@@ -9,7 +9,7 @@
 atlas_api: 2
 name: jupyter
 title: Jupyter-Notebooks
-version: 1.2.0
+version: 1.3.0
 description: Notebooks (.ipynb) öffnen, bearbeiten und einzelne oder alle Zellen ausführen – mit einem lokalen Jupyter-Server.
 context: true                 # als Karte in der Kontextleiste (abschaltbar)
 
@@ -48,6 +48,19 @@ commands:
     command: ["{extension}/setup.sh", "{project}", "{setting:python}", "{setting:port}"]
     terminal: background
     menu: [palette]
+
+  # Für die Ansicht: Umgebungen suchen (probe) und bauen (task); das Skript
+  # schreibt sie nach .atlas/cache/jupyter/<id>.sh im Projekt.
+  - id: task
+    name: Jupyter-Aufgabe
+    command: ["{extension}/job.sh", "{project}", "task"]
+    terminal: background
+    menu: [none]
+  - id: probe
+    name: Jupyter-Umgebungen suchen
+    command: ["{extension}/job.sh", "{project}", "probe"]
+    terminal: background
+    menu: [none]
 
 views:
   - id: notebook

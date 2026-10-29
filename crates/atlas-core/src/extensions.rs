@@ -1056,6 +1056,7 @@ pub const BUNDLED: &[Bundled] = &[
             ("notebook.js", include_str!("../bundled/jupyter/notebook.js"), false),
             ("server.sh", include_str!("../bundled/jupyter/server.sh"), true),
             ("setup.sh", include_str!("../bundled/jupyter/setup.sh"), true),
+            ("job.sh", include_str!("../bundled/jupyter/job.sh"), true),
         ],
     },
 ];
@@ -1758,7 +1759,7 @@ mod tests {
         assert_eq!(server.id, "jupyter/server");
         assert_eq!(server.placement, crate::actions::Placement::Background);
         assert_eq!(ext.actions[1].id, "jupyter/setup");
-        for script in ["server.sh", "setup.sh"] {
+        for script in ["server.sh", "setup.sh", "job.sh"] {
             let mode = std::fs::metadata(ext_dir.join(script)).unwrap().permissions().mode();
             assert_eq!(mode & 0o111, 0o111, "{script} ausführbar");
         }

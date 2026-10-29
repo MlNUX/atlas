@@ -37,6 +37,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Jupyter 1.3.0:** Rückmeldung beim Start des Servers (Schritte mit
+  Sekunden und Log-Zeile, dann „Jupyter-Server gestartet“). Umgebungen
+  bauen und suchen läuft jetzt als Hintergrundbefehl von Atlas statt im
+  Terminal des Jupyter-Servers – „Kein Terminal: Failed to fetch“ bei
+  Jupyter ohne Terminals ist damit weg, und Conda wird auch ohne Server
+  gefunden.
 - **Jupyter überarbeitet** (Erweiterung 1.2.0): neue Oberfläche mit
   schlanker Werkzeugleiste, Syntaxfarben, Ausführen-Knopf und Laufzeit an
   jeder Zelle, Einfügen zwischen Zellen, Befehlsmodus wie in Jupyter
