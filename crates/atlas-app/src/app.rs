@@ -350,6 +350,17 @@ pub mod qobject {
         #[cxx_name = "readTextFile"]
         fn read_text_file(self: &AppController, path: &QString) -> QString;
 
+        /// Pages of an `.atlasnote` from Atlas Tablet: JSON {pages: [{height}], error}.
+        #[qinvokable]
+        #[cxx_name = "atlasNoteInfo"]
+        fn atlas_note_info(self: &AppController, path: &QString) -> QString;
+
+        /// Page `index` of an `.atlasnote` rendered `width` pixels wide, as a
+        /// `file://` URL into the cache ("" if it cannot be rendered).
+        #[qinvokable]
+        #[cxx_name = "atlasNotePage"]
+        fn atlas_note_page(self: &AppController, path: &QString, index: i32, width: i32) -> QString;
+
         /// Layout JSON of this device's session ("" if none).
         #[qinvokable]
         #[cxx_name = "loadLayout"]
@@ -1631,6 +1642,29 @@ impl qobject::AppController {
         use std::io::Read;
         let _ = file.take(LIMIT).read_to_end(&mut data);
         qs(String::from_utf8_lossy(&data))
+    }
+
+    pub fn atlas_note_info(&self, path: &QString) -> QString {
+        let info = match atlas_core::atlasnote::NoteFile::open(&path_of(path)) {
+            Ok(note) => serde_json::json!({
+                "pages": note.notebook.pages.iter().map(|p| serde_json::json!({ "height": p.height })).collect::<Vec<_>>(),
+                "error": "",
+            }),
+            Err(err) => serde_json::json!({ "pages": [], "error": format!("{err:#}") }),
+        };
+        qs(info.to_string())
+    }
+
+    pub fn atlas_note_page(&self, path: &QString, index: i32, width: i32) -> QString {
+        let rendered = atlas_core::atlasnote::NoteFile::open(&path_of(path))
+            .and_then(|note| note.render_png(index.max(0) as usize, width.max(1) as u32));
+        match rendered {
+            Ok(file) => qs(format!("file://{}", file.display())),
+            Err(err) => {
+                log::warn!("cannot render page {index} of {}: {err:#}", path_of(path).display());
+                QString::default()
+            }
+        }
     }
 
     fn session(&self) -> Option<ProjectSession> {
@@ -3048,6 +3082,9 @@ pub fn file_kind(path: &Path) -> &'static str {
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     match ext.as_str() {
         "pdf" => "pdf",
+        // Notebooks from Atlas Tablet (ZIP); also when a sync tool appended ".zip".
+        "atlasnote" => "atlasnote",
+        "zip" if path.to_string_lossy().to_lowercase().ends_with(".atlasnote.zip") => "atlasnote",
         "md" | "markdown" | "mdown" | "mkd" => "markdown",
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" => "image",
         _ => {

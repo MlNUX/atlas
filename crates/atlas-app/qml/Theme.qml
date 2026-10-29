@@ -45,7 +45,7 @@ QtObject {
     /// Colours of file kinds (icons, graph).
     readonly property var kindColors: ({
         pdf: "#f2575f", markdown: "#5aa2ff", text: "#9fb0c8", image: "#b98cf5", csv: "#34c27a",
-        dir: "#5aa2ff", binary: "#8a97ad", missing: "#5c6981", terminal: "#8a97ad"
+        dir: "#5aa2ff", binary: "#8a97ad", missing: "#5c6981", terminal: "#8a97ad", atlasnote: "#a678ed"
     })
 
     /// Bytes as "12,3 GB" (binary units, one decimal from GB up).
@@ -61,6 +61,7 @@ QtObject {
         if (isDir) return ["folder-fill", "#5aa2ff"]
         const ext = fileName.slice(fileName.lastIndexOf(".") + 1).toLowerCase()
         if (ext === "pdf") return ["file-pdf", kindColors.pdf]
+        if (ext === "atlasnote" || fileName.toLowerCase().endsWith(".atlasnote.zip")) return ["pen", kindColors.atlasnote]
         if (["md", "markdown", "mdown", "mkd", "txt", "rst"].indexOf(ext) >= 0) return ["file-text", kindColors.markdown]
         if (["csv", "tsv", "xlsx", "ods"].indexOf(ext) >= 0) return ["file-table", kindColors.csv]
         if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].indexOf(ext) >= 0) return ["file-image", kindColors.image]

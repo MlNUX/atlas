@@ -131,6 +131,7 @@ Item {
             : view.processor === "atlas:html" && view.kind !== "missing" ? htmlComponent
             : view.processed && view.kind !== "missing" ? processedComponent
             : view.kind === "pdf" ? pdfComponent
+            : view.kind === "atlasnote" ? atlasNoteComponent
             : view.kind === "markdown" ? markdownComponent
             : view.kind === "text" ? textComponent
             : view.kind === "image" ? imageComponent
@@ -205,6 +206,14 @@ Item {
                 if (newPane) view.openRequested(path, line, "split", state)
                 else view.navigate(path, line, state)
             }
+        }
+    }
+    Component {
+        id: atlasNoteComponent
+        // Notebook from Atlas Tablet, read-only.
+        AtlasNoteView {
+            source: view.path
+            app: view.app
         }
     }
     Component {

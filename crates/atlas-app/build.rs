@@ -30,6 +30,7 @@ const QML_FILES: &[&str] = &[
     "qml/MarkdownView.qml",
     "qml/MarkdownPdfExport.qml",
     "qml/PdfViewer.qml",
+    "qml/AtlasNoteView.qml",
     "qml/PomodoroTimer.qml",
     "qml/PlacesList.qml",
     "qml/ProcessedView.qml",

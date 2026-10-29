@@ -10,6 +10,14 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Neu
+- **`.atlasnote`-Dateien von Atlas Tablet öffnen** (auch `.atlasnote.zip`):
+  Seiten untereinander mit Papier, Handschrift (inkl. Druckstärke),
+  Textmarker, Bleistift, Textfeldern, eingefügten Bildern und
+  PDF-Hintergründen; Zoom mit Strg+Mausrad. Nur lesend: das Archiv wird
+  einmal in `~/.cache/atlas/atlasnote` entpackt und die Seiten werden dort
+  gerendert; die Datei selbst bleibt unverändert.
+
 ## [1.1.2] – 2026-10-27
 
 ### Neu

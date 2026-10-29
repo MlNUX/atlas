@@ -23,6 +23,10 @@ verändert weder PDFs noch Notizen ungefragt.
   Formeln als LaTeX erkennen (lokal, [latex-ocr.md](docs/latex-ocr.md)),
   Abbildungen als Bild zitieren, Präsentationsmodus (F5), Dunkelmodus,
   Export als Kopie mit Anmerkungen.
+- **Atlas-Notizen vom Tablet** (`.atlasnote` aus Atlas Tablet) ansehen: alle
+  Seiten mit Handschrift, Textfeldern, eingefügten Bildern und
+  PDF-Hintergründen. Nur Ansicht – die Datei wird nie verändert; bearbeitet
+  wird auf dem Tablet.
 - **Markdown** mit Live-Vorschau, Formeln (KaTeX), Diagrammen (Mermaid,
   mit Vorlagen), Tabellen, Bildern, Ordnerbäumen, Checklisten, `#Tags`,
   Wiki-Links, Backlinks und Graph; Rechtschreibprüfung Deutsch und Englisch.
