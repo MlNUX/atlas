@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Jupyter-Notebooks: .ipynb-Dateien öffnen, bearbeiten und Zellen ausführen.
+# Die Ansicht spricht mit einem lokalen Jupyter-Server (nur 127.0.0.1), den
+# der Befehl „Jupyter-Server starten“ im Terminal von Atlas startet.
+# Voraussetzung: pip install jupyter_server ipykernel (jupyter_server ≥ 2).
+atlas_api: 2
+name: jupyter
+title: Jupyter-Notebooks
+version: 1.0.0
+description: Notebooks (.ipynb) öffnen, bearbeiten und einzelne oder alle Zellen ausführen – mit einem lokalen Jupyter-Server.
+context: true                 # als Karte in der Kontextleiste (abschaltbar)
+
+permissions:
+  run: [jupyter]
+  files: project              # liest und schreibt nur Dateien im Projekt
+  network: [127.0.0.1]        # nur der eigene Jupyter-Server
+
+settings:
+  - key: port
+    title: Port des Servers
+    description: Der Jupyter-Server lauscht nur auf 127.0.0.1.
+    type: number
+    default: 8899
+  - key: jupyter
+    title: Jupyter-Programm
+    description: z. B. der Pfad in einer virtuellen Umgebung (…/venv/bin/jupyter).
+    type: path
+    default: jupyter
+
+commands:
+  - id: server
+    name: Jupyter-Server starten
+    description: Startet den Jupyter-Server für dieses Projekt in einem Terminal-Tab.
+    command: ["{extension}/server.sh", "{project}", "{setting:port}", "{setting:jupyter}"]
+    terminal: tab
+    menu: [palette]
+
+views:
+  - id: notebook
+    name: Jupyter-Notebook
+    page: notebook.html
+    applies_to: "*.ipynb"
+    auto: true                # .ipynb öffnet direkt in dieser Ansicht
+    keybinding: Ctrl+Alt+J

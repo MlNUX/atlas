@@ -232,7 +232,7 @@ Bei `output: pdf` muss der Befehl `{output}` enthalten.
 | `id` | nein | Standard: aus dem Namen; der Tab heißt intern `view:<name>/<id>` |
 | `page` | ja | HTML-Datei, relativ im Ordner der Erweiterung (kein `..`, nicht absolut, muss existieren) |
 | `applies_to` | nein | Muster: „Anzeigen mit …“ für solche Dateien; leer: nur auf dem Projekt |
-| `auto` | nein (`false`) | passende Dateien gleich mit der Ansicht öffnen |
+| `auto` | nein (`false`) | passende Dateien gleich mit der Ansicht öffnen (auch Text-Dateien; „Anzeigen mit → Atlas (Datei selbst)“ zeigt die Datei) |
 | `keybinding` | nein | Tastenkürzel |
 
 ### Platzhalter
@@ -392,7 +392,9 @@ Jede Anfrage liefert ein Ergebnis oder wird mit einem `Error` abgelehnt
 | `exists` | `path` | `true`/`false` |
 | `renameFile` | `path`, `name` | neuer absoluter Pfad (nur der Name ändert sich, der Ordner bleibt) |
 | `trashFile` | `path` | `true`; in den Papierkorb |
+| `renderMarkdown` | `text`, optional `path` (für relative Links) | `{html}` wie in der Markdown-Vorschau; Formeln als `<span class="math" data-tex=…>` zum Setzen mit KaTeX. Das HTML enthält Roh-HTML aus dem Text – vor dem Einfügen bereinigen |
 | `atlas.open(path)` | | öffnet die Datei in einem Tab |
+| `atlas.runCommand(id, path?)` | | startet den Befehl `id` **dieser** Erweiterung (mit derselben Rückfrage wie aus der Arbeitsleiste); `path` ist die Auswahl |
 | `atlas.reveal(path)` | | zeigt sie im Explorer |
 | `atlas.message(text)` | | kurze Meldung unten im Fenster |
 
@@ -409,8 +411,10 @@ CSS-Variablen auf `<html>`: `--atlas-window`, `--atlas-editor`,
 `--atlas-accent-soft`, `--atlas-ok`, `--atlas-warn`, `--atlas-error`.
 KaTeX für Formeln liegt unter `atlas://app/web/vendor/katex/`.
 
-Ein vollständiges Beispiel ist die mitgelieferte Erweiterung
-`crates/atlas-core/bundled/bnki/` (`extension.yaml`, `editor.html`).
+Vollständige Beispiele sind die mitgelieferten Erweiterungen
+`crates/atlas-core/bundled/bnki/` (`extension.yaml`, `editor.html`) und
+`crates/atlas-core/bundled/jupyter/` (Ansicht mit `auto: true`, ein Befehl,
+den die Seite mit `runCommand` startet, Netz nur zu 127.0.0.1).
 
 ---
 

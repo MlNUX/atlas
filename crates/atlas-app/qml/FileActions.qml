@@ -476,6 +476,13 @@ Item {
                 onObjectAdded: (index, object) => viewMenu.insertItem(index, object)
                 onObjectRemoved: (index, object) => viewMenu.removeItem(object)
             }
+            // Files an extension shows by itself (e.g. notebooks) also open as they are.
+            MenuItem {
+                text: qsTr("Atlas (Datei selbst)")
+                visible: menu.processorList.some(p => p.auto && p.output === "view")
+                height: visible ? implicitHeight : 0
+                onTriggered: actions.openWithState(menu.paths[0], { processor: "atlas:source" })
+            }
         }
         Menu {
             id: exportMenu

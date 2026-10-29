@@ -242,8 +242,11 @@ ApplicationWindow {
         if (current) {
             for (const x of fileActions.exportersFor([current]))
                 list.push({ name: qsTr("Exportieren: %1").arg(x.name), hint: "." + x.target, run: () => fileActions.exportWith(x, current) })
-            for (const p of fileActions.processorsFor(current))
+            const shown = fileActions.processorsFor(current)
+            for (const p of shown)
                 list.push({ name: qsTr("Anzeigen mit: %1").arg(p.name), hint: p.extension, run: () => editor.open(current, 0, "tab", { processor: p.id }) })
+            if (shown.some(p => p.auto && p.output === "view"))
+                list.push({ name: qsTr("Anzeigen mit: Atlas (Datei selbst)"), run: () => editor.open(current, 0, "tab", { processor: "atlas:source" }) })
         }
         // Extensions that come with Atlas.
         for (const b of JSON.parse(app.bundledExtensions()))

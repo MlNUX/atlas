@@ -33,9 +33,11 @@ Rectangle {
     function applyState(state) { if (state && state.processor) root.processor = state.processor }
 
     function run() {
+        if (processor.startsWith("view:")) return
         choices = JSON.parse(app.processorsFor(source))
         if (!processor || !choices.some(c => c.id === processor)) {
-            const auto = choices.find(c => c.auto) || choices[0]
+            // Views of extensions are no conversions (DocumentView shows them).
+            const auto = choices.find(c => c.auto && c.output !== "view") || choices.find(c => c.output !== "view")
             processor = auto ? auto.id : ""
         }
         kind = ""

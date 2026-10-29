@@ -24,10 +24,18 @@ Item {
     readonly property string kind: path && revision >= 0 ? app.fileKind(path) : ""
     /// Show through an extension's processor (ID; set by "Anzeigen mit …").
     property string processor: ""
+    /// Automatic viewers of extensions for this file (`auto: true`); none
+    /// once a viewer was chosen. "atlas:source" shows the file itself.
+    readonly property var autoChoices: processor === "" && path && ["", "dir", "missing", "trash", "terminal", "calendar", "ilias"].indexOf(kind) < 0
+        ? JSON.parse(app.processorsFor(path)).filter(p => p.auto) : []
+    /// An automatic view (e.g. notebooks) wins over the own viewer.
+    readonly property string autoView: (autoChoices.find(p => p.output === "view") || { id: "" }).id
+    /// The viewer of an extension in use ("" for Atlas' own).
+    readonly property string shownProcessor: processor === "atlas:source" ? "" : processor || autoView
     /// Files without own viewer use an automatic processor if one fits.
-    readonly property bool processed: processor !== ""
-        || (kind === "binary" && JSON.parse(app.processorsFor(path)).some(p => p.auto))
-    readonly property string title: processor.startsWith("view:") && viewer.item && viewer.item.title ? viewer.item.title
+    readonly property bool processed: (shownProcessor !== "" && !shownProcessor.startsWith("view:"))
+        || (kind === "binary" && autoChoices.some(p => p.output !== "view"))
+    readonly property string title: shownProcessor.startsWith("view:") && viewer.item && viewer.item.title ? viewer.item.title
         : kind === "trash" ? qsTr("Papierkorb")
         : kind === "calendar" ? qsTr("Kalender")
         : kind === "ilias" ? "ILIAS"
@@ -111,6 +119,8 @@ Item {
     function viewState() {
         const s = { kind: view.kind }
         if (viewer.item && viewer.item.viewState) Object.assign(s, viewer.item.viewState())
+        // An automatic view is chosen again next time (or not, if switched off).
+        if (view.processor === "" && s.processor && s.processor === view.autoView) delete s.processor
         return s
     }
     function applyState(state) {
@@ -124,7 +134,7 @@ Item {
     Loader {
         id: viewer
         anchors.fill: parent
-        sourceComponent: view.processor.startsWith("view:") && view.kind !== "missing" ? extensionViewComponent
+        sourceComponent: view.shownProcessor.startsWith("view:") && view.kind !== "missing" ? extensionViewComponent
             : view.kind === "trash" ? trashComponent
             : view.kind === "dir" ? folderComponent
             : view.kind === "terminal" ? terminalComponent
@@ -154,7 +164,7 @@ Item {
         // A view of an extension on this file or folder.
         ExtensionView {
             source: view.path
-            viewId: view.processor
+            viewId: view.shownProcessor
             app: view.app
             actions: view.actions
         }

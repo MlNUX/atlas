@@ -55,6 +55,35 @@ CSV-Datei „Anzeigen mit → bnki-Karten“).
   CSV importieren“.
 - Rechte: nur Dateien im Projekt, kein Netzwerk, keine Programme.
 
+### Jupyter-Notebooks
+
+Notebooks (`.ipynb`) öffnen sich nach der Installation direkt in einer
+eigenen Ansicht: Markdown-Zellen mit Formeln, Code-Zellen mit ihren
+Ausgaben (Text, Tabellen von pandas, Bilder von matplotlib, Fehler mit
+farbigem Traceback). Ausführen lassen sich einzelne Zellen und alle.
+
+- **Voraussetzung:** `pip install jupyter_server ipykernel` (Jupyter Server
+  ab 2; in einer virtuellen Umgebung: Einstellung „Jupyter-Programm“ auf
+  `…/venv/bin/jupyter`).
+- **Server:** Läuft keiner, startet „Jupyter-Server starten“ (Knopf in der
+  Ansicht oder Arbeitsleiste) ihn in einem Terminal-Tab – nur auf
+  127.0.0.1, Port aus den Einstellungen (8899), mit einem eigenen Token in
+  `.atlas/cache/jupyter/token` des Projekts. Strg+C im Terminal beendet ihn.
+- **Ausführen:** ▶ an der Zelle, **Umschalt+Enter** (ausführen und weiter),
+  **Strg+Enter** (ausführen), **Alt+Enter** (ausführen, neue Zelle darunter);
+  „Alle ausführen“ läuft der Reihe nach und hält beim ersten Fehler.
+  Dazu Unterbrechen, Neustart, Neustart & alle, Kernel wählen.
+- **Bearbeiten:** Zellen hinzufügen, löschen, verschieben, Art wechseln
+  (Code, Markdown, Roh); Markdown mit Doppelklick bearbeiten. Gespeichert
+  wird automatisch im Format von Jupyter (nbformat 4), Ausgaben inklusive.
+- Jedes Notebook hat eine Sitzung auf dem Server; öffnet man es wieder,
+  läuft derselbe Kernel weiter (Variablen bleiben).
+- HTML aus Ausgaben und Markdown wird bereinigt, Skripte laufen nie
+  (Widgets von ipywidgets zeigt die Ansicht als Text).
+- Die JSON-Datei selbst: „Anzeigen mit → Atlas (Datei selbst)“.
+- Rechte: Dateien im Projekt, das Programm `jupyter`, Netzwerk nur zu
+  127.0.0.1.
+
 ## Format (API 2)
 
 ```yaml
@@ -135,7 +164,10 @@ views:
 ```
 
 Geöffnet wird sie über die Arbeitsleiste („Öffnen: …“) oder das Kürzel
-auf dem Projektordner, über „Anzeigen mit“ auf einer passenden Datei. Die
+auf dem Projektordner, über „Anzeigen mit“ auf einer passenden Datei. Mit
+`auto: true` öffnen passende Dateien gleich in der Ansicht (statt im
+Editor von Atlas); „Anzeigen mit → Atlas (Datei selbst)“ zeigt dann die
+Datei selbst. Die
 Seite läuft im Prozess von Chromium (wie die Markdown-Vorschau), unter
 `atlas://app/ext/<name>/…`; sie erreicht nur Dateien ihres eigenen Ordners
 und das Netz nur mit `network` in den Rechten. Mit Atlas spricht sie über
@@ -159,7 +191,9 @@ die Brücke:
 | `exists {path}` | `true`/`false` |
 | `renameFile {path, name}` | neuer Pfad |
 | `trashFile {path}` | in den Papierkorb |
+| `renderMarkdown {text, path?}` | `{html}` wie in der Vorschau von Atlas (Formeln als `span.math[data-tex]`) |
 | `atlas.open(path)`, `atlas.reveal(path)`, `atlas.message(text)` | Datei in Atlas öffnen, im Explorer zeigen, Meldung |
+| `atlas.runCommand(id, path?)` | einen Befehl dieser Erweiterung starten (wie aus der Arbeitsleiste) |
 
 Pfade sind absolut oder relativ zum Projekt. Atlas prüft **jeden** Pfad
 gegen `permissions: files` – `project` heißt nur im Projekt (auch nicht

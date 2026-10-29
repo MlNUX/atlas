@@ -37,6 +37,18 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Jupyter-Notebooks** (mitgelieferte Erweiterung „Jupyter-Notebooks“):
+  `.ipynb` öffnen sich direkt in einer Notebook-Ansicht – Markdown mit
+  Formeln, Ausgaben mit Tabellen, Bildern und farbigen Tracebacks. Einzelne
+  Zellen (Umschalt+Enter, Strg+Enter) oder alle ausführen (hält beim ersten
+  Fehler), unterbrechen, Kernel neu starten oder wechseln; Zellen
+  bearbeiten, hinzufügen, verschieben, löschen. Gespeichert wird
+  automatisch im Format von Jupyter. Der Server (`jupyter_server`, nur
+  127.0.0.1, eigenes Token) startet auf Knopfdruck in einem Terminal-Tab.
+- **Ansichten mit `auto: true`** öffnen passende Dateien jetzt immer
+  direkt, auch Text-Dateien; „Anzeigen mit → Atlas (Datei selbst)“ zeigt
+  die Datei. Neu in der Brücke: `renderMarkdown` (HTML wie in der
+  Vorschau) und `atlas.runCommand` (Befehl der eigenen Erweiterung).
 - **Erweiterungen in der Kontextleiste:** Jede aktive Erweiterung mit
   Ansichten oder Befehlen kann als Karte in der Kontextleiste erscheinen –
   ein Knopf je Ansicht und Befehl. Schalter unter Einstellungen →

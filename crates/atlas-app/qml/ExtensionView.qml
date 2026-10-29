@@ -63,6 +63,12 @@ Rectangle {
         case "message":
             if (root.actions) root.actions.showMessage(String(p.text || ""))
             return root.reply(request.id, true, true)
+        case "runCommand":
+            // Only commands of this extension, as from the palette (with
+            // the same confirmation); `path` is the selection.
+            if (!root.actions || !root.info.extension) return root.reply(request.id, false, qsTr("Hier können keine Befehle laufen."))
+            root.actions.runAction(root.info.extension + "/" + String(p.id || ""), p.path ? [String(p.path)] : [], 0)
+            return root.reply(request.id, true, true)
         }
         const r = JSON.parse(root.app.extensionCall(root.info.extension || "", request.method, JSON.stringify(p)))
         root.reply(request.id, r.ok, r.ok ? r.value : r.error)

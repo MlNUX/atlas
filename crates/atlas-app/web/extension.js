@@ -11,6 +11,7 @@
 //   const ctx = await atlas.ready      // {extension, project, file, settings, files, theme}
 //   await atlas.call("readFile", { path })
 //   atlas.open(path) · atlas.reveal(path) · atlas.message(text)
+//   atlas.runCommand(id, path?)        // a command of this extension
 //
 // Requests go to Atlas as console messages, answers come back through
 // `atlas._reply`. Atlas checks every path against the extension's
@@ -40,6 +41,8 @@
         reveal(path) { return atlas.call("reveal", { path }); },
         /** A short message at the bottom of the window. */
         message(text) { return atlas.call("message", { text }); },
+        /** Runs command `id` of this extension (as from the palette). */
+        runCommand(id, path) { return atlas.call("runCommand", path ? { id, path } : { id }); },
 
         _reply(id, ok, value) {
             const p = pending.get(id);

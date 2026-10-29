@@ -68,6 +68,7 @@ Item {
     property var imageView: null
     property var bnkiView: null
     property var bnkiPage: null
+    property var jupyterPage: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -573,6 +574,34 @@ Item {
                 app.installBundled("bnki")
                 const fresh = JSON.parse(app.extensions()).find(e => e.name === "bnki") || { settings: [] }
                 check("Neu installiert: Einstellungen wie neu", (fresh.settings.find(x => x.key === "ordner") || {}).value === "bnki", JSON.stringify(fresh.settings))
+                // ---- Jupyter: notebooks open by themselves in the view of the extension
+                check("Jupyter installiert", app.installBundled("jupyter") === "")
+                const nb = { cells: [{ cell_type: "markdown", id: "m", metadata: {}, source: ["# Titel $x^2$"] },
+                                     { cell_type: "code", execution_count: 1, id: "c", metadata: {}, outputs: [{ output_type: "stream", name: "stdout", text: ["42\n"] }], source: ["print(42)"] }],
+                             metadata: {}, nbformat: 4, nbformat_minor: 5 }
+                const written = JSON.parse(app.extensionCall("jupyter", "writeFile", JSON.stringify({ path: "analyse.ipynb", text: JSON.stringify(nb) })))
+                check("Jupyter: Notebook über die Brücke geschrieben", written.ok, JSON.stringify(written))
+                editor.open(path("analyse.ipynb"), 0, "tab", {})
+            },
+            () => {
+                const tab = editor.activeTab
+                const v = tab ? tab.viewerItem : null
+                if (waitFor(() => !!v && v.started === true)) return
+                check("Jupyter: .ipynb öffnet in der Notebook-Ansicht", !!v && v.viewId === "view:jupyter/notebook" && tab.title === "Jupyter-Notebook – analyse.ipynb",
+                      tab ? tab.title + " " + (v ? v.viewId + " " + JSON.stringify(v.pageErrors) : "") : "kein Tab")
+                check("Jupyter: Ansicht nicht als Zustand gespeichert", tab && tab.viewState().processor === undefined, tab ? JSON.stringify(tab.viewState()) : "")
+                if (v) v.webItem.runJavaScript("[state.cells.length, document.querySelectorAll('.markdown-out .katex').length, document.querySelector('.output pre') ? document.querySelector('.output pre').textContent : '', $('banner').hidden]",
+                    (r) => { test.jupyterPage = r })
+            },
+            () => {
+                if (waitFor(() => !!test.jupyterPage)) return
+                const r = test.jupyterPage
+                check("Jupyter: Zellen, Formel und Ausgabe gezeigt", !!r && r[0] === 2 && r[1] === 1 && r[2] === "42\n", JSON.stringify(r))
+                editor.open(path("analyse.ipynb"), 0, "tab", { processor: "atlas:source" })
+            },
+            () => {
+                const tab = editor.activeTab
+                check("Jupyter: „Datei selbst“ zeigt das JSON", !!tab && tab.shownProcessor === "" && tab.kind === "text", tab ? tab.kind + " " + tab.shownProcessor : "kein Tab")
                 // ---- Phase 2: project calendar
                 window.openCalendar({ mode: "week", date: "2026-10-19" })
             },

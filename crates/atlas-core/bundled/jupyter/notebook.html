@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2026 Minux
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Jupyter-Notebook als Ansicht in Atlas: zeigt und bearbeitet eine .ipynb-Datei
+und führt ihre Zellen in einem Kernel eines lokalen Jupyter-Servers aus
+(REST und WebSocket, Nachrichtenprotokoll 5). Änderungen und Ausgaben
+werden im Format nbformat 4 gespeichert.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Jupyter-Notebook</title>
+<link rel="stylesheet" href="atlas://app/web/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="notebook.css">
+<script src="atlas://app/web/vendor/katex/katex.min.js"></script>
+<script src="atlas://app/web/extension.js"></script>
+</head>
+<body>
+<header>
+  <h1 id="title">Notebook</h1>
+  <span id="kernel" class="kernel off" title="Zustand des Kernels">kein Kernel</span>
+  <select id="kernelspec" title="Kernel" hidden></select>
+  <span class="spacer"></span>
+  <button id="run-all" class="primary" title="Alle Zellen nacheinander ausführen (hält beim ersten Fehler)" disabled>▶▶ Alle ausführen</button>
+  <button id="interrupt" title="Laufende Zelle unterbrechen" disabled>■ Unterbrechen</button>
+  <button id="restart" title="Kernel neu starten (Variablen gehen verloren)" disabled>↻ Neustart</button>
+  <button id="restart-all" title="Kernel neu starten und alle Zellen ausführen" disabled>↻▶ Neustart &amp; alle</button>
+  <button id="clear" title="Alle Ausgaben löschen">Ausgaben löschen</button>
+  <span id="saved" class="status"></span>
+</header>
+<div id="banner" class="banner" hidden>
+  <span id="banner-text"></span>
+  <button id="start-server" hidden>Jupyter-Server starten</button>
+  <button id="retry" hidden>Erneut verbinden</button>
+</div>
+<main id="cells"></main>
+<div id="add-row" class="add-row" hidden>
+  <button id="add-code">+ Code</button>
+  <button id="add-markdown">+ Markdown</button>
+</div>
+<section id="browser" class="browser" hidden>
+  <h2>Notebooks im Projekt</h2>
+  <ul id="notebooks"></ul>
+  <div class="row">
+    <input id="new-name" type="text" placeholder="Name des neuen Notebooks" value="Unbenannt.ipynb">
+    <button id="new-notebook" class="primary">Neues Notebook</button>
+  </div>
+</section>
+<p id="hint" class="hint">Umschalt+Enter: ausführen und weiter · Strg+Enter: ausführen · Alt+Enter: ausführen und neue Zelle · Strg+S: speichern</p>
+<script src="notebook.js"></script>
+</body>
+</html>

@@ -601,6 +601,18 @@ mod tests {
         path
     }
 
+    /// One cache folder for all tests of this module (they run in parallel;
+    /// each its own folder would pull the cache from under the other).
+    fn test_cache() {
+        static CACHE: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+        CACHE.get_or_init(|| {
+            let dir = tempfile::tempdir().unwrap();
+            // SAFETY: set once, before any test of this module reads it.
+            unsafe { std::env::set_var("XDG_CACHE_HOME", dir.path()) };
+            dir
+        });
+    }
+
     fn png(w: u32, h: u32, rgba: [u8; 4]) -> Vec<u8> {
         let mut out = std::io::Cursor::new(Vec::new());
         image::RgbaImage::from_pixel(w, h, image::Rgba(rgba)).write_to(&mut out, image::ImageFormat::Png).unwrap();
@@ -610,8 +622,7 @@ mod tests {
     #[test]
     fn renders_paper_strokes_text_and_placed_images() {
         let dir = tempfile::tempdir().unwrap();
-        // SAFETY: tests set the cache location before any thread reads it.
-        unsafe { std::env::set_var("XDG_CACHE_HOME", dir.path().join("cache")) };
+        test_cache();
         let json = r#"{"version":3,"favorites":[],"pages":[{"id":"p","paper":"GRID","dark":false,"height":1414,"marks":[
             {"id":"s","style":{"tool":"PEN","color":-16776961,"width":6},"rotation":0,"points":[[1,100,100,0,0,0.8,0,0],[1,400,100,1,0,0.8,0,0]]},
             {"id":"h","style":{"tool":"HIGHLIGHTER","color":-10923,"width":22},"rotation":0,"points":[[1,100,300,0,0,-1,-1,-1],[1,600,300,1,0,-1,-1,-1]]},
@@ -656,7 +667,7 @@ mod tests {
     #[test]
     fn rejects_paths_outside_known_folders_and_unknown_versions() {
         let dir = tempfile::tempdir().unwrap();
-        unsafe { std::env::set_var("XDG_CACHE_HOME", dir.path().join("cache")) };
+        test_cache();
         let ok = r#"{"version":2,"pages":[{"id":"p","paper":"BLANK","dark":true,"height":1414,"marks":[]}]}"#;
         let evil = archive(dir.path(), ok, &[("../evil.png", b"x")]);
         assert!(NoteFile::open(&evil).is_err());

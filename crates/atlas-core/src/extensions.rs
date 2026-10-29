@@ -1035,15 +1035,29 @@ pub struct Bundled {
     files: &'static [(&'static str, &'static str, bool)],
 }
 
-pub const BUNDLED: &[Bundled] = &[Bundled {
-    name: "bnki",
-    title: "bnki-Karten",
-    description: "Karteikarten für bnki schreiben – jeder Stapel eine CSV-Datei im Projekt.",
-    files: &[
-        (MANIFEST, include_str!("../bundled/bnki/extension.yaml"), false),
-        ("editor.html", include_str!("../bundled/bnki/editor.html"), false),
-    ],
-}];
+pub const BUNDLED: &[Bundled] = &[
+    Bundled {
+        name: "bnki",
+        title: "bnki-Karten",
+        description: "Karteikarten für bnki schreiben – jeder Stapel eine CSV-Datei im Projekt.",
+        files: &[
+            (MANIFEST, include_str!("../bundled/bnki/extension.yaml"), false),
+            ("editor.html", include_str!("../bundled/bnki/editor.html"), false),
+        ],
+    },
+    Bundled {
+        name: "jupyter",
+        title: "Jupyter-Notebooks",
+        description: "Notebooks (.ipynb) öffnen, bearbeiten und Zellen ausführen – mit einem lokalen Jupyter-Server.",
+        files: &[
+            (MANIFEST, include_str!("../bundled/jupyter/extension.yaml"), false),
+            ("notebook.html", include_str!("../bundled/jupyter/notebook.html"), false),
+            ("notebook.css", include_str!("../bundled/jupyter/notebook.css"), false),
+            ("notebook.js", include_str!("../bundled/jupyter/notebook.js"), false),
+            ("server.sh", include_str!("../bundled/jupyter/server.sh"), true),
+        ],
+    },
+];
 
 /// Installs (or updates) the bundled extension `name` among the user's
 /// extensions; returns its folder. Its settings are kept.
@@ -1552,6 +1566,18 @@ pub fn call(
             crate::fileops::trash(&[path("path")?])?;
             json!(true)
         }
+        "renderMarkdown" => {
+            let source = text("text")?;
+            if source.len() as u64 > MAX_BRIDGE_FILE {
+                bail!("zu viel Text");
+            }
+            // Relative links and images resolve against `path` (default: the project).
+            let file = match params["path"].as_str() {
+                Some(_) => path("path")?,
+                None => project.map(|p| p.join("_.md")).unwrap_or_default(),
+            };
+            json!({ "html": crate::markdown::render(source, &file, project).html })
+        }
         other => bail!("unbekannte Anfrage „{other}“"),
     })
 }
@@ -1653,6 +1679,42 @@ mod tests {
         install_bundled(&root, "bnki").unwrap();
         let again = load(&ext_dir, Location::User);
         assert_eq!(again.setting_values(&load_settings(&config))[0].1.as_str(), Some("bnki"));
+    }
+
+    #[test]
+    fn jupyter_opens_notebooks_and_starts_its_server() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = install_bundled(&dir.path().join("extensions"), "jupyter").unwrap();
+        let ext = load(&ext_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        assert!(ext.context);
+        let view = &ext.views[0];
+        assert_eq!(view.id, "view:jupyter/notebook");
+        assert!(view.auto);
+        let project = dir.path().join("projekt");
+        std::fs::create_dir(&project).unwrap();
+        assert!(view.applies(&project.join("Analyse.ipynb"), Some(&project)));
+        assert!(!view.applies(&project.join("Analyse.py"), Some(&project)));
+        // The page starts the server through this command (`runCommand`).
+        let server = &ext.actions[0];
+        assert_eq!(server.id, "jupyter/server");
+        assert_eq!(server.placement, crate::actions::Placement::Tab);
+        let mode = std::fs::metadata(ext_dir.join("server.sh")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0o111, "server.sh ausführbar");
+
+        let settings = toml::Table::new();
+        let call = |method: &str, params: serde_json::Value| call(&ext, Some(&project), &settings, method, &params);
+        assert_eq!(call("context", serde_json::json!({})).unwrap()["settings"]["port"], 8899.0);
+        // The token written by server.sh is readable inside the project.
+        std::fs::create_dir_all(project.join(".atlas/cache/jupyter")).unwrap();
+        std::fs::write(project.join(".atlas/cache/jupyter/token"), "abc").unwrap();
+        assert_eq!(call("readFile", serde_json::json!({ "path": ".atlas/cache/jupyter/token" })).unwrap(), "abc");
+        // Markdown cells are rendered by Atlas (math for KaTeX).
+        let html =
+            call("renderMarkdown", serde_json::json!({ "text": "# Titel\n\n$x^2$", "path": "Analyse.ipynb" })).unwrap();
+        assert!(html["html"].as_str().unwrap().contains("data-tex=\"x^2\""), "{html}");
+        assert!(call("renderMarkdown", serde_json::json!({ "text": "x", "path": "/etc/passwd" })).is_err());
     }
 
     #[test]
