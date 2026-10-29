@@ -20,6 +20,14 @@ ColumnLayout {
     readonly property bool showCalendar: settings.calendar !== false
     readonly property bool showTasks: settings.tasks !== false
     readonly property var model: actions ? actions.calendar : null
+    /// Extensions with a card here: their views and commands as buttons.
+    /// Read again when the settings or the installed extensions change.
+    readonly property var extensionCards: {
+        app.contextModules; app.untrustedExtensions
+        try { return JSON.parse(app.contextExtensions()).filter(e => e.shown && e.entries.length > 0) } catch (e) { return [] }
+    }
+    /// A view or command of an extension: {id, name} (see Main.runKeyAction).
+    signal keyActionRequested(var binding)
     spacing: 10
 
     // ------------------------------------------------------------- data
@@ -218,6 +226,49 @@ ColumnLayout {
                     if (!text.trim() || !modules.model) return
                     modules.model.save(JSON.stringify({ kind: "task", title: text.trim() }))
                     text = ""
+                }
+            }
+        }
+    }
+
+    // Cards of extensions („In der Kontextleiste anzeigen“ in the settings).
+    Repeater {
+        model: modules.extensionCards
+        delegate: Card {
+            id: extCard
+            required property var modelData
+            implicitHeight: extColumn.implicitHeight + 20
+            ColumnLayout {
+                id: extColumn
+                x: 12; y: 10
+                width: parent.width - 24
+                spacing: 6
+                RowLayout {
+                    Layout.fillWidth: true
+                    Header { Layout.fillWidth: true; icon: "grid"; text: extCard.modelData.title }
+                    IconButton {
+                        iconName: "close"
+                        iconSize: 12
+                        tip: qsTr("Aus der Kontextleiste entfernen (Einstellungen → Kontextleiste)")
+                        onClicked: modules.app.setContextModule("ext:" + extCard.modelData.name, 0)
+                    }
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: extCard.modelData.entries
+                        delegate: Button {
+                            required property var modelData
+                            text: modelData.name
+                            font.pixelSize: Theme.smallFontSize
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 600
+                            ToolTip.text: (modelData.kind === "view" ? qsTr("Öffnen") : qsTr("Ausführen"))
+                                + (modelData.keybinding ? " (" + modelData.keybinding + ")" : "")
+                            onClicked: modules.keyActionRequested({ id: modelData.id, name: modelData.name })
+                        }
+                    }
                 }
             }
         }

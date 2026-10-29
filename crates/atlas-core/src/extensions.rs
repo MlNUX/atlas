@@ -291,6 +291,10 @@ pub struct Extension {
     pub processors: Vec<Processor>,
     pub exporters: Vec<Exporter>,
     pub views: Vec<View>,
+    /// Shown as a card in the context bar unless the user hides it
+    /// (`context: true`, API 2); every extension with views or commands can
+    /// be shown there.
+    pub context: bool,
     pub errors: Vec<String>,
 }
 
@@ -680,6 +684,7 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         processors: Vec::new(),
         exporters: Vec::new(),
         views: Vec::new(),
+        context: false,
         errors: Vec::new(),
     };
     let bytes = match std::fs::read(&manifest) {
@@ -737,6 +742,7 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         .or_else(|| doc["version"].as_f64().map(|v| v.to_string()))
         .unwrap_or_default();
     ext.description = doc["description"].as_str().unwrap_or_default().to_owned();
+    ext.context = ext.api >= 2 && doc["context"].as_bool().unwrap_or(false);
 
     if ext.api >= 2 {
         match parse_permissions(&doc["permissions"]) {

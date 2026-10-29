@@ -37,6 +37,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Erweiterungen in der Kontextleiste:** Jede aktive Erweiterung mit
+  Ansichten oder Befehlen kann als Karte in der Kontextleiste erscheinen –
+  ein Knopf je Ansicht und Befehl. Schalter unter Einstellungen →
+  Kontextleiste oder × auf der Karte (`[context.extensions]`); im Manifest
+  zeigt `context: true` die Karte standardmäßig. **bnki-Karten** ist so
+  eingestellt (nach „Erweiterung aktualisieren: bnki-Karten“).
 - **Handbuch für Erweiterungen** (`docs/extensions-guide.md`): Laufzeitvertrag
   für Programme (Start, Umgebung, Ausgabe, Fehler, Cache), vollständige
   Manifest- und Brücken-Referenz, Rechte, Debugging, Weitergabe; mit einer

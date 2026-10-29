@@ -1040,6 +1040,7 @@ ApplicationWindow {
             editor: editor
             actions: fileActions
             onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
+            onKeyActionRequested: (binding) => window.runKeyAction(binding)
         }
     }
 

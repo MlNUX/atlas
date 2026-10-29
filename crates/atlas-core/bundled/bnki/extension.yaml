@@ -9,6 +9,7 @@ name: bnki
 title: bnki-Karten
 version: 1.0.0
 description: Karteikarten für bnki schreiben, mit Vorschau für Formeln und Code. Jeder Stapel ist eine CSV-Datei im Projekt.
+context: true                 # als Karte in der Kontextleiste (abschaltbar)
 
 permissions:
   run: []

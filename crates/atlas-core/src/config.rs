@@ -240,6 +240,10 @@ pub struct ContextConfig {
     pub pomodoro_break: u32,
     #[serde(default = "pomodoro_long")]
     pub pomodoro_long_break: u32,
+    /// Extensions shown (true) or hidden (false) as a card in the context
+    /// bar; not listed: what the extension asks for (`context:`).
+    #[serde(default)]
+    pub extensions: std::collections::BTreeMap<String, bool>,
 }
 
 fn pomodoro_work() -> u32 {
@@ -261,6 +265,7 @@ impl Default for ContextConfig {
             pomodoro_work: pomodoro_work(),
             pomodoro_break: pomodoro_short(),
             pomodoro_long_break: pomodoro_long(),
+            extensions: Default::default(),
         }
     }
 }

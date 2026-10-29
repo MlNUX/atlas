@@ -63,6 +63,7 @@ name: notizbuch               # Buchstaben, Ziffern, - und _
 title: Notizbuch-Werkzeuge
 version: 1.2.0
 description: Jupyter-Notebooks anzeigen und exportieren.
+context: true                 # Karte in der Kontextleiste (Standard: false)
 
 permissions:                  # was die Erweiterung braucht (siehe unten)
   run: [jupyter, pandoc]      # Programme, die ihre Befehle starten
@@ -106,6 +107,17 @@ Erweiterungen im Format 1 (`atlas_extension: 1`, `actions:` statt
 im Format 1 sind keine Rechte angemeldet, ihre Befehle dürfen alles, was du
 darfst. Braucht eine Erweiterung eine neuere API, als Atlas kennt
 (`atlas_api: 3`), lädt Atlas sie nicht und sagt das.
+
+### Kontextleiste
+
+Jede aktive Erweiterung mit Ansichten oder Befehlen (in der Arbeitsleiste)
+kann als **Karte in der Kontextleiste** erscheinen, mit einem Knopf je
+Ansicht und Befehl. Ein- und ausschalten unter Einstellungen →
+Kontextleiste („Erweiterung: …“) oder mit × auf der Karte; gespeichert in
+`[context.extensions]` der `config.toml`. Mit `context: true` erscheint die
+Karte, solange der Nutzer sie nicht ausschaltet (bnki-Karten tut das).
+Befehle laufen dort wie über ihr Tastenkürzel: auf dem aktiven Dokument,
+wenn sie dazu passen, sonst auf dem Projekt.
 
 ### Ansichten
 

@@ -475,7 +475,23 @@ Dialog {
                             icon: "check-square"
                             title: qsTr("Aufgaben")
                             detail: qsTr("Offene Aufgaben abhaken und neue anlegen")
-                            last: true
+                            last: extensionRows.count === 0
+                        }
+                        // Extensions with views or commands: a card with buttons.
+                        Repeater {
+                            id: extensionRows
+                            model: { dialog.app.contextModules; dialog.app.untrustedExtensions
+                                     try { return JSON.parse(dialog.app.contextExtensions()) } catch (e) { return [] } }
+                            ModuleRow {
+                                required property var modelData
+                                required property int index
+                                key: "ext:" + modelData.name
+                                on: modelData.shown
+                                icon: "grid"
+                                title: qsTr("Erweiterung: %1").arg(modelData.title)
+                                detail: qsTr("Karte mit Knöpfen für: %1").arg(modelData.entries.map(e => e.name).join(", "))
+                                last: index === extensionRows.count - 1
+                            }
                         }
                     }
                 }
@@ -739,7 +755,7 @@ Dialog {
         property string detail
         property bool last: false
         default property alias extra: extraArea.data
-        readonly property bool on: dialog.context[key] !== false
+        property bool on: dialog.context[key] !== false
         Layout.fillWidth: true
         implicitHeight: moduleLayout.implicitHeight + 20
         color: "transparent"

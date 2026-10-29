@@ -23,6 +23,8 @@ Rectangle {
     readonly property alias pomodoro: pomodoroTimer
 
     signal openRequested(string path, int line, string where, var state)
+    /// A view or command from an extension card ({id, name}).
+    signal keyActionRequested(var binding)
 
     color: Theme.panel
     radius: Theme.radius
@@ -216,9 +218,10 @@ Rectangle {
                     ContextModules {
                         id: contextModules
                         Layout.fillWidth: true
-                        visible: showCalendar || showTasks
+                        visible: showCalendar || showTasks || extensionCards.length > 0
                         app: inspector.app
                         actions: inspector.actions
+                        onKeyActionRequested: (binding) => inspector.keyActionRequested(binding)
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border; visible: contextModules.visible }
                     Label { Layout.leftMargin: 14; text: qsTr("Anmerkungen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }

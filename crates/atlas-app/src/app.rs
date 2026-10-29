@@ -320,6 +320,12 @@ pub mod qobject {
         #[cxx_name = "urlToPath"]
         fn url_to_path(self: &AppController, url: &QString) -> QString;
 
+        /// Active extensions that can appear as a card in the context bar:
+        /// JSON [{name, title, description, shown, entries: [{id, name, kind, keybinding}]}].
+        #[qinvokable]
+        #[cxx_name = "contextExtensions"]
+        fn context_extensions(self: &AppController) -> QString;
+
         #[qinvokable]
         #[cxx_name = "fileKind"]
         fn file_kind(self: &AppController, path: &QString) -> QString;
@@ -1444,6 +1450,10 @@ impl qobject::AppController {
             "pomodoro_work" => config.pomodoro_work = minutes,
             "pomodoro_break" => config.pomodoro_break = minutes,
             "pomodoro_long_break" => config.pomodoro_long_break = minutes,
+            // `ext:<name>`: the card of an extension.
+            other if other.starts_with("ext:") && other.len() > 4 => {
+                config.extensions.insert(other[4..].to_owned(), value != 0);
+            }
             other => {
                 log::warn!("unknown context module {other}");
                 return;
@@ -1653,6 +1663,31 @@ impl qobject::AppController {
         let path = path_of(path);
         file_kind(&path) == "markdown"
             && std::fs::read_to_string(&path).is_ok_and(|text| !atlas_core::calendar::checklist_items(&text).is_empty())
+    }
+
+    pub fn context_extensions(&self) -> QString {
+        let config = Config::load().context;
+        let list: Vec<_> = self
+            .active_extensions()
+            .iter()
+            .filter(|e| !e.views.is_empty() || e.actions.iter().any(|a| a.in_palette))
+            .map(|e| {
+                let views = e.views.iter().map(
+                    |v| serde_json::json!({ "id": v.id, "name": v.name, "kind": "view", "keybinding": v.keybinding }),
+                );
+                let commands = e.actions.iter().filter(|a| a.in_palette).map(|a| {
+                    serde_json::json!({ "id": a.id, "name": a.name, "kind": "command", "keybinding": a.keybinding })
+                });
+                serde_json::json!({
+                    "name": e.name,
+                    "title": e.title,
+                    "description": e.description,
+                    "shown": config.extensions.get(&e.name).copied().unwrap_or(e.context),
+                    "entries": views.chain(commands).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
     }
 
     pub fn file_kind(&self, path: &QString) -> QString {

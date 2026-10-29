@@ -45,6 +45,7 @@ Erweiterung mitbringt oder das auf dem System installiert ist) oder als
 | **Exporter** (`exporters`) | Kontextmenü „Exportieren als …“, Arbeitsleiste | eine Datei in ein anderes Format schreiben |
 | **Ansicht** (`views`) | eigener Tab, „Anzeigen mit …“, Tastenkürzel | eigene Oberfläche: Editor, Werkzeug, Dashboard |
 | **Einstellungen** (`settings`) | Einstellungen von Atlas → Erweiterungen | Werte, die der Nutzer setzt; an Programme und Ansichten übergeben |
+| **Karte in der Kontextleiste** (`context`) | rechte Kontextleiste, Übersicht | Knöpfe für die Ansichten und Befehle der Erweiterung, ein Klick entfernt |
 
 **Nicht möglich** (Stand API 2):
 
@@ -151,6 +152,7 @@ werden übersprungen und gemeldet, der Rest bleibt nutzbar.
 | `version` | nein | Text, frei (z. B. `1.2.0`) |
 | `description` | nein | Text für Dialog und Einstellungen |
 | `permissions` | bei API 2 sinnvoll | siehe [Rechte](#7-rechte-und-sicherheit); fehlt es, gilt `run: []`, `files: project`, kein Netz |
+| `context` | nein (`false`) | `true`: Karte in der Kontextleiste zeigen, bis der Nutzer sie ausschaltet. Ohne `context` kann der Nutzer sie selbst einschalten (Einstellungen → Kontextleiste). Die Karte hat einen Knopf je Ansicht und je Befehl mit `menu: palette`. |
 
 ### `permissions`
 
