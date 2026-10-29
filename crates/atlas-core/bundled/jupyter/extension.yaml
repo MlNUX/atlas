@@ -3,8 +3,9 @@
 #
 # Jupyter-Notebooks: .ipynb-Dateien öffnen, bearbeiten und Zellen ausführen.
 # Die Ansicht spricht mit einem lokalen Jupyter-Server (nur 127.0.0.1), den
-# der Befehl „Jupyter-Server starten“ im Terminal von Atlas startet.
-# Voraussetzung: pip install jupyter_server ipykernel (jupyter_server ≥ 2).
+# der Befehl „Jupyter-Server starten“ im Terminal von Atlas startet. Fehlt
+# Jupyter, richtet „Jupyter im Projekt einrichten“ es in einer .venv ein;
+# Kernel und Pakete verwaltet die Ansicht („Kernel …“) über den Server.
 atlas_api: 2
 name: jupyter
 title: Jupyter-Notebooks
@@ -13,7 +14,7 @@ description: Notebooks (.ipynb) öffnen, bearbeiten und einzelne oder alle Zelle
 context: true                 # als Karte in der Kontextleiste (abschaltbar)
 
 permissions:
-  run: [jupyter]
+  run: [jupyter, python3]
   files: project              # liest und schreibt nur Dateien im Projekt
   network: [127.0.0.1]        # nur der eigene Jupyter-Server
 
@@ -28,12 +29,23 @@ settings:
     description: z. B. der Pfad in einer virtuellen Umgebung (…/venv/bin/jupyter).
     type: path
     default: jupyter
+  - key: python
+    title: Python für neue Umgebungen
+    description: Damit legt die Ansicht virtuelle Umgebungen (.venv) für Kernel an.
+    type: path
+    default: python3
 
 commands:
   - id: server
     name: Jupyter-Server starten
     description: Startet den Jupyter-Server für dieses Projekt in einem Terminal-Tab.
     command: ["{extension}/server.sh", "{project}", "{setting:port}", "{setting:jupyter}"]
+    terminal: tab
+    menu: [palette]
+  - id: setup
+    name: Jupyter im Projekt einrichten
+    description: Legt im Projekt eine .venv mit jupyter_server und ipykernel an und startet den Server aus ihr.
+    command: ["{extension}/setup.sh", "{project}", "{setting:python}", "{setting:port}"]
     terminal: tab
     menu: [palette]
 

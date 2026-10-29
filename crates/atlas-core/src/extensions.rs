@@ -1055,6 +1055,7 @@ pub const BUNDLED: &[Bundled] = &[
             ("notebook.css", include_str!("../bundled/jupyter/notebook.css"), false),
             ("notebook.js", include_str!("../bundled/jupyter/notebook.js"), false),
             ("server.sh", include_str!("../bundled/jupyter/server.sh"), true),
+            ("setup.sh", include_str!("../bundled/jupyter/setup.sh"), true),
         ],
     },
 ];
@@ -1700,8 +1701,11 @@ mod tests {
         let server = &ext.actions[0];
         assert_eq!(server.id, "jupyter/server");
         assert_eq!(server.placement, crate::actions::Placement::Tab);
-        let mode = std::fs::metadata(ext_dir.join("server.sh")).unwrap().permissions().mode();
-        assert_eq!(mode & 0o111, 0o111, "server.sh ausführbar");
+        assert_eq!(ext.actions[1].id, "jupyter/setup");
+        for script in ["server.sh", "setup.sh"] {
+            let mode = std::fs::metadata(ext_dir.join(script)).unwrap().permissions().mode();
+            assert_eq!(mode & 0o111, 0o111, "{script} ausführbar");
+        }
 
         let settings = toml::Table::new();
         let call = |method: &str, params: serde_json::Value| call(&ext, Some(&project), &settings, method, &params);

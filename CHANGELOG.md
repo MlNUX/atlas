@@ -44,7 +44,11 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Fehler), unterbrechen, Kernel neu starten oder wechseln; Zellen
   bearbeiten, hinzufügen, verschieben, löschen. Gespeichert wird
   automatisch im Format von Jupyter. Der Server (`jupyter_server`, nur
-  127.0.0.1, eigenes Token) startet auf Knopfdruck in einem Terminal-Tab.
+  127.0.0.1, eigenes Token) startet auf Knopfdruck in einem Terminal-Tab;
+  fehlt Jupyter, richtet die Ansicht es in einer `.venv` im Projekt ein.
+  Unter „Kernel …“ legt man virtuelle Umgebungen als Kernel an oder bindet
+  vorhandene ein, installiert Pakete und entfernt Kernel – mit
+  Live-Ausgabe im Dialog.
 - **Ansichten mit `auto: true`** öffnen passende Dateien jetzt immer
   direkt, auch Text-Dateien; „Anzeigen mit → Atlas (Datei selbst)“ zeigt
   die Datei. Neu in der Brücke: `renderMarkdown` (HTML wie in der

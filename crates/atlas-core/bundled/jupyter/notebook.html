@@ -22,6 +22,7 @@ werden im Format nbformat 4 gespeichert.
   <h1 id="title">Notebook</h1>
   <span id="kernel" class="kernel off" title="Zustand des Kernels">kein Kernel</span>
   <select id="kernelspec" title="Kernel" hidden></select>
+  <button id="kernels" title="Kernel und Umgebungen: .venv anlegen oder einbinden, Pakete installieren">Kernel …</button>
   <span class="spacer"></span>
   <button id="run-all" class="primary" title="Alle Zellen nacheinander ausführen (hält beim ersten Fehler)" disabled>▶▶ Alle ausführen</button>
   <button id="interrupt" title="Laufende Zelle unterbrechen" disabled>■ Unterbrechen</button>
@@ -33,6 +34,8 @@ werden im Format nbformat 4 gespeichert.
 <div id="banner" class="banner" hidden>
   <span id="banner-text"></span>
   <button id="start-server" hidden>Jupyter-Server starten</button>
+  <button id="setup-jupyter" hidden title="Legt im Projekt eine .venv mit jupyter_server und ipykernel an und startet den Server">Jupyter im Projekt einrichten</button>
+  <button id="open-kernels" hidden>Kernel einrichten</button>
   <button id="retry" hidden>Erneut verbinden</button>
 </div>
 <main id="cells"></main>
@@ -48,6 +51,44 @@ werden im Format nbformat 4 gespeichert.
     <button id="new-notebook" class="primary">Neues Notebook</button>
   </div>
 </section>
+<dialog id="kernel-dialog">
+  <form method="dialog" class="dialog-head">
+    <h2>Kernel und Umgebungen</h2>
+    <button value="close" title="Schließen">✕</button>
+  </form>
+  <p id="kernel-offline" class="hint" hidden>Erst den Jupyter-Server starten – Kernel und Pakete richtet die Ansicht über ihn ein.</p>
+  <section>
+    <h3>Installierte Kernel</h3>
+    <table class="kernel-list"><tbody id="kernel-list"></tbody></table>
+  </section>
+  <section>
+    <h3>Umgebung (.venv) als Kernel anlegen oder einbinden</h3>
+    <div class="form">
+      <label>Ordner <input id="env-dir" type="text" value=".venv"></label>
+      <label>Name in der Kernel-Auswahl <input id="env-name" type="text"></label>
+      <label class="wide">Pakete dazu <input id="env-packages" type="text" value="numpy pandas matplotlib" placeholder="mit Leerzeichen getrennt, z. B. numpy scipy==1.13"></label>
+    </div>
+    <p class="hint">Ordner relativ zum Projekt (oder absolut, ~/…). Gibt es dort schon eine Umgebung, wird sie eingebunden; sonst legt
+      <code id="env-python">python3</code> sie an. Dazu kommen ipykernel und die Pakete, dann steht sie als Kernel bereit.</p>
+    <button id="env-create" class="primary">Anlegen und einbinden</button>
+  </section>
+  <section>
+    <h3>Pakete installieren</h3>
+    <div class="form">
+      <label>in den Kernel <select id="pkg-kernel"></select></label>
+      <label class="wide">Pakete <input id="pkg-names" type="text" placeholder="z. B. scipy seaborn"></label>
+    </div>
+    <button id="pkg-install">Installieren</button>
+  </section>
+  <section id="job" hidden>
+    <div class="job-head">
+      <strong id="job-title"></strong>
+      <span id="job-status" class="status"></span>
+      <button id="job-cancel">Abbrechen</button>
+    </div>
+    <pre id="job-log"></pre>
+  </section>
+</dialog>
 <p id="hint" class="hint">Umschalt+Enter: ausführen und weiter · Strg+Enter: ausführen · Alt+Enter: ausführen und neue Zelle · Strg+S: speichern</p>
 <script src="notebook.js"></script>
 </body>

@@ -62,13 +62,24 @@ eigenen Ansicht: Markdown-Zellen mit Formeln, Code-Zellen mit ihren
 Ausgaben (Text, Tabellen von pandas, Bilder von matplotlib, Fehler mit
 farbigem Traceback). Ausführen lassen sich einzelne Zellen und alle.
 
-- **Voraussetzung:** `pip install jupyter_server ipykernel` (Jupyter Server
-  ab 2; in einer virtuellen Umgebung: Einstellung „Jupyter-Programm“ auf
-  `…/venv/bin/jupyter`).
 - **Server:** Läuft keiner, startet „Jupyter-Server starten“ (Knopf in der
   Ansicht oder Arbeitsleiste) ihn in einem Terminal-Tab – nur auf
   127.0.0.1, Port aus den Einstellungen (8899), mit einem eigenen Token in
   `.atlas/cache/jupyter/token` des Projekts. Strg+C im Terminal beendet ihn.
+  Er läuft aus der `.venv` des Projekts, wenn sie Jupyter enthält, sonst
+  mit dem Programm aus den Einstellungen („Jupyter-Programm“, Standard
+  `jupyter`).
+- **Ohne Jupyter:** „Jupyter im Projekt einrichten“ legt eine `.venv` mit
+  `jupyter_server` und `ipykernel` an (mit dem Python aus den
+  Einstellungen) und startet danach den Server aus ihr.
+- **Kernel und Umgebungen** („Kernel …“ in der Ansicht): installierte Kernel
+  sehen, für das Notebook wählen oder entfernen (eine Umgebung im Projekt
+  danach auf Wunsch in den Papierkorb); eine `.venv` anlegen oder eine
+  vorhandene einbinden (Ordner relativ zum Projekt, absolut oder `~/…`) –
+  mit ipykernel und weiteren Paketen, angemeldet als eigener Kernel
+  (`ipykernel install --user`); Pakete mit pip in einen Kernel
+  installieren. Die Befehle laufen in einem Terminal des Jupyter-Servers,
+  ihre Ausgabe erscheint live im Dialog.
 - **Ausführen:** ▶ an der Zelle, **Umschalt+Enter** (ausführen und weiter),
   **Strg+Enter** (ausführen), **Alt+Enter** (ausführen, neue Zelle darunter);
   „Alle ausführen“ läuft der Reihe nach und hält beim ersten Fehler.
@@ -81,8 +92,8 @@ farbigem Traceback). Ausführen lassen sich einzelne Zellen und alle.
 - HTML aus Ausgaben und Markdown wird bereinigt, Skripte laufen nie
   (Widgets von ipywidgets zeigt die Ansicht als Text).
 - Die JSON-Datei selbst: „Anzeigen mit → Atlas (Datei selbst)“.
-- Rechte: Dateien im Projekt, das Programm `jupyter`, Netzwerk nur zu
-  127.0.0.1.
+- Rechte: Dateien im Projekt, die Programme `jupyter` und `python3`,
+  Netzwerk nur zu 127.0.0.1.
 
 ## Format (API 2)
 

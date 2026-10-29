@@ -39,6 +39,8 @@ const state = {
     specs: null,
     restarting: false,  // eigener Neustart läuft
     infoWaiters: new Map(), // msg_id von kernel_info_request → Rückruf
+    online: false,      // Server antwortet
+    job: null,          // laufender Befehl im Terminal des Servers ({cancel})
 };
 
 function uuid() {
@@ -81,6 +83,8 @@ function banner(text, opts = {}) {
     el.classList.toggle("error", !!opts.error);
     $("banner-text").textContent = text || "";
     $("start-server").hidden = !opts.start;
+    $("setup-jupyter").hidden = !opts.start;
+    $("open-kernels").hidden = !opts.kernels;
     $("retry").hidden = !opts.retry;
 }
 
@@ -243,7 +247,7 @@ function ansiHtml(text) {
 
 /// Wendet Wagenrücklauf und Rückschritt an wie ein Terminal (Fortschrittsbalken).
 function terminalText(text) {
-    return text.split("\n").map((line) => {
+    return text.replace(/\r\n/g, "\n").split("\n").map((line) => {
         if (line.includes("\r")) {
             const parts = line.split("\r").filter((p, i, all) => p !== "" || i === all.length - 1);
             line = parts.length ? parts[parts.length - 1] : "";
@@ -672,21 +676,24 @@ async function api(method, path, body) {
 
 function tokenPath() { return (state.ctx.project || "").replace(/\/$/, "") + "/.atlas/cache/jupyter/token"; }
 
-/// Verbindet mit dem Server; `wait`: so lange warten, bis er läuft (nach dem Start).
-async function connect(wait) {
+/// Verbindet mit dem Server; `wait`: so viele Sekunden warten, bis er läuft
+/// (nach dem Start; `waiting` ist der Text dazu).
+async function connect(wait, waiting) {
     if (!state.ctx.project) {
         banner("Notebooks laufen nur in einem Projektordner (dort startet der Jupyter-Server).", { error: true });
         return;
     }
-    const deadline = Date.now() + (wait ? 90000 : 0);
+    const deadline = Date.now() + (wait || 0) * 1000;
     for (;;) {
         try {
             state.token = (await atlas.call("readFile", { path: tokenPath() })).trim();
             await api("GET", "/api/status");
+            state.online = true;
             break;
         } catch (e) {
+            state.online = false;
             if (Date.now() < deadline) {
-                banner("Warte auf den Jupyter-Server …");
+                banner(waiting || "Warte auf den Jupyter-Server …");
                 await new Promise((r) => setTimeout(r, 1000));
                 continue;
             }
@@ -694,28 +701,36 @@ async function connect(wait) {
             if (e.status === 403 || e.status === 401) {
                 banner(`Auf Port ${portOf()} läuft ein anderer Jupyter-Server (Token passt nicht). Port in den Einstellungen der Erweiterung ändern oder den anderen Server beenden.`, { error: true, retry: true });
             } else {
-                banner(`Kein Jupyter-Server auf 127.0.0.1:${portOf()}. Er startet in einem Terminal-Tab von Atlas.`, { start: true, retry: true });
+                banner(wait ? `Der Jupyter-Server antwortet nicht – die Meldung steht im Terminal-Tab. Fehlt Jupyter, richtet „Jupyter im Projekt einrichten“ es in einer .venv ein.`
+                    : `Kein Jupyter-Server auf 127.0.0.1:${portOf()}. Er startet in einem Terminal-Tab von Atlas.`, { start: true, retry: true });
             }
             return;
         }
     }
     banner("");
-    await startSession();
+    if (state.nb) await startSession();
 }
 
 function portOf() { return Math.round(Number(state.ctx.settings && state.ctx.settings.port) || 8899); }
 
-async function loadSpecs() {
-    if (state.specs) return state.specs;
+async function loadSpecs(refresh) {
+    if (state.specs && !refresh) return state.specs;
     state.specs = await api("GET", "/api/kernelspecs");
     const sel = $("kernelspec");
     sel.replaceChildren(...Object.entries(state.specs.kernelspecs).map(([name, s]) => new Option(s.spec.display_name || name, name)));
-    sel.hidden = false;
+    sel.hidden = sel.options.length === 0;
+    if (state.session) sel.value = state.session.kernel.name;
     return state.specs;
+}
+
+function noKernel() {
+    setKernelState("off", "kein Kernel");
+    banner("Auf dem Jupyter-Server ist kein Kernel installiert.", { kernels: true, retry: true });
 }
 
 async function startSession() {
     const specs = await loadSpecs();
+    if (!Object.keys(specs.kernelspecs).length) return noKernel();
     const wanted = (state.nb.metadata.kernelspec || {}).name;
     const name = wanted && specs.kernelspecs[wanted] ? wanted : specs.default;
     if (wanted && name !== wanted) atlas.message(`Kernel „${wanted}“ fehlt auf dem Server – nehme „${name}“`);
@@ -967,6 +982,287 @@ async function changeKernel(name) {
     openSocket();
 }
 
+/// Diesen Kernel für das Notebook nehmen (auch wenn noch keine Sitzung läuft).
+async function useKernel(name) {
+    if (state.session) return changeKernel(name);
+    const spec = state.specs.kernelspecs[name].spec;
+    state.nb.metadata.kernelspec = { display_name: spec.display_name, language: spec.language, name };
+    changed();
+    banner("");
+    await startSession();
+}
+
+// ------------------------------------------------- Kernel und Umgebungen
+
+// Die Befehle laufen in einem Terminal des Jupyter-Servers (dieselbe
+// Maschine, derselbe Benutzer); ihre Ausgabe erscheint live im Dialog.
+
+/// Text in einfachen Anführungszeichen für sh.
+function sq(text) { return "'" + String(text).replace(/'/g, "'\\''") + "'"; }
+
+function base64(text) {
+    let binary = "";
+    for (const b of new TextEncoder().encode(text)) binary += String.fromCharCode(b);
+    return btoa(binary);
+}
+
+/// Pfad einer Umgebung als sh-Ausdruck: absolut, ~/… oder relativ zum Projekt.
+function envPath(dir) {
+    dir = dir.trim().replace(/\/+$/, "") || ".venv";
+    if (dir.startsWith("/")) return sq(dir);
+    if (dir === "~" || dir.startsWith("~/")) return '"$HOME"' + sq(dir.slice(1));
+    return sq(state.ctx.project.replace(/\/$/, "") + "/" + dir);
+}
+
+function packages(text) { return text.split(/\s+/).filter(Boolean).map(sq).join(" "); }
+
+/// sh-Zeilen, die $py auf das Python des Kernels `name` setzen. Der
+/// mitgelieferte Kernel „python3“ (ohne absoluten Pfad) ist das Python des
+/// Servers: dasselbe Programm wie in server.sh, Python aus dessen Kopfzeile.
+function pythonOf(name) {
+    const argv = state.specs.kernelspecs[name].spec.argv || [];
+    if (argv[0] && argv[0].startsWith("/")) return [`py=${sq(argv[0])}`];
+    const setting = (state.ctx.settings && state.ctx.settings.jupyter) || "jupyter";
+    return [
+        `j=${sq(setting)}`,
+        `[ "$j" = jupyter ] && [ -x ${sq(state.ctx.project.replace(/\/$/, "") + "/.venv/bin/jupyter")} ] && j=${sq(state.ctx.project.replace(/\/$/, "") + "/.venv/bin/jupyter")}`,
+        `j=$(command -v "$j") || { echo "Das Programm des Servers ist nicht zu finden."; exit 1; }`,
+        `py=$(sed -n '1s/^#! *//p' "$j" | cut -d' ' -f1)`,
+        `case "$(basename "$py")" in python*) ;; *) py="$(dirname "$j")/python" ;; esac`,
+        `[ -x "$py" ] || { echo "Das Python des Servers ist nicht zu finden ($j)."; exit 1; }`,
+    ];
+}
+
+/// Startet `lines` (sh) in einem Terminal des Servers; zeigt die Ausgabe und
+/// löst mit dem Exit-Code auf (130: abgebrochen, -1: Verbindung weg).
+async function runJob(title, lines) {
+    if (state.job) return -1;
+    $("job").hidden = false;
+    $("job-title").textContent = title;
+    $("job-status").textContent = "läuft …";
+    $("job-status").className = "status";
+    $("job-log").textContent = "";
+    $("job-cancel").hidden = false;
+    setJobBusy(true);
+    let term;
+    try {
+        term = await api("POST", "/api/terminals");
+    } catch (e) {
+        setJobBusy(false);
+        $("job-status").textContent = e.status === 404
+            ? "Der Jupyter-Server hat keine Terminals (Paket jupyter_server_terminals fehlt oder sie sind ausgeschaltet)."
+            : "Kein Terminal: " + e.message;
+        $("job-status").className = "status error";
+        return -1;
+    }
+    const script = `printf '__ATLAS_%s__\\n' START\n(\nset -e\n${lines.join("\n")}\n) 2>&1\nprintf '__ATLAS_%s_%s__\\n' DONE $?\n`;
+    const ws = new WebSocket(state.base.replace(/^http/, "ws") + `/terminals/websocket/${term.name}?token=${encodeURIComponent(state.token)}`);
+    const code = await new Promise((resolve) => {
+        let raw = "";
+        let done = false;
+        const finish = (c) => {
+            if (done) return;
+            done = true;
+            state.job = null;
+            resolve(c);
+        };
+        state.job = { cancel: () => { ws.send(JSON.stringify(["stdin", "\x03"])); setTimeout(() => finish(130), 300); } };
+        ws.onopen = () => {
+            ws.send(JSON.stringify(["set_size", 40, 160, 600, 1200]));
+            // Als base64 durch die Shell des Benutzers (bash, zsh, fish …) nach sh.
+            ws.send(JSON.stringify(["stdin", `printf %s ${base64(script)} | base64 -d | sh\r`]));
+        };
+        ws.onmessage = (e) => {
+            let m;
+            try { m = JSON.parse(e.data); } catch (err) { return; }
+            if (m[0] !== "stdout") return;
+            raw += m[1];
+            const start = raw.indexOf("__ATLAS_START__");
+            if (start < 0) return;
+            let body = raw.slice(start + 15).replace(/^\r?\n/, "");
+            const end = /__ATLAS_DONE_(\d+)__/.exec(body);
+            if (end) body = body.slice(0, end.index);
+            const log = $("job-log");
+            const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+            log.innerHTML = ansiHtml(terminalText(body));
+            if (atEnd) log.scrollTop = log.scrollHeight;
+            if (end) finish(Number(end[1]));
+        };
+        ws.onclose = () => finish(-1);
+    });
+    ws.onclose = null;
+    ws.close();
+    api("DELETE", `/api/terminals/${term.name}`).catch(() => {});
+    setJobBusy(false);
+    $("job-cancel").hidden = true;
+    $("job-status").textContent = code === 0 ? "fertig" : code === 130 ? "abgebrochen" : code < 0 ? "Verbindung getrennt" : `fehlgeschlagen (Code ${code})`;
+    $("job-status").className = "status " + (code === 0 ? "ok" : "error");
+    return code;
+}
+
+function setJobBusy(busy) {
+    for (const id of ["env-create", "pkg-install"]) $(id).disabled = busy || !state.online || !state.specs;
+    document.querySelectorAll("#kernel-list button").forEach((b) => { b.disabled = busy; });
+}
+
+function slug(text) {
+    return text.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "python";
+}
+
+/// Freier Kernel-Name zu einem Anzeigenamen.
+function kernelName(display) {
+    const base = slug(display.replace(/^python\s*\(?|\)$/gi, "") || display);
+    let name = base;
+    for (let i = 2; state.specs.kernelspecs[name]; i++) name = `${base}-${i}`;
+    return name;
+}
+
+function renderKernelList() {
+    const list = $("kernel-list");
+    const specs = state.specs ? Object.entries(state.specs.kernelspecs) : [];
+    list.replaceChildren(...specs.map(([name, s]) => {
+        const tr = document.createElement("tr");
+        const label = document.createElement("td");
+        label.textContent = s.spec.display_name || name;
+        if (state.session && state.session.kernel.name === name) {
+            label.appendChild(Object.assign(document.createElement("span"), { className: "current", textContent: "● dieses Notebook" }));
+        }
+        const path = document.createElement("td");
+        path.className = "path";
+        const argv0 = (s.spec.argv || [])[0] || "";
+        path.textContent = argv0.startsWith("/") ? relative(argv0) : "Python des Servers";
+        path.title = name;
+        const actions = document.createElement("td");
+        actions.className = "actions";
+        if (state.nb && (!state.session || state.session.kernel.name !== name)) {
+            actions.appendChild(button("Verwenden", "Diesen Kernel für das Notebook nehmen", async () => { await useKernel(name); renderKernelList(); }));
+        }
+        // Der Kernel des Servers selbst lässt sich nicht abmelden.
+        if (argv0.startsWith("/")) {
+            const remove = button("Entfernen", "Kernel abmelden (die Umgebung bleibt, außer man löscht sie danach)", () => removeKernel(name, argv0, remove));
+            actions.appendChild(remove);
+        }
+        tr.append(label, path, actions);
+        return tr;
+    }));
+    if (!specs.length) {
+        const tr = document.createElement("tr");
+        tr.appendChild(Object.assign(document.createElement("td"), { className: "hint", textContent: state.specs ? "Noch kein Kernel – unten eine Umgebung anlegen." : "–" }));
+        list.appendChild(tr);
+    }
+    const pkg = $("pkg-kernel");
+    const chosen = pkg.value || (state.session && state.session.kernel.name);
+    pkg.replaceChildren(...specs.map(([name, s]) => new Option(s.spec.display_name || name, name)));
+    if (chosen && state.specs && state.specs.kernelspecs[chosen]) pkg.value = chosen;
+}
+
+async function openKernelDialog() {
+    const dialog = $("kernel-dialog");
+    $("env-python").textContent = (state.ctx.settings && state.ctx.settings.python) || "python3";
+    if (!$("env-name").value) $("env-name").value = `Python (${basename((state.ctx.project || "projekt").replace(/\/$/, ""))})`;
+    $("kernel-offline").hidden = state.online;
+    if (!dialog.open) dialog.showModal();
+    if (!state.online) await connect(0);
+    try {
+        if (state.online) await loadSpecs(true);
+    } catch (e) {
+        state.online = false;
+    }
+    $("kernel-offline").hidden = state.online;
+    renderKernelList();
+    setJobBusy(!!state.job);
+}
+
+/// Nach einer Änderung: Liste neu, bei Bedarf Sitzung starten.
+async function kernelsChanged(use) {
+    await loadSpecs(true);
+    renderKernelList();
+    if (use && state.specs.kernelspecs[use] && state.nb) await useKernel(use);
+    renderKernelList();
+}
+
+async function createEnvironment() {
+    if (!state.ctx.project) return;
+    const display = $("env-name").value.trim() || "Python (Projekt)";
+    const name = kernelName(display);
+    const python = (state.ctx.settings && state.ctx.settings.python) || "python3";
+    const code = await runJob(`Umgebung für „${display}“`, [
+        `V=${envPath($("env-dir").value)}`,
+        `PY=${sq(python)}`,
+        `if [ ! -x "$V/bin/python" ]; then`,
+        `  command -v "$PY" >/dev/null || { echo "„$PY“ fehlt – in den Einstellungen der Erweiterung ein Python angeben."; exit 1; }`,
+        `  echo "Lege $V an …"`,
+        `  "$PY" -m venv "$V"`,
+        `else`,
+        `  echo "Binde die vorhandene Umgebung $V ein."`,
+        `fi`,
+        `"$V/bin/python" -m pip install --disable-pip-version-check ipykernel ${packages($("env-packages").value)}`,
+        `"$V/bin/python" -m ipykernel install --user --name ${sq(name)} --display-name ${sq(display)}`,
+    ]);
+    if (code === 0) {
+        await kernelsChanged(name);
+        atlas.message(`Kernel „${display}“ eingerichtet`);
+    }
+}
+
+async function installPackages() {
+    const name = $("pkg-kernel").value;
+    const names = packages($("pkg-names").value);
+    if (!name || !names) { atlas.message("Erst Kernel und Pakete angeben"); return; }
+    const display = state.specs.kernelspecs[name].spec.display_name || name;
+    const code = await runJob(`Pakete für „${display}“`, [
+        ...pythonOf(name),
+        `echo "pip install in $py"`,
+        `"$py" -m pip install --disable-pip-version-check ${names}`,
+    ]);
+    if (code === 0) {
+        $("pkg-names").value = "";
+        atlas.message("Installiert – schon geladene Pakete ändern sich erst nach einem Neustart des Kernels");
+    }
+}
+
+/// Erst nachfragen (der Knopf wird rot), dann abmelden. Liegt die Umgebung im
+/// Projekt, kann sie danach in den Papierkorb.
+async function removeKernel(name, argv0, btn) {
+    if (!btn.classList.contains("confirm")) {
+        btn.classList.add("confirm");
+        btn.textContent = "Wirklich entfernen?";
+        setTimeout(() => { btn.classList.remove("confirm"); btn.textContent = "Entfernen"; }, 4000);
+        return;
+    }
+    const display = state.specs.kernelspecs[name].spec.display_name || name;
+    const setting = (state.ctx.settings && state.ctx.settings.jupyter) || "jupyter";
+    const project = state.ctx.project.replace(/\/$/, "");
+    const code = await runJob(`„${display}“ entfernen`, [
+        `j=${sq(setting)}`,
+        `[ "$j" = jupyter ] && [ -x ${sq(project + "/.venv/bin/jupyter")} ] && j=${sq(project + "/.venv/bin/jupyter")}`,
+        `"$j" kernelspec remove -y ${sq(name)}`,
+    ]);
+    if (code !== 0) return;
+    if (state.session && state.session.kernel.name === name) {
+        try { await api("DELETE", `/api/sessions/${state.session.id}`); } catch (e) { /* schon weg */ }
+        state.session = null;
+        if (state.ws) { state.ws.onclose = null; state.ws.close(); state.ws = null; }
+        setKernelState("off");
+    }
+    await kernelsChanged(null);
+    // Umgebung im Projekt (…/<ordner>/bin/python): auch in den Papierkorb?
+    const env = argv0.replace(/\/bin\/python[0-9.]*$/, "");
+    if (env !== argv0 && env.startsWith(project + "/")) {
+        const status = $("job-status");
+        status.textContent = `abgemeldet. Die Umgebung ${relative(env)} auch löschen? `;
+        status.appendChild(button("In den Papierkorb", "Ordner der Umgebung in den Papierkorb", async () => {
+            try {
+                await atlas.call("trashFile", { path: env });
+                status.textContent = `${relative(env)} liegt im Papierkorb.`;
+            } catch (e) {
+                status.textContent = "Löschen ging nicht: " + e.message;
+            }
+        }));
+    }
+    if (!Object.keys(state.specs.kernelspecs).length) noKernel();
+}
+
 // --------------------------------------------------------------- Ordner
 
 /// Ohne Notebook (Ansicht auf dem Projekt geöffnet): Liste und „Neues Notebook“.
@@ -1024,12 +1320,26 @@ async function main() {
     $("start-server").onclick = async () => {
         try {
             await atlas.runCommand("server");
-            connect(true);
+            connect(90);
         } catch (e) {
             banner("Der Server startet nicht: " + e.message, { error: true, retry: true });
         }
     };
-    $("retry").onclick = () => connect(false);
+    $("setup-jupyter").onclick = async () => {
+        try {
+            await atlas.runCommand("setup");
+            connect(900, "Jupyter wird im Projekt eingerichtet (.venv, Fortschritt im Terminal-Tab) …");
+        } catch (e) {
+            banner("Die Einrichtung startet nicht: " + e.message, { error: true, retry: true });
+        }
+    };
+    $("kernels").onclick = openKernelDialog;
+    $("open-kernels").onclick = openKernelDialog;
+    $("env-create").onclick = createEnvironment;
+    $("pkg-install").onclick = installPackages;
+    $("job-cancel").onclick = () => state.job && state.job.cancel();
+    $("kernel-dialog").addEventListener("cancel", (e) => { if (state.job) e.preventDefault(); });
+    $("retry").onclick = () => connect(0);
     document.addEventListener("keydown", (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); state.dirty = true; save(); }
     });
@@ -1050,7 +1360,7 @@ async function main() {
         return;
     }
     if (!loadNotebook(text)) return;
-    await connect(false);
+    await connect(0);
 }
 
 main().catch((e) => banner("Fehler: " + e.message, { error: true }));
