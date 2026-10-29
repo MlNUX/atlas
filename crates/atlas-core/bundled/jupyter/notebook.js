@@ -762,11 +762,21 @@ function loadNotebook(text) {
 // --------------------------------------------------------------- Server
 
 async function api(method, path, body) {
-    const res = await fetch(state.base + path, {
-        method,
-        headers: Object.assign({ Authorization: "token " + state.token }, body ? { "Content-Type": "application/json" } : {}),
-        body: body ? JSON.stringify(body) : undefined,
-    });
+    let res;
+    try {
+        res = await fetch(state.base + path, {
+            method,
+            headers: Object.assign({ Authorization: "token " + state.token }, body ? { "Content-Type": "application/json" } : {}),
+            body: body ? JSON.stringify(body) : undefined,
+        });
+    } catch (e) {
+        // Keine Antwort (Server beendet, startet neu, Port zu) oder eine
+        // Antwort ohne CORS-Freigabe: beides meldet der Browser so.
+        const err = new Error(`Der Jupyter-Server antwortet nicht (${method} ${path.split("?")[0]})`);
+        err.status = 0;
+        err.offline = true;
+        throw err;
+    }
     if (!res.ok) {
         const err = new Error(`${method} ${path}: ${res.status} ${res.statusText}`);
         err.status = res.status;
@@ -835,14 +845,14 @@ async function connect(opts = {}) {
                 setup ? "Richte Jupyter ein …" : "Server startet …", lastLogLine(job.log));
             state.announceReady = t0;
             if (Date.now() - since < (setup ? 900 : 120) * 1000) { await sleep(1000); continue; }
-            notice("Der Jupyter-Server antwortet nicht.", { error: true, log: logTail(job.log), actions: [{ label: "Erneut versuchen", run: () => connect() }] });
+            notice("Der Jupyter-Server antwortet nicht.", { error: true, log: logTail(job.log), actions: [{ label: "Erneut versuchen", run: reconnect }] });
             return;
         }
         setKernelState("off");
         state.startingLabel = "";
         state.announceReady = 0;
-        const retry = { label: "Erneut versuchen", run: () => connect() };
-        const setupAction = { label: "Jupyter im Projekt einrichten", primary: true, title: "Legt im Projekt eine .venv mit jupyter_server und ipykernel an und startet den Server daraus", run: () => connect({ start: "setup" }) };
+        const retry = { label: "Erneut versuchen", run: reconnect };
+        const setupAction = { label: "Jupyter im Projekt einrichten", primary: true, title: "Legt im Projekt eine .venv mit jupyter_server und ipykernel an und startet den Server daraus", run: () => connect({ start: "setup" }).catch(lostServer) };
         if (started) {
             let s = {};
             try { s = await atlas.commandStatus(started); } catch (e) { /* älteres Atlas */ }
@@ -857,7 +867,7 @@ async function connect(opts = {}) {
             return;
         }
         if (!start) {
-            notice("Der Jupyter-Server läuft nicht.", { actions: [{ label: "Starten", primary: true, run: () => connect({ start: "server" }) }, setupAction] });
+            notice("Der Jupyter-Server läuft nicht.", { actions: [{ label: "Starten", primary: true, run: () => connect({ start: "server" }).catch(lostServer) }, setupAction] });
             return;
         }
         try {
@@ -920,7 +930,7 @@ async function restartServer(again) {
         for (let i = 0; i < 60 && (await serverJob()); i++) await sleep(250);
     }
     if (again) await connect({ start: "server" });
-    else notice("Der Jupyter-Server ist beendet.", { actions: [{ label: "Starten", primary: true, run: () => connect({ start: "server" }) }] });
+    else notice("Der Jupyter-Server ist beendet.", { actions: [{ label: "Starten", primary: true, run: () => connect({ start: "server" }).catch(lostServer) }] });
 }
 
 async function loadSpecs() {
@@ -954,7 +964,7 @@ async function startSession(forceName) {
         if (!state.session) state.session = await api("POST", "/api/sessions", { path, name: basename(path), type: "notebook", kernel: { name } });
     } catch (e) {
         setKernelState("dead");
-        notice("Der Kernel startet nicht: " + e.message, { error: true, actions: [{ label: "Umgebung wählen", run: openPicker }, { label: "Erneut versuchen", run: () => connect() }] });
+        notice("Der Kernel startet nicht: " + e.message, { error: true, actions: [{ label: "Umgebung wählen", run: openPicker }, { label: "Erneut versuchen", run: reconnect }] });
         return;
     }
     // Eine laufende Sitzung behält ihren Kernel (und ihre Variablen); das
@@ -975,24 +985,39 @@ function closeSocket() {
     if (state.ws) { state.ws.onclose = null; state.ws.close(); state.ws = null; }
 }
 
-function openSocket() {
+/// Verbindet mit dem Kernel und wartet, bis er antwortet. Verbindet sich die
+/// Seite, während ein frischer Kernel noch hochfährt, leitet der Jupyter-Server
+/// mitunter keine Antworten weiter, bis neu verbunden wird: dann bis zu
+/// dreimal neu verbinden.
+function openSocket(attempt = 0) {
     closeSocket();
     const kernel = state.session.kernel.id;
     const url = state.base.replace(/^http/, "ws") + `/api/kernels/${kernel}/channels?session_id=${state.clientId}&token=${encodeURIComponent(state.token)}`;
     const ws = new WebSocket(url);
     state.ws = ws;
     state.languageInfo = null;
-    ws.onopen = () => {
-        setKernelState("idle");
-        send("shell", "kernel_info_request", {});
+    state.connecting = true;
+    setKernelState("starting");
+    ws.onopen = async () => {
+        const ok = await kernelReady(attempt ? 8000 : 15000);
+        if (state.ws !== ws) return;
+        state.connecting = false;
+        if (ok) { setKernelState("idle"); return; }
+        if (attempt < 3) { openSocket(attempt + 1); return; }
+        setKernelState("dead");
+        notice("Der Kernel antwortet nicht.", { error: true, actions: [
+            { label: "Kernel neu starten", primary: true, run: () => restart() },
+            { label: "Neu verbinden", run: () => openSocket() },
+            { label: "Umgebung wählen", run: openPicker }] });
     };
     ws.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.warn(err); } };
     ws.onclose = () => {
         if (state.ws !== ws) return;
         state.ws = null;
+        state.connecting = false;
         failRunning("Verbindung zum Kernel getrennt");
         setKernelState("off");
-        notice("Die Verbindung zum Jupyter-Server ist getrennt.", { error: true, actions: [{ label: "Neu verbinden", primary: true, run: () => connect() }] });
+        notice("Die Verbindung zum Jupyter-Server ist getrennt.", { error: true, actions: [{ label: "Neu verbinden", primary: true, run: reconnect }] });
     };
 }
 
@@ -1008,7 +1033,11 @@ function send(channel, type, content) {
 /// Diesen Kernel für das Notebook nehmen.
 async function useKernel(name) {
     if (!state.nb) return;
-    await loadSpecs();
+    try {
+        await loadSpecs();
+    } catch (e) {
+        return lostServer(e);
+    }
     const spec = state.specs.kernelspecs[name];
     if (!spec) return;
     clearQueue();
@@ -1142,7 +1171,7 @@ function onMessage(msg) {
         return;
     }
     if (type === "status") {
-        if (state.restarting) return;
+        if (state.restarting || state.connecting) return;
         if (c.execution_state === "restarting" || c.execution_state === "dead") {
             failRunning(c.execution_state === "dead" ? "Kernel beendet" : "Kernel startet neu");
             setKernelState(c.execution_state);
@@ -2136,4 +2165,26 @@ async function main() {
     await connect();
 }
 
-main().catch((e) => notice("Fehler: " + e.message, { error: true }));
+/// Server nicht erreichbar: Zustand zurücksetzen und „Neu verbinden“ anbieten.
+function lostServer(e) {
+    if (e && !e.offline) {
+        notice("Fehler: " + (e.message || e), { error: true, actions: [{ label: "Neu verbinden", run: reconnect }] });
+        return;
+    }
+    state.online = false;
+    closeSocket();
+    failRunning("Jupyter-Server nicht erreichbar");
+    setKernelState("off");
+    notice((e && e.message) || "Der Jupyter-Server antwortet nicht.", { error: true, actions: [{ label: "Neu verbinden", primary: true, run: reconnect }] });
+}
+
+function reconnect() { return connect().catch(lostServer); }
+
+// Was trotzdem durchrutscht, landet als Hinweis hier statt als Fehler in Atlas.
+window.addEventListener("unhandledrejection", (e) => {
+    e.preventDefault();
+    console.warn("unbehandelt:", e.reason);
+    lostServer(e.reason instanceof Error ? e.reason : new Error(String(e.reason)));
+});
+
+main().catch(lostServer);

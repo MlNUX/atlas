@@ -37,6 +37,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Jupyter 1.6.0:** Nach dem Wechsel auf einen frisch gestarteten Kernel
+  (z. B. eine gerade gebaute nix-Umgebung) liefen Zellen nicht: der
+  Jupyter-Server leitete Antworten erst nach einem Neuverbinden weiter. Die
+  Ansicht prüft jetzt nach dem Verbinden, ob der Kernel antwortet, und
+  verbindet sich sonst neu. Ist der Server nicht erreichbar, steht das als
+  Hinweis mit „Neu verbinden“ in der Ansicht statt als „Failed to fetch“ in
+  Atlas.
 - **Jupyter 1.5.0 (NixOS):** Neu **„Mit nix bauen“**: Conda-Umgebungsdateien
   werden mit nix zu `python3XY.withPackages` aus nixpkgs (Python-Version
   der Datei, alle Pakete der Datei), läuft unter NixOS ohne nix-ld und ist
