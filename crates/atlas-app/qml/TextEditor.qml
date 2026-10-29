@@ -862,7 +862,7 @@ Rectangle {
             SyntaxHighlighter {
                 textEdit: area
                 definition: root.large ? "None" : Repository.definitionForFileName(root.source).name
-                theme: Repository.theme("Breeze Dark")
+                theme: Repository.theme(Theme.light ? "Breeze Light" : "Breeze Dark")
             }
 
             // ---- symbol overview (where it can be determined reliably)
