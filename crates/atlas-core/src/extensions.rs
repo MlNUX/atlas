@@ -1076,6 +1076,40 @@ pub fn install_bundled(user_root: &Path, name: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Version numbers as numbers ("1.10.0" > "1.9.2"); missing parts are 0.
+fn version_key(version: &str) -> Vec<u64> {
+    version
+        .trim()
+        .split('.')
+        .map(|p| p.trim_start_matches(|c: char| !c.is_ascii_digit()).parse().unwrap_or(0))
+        .collect()
+}
+
+/// Brings installed bundled extensions up to date: each one whose installed
+/// version is older than the one in Atlas is installed again (its settings
+/// stay). Returns the updated names.
+pub fn update_bundled(user_root: &Path) -> Vec<String> {
+    let mut updated = Vec::new();
+    for bundled in BUNDLED {
+        let dir = user_root.join(bundled.name);
+        if !dir.join(MANIFEST).is_file() {
+            continue;
+        }
+        let shipped = bundled
+            .files
+            .iter()
+            .find(|(f, _, _)| *f == MANIFEST)
+            .and_then(|(_, text, _)| yaml_rust2::YamlLoader::load_from_str(text).ok())
+            .and_then(|docs| docs.first().and_then(|d| d["version"].as_str().map(str::to_owned)))
+            .unwrap_or_default();
+        let installed = load(&dir, Location::User).version;
+        if version_key(&installed) < version_key(&shipped) && install_bundled(user_root, bundled.name).is_ok() {
+            updated.push(bundled.name.to_owned());
+        }
+    }
+    updated
+}
+
 pub fn user_root(config_dir: &Path) -> PathBuf {
     config_dir.join(DIR)
 }
@@ -1680,6 +1714,27 @@ mod tests {
         install_bundled(&root, "bnki").unwrap();
         let again = load(&ext_dir, Location::User);
         assert_eq!(again.setting_values(&load_settings(&config))[0].1.as_str(), Some("bnki"));
+    }
+
+    #[test]
+    fn bundled_extensions_update_themselves_when_older() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("extensions");
+        assert!(update_bundled(&root).is_empty(), "not installed: nothing to do");
+        let ext_dir = install_bundled(&root, "jupyter").unwrap();
+        assert!(update_bundled(&root).is_empty(), "same version");
+        // An older copy (the manifest of 1.0.0, run in a terminal tab).
+        let manifest = ext_dir.join(MANIFEST);
+        let old = std::fs::read_to_string(&manifest)
+            .unwrap()
+            .replace("version: 1.1.0", "version: 1.0.0")
+            .replace("background", "tab");
+        std::fs::write(&manifest, old).unwrap();
+        assert_eq!(update_bundled(&root), ["jupyter"]);
+        let ext = load(&ext_dir, Location::User);
+        assert_eq!(ext.version, "1.1.0");
+        assert_eq!(ext.actions[0].placement, crate::actions::Placement::Background);
+        assert!(version_key("1.10.0") > version_key("1.9.2") && version_key("1.0") == version_key("1.0"));
     }
 
     #[test]

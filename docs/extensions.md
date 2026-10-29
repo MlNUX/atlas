@@ -38,7 +38,8 @@ verschwindet damit für alle, die das Projekt teilen.
 In den Einstellungen (Abschnitt „Erweiterungen“), im Erweiterungsdialog
 („Mitgeliefert …“) und in der Arbeitsleiste installiert ein Klick sie nach
 `~/.config/atlas/extensions/<name>/`; erneut installieren aktualisiert die
-Dateien, die Einstellungen bleiben. Quelle: `crates/atlas-core/bundled/`.
+Dateien, die Einstellungen bleiben. Bringt eine neue Atlas-Version eine
+neuere Fassung mit, spielt Atlas sie beim Start selbst ein. Quelle: `crates/atlas-core/bundled/`.
 
 ### bnki-Karten
 

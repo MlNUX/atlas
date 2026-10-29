@@ -37,6 +37,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Mitgelieferte Erweiterungen aktualisieren sich:** Ist die installierte
+  Fassung älter als die in Atlas, erneuert Atlas sie beim Start (die
+  Einstellungen bleiben).
 - **Hintergrundbefehle:** Befehle von Erweiterungen und Aktionen mit
   `terminal: background` laufen ohne Terminal; Atlas schreibt ihre Ausgabe
   in ein Log, startet jeden höchstens einmal und beendet sie mit Atlas.
