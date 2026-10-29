@@ -76,6 +76,11 @@ Tracebacks. Ausführen lassen sich einzelne Zellen und alle.
     Ordnern. „erstellen“ baut die Umgebung (Conda: `env create`, mit dem
     Namen aus der Datei; requirements: `.venv` daneben), bindet sie ein und
     verwendet sie; „aktualisieren“ spielt die Pakete der Datei erneut ein.
+    Mit `nix` (z. B. NixOS) gibt es außerdem **„Mit nix bauen“**: Python in
+    der Version der Datei und alle Pakete aus nixpkgs als
+    `python3XY.withPackages`, abgelegt als Link unter
+    `~/.local/share/atlas/envs/<name>` – läuft unter NixOS ohne nix-ld, mit
+    den Versionen von nixpkgs statt der festgelegten.
     Ohne conda, mamba und micromamba bietet die Ansicht an, **micromamba
     einzurichten** (ein Programm unter `~/.local/share/atlas/micromamba`,
     von micro.mamba.pm oder GitHub; die Umgebung bekommt dann genau die
@@ -83,9 +88,18 @@ Tracebacks. Ausführen lassen sich einzelne Zellen und alle.
     Python) oder die Pakete **mit pip als `.venv-<name>`** zu bauen.
   - Ein Python für neue Umgebungen sucht die Ansicht der Reihe nach:
     Einstellung „Python für neue Umgebungen“, `python3`/`python` im Pfad
-    von Atlas, das Python des Jupyter-Servers (auch hinter nix-Hüllskripten)
-    und das des laufenden Kernels – unter NixOS steht `python3` oft nicht
-    im Pfad. Pakete installiert sie mit dem Python des Kernels selbst.
+    von Atlas, das Python des laufenden Jupyter-Servers (am Prozess
+    abgelesen, also auch hinter nix-Hüllskripten), das des laufenden
+    Kernels und – mit `nix` – eines aus nixpkgs, bei einer Umgebungsdatei in
+    deren Version (`python=3.13` → `nixpkgs#python313`). Pakete installiert
+    sie mit dem Python des Kernels selbst.
+  - **NixOS:** Ohne nix-ld starten dort keine fremden Programme – weder
+    micromamba noch das Python aus Conda noch Wheels mit kompiliertem Code
+    (numpy, torch …). Die Ansicht erkennt das, empfiehlt „Mit nix bauen“
+    und zeigt für Conda die Einstellung:
+    `programs.nix-ld.enable = true;` (mit `programs.nix-ld.libraries`
+    für z. B. `stdenv.cc.cc zlib libGL glib`), danach `nixos-rebuild
+    switch` und neu anmelden.
   - **Weitere Kernel**, die schon angemeldet sind; ✕ meldet einen ab.
   - **+ Neue .venv** und **Pakete installieren** (pip in die aktive
     Umgebung).

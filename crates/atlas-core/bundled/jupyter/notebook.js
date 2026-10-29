@@ -1441,6 +1441,8 @@ function serverPythonLines() {
         `  case "$(basename "$SPY")" in python*) ;; *) SPY="$(dirname "$SJ")/python" ;; esac`,
         `  [ -x "$SPY" ] || SPY=""`,
         `fi`,
+        // Sicher auch hinter Hüllskripten: das Programm des laufenden Servers.
+        `if [ -z "$SPY" ]; then for d in /proc/[0-9]*; do c=$(tr '\\0' ' ' < "$d/cmdline" 2>/dev/null) || continue; case "$c" in *${sq("--ServerApp.root_dir=" + project())}*) e=$(readlink "$d/exe" 2>/dev/null); case "$(basename "$e")" in python*) SPY=$e; break ;; esac ;; esac; done; fi`,
     ];
 }
 
@@ -1463,13 +1465,23 @@ function kernelPython() {
 
 /// sh-Zeilen, die $P auf ein Python für neue Umgebungen setzen: Einstellung,
 /// python3/python im Pfad, Python des Servers, Python des Kernels.
-async function pythonLines() {
+/// `want`: Python-Version aus einer Umgebungsdatei (z. B. "3.13"); mit nix
+/// (NixOS) kommt dann genau diese aus nixpkgs.
+async function pythonLines(want) {
     const setting = (state.ctx.settings && state.ctx.settings.python) || "python3";
     const kernel = await kernelPython();
+    const attr = /^3\.\d+/.test(want || "") ? "python3" + want.split(".")[1] : "python3";
     return [
         ...serverPythonLines(),
         `P=""`,
         `for c in ${[setting, "python3", "python"].map(sq).join(" ")} "$SPY" ${sq(kernel)}; do if [ -n "$c" ] && command -v "$c" >/dev/null 2>&1; then P=$(command -v "$c"); break; fi; done`,
+        // Ohne Python im Pfad (NixOS): eins aus nixpkgs.
+        `if { [ -z "$P" ] || [ ${sq(attr)} != python3 ]; } && command -v nix >/dev/null 2>&1; then`,
+        `  echo "Hole ${attr} aus nixpkgs …"`,
+        `  out=$(nix --extra-experimental-features 'nix-command flakes' build --no-link --print-out-paths ${sq("nixpkgs#" + attr)} 2>/dev/null | tail -n 1) || out=""`,
+        `  [ -n "$out" ] || out=$(nix-build '<nixpkgs>' -A ${sq(attr)} --no-out-link 2>/dev/null | tail -n 1) || out=""`,
+        `  if [ -x "$out/bin/python3" ]; then P=$out/bin/python3; else echo "  nicht verfügbar"; fi`,
+        `fi`,
         `[ -n "$P" ] || { echo "Kein Python gefunden – in den Einstellungen der Erweiterung („Python für neue Umgebungen“) eines angeben."; exit 1; }`,
     ];
 }
@@ -1496,6 +1508,8 @@ function condaToolLines() {
         // Ohne Login-Shell (kein „conda init“ aus .bashrc): auch die üblichen Orte.
         `if [ -z "$T" ]; then for c in "\${MAMBA_EXE:-}" "\${CONDA_EXE:-}" "${MICROMAMBA_HOME}/bin/micromamba" "$HOME/.local/bin/micromamba" "$HOME/bin/micromamba" "$HOME/micromamba/bin/micromamba" "$HOME/miniforge3/bin/conda" "$HOME/mambaforge/bin/conda" "$HOME/miniconda3/bin/conda" "$HOME/anaconda3/bin/conda" "$HOME/.miniconda3/bin/conda" /opt/miniforge3/bin/conda /opt/miniconda3/bin/conda /opt/anaconda3/bin/conda /opt/conda/bin/conda /usr/local/bin/micromamba; do if [ -n "$c" ] && [ -x "$c" ]; then T=$c; TK=$(basename "$c"); break; fi; done; fi`,
         `case "$T" in "${MICROMAMBA_HOME}"/*) export MAMBA_ROOT_PREFIX="${MICROMAMBA_HOME}" ;; esac`,
+        // Nur ein Programm, das auch startet (NixOS ohne nix-ld: fremde Programme nicht).
+        `if [ -n "$T" ] && ! "$T" --version >/dev/null 2>&1; then echo "UNUSABLE	$T"; T=""; TK=""; fi`,
     ];
 }
 
@@ -1580,6 +1594,9 @@ async function discover() {
     // Conda-Umgebungen (als Hintergrundbefehl, auch ohne Server).
     {
         tasks.push(shell([
+            `if [ -e /etc/NIXOS ]; then echo "NIXOS	\${NIX_LD:-}"; fi`,
+            `if command -v nix >/dev/null 2>&1; then echo "NIX	$(command -v nix)"; fi`,
+            `for d in "${NIX_ENVS}"/*; do [ -x "$d/bin/python3" ] || continue; echo "NIXENV	$d	$(readlink -f "$d")	$("$d/bin/python3" -c 'import platform; print(platform.python_version())' 2>/dev/null)"; done`,
             ...condaToolLines(),
             `[ -n "$T" ] || exit 0`,
             `echo "TOOL	$TK	$T"`,
@@ -1592,6 +1609,10 @@ async function discover() {
             for (const line of output.split("\n")) {
                 const [kind, a, b] = line.split("\t");
                 if (kind === "TOOL") { found.tool = a; found.toolPath = b; }
+                if (kind === "NIXOS") { found.nixos = true; found.nixLd = !!a; }
+                if (kind === "UNUSABLE") found.unusable = a;
+                if (kind === "NIX") found.nix = a;
+                if (kind === "NIXENV" && a) found.envs.push({ kind: "nix", path: a, real: b, name: basename(a), version: line.split("\t")[3] || "" });
                 if (kind === "CONDA" && a) found.envs.push({ kind: "conda", path: a, name: /\/envs\/[^/]+$/.test(a) ? basename(a) : "base", version: b || "" });
             }
         }));
@@ -1612,12 +1633,13 @@ async function discover() {
     }));
     // Kernel zu Umgebungen: der Kernel startet das Python der Umgebung.
     for (const env of found.envs) {
-        const k = found.kernels.find((kk) => kk.python.startsWith(env.path + "/bin/"));
+        const k = found.kernels.find((kk) => kk.python.startsWith(env.path + "/bin/") || (env.real && kk.python.startsWith(env.real + "/bin/")));
         if (k) { env.kernel = k.name; k.env = env; }
     }
     for (const file of found.files) {
         if (file.kind === "conda") {
             file.env = found.envs.find((e) => e.kind === "conda" && e.name === file.name)
+                || found.envs.find((e) => e.kind === "nix" && e.name === slug(file.name))
                 || found.envs.find((e) => e.path === dirname(file.path) + "/.venv-" + slug(file.name)) || null;
         }
         if (file.kind === "requirements") file.env = found.envs.find((e) => e.kind === "venv" && e.path === dirname(file.path) + "/.venv") || null;
@@ -1631,6 +1653,7 @@ function packageCount(n) { return n === 1 ? "1 Paket" : `${n} Pakete`; }
 
 function envLabel(env) {
     if (env.kind === "conda") return `${env.name} (conda)`;
+    if (env.kind === "nix") return `${env.name} (nix)`;
     if (env.name.startsWith(".venv-")) return `${env.name.slice(6)} (.venv)`;
     const dir = dirname(env.path);
     return `${basename(dir === project() ? project() : dir)} (${env.name})`;
@@ -1642,7 +1665,7 @@ async function registerAndUse(envPath, label) {
     if (existing) return useKernel(existing.name);
     const name = `atlas-${slug(label.replace(/\s*\(.*\)$/, ""))}-${shortHash(envPath)}`;
     const code = await task(`„${label}“ als Kernel einbinden`, [
-        `PY=${sq(envPath + "/bin/python")}`,
+        `PY=${sq(envPath + "/bin/python")}; [ -x "$PY" ] || PY=${sq(envPath + "/bin/python3")}`,
         `if ! "$PY" -c 'import ipykernel' 2>/dev/null; then echo "Installiere ipykernel …"; "$PY" -m pip install --disable-pip-version-check ipykernel; fi`,
         `"$PY" -m ipykernel install --user --name ${sq(name)} --display-name ${sq(label)}`,
     ]);
@@ -1651,8 +1674,8 @@ async function registerAndUse(envPath, label) {
 }
 
 /// Eine venv anlegen (falls nötig), Pakete hinein, als Kernel verwenden.
-async function buildVenv(dir, label, installLines, title) {
-    const python = await pythonLines();
+async function buildVenv(dir, label, installLines, title, want) {
+    const python = await pythonLines(want);
     const code = await task(title, [
         `V=${sq(dir)}`,
         `if [ ! -x "$V/bin/python" ]; then`,
@@ -1671,7 +1694,9 @@ async function buildVenv(dir, label, installLines, title) {
 async function buildCondaEnv(file) {
     const found = state.found || (await discover());
     if (file.env && file.env.kind === "venv") return buildFromCondaWithPip(file);
-    if (!found.tool) return showCondaHelp(file);
+    if (file.env && file.env.kind === "nix") return buildWithNix(file);
+    // NixOS ohne nix-ld: Conda-Programme und ihr Python starten nicht.
+    if (!found.tool || (found.nixos && !found.nixLd)) return showCondaHelp(file);
     const update = !!file.env;
     const code = await task(`${update ? "Aktualisiere" : "Erstelle"} „${file.name}“ aus ${basename(file.path)}`, [
         ...condaToolLines(),
@@ -1689,15 +1714,85 @@ async function buildCondaEnv(file) {
 }
 
 /// Ohne conda/mamba/micromamba: micromamba einrichten oder pip nehmen.
+/// NixOS ohne nix-ld: fremde Programme (micromamba, Python aus Conda,
+/// Wheels mit kompiliertem Code wie numpy, torch) starten nicht.
+function nixLdHint() {
+    return el("div", { class: "warn" },
+        el("strong", { textContent: "NixOS ohne nix-ld" }),
+        el("p", { textContent: "Conda-Umgebungen, micromamba und Pakete mit kompiliertem Code (numpy, torch, pygame …) laufen unter NixOS nur mit nix-ld. In /etc/nixos/configuration.nix:" }),
+        el("pre", { textContent: "programs.nix-ld.enable = true;\nprograms.nix-ld.libraries = with pkgs; [ stdenv.cc.cc zlib libGL glib ];" }),
+        el("p", { textContent: "Dann „sudo nixos-rebuild switch“, neu anmelden und Atlas neu starten. Ohne nix-ld gehen nur reine Python-Pakete (mit pip und einem Python aus nixpkgs)." }));
+}
+
 function showCondaHelp(file) {
     openPicker(true);
+    const found = state.found || {};
+    const nixBlocked = found.nixos && !found.nixLd;
+    const nixButton = button("Mit nix bauen", "Python und Pakete aus nixpkgs – läuft unter NixOS ohne nix-ld", () => { closePicker(); buildWithNix(file); }, "primary");
+    if (nixBlocked) {
+        form([
+            el("p", { class: "empty", textContent: `„${basename(file.path)}“ ist eine Conda-Datei – unter NixOS ohne nix-ld startet weder micromamba noch das Python aus Conda.` }),
+            found.nix ? el("p", { class: "empty", textContent: "Empfohlen: mit nix bauen – Python und alle Pakete der Datei kommen aus nixpkgs (deren Versionen, nicht die festgelegten) und laufen ohne weitere Einstellung." }) : null,
+            el("div", { class: "row" },
+                button("Mit pip bauen", "Python von diesem Rechner; Pakete mit kompiliertem Code (numpy, torch …) laufen ohne nix-ld nicht", () => { closePicker(); buildFromCondaWithPip(file); }),
+                found.nix ? nixButton : null),
+            el("p", { class: "empty", textContent: "Oder nix-ld einschalten – dann gehen auch Conda und die genauen Versionen:" }),
+            nixLdHint(),
+        ]);
+        return;
+    }
     form([
         el("p", { class: "empty", textContent: `Für „${basename(file.path)}“ braucht es conda, mamba oder micromamba – keins davon ist installiert.` }),
         el("p", { class: "empty", textContent: "micromamba ist ein einzelnes Programm (rund 15 MB), Atlas legt es unter ~/.local/share/atlas/micromamba ab; die Umgebung bekommt dann genau die Python-Version der Datei." }),
         el("div", { class: "row" },
             button("Mit pip als .venv bauen", "Nur die Pakete, mit dem Python dieses Rechners", () => { closePicker(); buildFromCondaWithPip(file); }),
+            found.nix ? button("Mit nix bauen", "Python und Pakete aus nixpkgs", () => { closePicker(); buildWithNix(file); }) : null,
             button("micromamba einrichten und bauen", "Lädt micromamba von micro.mamba.pm", async () => { closePicker(); if ((await setupMicromamba()) === 0) { await discover(); buildCondaEnv(file); } }, "primary")),
     ]);
+}
+
+const NIX_ENVS = "$HOME/.local/share/atlas/envs";
+
+/// Paketname aus einer pip- oder Conda-Angabe, wie ihn nixpkgs nennt
+/// ("scikit-learn==1.9" → "scikit-learn", "typing_extensions" → "typing-extensions").
+function nixName(spec) {
+    return spec.replace(/^[\w.-]+::/, "").split(/[=<>!~;\[\s]/)[0].toLowerCase().replace(/[_.]/g, "-");
+}
+
+/// Umgebung aus einer Conda-Datei mit nix: pythonXY.withPackages mit den
+/// Paketen der Datei aus nixpkgs, als Link unter ~/.local/share/atlas/envs
+/// (der Link hält sie vor dem Aufräumen von nix fest).
+async function buildWithNix(file) {
+    const names = [...new Set(["ipykernel", ...file.conda, ...file.pip].map(nixName).filter((n) => n && n !== "python" && n !== "pip"))];
+    const py = /^3\.\d+/.test(file.python || "") ? "python3" + file.python.split(".")[1] : "python3";
+    const list = names.map((n) => JSON.stringify(n)).join(" ");
+    // nixpkgs aus NIX_PATH, sonst aus der Flake-Registry.
+    const pkgs = `(if builtins.any (e: e.prefix == "nixpkgs") builtins.nixPath then import <nixpkgs> {} else import (builtins.getFlake "nixpkgs") {})`;
+    const python = `(let p = ${pkgs}; in if p ? ${py} then p.${py} else p.python3)`;
+    const missing = `let ps = ${python}.pkgs; in builtins.concatStringsSep " " (builtins.filter (n: !(ps ? \${n})) [ ${list} ])`;
+    const env = `${python}.withPackages (ps: map (n: ps.\${n}) (builtins.filter (n: ps ? \${n}) [ ${list} ]))`;
+    const out = `${NIX_ENVS}/${slug(file.name)}`;
+    const code = await task(`Baue „${file.name}“ mit nix`, [
+        `command -v nix >/dev/null 2>&1 || { echo "nix fehlt."; exit 1; }`,
+        `nx() { nix --extra-experimental-features 'nix-command flakes' "$@"; }`,
+        `echo "Python: ${py}, ${names.length} Pakete aus nixpkgs"`,
+        `M=$(nx eval --impure --raw --expr ${sq(missing)})`,
+        `[ -z "$M" ] || echo "Nicht in nixpkgs (fehlen in der Umgebung): $M"`,
+        `mkdir -p "${NIX_ENVS}"`,
+        `nx build --impure --out-link "${out}" --expr ${sq(env)}`,
+        `echo "Umgebung: $(readlink -f "${out}")"`,
+        `"${out}/bin/python3" -c 'import platform; print("Python", platform.python_version())'`,
+    ]);
+    if (code !== 0) return;
+    const again = await discover();
+    const built = again.envs.find((e) => e.kind === "nix" && e.name === slug(file.name));
+    if (!built) { atlas.message(`„${file.name}“ wurde gebaut, ist aber nicht zu finden`); return; }
+    // Ein neuer Bau hat einen neuen Pfad im Store: den Kernel neu anmelden.
+    const name = `atlas-${slug(file.name)}-${shortHash(built.path)}`;
+    const ok = await task(`„${file.name} (nix)“ als Kernel einbinden`, [
+        `"${out}/bin/python3" -m ipykernel install --user --name ${sq(name)} --display-name ${sq(file.name + " (nix)")}`,
+    ]);
+    if (ok === 0) await useKernel(name);
 }
 
 /// Notlösung ohne Conda: eine .venv mit den pip- und Conda-Paketen der Datei.
@@ -1707,7 +1802,7 @@ function buildFromCondaWithPip(file) {
     return buildVenv(dir, `${file.name} (.venv)`, [
         file.python ? `W=${sq(file.python)}; H=$("$V/bin/python" -c 'import platform; print(platform.python_version())'); case "$H" in "$W"*) ;; *) echo "Achtung: die Datei will Python $W, die Umgebung hat $H – manche Pakete passen dann nicht."; esac` : "true",
         packages.length ? `"$V/bin/python" -m pip install --disable-pip-version-check ${packages.map(sq).join(" ")}` : "true",
-    ], `Baue „${file.name}“ mit pip`);
+    ], `Baue „${file.name}“ mit pip`, file.python);
 }
 
 async function setupMicromamba() {
@@ -1799,6 +1894,9 @@ function form(children) {
     const f = $("picker-form");
     f.replaceChildren(...children);
     f.hidden = !children.length;
+    // Ein offenes Formular ist ein eigener Schritt: die Liste tritt zurück.
+    $("picker").classList.toggle("form-open", !!children.length);
+    if (children.length) f.prepend(button("← Zurück", "Zur Liste", () => form([]), "link back"));
     const input = f.querySelector("input");
     if (input) input.focus();
 }
@@ -1860,9 +1958,10 @@ function renderPicker(loading) {
     if (!state.online) {
         sections.push(el("p", { class: "empty", textContent: "Der Jupyter-Server läuft nicht – Umgebungen lassen sich erst mit ihm wählen." }));
     }
+    if (found.nixos && !found.nixLd) sections.push(nixLdHint());
     add("Umgebungen", found.envs.map((env) => item({
         name: envLabel(env),
-        meta: [env.kind === "conda" ? "Conda" : "venv", shortPath(env.path), env.version && "Python " + env.version].filter(Boolean).join(" · "),
+        meta: [{ conda: "Conda", nix: "nix" }[env.kind] || "venv", shortPath(env.path), env.version && "Python " + env.version].filter(Boolean).join(" · "),
         active: env.kernel && env.kernel === active,
         side: env.kernel ? [removeButton(env.kernel)] : [badge("einbinden")],
         title: env.kernel ? "Diese Umgebung verwenden" : "ipykernel sicherstellen, als Kernel anmelden und verwenden",

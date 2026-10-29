@@ -103,7 +103,10 @@ code { font-family: var(--mono); font-size: .92em; }
 .item .x:hover { color: var(--danger); background: var(--bg); }
 .item.confirm .x { visibility: visible; color: var(--danger); }
 .picker .empty { padding: 8px 10px; color: var(--muted); font-size: 12.5px; }
-.picker-form { border-top: 1px solid var(--border); padding: 10px; display: grid; gap: 8px; }
+.picker-form { border-top: 1px solid var(--border); padding: 10px; display: grid; gap: 8px; overflow-y: auto; min-height: 0; }
+.picker.form-open .picker-list, .picker.form-open > input { display: none; }
+.picker.form-open .picker-form { border-top: 0; }
+.picker-form .back { justify-self: start; }
 .picker-form label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
 .picker-form .row { display: flex; gap: 8px; justify-content: flex-end; }
 .picker-form .row button:not(.primary) { border: 1px solid var(--border); background: none; border-radius: 6px; padding: 5px 10px; }
@@ -264,3 +267,8 @@ main { max-width: 1040px; margin: 0 auto; padding: 14px 16px 0; }
 .spin.done { animation: none; border-color: var(--ok); background: var(--ok); }
 .spin.failed { animation: none; border-color: var(--danger); background: var(--danger); }
 .task pre { max-height: 300px; }
+.warn { margin: 8px 6px; padding: 10px 12px; border-radius: 8px; font-size: 12.5px;
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border)); }
+.warn p { margin: 4px 0; color: var(--text); }
+.warn pre { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: var(--raised); font: 12px/1.45 var(--mono); white-space: pre-wrap; user-select: text; }
+.picker-form .empty { padding: 0 2px; margin: 0; }

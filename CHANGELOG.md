@@ -37,6 +37,17 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Jupyter 1.5.0 (NixOS):** Neu **„Mit nix bauen“**: Conda-Umgebungsdateien
+  werden mit nix zu `python3XY.withPackages` aus nixpkgs (Python-Version
+  der Datei, alle Pakete der Datei), läuft unter NixOS ohne nix-ld und ist
+  dort der empfohlene Weg. Das Python des Servers wird am laufenden
+  Prozess abgelesen (hinter allen Hüllskripten); fehlt jedes Python, holt
+  die Ansicht mit `nix` eins aus nixpkgs, in der Version der
+  Umgebungsdatei. NixOS ohne nix-ld wird erkannt: Auswahl und Hilfe zeigen
+  den nix-Weg und die nötige Einstellung für Conda, statt micromamba zu
+  laden, das nicht startet; ein
+  Conda-Programm, das nicht startet, gilt nicht als gefunden. Lange
+  Hilfetexte in der Auswahl scrollen (mit „Zurück“).
 - **Jupyter 1.4.0:** findet ein Python auch ohne `python3` im Pfad (wie
   oft unter NixOS): Einstellung, Pfad, Python des Servers (aus dessen Log,
   auch hinter nix-Hüllskripten) oder des Kernels; Pakete gehen mit dem
