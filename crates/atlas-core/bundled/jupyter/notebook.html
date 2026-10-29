@@ -5,8 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Jupyter-Notebook als Ansicht in Atlas: zeigt und bearbeitet eine .ipynb-Datei
 und führt ihre Zellen in einem Kernel eines lokalen Jupyter-Servers aus
-(REST und WebSocket, Nachrichtenprotokoll 5). Änderungen und Ausgaben
-werden im Format nbformat 4 gespeichert.
+(REST und WebSocket, Nachrichtenprotokoll 5). Die Umgebung (venv, Conda,
+Umgebungsdatei) wählt man oben rechts wie in VS Code.
 -->
 <html lang="de">
 <head>
@@ -15,88 +15,79 @@ werden im Format nbformat 4 gespeichert.
 <link rel="stylesheet" href="atlas://app/web/vendor/katex/katex.min.css">
 <link rel="stylesheet" href="notebook.css">
 <script src="atlas://app/web/vendor/katex/katex.min.js"></script>
+<script src="atlas://app/web/vendor/highlight/highlight.min.js"></script>
 <script src="atlas://app/web/extension.js"></script>
 </head>
 <body>
-<header>
-  <h1 id="title">Notebook</h1>
-  <span id="kernel" class="kernel off" title="Zustand des Kernels">kein Kernel</span>
-  <select id="kernelspec" title="Kernel" hidden></select>
-  <button id="kernels" title="Kernel und Umgebungen: .venv anlegen oder einbinden, Pakete installieren">Kernel …</button>
-  <span class="spacer"></span>
-  <button id="run-all" class="primary" title="Alle Zellen nacheinander ausführen (hält beim ersten Fehler)" disabled>▶▶ Alle ausführen</button>
-  <button id="interrupt" title="Laufende Zelle unterbrechen" disabled>■ Unterbrechen</button>
-  <button id="restart" title="Kernel neu starten (Variablen gehen verloren)" disabled>↻ Neustart</button>
-  <button id="restart-all" title="Kernel neu starten und alle Zellen ausführen" disabled>↻▶ Neustart &amp; alle</button>
-  <button id="clear" title="Alle Ausgaben löschen">Ausgaben löschen</button>
-  <span id="saved" class="status"></span>
+<header class="toolbar">
+  <div class="title">
+    <span id="title">Notebook</span>
+    <span id="saved" class="saved" title="Gespeichert"></span>
+  </div>
+  <div class="actions">
+    <button id="run-all" class="tb primary" title="Alle Zellen nacheinander ausführen – hält beim ersten Fehler" disabled><span class="ico">▶▶</span>Alle ausführen</button>
+    <button id="interrupt" class="tb" title="Laufende Zelle unterbrechen" disabled><span class="ico">■</span>Stopp</button>
+    <div class="split">
+      <button id="restart" class="tb" title="Kernel neu starten – Variablen gehen verloren" disabled><span class="ico">↻</span>Neustart</button>
+      <button id="restart-menu" class="tb caret" title="Mehr zum Neustart" disabled>▾</button>
+    </div>
+    <button id="more" class="tb icon" title="Mehr">⋯</button>
+  </div>
+  <button id="env" class="env off" title="Umgebung (Kernel) wählen">
+    <span class="dot"></span><span id="env-label">Umgebung wählen</span><span class="chev">▾</span>
+  </button>
 </header>
-<div id="banner" class="banner" hidden>
-  <span id="banner-text"></span>
-  <button id="start-server" hidden>Server starten</button>
-  <button id="setup-jupyter" hidden title="Legt im Projekt eine .venv mit jupyter_server und ipykernel an und startet den Server">Jupyter im Projekt einrichten</button>
-  <button id="open-kernels" hidden>Kernel einrichten</button>
-  <button id="retry" hidden>Erneut versuchen</button>
-  <pre id="banner-log" hidden></pre>
+
+<div id="menu" class="menu" hidden></div>
+
+<div id="notice" class="notice" hidden>
+  <div class="notice-row">
+    <span id="notice-text"></span>
+    <span id="notice-actions" class="notice-actions"></span>
+  </div>
+  <pre id="notice-log" hidden></pre>
 </div>
+
 <main id="cells"></main>
-<div id="add-row" class="add-row" hidden>
+<div id="end" class="end" hidden>
   <button id="add-code">+ Code</button>
   <button id="add-markdown">+ Markdown</button>
 </div>
+
 <section id="browser" class="browser" hidden>
-  <h2>Notebooks im Projekt</h2>
+  <h2>Notebooks</h2>
   <ul id="notebooks"></ul>
   <div class="row">
     <input id="new-name" type="text" placeholder="Name des neuen Notebooks" value="Unbenannt.ipynb">
     <button id="new-notebook" class="primary">Neues Notebook</button>
   </div>
 </section>
-<dialog id="kernel-dialog">
-  <form method="dialog" class="dialog-head">
-    <h2>Kernel und Umgebungen</h2>
-    <button value="close" title="Schließen">✕</button>
-  </form>
-  <p id="kernel-offline" class="hint" hidden>Der Jupyter-Server läuft nicht – Kernel und Pakete richtet die Ansicht über ihn ein.</p>
-  <section class="server-row">
-    <h3>Jupyter-Server</h3>
-    <span id="server-info" class="status"></span>
-    <button id="server-restart" title="Server beenden und neu starten (laufende Kernel enden)">Neu starten</button>
-    <button id="server-stop" title="Server beenden (er startet wieder, sobald ein Notebook ihn braucht)">Beenden</button>
-  </section>
-  <section>
-    <h3>Installierte Kernel</h3>
-    <table class="kernel-list"><tbody id="kernel-list"></tbody></table>
-  </section>
-  <section>
-    <h3>Umgebung (.venv) als Kernel anlegen oder einbinden</h3>
-    <div class="form">
-      <label>Ordner <input id="env-dir" type="text" value=".venv"></label>
-      <label>Name in der Kernel-Auswahl <input id="env-name" type="text"></label>
-      <label class="wide">Pakete dazu <input id="env-packages" type="text" value="numpy pandas matplotlib" placeholder="mit Leerzeichen getrennt, z. B. numpy scipy==1.13"></label>
-    </div>
-    <p class="hint">Ordner relativ zum Projekt (oder absolut, ~/…). Gibt es dort schon eine Umgebung, wird sie eingebunden; sonst legt
-      <code id="env-python">python3</code> sie an. Dazu kommen ipykernel und die Pakete, dann steht sie als Kernel bereit.</p>
-    <button id="env-create" class="primary">Anlegen und einbinden</button>
-  </section>
-  <section>
-    <h3>Pakete installieren</h3>
-    <div class="form">
-      <label>in den Kernel <select id="pkg-kernel"></select></label>
-      <label class="wide">Pakete <input id="pkg-names" type="text" placeholder="z. B. scipy seaborn"></label>
-    </div>
-    <button id="pkg-install">Installieren</button>
-  </section>
-  <section id="job" hidden>
-    <div class="job-head">
-      <strong id="job-title"></strong>
-      <span id="job-status" class="status"></span>
-      <button id="job-cancel">Abbrechen</button>
-    </div>
-    <pre id="job-log"></pre>
-  </section>
-</dialog>
-<p id="hint" class="hint">Umschalt+Enter: ausführen und weiter · Strg+Enter: ausführen · Alt+Enter: ausführen und neue Zelle · Strg+S: speichern</p>
+
+<!-- Umgebung wählen (wie die Kernel-Auswahl in VS Code) -->
+<div id="picker" class="picker" hidden>
+  <input id="picker-filter" type="text" placeholder="Umgebung suchen …" autocomplete="off">
+  <div id="picker-list" class="picker-list"></div>
+  <div id="picker-form" class="picker-form" hidden></div>
+  <div class="picker-foot">
+    <span id="server-info"></span>
+    <button id="server-restart" class="link" title="Server beenden und neu starten (laufende Kernel enden)">Server neu starten</button>
+    <button id="server-stop" class="link" title="Server beenden (er startet wieder, sobald ein Notebook ihn braucht)">beenden</button>
+  </div>
+</div>
+
+<!-- Laufende Aufgabe (Umgebung bauen, Pakete installieren …) -->
+<div id="task" class="task" hidden>
+  <div class="task-head">
+    <span id="task-spin" class="spin"></span>
+    <strong id="task-title"></strong>
+    <span id="task-status"></span>
+    <button id="task-log-toggle" class="link">Log</button>
+    <button id="task-cancel" class="link">Abbrechen</button>
+    <button id="task-close" class="link" title="Schließen">✕</button>
+  </div>
+  <pre id="task-log" hidden></pre>
+</div>
+
 <script src="notebook.js"></script>
 </body>
 </html>

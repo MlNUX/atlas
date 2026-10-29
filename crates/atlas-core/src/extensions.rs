@@ -1725,14 +1725,15 @@ mod tests {
         assert!(update_bundled(&root).is_empty(), "same version");
         // An older copy (the manifest of 1.0.0, run in a terminal tab).
         let manifest = ext_dir.join(MANIFEST);
+        let shipped = load(&ext_dir, Location::User).version;
         let old = std::fs::read_to_string(&manifest)
             .unwrap()
-            .replace("version: 1.1.0", "version: 1.0.0")
+            .replace(&format!("version: {shipped}"), "version: 1.0.0")
             .replace("background", "tab");
         std::fs::write(&manifest, old).unwrap();
         assert_eq!(update_bundled(&root), ["jupyter"]);
         let ext = load(&ext_dir, Location::User);
-        assert_eq!(ext.version, "1.1.0");
+        assert_eq!(ext.version, shipped);
         assert_eq!(ext.actions[0].placement, crate::actions::Placement::Background);
         assert!(version_key("1.10.0") > version_key("1.9.2") && version_key("1.0") == version_key("1.0"));
     }

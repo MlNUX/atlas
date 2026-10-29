@@ -59,10 +59,36 @@ CSV-Datei „Anzeigen mit → bnki-Karten“).
 ### Jupyter-Notebooks
 
 Notebooks (`.ipynb`) öffnen sich nach der Installation direkt in einer
-eigenen Ansicht: Markdown-Zellen mit Formeln, Code-Zellen mit ihren
-Ausgaben (Text, Tabellen von pandas, Bilder von matplotlib, Fehler mit
-farbigem Traceback). Ausführen lassen sich einzelne Zellen und alle.
+eigenen Ansicht: Markdown-Zellen mit Formeln, Code mit Syntaxfarben,
+Ausgaben mit Tabellen von pandas, Bildern von matplotlib und farbigen
+Tracebacks. Ausführen lassen sich einzelne Zellen und alle.
 
+- **Umgebung wählen** (Pille oben rechts, wie die Kernel-Auswahl in VS
+  Code; der Punkt zeigt den Zustand des Kernels). Die Liste findet von
+  selbst:
+  - **Umgebungen:** `.venv`, `venv`, `env` im Notebook-Ordner und darüber
+    bis zum Projekt, dazu alle Conda-Umgebungen (conda, mamba oder
+    micromamba). Ein Klick bindet sie ein – ipykernel kommt bei Bedarf
+    dazu, die Umgebung wird als Kernel angemeldet (`ipykernel install
+    --user`) und das Notebook läuft damit.
+  - **Aus Datei:** Umgebungsdateien im Conda-Format (`*.yml`, `*.yaml`,
+    `*.sec` mit `dependencies:`) und `requirements*.txt` in denselben
+    Ordnern. „erstellen“ baut die Umgebung (Conda: `env create`, mit dem
+    Namen aus der Datei; requirements: `.venv` daneben), bindet sie ein und
+    verwendet sie; „aktualisieren“ spielt die Pakete der Datei erneut ein.
+    Ohne conda, mamba und micromamba bietet die Ansicht an, **micromamba
+    einzurichten** (ein Programm unter `~/.local/share/atlas/micromamba`,
+    von micro.mamba.pm oder GitHub; die Umgebung bekommt dann genau die
+    Python-Version der Datei) oder die Pakete **mit pip als
+    `.venv-<name>`** zu bauen (mit dem Python des Rechners).
+  - **Weitere Kernel**, die schon angemeldet sind; ✕ meldet einen ab.
+  - **+ Neue .venv** und **Pakete installieren** (pip in die aktive
+    Umgebung).
+
+  Was dafür auf dem Rechner laufen muss, läuft in einem Terminal des
+  Jupyter-Servers; Fortschritt und Log stehen im Feld unten rechts, dort
+  lässt es sich auch abbrechen. Das Notebook merkt sich seine Umgebung
+  (`metadata.kernelspec`).
 - **Server:** Öffnet man ein Notebook, startet die Ansicht den
   Jupyter-Server von selbst im Hintergrund – ohne Terminal, nur auf
   127.0.0.1, Port aus den Einstellungen (8899), mit einem eigenen Token in
@@ -70,28 +96,25 @@ farbigem Traceback). Ausführen lassen sich einzelne Zellen und alle.
   läuft aus der `.venv` des Projekts, wenn sie Jupyter enthält, sonst mit
   dem Programm aus den Einstellungen („Jupyter-Programm“, Standard
   `jupyter`). Wechselt man das Projekt, löst der neue Server den alten ab.
-  Neu starten oder beenden: „Kernel …“ in der Ansicht, oder „Beenden:
-  Jupyter-Server“ in der Arbeitsleiste. Startet er nicht, zeigt die Ansicht
-  die Meldung aus seinem Log.
+  Neu starten oder beenden: unten in der Umgebungsauswahl, im Menü ⋯ oder
+  „Beenden: Jupyter-Server“ in der Arbeitsleiste. Startet er nicht, zeigt
+  die Ansicht die Meldung aus seinem Log.
 - **Ohne Jupyter:** „Jupyter im Projekt einrichten“ legt eine `.venv` mit
   `jupyter_server` und `ipykernel` an (mit dem Python aus den
-  Einstellungen) und startet danach den Server aus ihr – ebenfalls im
-  Hintergrund, der Fortschritt steht in der Ansicht.
-- **Kernel und Umgebungen** („Kernel …“ in der Ansicht): installierte Kernel
-  sehen, für das Notebook wählen oder entfernen (eine Umgebung im Projekt
-  danach auf Wunsch in den Papierkorb); eine `.venv` anlegen oder eine
-  vorhandene einbinden (Ordner relativ zum Projekt, absolut oder `~/…`) –
-  mit ipykernel und weiteren Paketen, angemeldet als eigener Kernel
-  (`ipykernel install --user`); Pakete mit pip in einen Kernel
-  installieren. Die Befehle laufen in einem Terminal des Jupyter-Servers,
-  ihre Ausgabe erscheint live im Dialog.
-- **Ausführen:** ▶ an der Zelle, **Umschalt+Enter** (ausführen und weiter),
-  **Strg+Enter** (ausführen), **Alt+Enter** (ausführen, neue Zelle darunter);
-  „Alle ausführen“ läuft der Reihe nach und hält beim ersten Fehler.
-  Dazu Unterbrechen, Neustart, Neustart & alle, Kernel wählen.
-- **Bearbeiten:** Zellen hinzufügen, löschen, verschieben, Art wechseln
-  (Code, Markdown, Roh); Markdown mit Doppelklick bearbeiten. Gespeichert
-  wird automatisch im Format von Jupyter (nbformat 4), Ausgaben inklusive.
+  Einstellungen) und startet danach den Server aus ihr.
+- **Ausführen:** ▶ links an der Zelle (während sie läuft: ■ unterbricht),
+  **Umschalt+Enter** (ausführen und weiter), **Strg+Enter** (ausführen),
+  **Alt+Enter** (ausführen, neue Zelle darunter). „Alle ausführen“ läuft der
+  Reihe nach und hält beim ersten Fehler; unter jeder Zelle stehen ✓ oder
+  ✗ und die Laufzeit. Neustart (auch mit „alle ausführen“ oder „Ausgaben
+  löschen“) am Knopf ▾, „ab/bis hier ausführen“ im Menü ⋯.
+- **Bearbeiten:** Zellen zwischen zwei Zellen einfügen (+ Code, + Markdown
+  beim Überfahren), duplizieren, verschieben, löschen, Art wechseln.
+  **Esc** wechselt in den Befehlsmodus wie in Jupyter: **A**/**B** neue
+  Zelle darüber/darunter, **D D** löschen, **M**/**Y**/**R** Markdown/Code/Roh,
+  **↑**/**↓** wählen, **Enter** bearbeiten. Tab rückt (auch mehrere Zeilen)
+  ein, Umschalt+Tab aus. Lange Ausgaben sind eingeklappt. Gespeichert wird
+  automatisch im Format von Jupyter (nbformat 4), Ausgaben inklusive.
 - Jedes Notebook hat eine Sitzung auf dem Server; öffnet man es wieder,
   läuft derselbe Kernel weiter (Variablen bleiben).
 - HTML aus Ausgaben und Markdown wird bereinigt, Skripte laufen nie

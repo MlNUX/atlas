@@ -590,7 +590,7 @@ Item {
                 check("Jupyter: .ipynb öffnet in der Notebook-Ansicht", !!v && v.viewId === "view:jupyter/notebook" && tab.title === "Jupyter-Notebook – analyse.ipynb",
                       tab ? tab.title + " " + (v ? v.viewId + " " + JSON.stringify(v.pageErrors) : "") : "kein Tab")
                 check("Jupyter: Ansicht nicht als Zustand gespeichert", tab && tab.viewState().processor === undefined, tab ? JSON.stringify(tab.viewState()) : "")
-                if (v) v.webItem.runJavaScript("[state.cells.length, document.querySelectorAll('.markdown-out .katex').length, document.querySelector('.output pre') ? document.querySelector('.output pre').textContent : '', $('banner').hidden]",
+                if (v) v.webItem.runJavaScript("[state.cells.length, document.querySelectorAll('.markdown-out .katex').length, document.querySelector('.output pre') ? document.querySelector('.output pre').textContent : '', $('notice').hidden]",
                     (r) => { test.jupyterPage = r })
             },
             () => {

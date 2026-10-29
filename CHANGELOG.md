@@ -37,6 +37,15 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Jupyter überarbeitet** (Erweiterung 1.2.0): neue Oberfläche mit
+  schlanker Werkzeugleiste, Syntaxfarben, Ausführen-Knopf und Laufzeit an
+  jeder Zelle, Einfügen zwischen Zellen, Befehlsmodus wie in Jupyter
+  (A, B, D D, M, Y) und einklappbaren langen Ausgaben. Statt des Dialogs
+  „Kernel …“ eine **Umgebungsauswahl** wie in VS Code: sie findet venvs,
+  Conda-Umgebungen, Conda-Umgebungsdateien (`*.yml`, `*.sec`) und
+  `requirements.txt`, baut daraus auf Klick die Umgebung, bindet sie als
+  Kernel ein und verwendet sie; ohne Conda richtet sie micromamba ein oder
+  baut mit pip.
 - **Mitgelieferte Erweiterungen aktualisieren sich:** Ist die installierte
   Fassung älter als die in Atlas, erneuert Atlas sie beim Start (die
   Einstellungen bleiben).

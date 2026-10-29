@@ -5,11 +5,11 @@
 # Die Ansicht spricht mit einem lokalen Jupyter-Server (nur 127.0.0.1), den
 # sie beim Öffnen im Hintergrund startet (Befehl „server“, endet mit Atlas).
 # Fehlt Jupyter, richtet „Jupyter im Projekt einrichten“ es in einer .venv ein;
-# Kernel und Pakete verwaltet die Ansicht („Kernel …“) über den Server.
+# Umgebungen (venv, Conda, Umgebungsdateien) wählt und baut die Ansicht oben rechts.
 atlas_api: 2
 name: jupyter
 title: Jupyter-Notebooks
-version: 1.1.0
+version: 1.2.0
 description: Notebooks (.ipynb) öffnen, bearbeiten und einzelne oder alle Zellen ausführen – mit einem lokalen Jupyter-Server.
 context: true                 # als Karte in der Kontextleiste (abschaltbar)
 
