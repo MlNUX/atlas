@@ -37,6 +37,11 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Hintergrundbefehle:** Befehle von Erweiterungen und Aktionen mit
+  `terminal: background` laufen ohne Terminal; Atlas schreibt ihre Ausgabe
+  in ein Log, startet jeden höchstens einmal und beendet sie mit Atlas.
+  „Beenden: …“ in der Arbeitsleiste stoppt sie; Ansichten sehen ihren
+  Zustand über `atlas.commandStatus` und `atlas.stopCommand`.
 - **Jupyter-Notebooks** (mitgelieferte Erweiterung „Jupyter-Notebooks“):
   `.ipynb` öffnen sich direkt in einer Notebook-Ansicht – Markdown mit
   Formeln, Ausgaben mit Tabellen, Bildern und farbigen Tracebacks. Einzelne
@@ -44,8 +49,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   Fehler), unterbrechen, Kernel neu starten oder wechseln; Zellen
   bearbeiten, hinzufügen, verschieben, löschen. Gespeichert wird
   automatisch im Format von Jupyter. Der Server (`jupyter_server`, nur
-  127.0.0.1, eigenes Token) startet auf Knopfdruck in einem Terminal-Tab;
-  fehlt Jupyter, richtet die Ansicht es in einer `.venv` im Projekt ein.
+  127.0.0.1, eigenes Token) startet beim Öffnen von selbst im Hintergrund
+  und endet mit Atlas; fehlt Jupyter, richtet die Ansicht es in einer
+  `.venv` im Projekt ein.
   Unter „Kernel …“ legt man virtuelle Umgebungen als Kernel an oder bindet
   vorhandene ein, installiert Pakete und entfernt Kernel – mit
   Live-Ausgabe im Dialog.

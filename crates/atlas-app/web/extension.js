@@ -12,6 +12,7 @@
 //   await atlas.call("readFile", { path })
 //   atlas.open(path) · atlas.reveal(path) · atlas.message(text)
 //   atlas.runCommand(id, path?)        // a command of this extension
+//   atlas.commandStatus(id) · atlas.stopCommand(id)   // its background job
 //
 // Requests go to Atlas as console messages, answers come back through
 // `atlas._reply`. Atlas checks every path against the extension's
@@ -43,6 +44,10 @@
         message(text) { return atlas.call("message", { text }); },
         /** Runs command `id` of this extension (as from the palette). */
         runCommand(id, path) { return atlas.call("runCommand", path ? { id, path } : { id }); },
+        /** State of background command `id`: {running, code, cwd, log} or {} if it never ran. */
+        commandStatus(id) { return atlas.call("commandStatus", { id }); },
+        /** Ends background command `id`; false if it does not run. */
+        stopCommand(id) { return atlas.call("stopCommand", { id }); },
 
         _reply(id, ok, value) {
             const p = pending.get(id);

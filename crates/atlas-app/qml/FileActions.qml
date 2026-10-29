@@ -163,19 +163,28 @@ Item {
 
     /// Runs action `id` on `paths` visibly in a terminal; asks first if the
     /// action wants it or the command looks destructive.
+    /// Runs action `id`; for background commands without confirmation the
+    /// error text ("" when started).
     function runAction(id, paths, line) {
         const p = JSON.parse(app.prepareAction(id, paths, line || 0))
         if (p.error) {
             errorDialog.text = p.error
             errorDialog.open()
-            return
+            return p.error
         }
+        let error = ""
         const run = () => {
+            if (p.placement === "background") {
+                // No terminal: Atlas keeps it running (one per action) until it quits.
+                error = app.startBackground(id, p.name, JSON.stringify(p.argv), p.cwd)
+                showMessage(error || qsTr("„%1“ läuft im Hintergrund").arg(p.name))
+                return
+            }
             if (p.placement === "tab") actions.runInTerminalTab(p.argv, p.cwd)
             else actions.runInTerminal(p.argv, p.cwd)
             showMessage(qsTr("Aktion „%1“ gestartet").arg(p.name))
         }
-        if (!p.confirm) { run(); return }
+        if (!p.confirm) { run(); return error }
         confirmDialog.ask(
             qsTr("Aktion ausführen?"),
             qsTr("„%1“ führt in %2 aus:\n\n%3").arg(p.name).arg(p.cwd).arg(p.display)

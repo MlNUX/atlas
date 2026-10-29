@@ -62,16 +62,20 @@ eigenen Ansicht: Markdown-Zellen mit Formeln, Code-Zellen mit ihren
 Ausgaben (Text, Tabellen von pandas, Bilder von matplotlib, Fehler mit
 farbigem Traceback). Ausführen lassen sich einzelne Zellen und alle.
 
-- **Server:** Läuft keiner, startet „Jupyter-Server starten“ (Knopf in der
-  Ansicht oder Arbeitsleiste) ihn in einem Terminal-Tab – nur auf
+- **Server:** Öffnet man ein Notebook, startet die Ansicht den
+  Jupyter-Server von selbst im Hintergrund – ohne Terminal, nur auf
   127.0.0.1, Port aus den Einstellungen (8899), mit einem eigenen Token in
-  `.atlas/cache/jupyter/token` des Projekts. Strg+C im Terminal beendet ihn.
-  Er läuft aus der `.venv` des Projekts, wenn sie Jupyter enthält, sonst
-  mit dem Programm aus den Einstellungen („Jupyter-Programm“, Standard
-  `jupyter`).
+  `.atlas/cache/jupyter/token` des Projekts – und er endet mit Atlas. Er
+  läuft aus der `.venv` des Projekts, wenn sie Jupyter enthält, sonst mit
+  dem Programm aus den Einstellungen („Jupyter-Programm“, Standard
+  `jupyter`). Wechselt man das Projekt, löst der neue Server den alten ab.
+  Neu starten oder beenden: „Kernel …“ in der Ansicht, oder „Beenden:
+  Jupyter-Server“ in der Arbeitsleiste. Startet er nicht, zeigt die Ansicht
+  die Meldung aus seinem Log.
 - **Ohne Jupyter:** „Jupyter im Projekt einrichten“ legt eine `.venv` mit
   `jupyter_server` und `ipykernel` an (mit dem Python aus den
-  Einstellungen) und startet danach den Server aus ihr.
+  Einstellungen) und startet danach den Server aus ihr – ebenfalls im
+  Hintergrund, der Fortschritt steht in der Ansicht.
 - **Kernel und Umgebungen** („Kernel …“ in der Ansicht): installierte Kernel
   sehen, für das Notebook wählen oder entfernen (eine Umgebung im Projekt
   danach auf Wunsch in den Papierkorb); eine `.venv` anlegen oder eine
@@ -205,6 +209,7 @@ die Brücke:
 | `renderMarkdown {text, path?}` | `{html}` wie in der Vorschau von Atlas (Formeln als `span.math[data-tex]`) |
 | `atlas.open(path)`, `atlas.reveal(path)`, `atlas.message(text)` | Datei in Atlas öffnen, im Explorer zeigen, Meldung |
 | `atlas.runCommand(id, path?)` | einen Befehl dieser Erweiterung starten (wie aus der Arbeitsleiste) |
+| `atlas.commandStatus(id)`, `atlas.stopCommand(id)` | Zustand und Ende eines Hintergrundbefehls (`terminal: background`) |
 
 Pfade sind absolut oder relativ zum Projekt. Atlas prüft **jeden** Pfad
 gegen `permissions: files` – `project` heißt nur im Projekt (auch nicht

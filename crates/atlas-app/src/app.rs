@@ -706,6 +706,34 @@ pub mod qobject {
         #[cxx_name = "prepareAction"]
         fn prepare_action(self: &AppController, id: &QString, paths: &QStringList, line: i32) -> QString;
 
+        /// Starts a prepared command (`argv`: JSON list) in the background
+        /// as job `key` (an action id); error text or "".
+        #[qinvokable]
+        #[cxx_name = "startBackground"]
+        fn start_background(
+            self: &AppController,
+            key: &QString,
+            name: &QString,
+            argv: &QString,
+            cwd: &QString,
+        ) -> QString;
+
+        /// Background job `key`: JSON {key, name, cwd, running, code, log}
+        /// or {} if it never ran.
+        #[qinvokable]
+        #[cxx_name = "backgroundStatus"]
+        fn background_status(self: &AppController, key: &QString) -> QString;
+
+        /// All background jobs: JSON list of {key, name, cwd, running, code}.
+        #[qinvokable]
+        #[cxx_name = "backgroundJobs"]
+        fn background_jobs(self: &AppController) -> QString;
+
+        /// Ends background job `key`; false if it does not run.
+        #[qinvokable]
+        #[cxx_name = "stopBackground"]
+        fn stop_background(self: &AppController, key: &QString) -> bool;
+
         /// Path of the project (`global` false) or user action file; created
         /// from a commented template if missing. "" on error.
         #[qinvokable]
@@ -3168,12 +3196,34 @@ impl qobject::AppController {
                     "placement": match p.placement {
                         atlas_core::actions::Placement::Panel => "panel",
                         atlas_core::actions::Placement::Tab => "tab",
+                        atlas_core::actions::Placement::Background => "background",
                     },
                 }),
                 Err(err) => serde_json::json!({ "error": format!("„{}“: {err:#}", action.name) }),
             },
         };
         qs(result.to_string())
+    }
+
+    pub fn start_background(&self, key: &QString, name: &QString, argv: &QString, cwd: &QString) -> QString {
+        let argv: Vec<String> = serde_json::from_str(&argv.to_string()).unwrap_or_default();
+        match atlas_core::background::start(&key.to_string(), &name.to_string(), &argv, &path_of(cwd), &[]) {
+            Ok(()) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        }
+    }
+
+    pub fn background_status(&self, key: &QString) -> QString {
+        let status = atlas_core::background::status(&key.to_string());
+        qs(status.map_or_else(|| "{}".to_owned(), |s| serde_json::to_string(&s).unwrap_or_default()))
+    }
+
+    pub fn background_jobs(&self) -> QString {
+        qs(serde_json::to_string(&atlas_core::background::list()).unwrap_or_default())
+    }
+
+    pub fn stop_background(&self, key: &QString) -> bool {
+        atlas_core::background::stop(&key.to_string())
     }
 
     pub fn is_runnable(&self, path: &QString) -> bool {

@@ -11,6 +11,7 @@ pub mod actions;
 pub mod annotations;
 pub mod assets;
 pub mod atlasnote;
+pub mod background;
 pub mod calendar;
 pub mod config;
 pub mod extensions;

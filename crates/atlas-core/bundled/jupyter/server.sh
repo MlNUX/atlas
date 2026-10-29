@@ -15,18 +15,16 @@ jupyter=${3:-jupyter}
 [ $# -ge 3 ] && shift 3 || shift $#
 port=${port%.*}
 
-# Der Tab schließt sich mit dem Programm: Fehler bleiben bis Enter stehen.
 fail() {
-    printf '\n%s\n\nEnter schließt diesen Tab.' "$*" >&2
-    read -r _ || true
+    printf '%s\n' "$*" >&2
     exit 1
 }
 
 if [ "$jupyter" = jupyter ] && [ -x "$project/.venv/bin/jupyter" ]; then
     jupyter="$project/.venv/bin/jupyter"
 fi
-command -v "$jupyter" >/dev/null 2>&1 || fail "„$jupyter“ fehlt. In der Notebook-Ansicht „Jupyter im Projekt einrichten“ wählen, \
-mit „pip install jupyter_server ipykernel“ installieren oder in den Einstellungen der Erweiterung das Programm angeben."
+command -v "$jupyter" >/dev/null 2>&1 || fail "„$jupyter“ fehlt – in der Notebook-Ansicht „Jupyter im Projekt einrichten“ wählen \
+oder in den Einstellungen der Erweiterung das Jupyter-Programm angeben."
 
 dir="$project/.atlas/cache/jupyter"
 umask 077
@@ -36,7 +34,8 @@ if [ ! -s "$dir/token" ]; then
 fi
 token=$(cat "$dir/token")
 umask 022
-echo "Jupyter-Server für $project auf http://127.0.0.1:$port ($jupyter; Strg+C beendet ihn)"
-"$jupyter" server --no-browser --ip=127.0.0.1 --port="$port" --ServerApp.port_retries=0 \
+echo "Jupyter-Server für $project auf http://127.0.0.1:$port ($jupyter)"
+# exec: Atlas beendet genau diesen Prozess (Hintergrundbefehl).
+exec "$jupyter" server --no-browser --ip=127.0.0.1 --port="$port" --ServerApp.port_retries=0 \
     --ServerApp.root_dir="$project" --ServerApp.allow_origin='*' --ServerApp.disable_check_xsrf=True \
-    --IdentityProvider.token="$token" "$@" || fail "Der Jupyter-Server wurde mit Fehler beendet (Meldungen oben)."
+    --IdentityProvider.token="$token" "$@"

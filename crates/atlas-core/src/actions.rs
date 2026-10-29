@@ -66,6 +66,9 @@ pub enum Placement {
     Panel,
     /// Terminal tab in the editor area.
     Tab,
+    /// No terminal: Atlas runs it in the background (crate::background),
+    /// e.g. a server; one at a time per action.
+    Background,
 }
 
 /// Where an action was defined.
@@ -275,7 +278,8 @@ pub fn parse_action(entry: &Yaml, source: &Source) -> Result<Action> {
     let placement = match entry["terminal"].as_str().map(str::to_ascii_lowercase).as_deref() {
         None | Some("panel") => Placement::Panel,
         Some("tab") => Placement::Tab,
-        Some(other) => bail!("unbekanntes „terminal: {other}“ (panel, tab)"),
+        Some("background" | "hintergrund" | "none") => Placement::Background,
+        Some(other) => bail!("unbekanntes „terminal: {other}“ (panel, tab, background)"),
     };
     let confirm = entry["confirm"].as_bool().or_else(|| entry["confirmation"].as_bool()).unwrap_or(false);
     let keybinding = match scalar(&entry["keybinding"]).or_else(|| scalar(&entry["key"])) {
@@ -806,7 +810,12 @@ impl Action {
         extra.extend(self.extra.iter().cloned());
         let built = build(&self.command, self.cwd.as_deref(), ctx, &extra)?;
         let destructive = looks_destructive(&self.command);
-        let mut argv = vec!["sh".into(), "-c".into(), HOLD.into(), "atlas-action".into(), self.name.clone()];
+        // In a terminal the tab stays open after the command (HOLD); in the
+        // background the command runs as is.
+        let mut argv: Vec<String> = match self.placement {
+            Placement::Background => Vec::new(),
+            _ => vec!["sh".into(), "-c".into(), HOLD.into(), "atlas-action".into(), self.name.clone()],
+        };
         // The terminal starts the command as is: its variables via env(1).
         if !self.env.is_empty() {
             argv.extend(["env".into(), "--".into()]);

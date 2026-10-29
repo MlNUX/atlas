@@ -61,7 +61,10 @@ fn main() {
         engine.load(&QUrl::from("qrc:/qt/qml/Atlas/qml/Main.qml"));
     }
     if let Some(app) = app.as_mut() {
-        std::process::exit(app.exec());
+        let code = app.exec();
+        // Servers and other background commands end with Atlas.
+        atlas_core::background::stop_all();
+        std::process::exit(code);
     }
 }
 

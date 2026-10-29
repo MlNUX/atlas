@@ -12,8 +12,7 @@ port=${3:-8899}
 [ $# -ge 3 ] && shift 3 || shift $#
 
 fail() {
-    printf '\n%s\n\nEnter schließt diesen Tab.' "$*" >&2
-    read -r _ || true
+    printf '%s\n' "$*" >&2
     exit 1
 }
 

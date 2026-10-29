@@ -1700,7 +1700,7 @@ mod tests {
         // The page starts the server through this command (`runCommand`).
         let server = &ext.actions[0];
         assert_eq!(server.id, "jupyter/server");
-        assert_eq!(server.placement, crate::actions::Placement::Tab);
+        assert_eq!(server.placement, crate::actions::Placement::Background);
         assert_eq!(ext.actions[1].id, "jupyter/setup");
         for script in ["server.sh", "setup.sh"] {
             let mode = std::fs::metadata(ext_dir.join(script)).unwrap().permissions().mode();

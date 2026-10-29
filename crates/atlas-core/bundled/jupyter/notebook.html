@@ -33,10 +33,11 @@ werden im Format nbformat 4 gespeichert.
 </header>
 <div id="banner" class="banner" hidden>
   <span id="banner-text"></span>
-  <button id="start-server" hidden>Jupyter-Server starten</button>
+  <button id="start-server" hidden>Server starten</button>
   <button id="setup-jupyter" hidden title="Legt im Projekt eine .venv mit jupyter_server und ipykernel an und startet den Server">Jupyter im Projekt einrichten</button>
   <button id="open-kernels" hidden>Kernel einrichten</button>
-  <button id="retry" hidden>Erneut verbinden</button>
+  <button id="retry" hidden>Erneut versuchen</button>
+  <pre id="banner-log" hidden></pre>
 </div>
 <main id="cells"></main>
 <div id="add-row" class="add-row" hidden>
@@ -56,7 +57,13 @@ werden im Format nbformat 4 gespeichert.
     <h2>Kernel und Umgebungen</h2>
     <button value="close" title="Schließen">✕</button>
   </form>
-  <p id="kernel-offline" class="hint" hidden>Erst den Jupyter-Server starten – Kernel und Pakete richtet die Ansicht über ihn ein.</p>
+  <p id="kernel-offline" class="hint" hidden>Der Jupyter-Server läuft nicht – Kernel und Pakete richtet die Ansicht über ihn ein.</p>
+  <section class="server-row">
+    <h3>Jupyter-Server</h3>
+    <span id="server-info" class="status"></span>
+    <button id="server-restart" title="Server beenden und neu starten (laufende Kernel enden)">Neu starten</button>
+    <button id="server-stop" title="Server beenden (er startet wieder, sobald ein Notebook ihn braucht)">Beenden</button>
+  </section>
   <section>
     <h3>Installierte Kernel</h3>
     <table class="kernel-list"><tbody id="kernel-list"></tbody></table>

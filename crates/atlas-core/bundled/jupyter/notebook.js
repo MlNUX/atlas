@@ -82,8 +82,10 @@ function banner(text, opts = {}) {
     el.hidden = !text;
     el.classList.toggle("error", !!opts.error);
     $("banner-text").textContent = text || "";
-    $("start-server").hidden = !opts.start;
+    $("start-server").hidden = !opts.start || !!opts.retry;
     $("setup-jupyter").hidden = !opts.start;
+    $("banner-log").hidden = !opts.log;
+    $("banner-log").textContent = opts.log || "";
     $("open-kernels").hidden = !opts.kernels;
     $("retry").hidden = !opts.retry;
 }
@@ -676,39 +678,109 @@ async function api(method, path, body) {
 
 function tokenPath() { return (state.ctx.project || "").replace(/\/$/, "") + "/.atlas/cache/jupyter/token"; }
 
-/// Verbindet mit dem Server; `wait`: so viele Sekunden warten, bis er läuft
-/// (nach dem Start; `waiting` ist der Text dazu).
-async function connect(wait, waiting) {
+/// Der Hintergrundbefehl dieser Erweiterung, der gerade läuft – die
+/// Einrichtung (sie startet danach den Server) oder der Server –, mit `id`.
+/// `null` auch bei einem Atlas ohne Hintergrundbefehle.
+async function serverJob() {
+    for (const id of ["setup", "server"]) {
+        let s;
+        try { s = await atlas.commandStatus(id); } catch (e) { return null; }
+        if (s && s.running) return Object.assign(s, { id });
+    }
+    return null;
+}
+
+function sameDir(a, b) { return (a || "").replace(/\/+$/, "") === (b || "").replace(/\/+$/, ""); }
+
+/// Letzte Zeilen eines Logs für den Hinweis.
+function logTail(log, n) { return terminalText(log || "").trimEnd().split("\n").slice(-(n || 12)).join("\n"); }
+
+/// Verbindet mit dem Server. Läuft keiner, startet die Ansicht ihn im
+/// Hintergrund (`start`: "server" oder "setup"; `false`: nicht starten)
+/// und wartet, bis er antwortet.
+async function connect(opts = {}) {
     if (!state.ctx.project) {
         banner("Notebooks laufen nur in einem Projektordner (dort startet der Jupyter-Server).", { error: true });
         return;
     }
-    const deadline = Date.now() + (wait || 0) * 1000;
+    const start = opts.start === undefined ? "server" : opts.start;
+    let started = null;    // id des Befehls, den diese Verbindung gestartet hat
+    let since = 0;
     for (;;) {
+        let error;
         try {
             state.token = (await atlas.call("readFile", { path: tokenPath() })).trim();
             await api("GET", "/api/status");
             state.online = true;
             break;
         } catch (e) {
+            error = e;
             state.online = false;
-            if (Date.now() < deadline) {
-                banner(waiting || "Warte auf den Jupyter-Server …");
+        }
+        setKernelState("off");
+        const job = await serverJob();
+        if (job && !sameDir(job.cwd, state.ctx.project)) {
+            // Der Server eines anderen Projekts belegt den Port: ablösen.
+            banner("Beende den Jupyter-Server des vorigen Projekts …");
+            await atlas.stopCommand(job.id);
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+        }
+        if (job) {
+            const setup = job.id === "setup";
+            banner(setup ? "Jupyter wird im Projekt eingerichtet (.venv) …" : "Jupyter-Server startet …", { log: setup ? logTail(job.log, 4) : "" });
+            if (!since) since = Date.now();
+            if (Date.now() - since < (setup ? 900 : 120) * 1000) {
                 await new Promise((r) => setTimeout(r, 1000));
                 continue;
             }
-            setKernelState("off");
-            if (e.status === 403 || e.status === 401) {
-                banner(`Auf Port ${portOf()} läuft ein anderer Jupyter-Server (Token passt nicht). Port in den Einstellungen der Erweiterung ändern oder den anderen Server beenden.`, { error: true, retry: true });
-            } else {
-                banner(wait ? `Der Jupyter-Server antwortet nicht – die Meldung steht im Terminal-Tab. Fehlt Jupyter, richtet „Jupyter im Projekt einrichten“ es in einer .venv ein.`
-                    : `Kein Jupyter-Server auf 127.0.0.1:${portOf()}. Er startet in einem Terminal-Tab von Atlas.`, { start: true, retry: true });
-            }
+            banner("Der Jupyter-Server antwortet nicht.", { error: true, retry: true, log: logTail(job.log) });
             return;
         }
+        if (started) {
+            // Gestartet, aber schon wieder beendet: das Log sagt warum.
+            let s = {};
+            try { s = await atlas.commandStatus(started); } catch (e) { /* alt */ }
+            const missing = /fehlt/.test(s.log || "");
+            banner(missing ? "Jupyter ist nicht installiert." : "Der Jupyter-Server ließ sich nicht starten.", { error: true, start: true, retry: true, log: logTail(s.log) });
+            return;
+        }
+        if (error && (error.status === 403 || error.status === 401)) {
+            banner(`Auf Port ${portOf()} läuft ein anderer Jupyter-Server (Token passt nicht). Port in den Einstellungen der Erweiterung ändern oder den anderen Server beenden.`, { error: true, retry: true });
+            return;
+        }
+        if (!start) {
+            banner(`Kein Jupyter-Server auf 127.0.0.1:${portOf()}.`, { start: true, retry: true });
+            return;
+        }
+        try {
+            await atlas.runCommand(start);
+        } catch (e) {
+            banner("Der Jupyter-Server startet nicht: " + e.message, { error: true, start: true, retry: true });
+            return;
+        }
+        started = start;
+        since = Date.now();
+        await new Promise((r) => setTimeout(r, 500));
     }
     banner("");
     if (state.nb) await startSession();
+}
+
+/// Server neu starten (z. B. nach einer neuen .venv) oder nur beenden.
+async function restartServer(again) {
+    const job = await serverJob();
+    if (state.ws) { state.ws.onclose = null; state.ws.close(); state.ws = null; }
+    failRunning("Jupyter-Server beendet");
+    state.session = null;
+    state.online = false;
+    setKernelState("off");
+    if (job) {
+        await atlas.stopCommand(job.id);
+        for (let i = 0; i < 60 && (await serverJob()); i++) await new Promise((r) => setTimeout(r, 250));
+    }
+    if (again) await connect({ start: "server" });
+    else banner("Der Jupyter-Server ist beendet.", { start: true });
 }
 
 function portOf() { return Math.round(Number(state.ctx.settings && state.ctx.settings.port) || 8899); }
@@ -1162,15 +1234,26 @@ async function openKernelDialog() {
     if (!$("env-name").value) $("env-name").value = `Python (${basename((state.ctx.project || "projekt").replace(/\/$/, ""))})`;
     $("kernel-offline").hidden = state.online;
     if (!dialog.open) dialog.showModal();
-    if (!state.online) await connect(0);
+    if (!state.online) await connect();
     try {
         if (state.online) await loadSpecs(true);
     } catch (e) {
         state.online = false;
     }
     $("kernel-offline").hidden = state.online;
+    updateServerInfo();
     renderKernelList();
     setJobBusy(!!state.job);
+}
+
+/// Zeile „Jupyter-Server“ im Dialog: läuft er, mit welchem Programm.
+async function updateServerInfo() {
+    const job = await serverJob();
+    const program = job ? (/\((\/[^)]*)\)/.exec(job.log || "") || [])[1] : "";
+    $("server-info").textContent = state.online
+        ? `läuft auf 127.0.0.1:${portOf()}` + (program ? ` – ${program.startsWith(state.ctx.project) ? relative(program) : program}` : "")
+        : "läuft nicht";
+    $("server-stop").disabled = !job;
 }
 
 /// Nach einer Änderung: Liste neu, bei Bedarf Sitzung starten.
@@ -1317,29 +1400,17 @@ async function main() {
     $("add-code").onclick = () => insertCell(null, "code", true);
     $("add-markdown").onclick = () => insertCell(null, "markdown", true);
     $("kernelspec").onchange = (e) => changeKernel(e.target.value);
-    $("start-server").onclick = async () => {
-        try {
-            await atlas.runCommand("server");
-            connect(90);
-        } catch (e) {
-            banner("Der Server startet nicht: " + e.message, { error: true, retry: true });
-        }
-    };
-    $("setup-jupyter").onclick = async () => {
-        try {
-            await atlas.runCommand("setup");
-            connect(900, "Jupyter wird im Projekt eingerichtet (.venv, Fortschritt im Terminal-Tab) …");
-        } catch (e) {
-            banner("Die Einrichtung startet nicht: " + e.message, { error: true, retry: true });
-        }
-    };
+    $("start-server").onclick = () => connect({ start: "server" });
+    $("setup-jupyter").onclick = () => connect({ start: "setup" });
+    $("server-restart").onclick = async () => { await restartServer(true); updateServerInfo(); };
+    $("server-stop").onclick = async () => { await restartServer(false); updateServerInfo(); renderKernelList(); };
     $("kernels").onclick = openKernelDialog;
     $("open-kernels").onclick = openKernelDialog;
     $("env-create").onclick = createEnvironment;
     $("pkg-install").onclick = installPackages;
     $("job-cancel").onclick = () => state.job && state.job.cancel();
     $("kernel-dialog").addEventListener("cancel", (e) => { if (state.job) e.preventDefault(); });
-    $("retry").onclick = () => connect(0);
+    $("retry").onclick = () => connect();
     document.addEventListener("keydown", (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); state.dirty = true; save(); }
     });
@@ -1360,7 +1431,7 @@ async function main() {
         return;
     }
     if (!loadNotebook(text)) return;
-    await connect(0);
+    await connect();
 }
 
 main().catch((e) => banner("Fehler: " + e.message, { error: true }));

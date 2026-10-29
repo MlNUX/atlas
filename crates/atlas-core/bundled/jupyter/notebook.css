@@ -131,3 +131,8 @@ dialog code { font-family: var(--mono); font-size: 12px; }
   margin: 0; max-height: 260px; overflow: auto; padding: 8px; border-radius: 6px; background: var(--code-bg);
   font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere;
 }
+.banner pre { flex-basis: 100%; margin: 4px 0 0; max-height: 220px; overflow: auto; padding: 6px 8px; border-radius: 6px;
+  background: var(--surface); color: var(--text); font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.server-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.server-row h3 { margin: 0; }
+.server-row .status { flex: 1; text-align: left; }

@@ -193,7 +193,7 @@ Format der [Aktionen](actions.md) plus Tastenkürzel und Menüplatz:
 | `shell` | nein (`false`) | `true`: `command` ist ein Text für `sh -c` |
 | `cwd` | nein | Arbeitsordner, Platzhalter erlaubt; Standard: Projektordner |
 | `confirm` | nein (`false`) | vorher fragen; destruktiv aussehende Befehle fragen immer |
-| `terminal` | nein (`panel`) | `panel` oder `tab` |
+| `terminal` | nein (`panel`) | `panel`, `tab` oder `background` (ohne Terminal, siehe unten) |
 | `keybinding` | nein | z. B. `Ctrl+Alt+Y`; braucht Strg, Alt, Meta oder eine F-Taste; kein Kürzel von Atlas |
 | `menu` | nein (beides) | `context`, `palette`, beides oder `none` |
 
@@ -283,6 +283,14 @@ sie startet und was es von ihnen erwartet.
   und Fortschrittsanzeigen gehen, Rückfragen an den Nutzer auch.
 - Nach dem Ende zeigt Atlas ✓ (Exit-Code 0) oder ✗ mit dem Code; die Ausgabe
   bleibt stehen, bis der Nutzer Enter drückt.
+- Mit `terminal: background` läuft ein Befehl **unsichtbar im Hintergrund**
+  – gedacht für Server und Dienste. Atlas startet ihn ohne Terminal (stdin
+  leer, stdout und stderr in ein Log unter `~/.cache/atlas/background/`),
+  höchstens einmal gleichzeitig, und beendet ihn mit Atlas (SIGTERM an die
+  Prozessgruppe, nach ein paar Sekunden SIGKILL; auch wenn Atlas abstürzt).
+  In der Arbeitsleiste steht dann „Beenden: <Name>“; eine Ansicht fragt den
+  Zustand mit `atlas.commandStatus(id)` ab. Tipp: ein Startskript sollte das
+  eigentliche Programm mit `exec` starten.
 - Geheimnisse (`type: secret`) bekommen Befehle **nicht**.
 - Kein Zeitlimit.
 
@@ -394,7 +402,9 @@ Jede Anfrage liefert ein Ergebnis oder wird mit einem `Error` abgelehnt
 | `trashFile` | `path` | `true`; in den Papierkorb |
 | `renderMarkdown` | `text`, optional `path` (für relative Links) | `{html}` wie in der Markdown-Vorschau; Formeln als `<span class="math" data-tex=…>` zum Setzen mit KaTeX. Das HTML enthält Roh-HTML aus dem Text – vor dem Einfügen bereinigen |
 | `atlas.open(path)` | | öffnet die Datei in einem Tab |
-| `atlas.runCommand(id, path?)` | | startet den Befehl `id` **dieser** Erweiterung (mit derselben Rückfrage wie aus der Arbeitsleiste); `path` ist die Auswahl |
+| `atlas.runCommand(id, path?)` | | startet den Befehl `id` **dieser** Erweiterung (mit derselben Rückfrage wie aus der Arbeitsleiste); `path` ist die Auswahl. Bei `terminal: background` scheitert er mit der Fehlermeldung, wenn er nicht startet (oder schon läuft) |
+| `atlas.commandStatus(id)` | | Hintergrundbefehl `id` dieser Erweiterung: `{running, code, cwd, log}` (Ende des Logs, höchstens 16 KiB) oder `{}`, wenn er seit dem Start von Atlas nicht lief |
+| `atlas.stopCommand(id)` | | beendet ihn; `false`, wenn er nicht läuft |
 | `atlas.reveal(path)` | | zeigt sie im Explorer |
 | `atlas.message(text)` | | kurze Meldung unten im Fenster |
 
@@ -413,8 +423,9 @@ KaTeX für Formeln liegt unter `atlas://app/web/vendor/katex/`.
 
 Vollständige Beispiele sind die mitgelieferten Erweiterungen
 `crates/atlas-core/bundled/bnki/` (`extension.yaml`, `editor.html`) und
-`crates/atlas-core/bundled/jupyter/` (Ansicht mit `auto: true`, ein Befehl,
-den die Seite mit `runCommand` startet, Netz nur zu 127.0.0.1).
+`crates/atlas-core/bundled/jupyter/` (Ansicht mit `auto: true`, ein Server
+als Hintergrundbefehl, den die Seite mit `runCommand` startet und mit
+`commandStatus` beobachtet, Netz nur zu 127.0.0.1).
 
 ---
 

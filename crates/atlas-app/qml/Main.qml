@@ -248,6 +248,9 @@ ApplicationWindow {
             if (shown.some(p => p.auto && p.output === "view"))
                 list.push({ name: qsTr("Anzeigen mit: Atlas (Datei selbst)"), run: () => editor.open(current, 0, "tab", { processor: "atlas:source" }) })
         }
+        // Commands running in the background (e.g. the Jupyter server).
+        for (const job of JSON.parse(app.backgroundJobs()).filter(j => j.running))
+            list.push({ name: qsTr("Beenden: %1").arg(job.name), hint: qsTr("im Hintergrund"), run: () => { app.stopBackground(job.key); fileActions.showMessage(qsTr("„%1“ wird beendet").arg(job.name)) } })
         // Extensions that come with Atlas.
         for (const b of JSON.parse(app.bundledExtensions()))
             list.push({ name: (b.installed ? qsTr("Erweiterung aktualisieren: %1") : qsTr("Erweiterung installieren: %1")).arg(b.title), hint: qsTr("mitgeliefert"),
