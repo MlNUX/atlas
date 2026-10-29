@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Terminal palette (VS Code "Dark Modern" terminal colors) and resolution
-//! of cell colors to RGB.
+//! Terminal palette (VS Code "Dark Modern" terminal colors, "Light Modern"
+//! in the light design) and resolution of cell colors to RGB.
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use alacritty_terminal::term::color::Colors;
 use alacritty_terminal::vte::ansi::{Color, NamedColor, Rgb};
@@ -11,34 +13,96 @@ const fn rgb(hex: u32) -> Rgb {
     Rgb { r: (hex >> 16) as u8, g: (hex >> 8) as u8, b: hex as u8 }
 }
 
-pub const FOREGROUND: Rgb = rgb(0xc5d0e0);
-pub const BACKGROUND: Rgb = rgb(0x0b111d);
-pub const CURSOR: Rgb = rgb(0xaeafad);
-pub const SELECTION: Rgb = rgb(0x1d3a63);
+struct Palette {
+    foreground: Rgb,
+    background: Rgb,
+    cursor: Rgb,
+    selection: Rgb,
+    ansi: [Rgb; 16],
+}
 
-const ANSI: [Rgb; 16] = [
-    rgb(0x000000),
-    rgb(0xcd3131),
-    rgb(0x0dbc79),
-    rgb(0xe5e510),
-    rgb(0x2472c8),
-    rgb(0xbc3fbc),
-    rgb(0x11a8cd),
-    rgb(0xe5e5e5),
-    rgb(0x666666),
-    rgb(0xf14c4c),
-    rgb(0x23d18b),
-    rgb(0xf5f543),
-    rgb(0x3b8eea),
-    rgb(0xd670d6),
-    rgb(0x29b8db),
-    rgb(0xe5e5e5),
-];
+const DARK: Palette = Palette {
+    foreground: rgb(0xc5d0e0),
+    background: rgb(0x0b111d),
+    cursor: rgb(0xaeafad),
+    selection: rgb(0x1d3a63),
+    ansi: [
+        rgb(0x000000),
+        rgb(0xcd3131),
+        rgb(0x0dbc79),
+        rgb(0xe5e510),
+        rgb(0x2472c8),
+        rgb(0xbc3fbc),
+        rgb(0x11a8cd),
+        rgb(0xe5e5e5),
+        rgb(0x666666),
+        rgb(0xf14c4c),
+        rgb(0x23d18b),
+        rgb(0xf5f543),
+        rgb(0x3b8eea),
+        rgb(0xd670d6),
+        rgb(0x29b8db),
+        rgb(0xe5e5e5),
+    ],
+};
+
+const LIGHT: Palette = Palette {
+    foreground: rgb(0x1f2a3d),
+    background: rgb(0xffffff),
+    cursor: rgb(0x3b4a63),
+    selection: rgb(0xc9dcfb),
+    ansi: [
+        rgb(0x000000),
+        rgb(0xcd3131),
+        rgb(0x107c10),
+        rgb(0x949800),
+        rgb(0x0451a5),
+        rgb(0xbc05bc),
+        rgb(0x0598bc),
+        rgb(0x555555),
+        rgb(0x666666),
+        rgb(0xcd3131),
+        rgb(0x14ce14),
+        rgb(0xb5ba00),
+        rgb(0x0451a5),
+        rgb(0xbc05bc),
+        rgb(0x0598bc),
+        rgb(0xa5a5a5),
+    ],
+};
+
+static LIGHT_DESIGN: AtomicBool = AtomicBool::new(false);
+
+/// Switches all terminals to the light (or dark) palette; they pick it up
+/// on their next repaint.
+pub fn set_light(on: bool) {
+    LIGHT_DESIGN.store(on, Ordering::Relaxed);
+}
+
+fn palette() -> &'static Palette {
+    if LIGHT_DESIGN.load(Ordering::Relaxed) { &LIGHT } else { &DARK }
+}
+
+pub fn foreground() -> Rgb {
+    palette().foreground
+}
+
+pub fn background() -> Rgb {
+    palette().background
+}
+
+pub fn cursor() -> Rgb {
+    palette().cursor
+}
+
+pub fn selection() -> Rgb {
+    palette().selection
+}
 
 /// Default color of xterm's 256 color palette entry `index`.
 pub fn indexed(index: u8) -> Rgb {
     match index {
-        0..=15 => ANSI[index as usize],
+        0..=15 => palette().ansi[index as usize],
         16..=231 => {
             let i = index - 16;
             let level = |v: u8| if v == 0 { 0 } else { 55 + v * 40 };
@@ -59,10 +123,10 @@ fn dim(c: Rgb) -> Rgb {
 pub fn default_for_slot(index: usize) -> Rgb {
     match index {
         0..=255 => indexed(index as u8),
-        i if i == NamedColor::Foreground as usize => FOREGROUND,
-        i if i == NamedColor::Background as usize => BACKGROUND,
-        i if i == NamedColor::Cursor as usize => CURSOR,
-        _ => FOREGROUND,
+        i if i == NamedColor::Foreground as usize => foreground(),
+        i if i == NamedColor::Background as usize => background(),
+        i if i == NamedColor::Cursor as usize => cursor(),
+        _ => foreground(),
     }
 }
 
@@ -83,15 +147,15 @@ pub fn resolve(color: Color, colors: &Colors, bold: bool) -> Rgb {
             }
             let index = named as usize;
             match named {
-                NamedColor::Foreground | NamedColor::BrightForeground => FOREGROUND,
-                NamedColor::Background => BACKGROUND,
-                NamedColor::Cursor => CURSOR,
-                NamedColor::DimForeground => dim(FOREGROUND),
-                _ if index < 16 => ANSI[index],
+                NamedColor::Foreground | NamedColor::BrightForeground => foreground(),
+                NamedColor::Background => background(),
+                NamedColor::Cursor => cursor(),
+                NamedColor::DimForeground => dim(foreground()),
+                _ if index < 16 => palette().ansi[index],
                 // Dim variants follow the bright foreground block.
                 _ => {
                     let base = index - NamedColor::DimBlack as usize;
-                    dim(ANSI[base.min(7)])
+                    dim(palette().ansi[base.min(7)])
                 }
             }
         }

@@ -68,7 +68,7 @@ Popup {
             radius: 14
         }
     }
-    Overlay.modal: Rectangle { color: Qt.rgba(0.02, 0.04, 0.08, 0.6) }
+    Overlay.modal: Rectangle { color: Theme.dim }
 
     contentItem: ColumnLayout {
         spacing: 0

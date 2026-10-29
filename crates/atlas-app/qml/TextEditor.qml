@@ -651,7 +651,7 @@ Rectangle {
                     width: flick.contentWidth
                     height: area.cursorRectangle.height
                     y: area.cursorRectangle.y
-                    color: "#262626"
+                    color: Theme.light ? "#f0f3f8" : "#262626"
                 }
                 Rectangle {
                     id: flashLine
@@ -742,7 +742,7 @@ Rectangle {
                             y: modelData.y
                             width: modelData.w
                             height: 1.6
-                            color: "#f2575f"
+                            color: Theme.error
                             opacity: 0.9
                         }
                     }
@@ -827,7 +827,7 @@ Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     x: 6
                                     spacing: 8
-                                    Text { text: modelData.kind === "tag" ? "#" : modelData.kind === "note" ? "📝" : "📄"; font.pixelSize: 12; color: "#9dd1ff" }
+                                    Text { text: modelData.kind === "tag" ? "#" : modelData.kind === "note" ? "📝" : "📄"; font.pixelSize: 12; color: Theme.link }
                                     Text {
                                         text: modelData.title ? modelData.title + "  ·  " + modelData.relative : modelData.relative
                                         color: Theme.text

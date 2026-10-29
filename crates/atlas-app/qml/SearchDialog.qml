@@ -185,7 +185,7 @@ Dialog {
             const s = Math.max(r[0], at), e = Math.min(r[1], to)
             if (e <= s) continue
             html += escapeHtml(text.slice(at, s))
-            html += "<span style=\"background-color:" + (current ? "#c98a00" : "#6b5100") + "; color:#fff4d6\">"
+            html += "<span style=\"background-color:" + (Theme.light ? (current ? "#ffb21e" : "#ffe7a3") + "; color:#1a1200" : (current ? "#c98a00" : "#6b5100") + "; color:#fff4d6") + "\">"
                 + escapeHtml(text.slice(s, e)) + "</span>"
             at = e
         }
@@ -498,7 +498,7 @@ Dialog {
                                 anchors.rightMargin: 12
                                 spacing: 6
                                 Icon { name: hit.folded ? "chevron-right" : "chevron-down"; size: 12 }
-                                Icon { name: dialog.fileIcon(hit.path, hit.isPdf); size: 15; color: hit.isPdf ? "#e5534b" : Theme.textMuted }
+                                Icon { name: dialog.fileIcon(hit.path, hit.isPdf); size: 15; color: hit.isPdf ? Theme.kindColors.pdf : Theme.textMuted }
                                 Text {
                                     text: hit.relativePath.split("/").pop()
                                     color: Theme.textStrong

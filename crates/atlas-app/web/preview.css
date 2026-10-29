@@ -1,10 +1,19 @@
 /* SPDX-FileCopyrightText: 2026 Minux
    SPDX-License-Identifier: GPL-3.0-or-later */
-/* Colours follow qml/Theme.qml (navy design). */
+/* Colours follow qml/Theme.qml (navy design; light with `html.light`). */
 :root {
   color-scheme: dark;
   --bg: #0f1726; --raised: #152036; --border: #1e2a40; --text: #c5d0e0; --strong: #eef3fb;
   --muted: #8a97ad; --accent: #3d8bfd; --link: #5aa2ff; --quote: #e0b33a; --error: #f2575f;
+  --code-bg: #0b111d; --row-alt: #121c2e; --check-border: #4a5874; --zoom-bg: rgba(15, 23, 38, 0.8);
+  --selection: #1d3a63; --scroll-thumb: #22304a;
+}
+:root.light {
+  color-scheme: light;
+  --bg: #ffffff; --raised: #eef2f7; --border: #d6dde7; --text: #283345; --strong: #0e1624;
+  --muted: #5a6577; --accent: #2f6fe0; --link: #1f5fbf; --quote: #c08f00; --error: #d33a43;
+  --code-bg: #f6f8fb; --row-alt: #f7f9fc; --check-border: #9aa7ba; --zoom-bg: rgba(255, 255, 255, 0.85);
+  --selection: #c8dbfa; --scroll-thumb: #c3ccd9;
 }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 /* No automatic scroll corrections when content grows (images, diagrams):
@@ -24,7 +33,7 @@ a.wikilink:hover { text-decoration: none; border-bottom-style: solid; }
 a.broken { color: var(--error); text-decoration: line-through dotted; }
 a.broken::after { content: " ⚠"; font-size: 0.8em; }
 code { font: 0.9em/1.4 monospace; background: var(--raised); padding: 0.1em 0.35em; border-radius: 5px; }
-pre { background: #0b111d; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; overflow: auto; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; overflow: auto; }
 pre code { background: none; padding: 0; }
 pre code.hljs { background: none; padding: 0; }
 /* Diagrams on the page's own background (colours in preview.js). */
@@ -51,13 +60,13 @@ a[data-atlas-annot]:hover { text-decoration: none; border-color: var(--accent); 
 table { border-collapse: collapse; margin: 1em 0; display: block; overflow: auto; }
 th, td { border: 1px solid var(--border); padding: 6px 12px; }
 th { background: var(--raised); color: var(--strong); }
-tr:nth-child(even) td { background: #121c2e; }
+tr:nth-child(even) td { background: var(--row-alt); }
 img { max-width: 100%; border-radius: 6px; }
 /* Pictures with a button to enlarge them. */
 .img-box { position: relative; display: inline-block; max-width: 100%; }
 .img-zoom {
   position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 7px; cursor: zoom-in;
-  font-size: 16px; line-height: 1; color: var(--strong); background: rgba(15, 23, 38, 0.8); border: 1px solid var(--border);
+  font-size: 16px; line-height: 1; color: var(--strong); background: var(--zoom-bg); border: 1px solid var(--border);
   opacity: 0; transition: opacity 0.15s;
 }
 .img-box:hover .img-zoom { opacity: 1; }
@@ -76,7 +85,7 @@ ul:has(> li > input[type=checkbox]), ul:has(> li > p > input[type=checkbox]) { p
 li ul:has(> li > input[type=checkbox]), li ul:has(> li > p > input[type=checkbox]) { padding-left: 1.7em; }
 input[type=checkbox] {
   appearance: none; flex: none; width: 17px; height: 17px; margin: 0 0.55em 0 0;
-  vertical-align: -3px; border: 1.5px solid #4a5874; border-radius: 5px; background: var(--raised);
+  vertical-align: -3px; border: 1.5px solid var(--check-border); border-radius: 5px; background: var(--raised);
   background-repeat: no-repeat; background-position: center; background-size: 12px 12px;
   transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
@@ -101,6 +110,35 @@ li:has(> input[type=checkbox]:checked), li:has(> p > input[type=checkbox]:checke
 .tag:nth-of-type(5n+4) { color: #ff9ca1; background: rgba(242, 87, 95, 0.14); border-color: rgba(242, 87, 95, 0.3); }
 .tag:nth-of-type(5n+5) { color: #f3cf74; background: rgba(224, 179, 58, 0.14); border-color: rgba(224, 179, 58, 0.3); }
 .tag.inline { margin: 0; padding: 0 6px; font-size: 0.85em; }
+:root.light .tag { color: #1f5fbf; }
+:root.light .tag:nth-of-type(5n+2) { color: #6f3fc4; }
+:root.light .tag:nth-of-type(5n+3) { color: #187a45; }
+:root.light .tag:nth-of-type(5n+4) { color: #b8303a; }
+:root.light .tag:nth-of-type(5n+5) { color: #8a6400; }
+
+/* Code in the light design: the colours of highlight.js' "github" theme
+   over the vendored dark one. */
+:root.light .hljs { color: #24292e; }
+:root.light .hljs-doctag, :root.light .hljs-keyword, :root.light .hljs-meta .hljs-keyword,
+:root.light .hljs-template-tag, :root.light .hljs-template-variable, :root.light .hljs-type,
+:root.light .hljs-variable.language_ { color: #d73a49; }
+:root.light .hljs-title, :root.light .hljs-title.class_, :root.light .hljs-title.class_.inherited__,
+:root.light .hljs-title.function_ { color: #6f42c1; }
+:root.light .hljs-attr, :root.light .hljs-attribute, :root.light .hljs-literal, :root.light .hljs-meta,
+:root.light .hljs-number, :root.light .hljs-operator, :root.light .hljs-selector-attr,
+:root.light .hljs-selector-class, :root.light .hljs-selector-id, :root.light .hljs-variable { color: #005cc5; }
+:root.light .hljs-meta .hljs-string, :root.light .hljs-regexp, :root.light .hljs-string { color: #032f62; }
+:root.light .hljs-built_in, :root.light .hljs-symbol { color: #e36209; }
+:root.light .hljs-code, :root.light .hljs-comment, :root.light .hljs-formula { color: #6a737d; }
+:root.light .hljs-name, :root.light .hljs-quote, :root.light .hljs-selector-pseudo,
+:root.light .hljs-selector-tag { color: #22863a; }
+:root.light .hljs-subst { color: #24292e; }
+:root.light .hljs-section { color: #005cc5; }
+:root.light .hljs-bullet { color: #735c0f; }
+:root.light .hljs-emphasis { color: #24292e; }
+:root.light .hljs-strong { color: #24292e; }
+:root.light .hljs-addition { color: #22863a; background-color: #f0fff4; }
+:root.light .hljs-deletion { color: #b31d28; background-color: #ffeef0; }
 
 /* Code blocks: copy / run buttons, shown on hover. */
 .code-box { position: relative; }
@@ -128,9 +166,9 @@ h1:hover > .fold, h2:hover > .fold, h3:hover > .fold, h4:hover > .fold, h5:hover
 .math-error { color: var(--error); font-family: monospace; }
 a.line-marker { display: block; height: 0; }
 .footnote-definition { font-size: 0.9em; color: var(--muted); }
-::selection { background: #1d3a63; }
+::selection { background: var(--selection); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #22304a; border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 5px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* Export as PDF (Markdown → PDF): light paper, no editor helpers. Code

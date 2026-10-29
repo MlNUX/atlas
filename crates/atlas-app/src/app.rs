@@ -59,6 +59,9 @@ pub mod qobject {
         #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
         /// PDFs in dark mode (inverted brightness); `[pdf] dark` in config.toml.
         #[qproperty(bool, pdf_dark, cxx_name = "pdfDark", READ, WRITE = set_pdf_dark, NOTIFY)]
+        /// Design of the app: "dark", "light" or "system" (`[appearance]
+        /// theme` in config.toml).
+        #[qproperty(QString, theme, READ, WRITE = set_theme, NOTIFY)]
         /// Modules of the context bar (`[context]` in config.toml) as JSON:
         /// {calendar, tasks, pomodoro, pomodoro_work, pomodoro_break,
         /// pomodoro_long_break}; change with `setContextModule`.
@@ -117,6 +120,13 @@ pub mod qobject {
         #[cxx_name = "setFileManagerPlaces"]
         fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
+        fn set_theme(self: Pin<&mut AppController>, theme: QString);
+
+        /// Terminals in the light palette (the design actually shown, also
+        /// when `theme` follows the system).
+        #[qinvokable]
+        #[cxx_name = "setTerminalLight"]
+        fn set_terminal_light(self: &AppController, on: bool);
         fn set_natural_sort(self: Pin<&mut AppController>, on: bool);
         fn set_touchpad_fling(self: Pin<&mut AppController>, on: bool);
         fn set_spellcheck(self: Pin<&mut AppController>, on: bool);
@@ -830,6 +840,7 @@ pub struct AppControllerRust {
     fixed_place_count: i32,
     file_manager_places: bool,
     pdf_dark: bool,
+    theme: QString,
     context_modules: QString,
     natural_sort: bool,
     touchpad_fling: bool,
@@ -902,6 +913,7 @@ impl Default for AppControllerRust {
             fixed_place_count: 0,
             file_manager_places: Config::load().places.file_manager,
             pdf_dark: Config::load().pdf.dark,
+            theme: qs(Config::load().appearance.theme()),
             context_modules: context_json(&Config::load().context),
             natural_sort: Config::load().files.natural_sort,
             touchpad_fling: Config::load().files.touchpad_fling,
@@ -1037,6 +1049,25 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().pdf_dark = on;
         self.as_mut().pdf_dark_changed();
+    }
+
+    pub fn set_theme(mut self: Pin<&mut Self>, theme: QString) {
+        let mut config = Config::load().appearance;
+        config.theme = theme.to_string();
+        let theme = qs(config.theme());
+        if self.theme == theme {
+            return;
+        }
+        config.theme = theme.to_string();
+        if let Err(err) = Config::save_appearance(&config) {
+            log::warn!("cannot save [appearance]: {err:#}");
+        }
+        self.as_mut().rust_mut().theme = theme;
+        self.as_mut().theme_changed();
+    }
+
+    pub fn set_terminal_light(&self, on: bool) {
+        atlas_core::terminal::colors::set_light(on);
     }
 
     pub fn set_natural_sort(mut self: Pin<&mut Self>, on: bool) {

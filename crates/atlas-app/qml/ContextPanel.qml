@@ -464,7 +464,7 @@ Rectangle {
                                 Label {
                                     visible: !!row.modelData.anchor
                                     text: row.modelData.anchor || ""
-                                    color: row.modelData.anchorKind === "quote" ? "#ffd400" : "#9dd1ff"
+                                    color: row.modelData.anchorKind === "quote" ? Theme.quote : Theme.link
                                     font.pixelSize: Theme.smallFontSize
                                 }
                                 Label {
@@ -630,6 +630,7 @@ Rectangle {
                     Canvas {
                         id: edgeCanvas
                         anchors.fill: parent
+                        Connections { target: Theme; function onLightChanged() { edgeCanvas.requestPaint() } }
                         onPaint: {
                             const ctx = getContext("2d")
                             ctx.reset()
@@ -641,7 +642,7 @@ Rectangle {
                                 // Related by hand only: dashed, green, no direction.
                                 if (e.related && e.count === 0) {
                                     ctx.beginPath()
-                                    ctx.strokeStyle = "rgba(52, 194, 122, 0.85)"
+                                    ctx.strokeStyle = Theme.light ? "rgba(30, 148, 85, 0.85)" : "rgba(52, 194, 122, 0.85)"
                                     ctx.lineWidth = Math.max(1.6, 2.5 * scale)
                                     ctx.setLineDash([5, 3])
                                     ctx.moveTo(a.x, a.y)
@@ -651,7 +652,7 @@ Rectangle {
                                     continue
                                 }
                                 ctx.beginPath()
-                                ctx.strokeStyle = e.quotes > 0 ? "rgba(255, 212, 0, 0.75)" : "rgba(120, 140, 175, 0.45)"
+                                ctx.strokeStyle = e.quotes > 0 ? (Theme.light ? "rgba(217, 164, 0, 0.85)" : "rgba(255, 212, 0, 0.75)") : (Theme.light ? "rgba(90, 105, 130, 0.5)" : "rgba(120, 140, 175, 0.45)")
                                 ctx.lineWidth = (Math.min(4, 1 + (e.count - 1) * 0.6) + (e.quotes > 0 ? 0.5 : 0)) * scale
                                 ctx.moveTo(a.x, a.y)
                                 ctx.lineTo(b.x, b.y)
@@ -698,7 +699,7 @@ Rectangle {
                                 width: node.radius * 2
                                 height: width
                                 radius: width / 2
-                                color: node.modelData.missing ? "transparent" : (panel.kindColors[node.modelData.kind] || "#9da5b4")
+                                color: node.modelData.missing ? "transparent" : (panel.kindColors[node.modelData.kind] || Theme.textMuted)
                                 border.width: node.index === 0 ? 3 : node.modelData.missing ? 1 : 0
                                 border.color: node.modelData.missing ? Theme.textFaint : Qt.rgba(0.24, 0.55, 0.99, 0.35)
                                 opacity: node.far ? 0.55 : node.modelData.depth >= 2 ? 0.8 : 1
@@ -774,7 +775,7 @@ Rectangle {
                                 width: line ? 14 : 8
                                 height: line ? 2 : 8
                                 radius: line ? 0 : 4
-                                color: modelData.kind === "quote" ? "#ffd400" : modelData.kind === "related" ? "#34c27a" : panel.kindColors[modelData.kind]
+                                color: modelData.kind === "quote" ? Theme.quote : modelData.kind === "related" ? Theme.ok : panel.kindColors[modelData.kind]
                             }
                             Label { text: modelData.text; color: Theme.textFaint; font.pixelSize: 10 }
                         }

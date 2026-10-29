@@ -594,7 +594,7 @@ impl qobject::TerminalView {
         let mut painter = unsafe { Pin::new_unchecked(painter) };
         let (w, h) = (self.width(), self.height());
         let Some(term) = self.terminal.as_ref() else {
-            painter.fill_rect(&QRectF::new(0.0, 0.0, w, h), &color(atlas_core::terminal::colors::BACKGROUND));
+            painter.fill_rect(&QRectF::new(0.0, 0.0, w, h), &color(atlas_core::terminal::colors::background()));
             return;
         };
         let frame = term.frame(self.focused);

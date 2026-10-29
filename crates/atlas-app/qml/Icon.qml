@@ -91,6 +91,7 @@ Item {
         "warning": "<path d='M12 4 2.5 20h19z'/><path d='M12 10v4.5M12 17.5v.5'/>",
         "key": "<circle cx='8' cy='15' r='4'/><path d='m11 12 9-9M17 6l3 3M15 8l2 2'/>",
         "moon": "<path d='M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z'/>",
+        "sun": "<circle cx='12' cy='12' r='4'/><path d='M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4'/>",
     })
 
     readonly property string svg: shapes[name]

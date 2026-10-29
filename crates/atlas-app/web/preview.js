@@ -13,6 +13,8 @@ window.atlas = (function () {
     let reportScroll = true;
     // The PDF export prints on white paper: diagrams in light colours then.
     let printMode = false;
+    // The light design of Atlas (see `setLight`).
+    let light = false;
     // Diagrams in the colours of the page (navy design), see preview.css.
     const DARK_DIAGRAMS = {
         theme: "base",
@@ -53,6 +55,11 @@ window.atlas = (function () {
         });
     }
 
+    function initMermaid() {
+        mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: "strict" },
+            printMode || light ? { theme: "default" } : DARK_DIAGRAMS));
+    }
+
     function renderMermaid(root) {
         const blocks = root.querySelectorAll("pre.mermaid");
         if (!blocks.length) return;
@@ -61,8 +68,7 @@ window.atlas = (function () {
                 const s = document.createElement("script");
                 s.src = "vendor/mermaid/mermaid.min.js";
                 s.onload = () => {
-                    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: "strict" },
-                        printMode ? { theme: "default" } : DARK_DIAGRAMS));
+                    initMermaid();
                     resolve();
                 };
                 document.head.appendChild(s);
@@ -356,6 +362,13 @@ window.atlas = (function () {
         scrollToY(y) { window.scrollTo(0, y); },
         /// The PDF export: light diagrams (call before `set`).
         setPrintMode(on) { printMode = !!on; },
+        /// Light colours for the page and later diagrams (call before `set`).
+        setLight(on) {
+            if (light === !!on) return;
+            light = !!on;
+            document.documentElement.classList.toggle("light", light);
+            if (window.mermaid) initMermaid();
+        },
         /// Follows the editor smoothly to source line `line` (fractional).
         follow,
         exactTopLine,
