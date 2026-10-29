@@ -79,8 +79,13 @@ Tracebacks. Ausführen lassen sich einzelne Zellen und alle.
     Ohne conda, mamba und micromamba bietet die Ansicht an, **micromamba
     einzurichten** (ein Programm unter `~/.local/share/atlas/micromamba`,
     von micro.mamba.pm oder GitHub; die Umgebung bekommt dann genau die
-    Python-Version der Datei) oder die Pakete **mit pip als
-    `.venv-<name>`** zu bauen (mit dem Python des Rechners).
+    Python-Version der Datei; geladen mit curl oder wget, sonst mit
+    Python) oder die Pakete **mit pip als `.venv-<name>`** zu bauen.
+  - Ein Python für neue Umgebungen sucht die Ansicht der Reihe nach:
+    Einstellung „Python für neue Umgebungen“, `python3`/`python` im Pfad
+    von Atlas, das Python des Jupyter-Servers (auch hinter nix-Hüllskripten)
+    und das des laufenden Kernels – unter NixOS steht `python3` oft nicht
+    im Pfad. Pakete installiert sie mit dem Python des Kernels selbst.
   - **Weitere Kernel**, die schon angemeldet sind; ✕ meldet einen ab.
   - **+ Neue .venv** und **Pakete installieren** (pip in die aktive
     Umgebung).

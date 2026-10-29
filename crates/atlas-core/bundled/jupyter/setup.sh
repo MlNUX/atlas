@@ -17,7 +17,10 @@ fail() {
 }
 
 venv="$project/.venv"
-command -v "$python" >/dev/null 2>&1 || fail "„$python“ fehlt – Python 3 installieren oder in den Einstellungen der Erweiterung angeben."
+if ! command -v "$python" >/dev/null 2>&1; then
+    for p in python3 python; do command -v "$p" >/dev/null 2>&1 && python=$p && break; done
+fi
+command -v "$python" >/dev/null 2>&1 || fail "Kein Python gefunden – Python 3 installieren oder in den Einstellungen der Erweiterung („Python für neue Umgebungen“) angeben."
 if [ ! -x "$venv/bin/python" ]; then
     echo "Lege $venv an …"
     "$python" -m venv "$venv" || fail "Die Umgebung lässt sich nicht anlegen (fehlt das Modul venv? Unter Debian/Ubuntu: python3-venv)."

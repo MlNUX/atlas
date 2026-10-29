@@ -26,6 +26,7 @@ fi
 command -v "$jupyter" >/dev/null 2>&1 || fail "„$jupyter“ fehlt – in der Notebook-Ansicht „Jupyter im Projekt einrichten“ wählen \
 oder in den Einstellungen der Erweiterung das Jupyter-Programm angeben."
 
+jupyter=$(command -v "$jupyter")
 dir="$project/.atlas/cache/jupyter"
 umask 077
 mkdir -p "$dir"

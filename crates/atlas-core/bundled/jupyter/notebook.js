@@ -46,6 +46,7 @@ const state = {
     specs: null,
     restarting: false,
     infoWaiters: new Map(),
+    replyWaiters: new Map(), // msg_id → Rückruf für execute_reply (kernelPython)
     task: null,         // sichtbare Aufgabe ({cancel})
     found: null,        // gefundene Umgebungen (discover)
     deleteArmed: null,  // Zelle nach dem ersten „d“
@@ -873,6 +874,13 @@ async function connect(opts = {}) {
         await sleep(500);
     }
     try { state.home = (await serverEnv()).home; } catch (e) { /* nur für Anzeige */ }
+    // Mit welchem Programm der Server läuft (aus seinem Log, siehe server.sh).
+    for (const id of ["server", "setup"]) {
+        try {
+            const m = /^Jupyter-Server für .* \(([^()]+)\)\s*$/m.exec((await atlas.commandStatus(id)).log || "");
+            if (m) { state.serverProgram = m[1]; break; }
+        } catch (e) { /* älteres Atlas */ }
+    }
     if (!state.nb) { notice(""); return; }
     if (state.announceReady) busy("Jupyter-Server läuft – Kernel startet …", "Kernel startet …");
     else notice("");
@@ -1149,6 +1157,8 @@ function onMessage(msg) {
     }
     const cur = state.current && parent === state.current.msgId ? state.current : null;
     if (type === "execute_reply") {
+        const waiter = state.replyWaiters.get(parent);
+        if (waiter) { state.replyWaiters.delete(parent); waiter(c); return; }
         if (!cur) return;
         cur.reply = c;
         if (cur.idle) finish();
@@ -1376,8 +1386,14 @@ async function terminalShell(script, onOutput, control) {
 }
 
 /// Sichtbare Aufgabe im Feld unten rechts; löst mit dem Exit-Code auf.
-async function task(title, script) {
-    if (state.task) { atlas.message("Es läuft schon eine Aufgabe"); return -1; }
+/// Aufgaben laufen nacheinander (eine neue wartet auf die laufende).
+function task(title, script) {
+    const run = (state.taskChain || Promise.resolve()).then(() => runTask(title, script));
+    state.taskChain = run.catch(() => {});
+    return run;
+}
+
+async function runTask(title, script) {
     const control = {};
     state.task = control;
     $("task").hidden = false;
@@ -1412,14 +1428,49 @@ async function task(title, script) {
 /// Zeilen, die $SPY auf das Python des Servers setzen (dasselbe Programm wie
 /// in server.sh, Python aus dessen Kopfzeile) und $SJ auf Jupyter.
 function serverPythonLines() {
-    const setting = (state.ctx.settings && state.ctx.settings.jupyter) || "jupyter";
+    const setting = state.serverProgram || (state.ctx.settings && state.ctx.settings.jupyter) || "jupyter";
     const venvJupyter = project() + "/.venv/bin/jupyter";
     return [
-        `SJ=${sq(setting)}`,
+        `SJ=${sq(setting)}; SPY=""`,
         `if [ "$SJ" = jupyter ] && [ -x ${sq(venvJupyter)} ]; then SJ=${sq(venvJupyter)}; fi`,
-        `SJ=$(command -v "$SJ") || { echo "Das Jupyter-Programm des Servers ist nicht zu finden."; exit 1; }`,
-        `SPY=$(sed -n '1s/^#! *//p' "$SJ" | cut -d' ' -f1)`,
-        `case "$(basename "$SPY")" in python*) ;; *) SPY="$(dirname "$SJ")/python" ;; esac`,
+        `SJ=$(command -v "$SJ" 2>/dev/null || true)`,
+        `if [ -n "$SJ" ]; then`,
+        `  SPY=$(sed -n '1s/^#! *//p' "$SJ" | cut -d' ' -f1)`,
+        // Hüllskripte (nix: exec …/.jupyter-wrapped): das eigentliche Programm.
+        `  case "$(basename "$SPY")" in python*) ;; *) W=$(grep -o '/[^" ]*/\\.[^"/ ]*-wrapped' "$SJ" 2>/dev/null | head -n 1); [ -n "$W" ] && SPY=$(sed -n '1s/^#! *//p' "$W" | cut -d' ' -f1) ;; esac`,
+        `  case "$(basename "$SPY")" in python*) ;; *) SPY="$(dirname "$SJ")/python" ;; esac`,
+        `  [ -x "$SPY" ] || SPY=""`,
+        `fi`,
+    ];
+}
+
+/// Python des laufenden Kernels (sys.executable), ohne eine Zelle zu belegen.
+function kernelPython() {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN || !/python/i.test(state.lang)) return Promise.resolve("");
+    return new Promise((resolve) => {
+        const msgId = send("shell", "execute_request", {
+            code: "", silent: true, store_history: false, allow_stdin: false, stop_on_error: false,
+            user_expressions: { exe: "__import__('sys').executable" },
+        });
+        const timer = setTimeout(() => { state.replyWaiters.delete(msgId); resolve(""); }, 8000);
+        state.replyWaiters.set(msgId, (c) => {
+            clearTimeout(timer);
+            const exe = (((c.user_expressions || {}).exe || {}).data || {})["text/plain"] || "";
+            resolve(exe.replace(/^'(.*)'$/, "$1"));
+        });
+    });
+}
+
+/// sh-Zeilen, die $P auf ein Python für neue Umgebungen setzen: Einstellung,
+/// python3/python im Pfad, Python des Servers, Python des Kernels.
+async function pythonLines() {
+    const setting = (state.ctx.settings && state.ctx.settings.python) || "python3";
+    const kernel = await kernelPython();
+    return [
+        ...serverPythonLines(),
+        `P=""`,
+        `for c in ${[setting, "python3", "python"].map(sq).join(" ")} "$SPY" ${sq(kernel)}; do if [ -n "$c" ] && command -v "$c" >/dev/null 2>&1; then P=$(command -v "$c"); break; fi; done`,
+        `[ -n "$P" ] || { echo "Kein Python gefunden – in den Einstellungen der Erweiterung („Python für neue Umgebungen“) eines angeben."; exit 1; }`,
     ];
 }
 
@@ -1601,13 +1652,12 @@ async function registerAndUse(envPath, label) {
 
 /// Eine venv anlegen (falls nötig), Pakete hinein, als Kernel verwenden.
 async function buildVenv(dir, label, installLines, title) {
-    const python = (state.ctx.settings && state.ctx.settings.python) || "python3";
+    const python = await pythonLines();
     const code = await task(title, [
         `V=${sq(dir)}`,
         `if [ ! -x "$V/bin/python" ]; then`,
-        `  P=${sq(python)}`,
-        `  command -v "$P" >/dev/null 2>&1 || { echo "„$P“ fehlt – in den Einstellungen der Erweiterung ein Python angeben."; exit 1; }`,
-        `  echo "Lege $V an ($("$P" --version 2>&1)) …"`,
+        ...python,
+        `  echo "Lege $V an mit $P ($("$P" --version 2>&1)) …"`,
         `  "$P" -m venv "$V"`,
         `fi`,
         ...installLines,
@@ -1661,6 +1711,9 @@ function buildFromCondaWithPip(file) {
 }
 
 async function setupMicromamba() {
+    // Mit curl oder wget das Programm von GitHub (eine Datei); sonst mit Python
+    // (micro.mamba.pm, dann GitHub).
+    const python = await pythonLines();
     return task("micromamba einrichten", [
         `D="${MICROMAMBA_HOME}"`,
         `mkdir -p "$D/bin"`,
@@ -1669,11 +1722,14 @@ async function setupMicromamba() {
         `  Darwin-arm64) A=osx-arm64 ;; Darwin-x86_64) A=osx-64 ;;`,
         `  *) echo "Für $(uname -s) $(uname -m) gibt es kein micromamba."; exit 1 ;;`,
         `esac`,
-        `PY=$(command -v python3 || true)`,
-        `if [ -z "$PY" ]; then ${serverPythonLines().join("; ")}; PY=$SPY; fi`,
+        `URL="https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-$A"`,
         `echo "Lade micromamba ($A) …"`,
-        `"$PY" - "$A" "$D" <<'EOF'`,
-        `import io, os, sys, tarfile, urllib.request`,
+        `if command -v curl >/dev/null 2>&1; then echo "  $URL"; curl -fL --retry 2 -o "$D/bin/micromamba.part" "$URL"`,
+        `elif command -v wget >/dev/null 2>&1; then echo "  $URL"; wget -O "$D/bin/micromamba.part" "$URL"`,
+        `else`,
+        ...python.map((l) => "  " + l),
+        `  "$P" - "$A" "$D/bin/micromamba.part" <<'EOF'`,
+        `import io, sys, tarfile, urllib.request`,
         `def fetch(url):`,
         `    print("  " + url, flush=True)`,
         `    return urllib.request.urlopen(url, timeout=300).read()`,
@@ -1683,14 +1739,13 @@ async function setupMicromamba() {
         `except Exception as e:`,
         `    print("  nicht erreichbar (%s), nehme GitHub" % e, flush=True)`,
         `    binary = fetch("https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-%s" % sys.argv[1])`,
-        `path = os.path.join(sys.argv[2], "bin", "micromamba")`,
-        `with open(path + ".part", "wb") as f:`,
-        `    f.write(binary)`,
-        `os.chmod(path + ".part", 0o755)`,
-        `os.replace(path + ".part", path)`,
-        `print("micromamba liegt in", path)`,
+        `open(sys.argv[2], "wb").write(binary)`,
         `EOF`,
-        `"$D/bin/micromamba" --version`,
+        `fi`,
+        `chmod 755 "$D/bin/micromamba.part"`,
+        `mv -f "$D/bin/micromamba.part" "$D/bin/micromamba"`,
+        `echo "micromamba liegt in $D/bin/micromamba"`,
+        `"$D/bin/micromamba" --version || { echo "micromamba startet nicht. Unter NixOS braucht es programs.nix-ld.enable = true – oder micromamba aus nixpkgs (dann im PATH von Atlas)."; exit 1; }`,
     ]);
 }
 
@@ -1706,15 +1761,24 @@ async function installPackages(text) {
     const packages = text.split(/\s+/).filter(Boolean);
     if (!spec || !packages.length) return;
     const argv0 = (spec.spec.argv || [])[0] || "";
+    const kernel = await kernelPython();
     const code = await task(`Installiere ${packages.join(", ")} in „${spec.spec.display_name}“`, [
-        ...(argv0.startsWith("/") ? [`PY=${sq(argv0)}`] : [...serverPythonLines(), `PY=$SPY`]),
+        ...(kernel ? [`PY=${sq(kernel)}`] : argv0.startsWith("/") ? [`PY=${sq(argv0)}`]
+            : [...serverPythonLines(), `PY=$SPY`, `[ -n "$PY" ] || { echo "Das Python des Kernels ist nicht zu finden."; exit 1; }`]),
         `"$PY" -m pip install --disable-pip-version-check ${packages.map(sq).join(" ")}`,
     ]);
     if (code === 0) atlas.message("Installiert – schon geladene Pakete ändern sich erst nach einem Neustart des Kernels");
 }
 
 async function removeKernel(name) {
-    const code = await task(`Kernel „${specLabel(name)}“ abmelden`, [...serverPythonLines(), `"$SJ" kernelspec remove -y ${sq(name)}`]);
+    // Mit dem Python des Kernels (jupyter_client kommt mit ipykernel).
+    const argv0 = (((state.specs.kernelspecs[name] || {}).spec || {}).argv || [])[0] || "";
+    const code = await task(`Kernel „${specLabel(name)}“ abmelden`, [
+        ...serverPythonLines(),
+        `PY=${sq(argv0)}; [ -x "$PY" ] || PY=$SPY`,
+        `[ -n "$PY" ] || { echo "Kein Python für jupyter_client gefunden."; exit 1; }`,
+        `"$PY" -c ${sq(`from jupyter_client.kernelspec import KernelSpecManager as K; K().remove_kernel_spec(${JSON.stringify(name)}); print("abgemeldet: " + ${JSON.stringify(name)})`)}`,
+    ]);
     if (code !== 0) return;
     if (state.session && state.session.kernel.name === name) {
         try { await api("DELETE", `/api/sessions/${state.session.id}`); } catch (e) { /* schon weg */ }

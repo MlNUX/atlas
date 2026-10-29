@@ -37,6 +37,12 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
   der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
   Freigabe werden gelöscht.
+- **Jupyter 1.4.0:** findet ein Python auch ohne `python3` im Pfad (wie
+  oft unter NixOS): Einstellung, Pfad, Python des Servers (aus dessen Log,
+  auch hinter nix-Hüllskripten) oder des Kernels; Pakete gehen mit dem
+  Python des Kernels, Kernel abmelden braucht kein Jupyter-Programm mehr.
+  micromamba wird mit curl/wget geladen. Aufgaben warten aufeinander statt
+  abgelehnt zu werden.
 - **Hintergrundbefehle neu starten:** Wurde ein Hintergrundbefehl beendet
   und gleich wieder gestartet (z. B. „Jupyter-Server neu starten“), traf
   das SIGKILL für den alten Prozess fünf Sekunden später den neuen.

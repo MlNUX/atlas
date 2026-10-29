@@ -9,7 +9,7 @@
 atlas_api: 2
 name: jupyter
 title: Jupyter-Notebooks
-version: 1.3.0
+version: 1.4.0
 description: Notebooks (.ipynb) öffnen, bearbeiten und einzelne oder alle Zellen ausführen – mit einem lokalen Jupyter-Server.
 context: true                 # als Karte in der Kontextleiste (abschaltbar)
 
