@@ -21,11 +21,25 @@ Rectangle {
 
     readonly property var info: root.app && root.source && root.revision >= 0
         ? JSON.parse(root.app.atlasNoteInfo(root.source)) : ({ pages: [], error: "" })
-    readonly property real pageWidth: Math.max(200, Math.min(list.width - 48, 900) * root.zoom)
+    /// Page width at 100 %: the view width up to 900 px.
+    readonly property real baseWidth: Math.max(200, Math.min(list.width - 48, 900))
+    readonly property real pageWidth: root.baseWidth * root.zoom
+    /// Zoom the pages are rendered for: follows `zoom` once zooming pauses, so a
+    /// Ctrl+wheel turn scales the shown pictures and renders only once at the end.
+    property real renderZoom: 1
+    onZoomChanged: renderTimer.restart()
+    Timer { id: renderTimer; interval: 180; onTriggered: root.renderZoom = root.zoom }
     /// Rendered width in device pixels, in steps so zooming does not render every size.
-    readonly property int renderWidth: Math.min(4000, Math.ceil(root.pageWidth * Screen.devicePixelRatio / 200) * 200)
+    readonly property int renderWidth: Math.min(4000, Math.ceil(root.baseWidth * root.renderZoom * Screen.devicePixelRatio / 200) * 200)
 
-    function zoomBy(factor) { root.zoom = Math.max(0.3, Math.min(4, root.zoom * factor)) }
+    function zoomBy(factor) { root.zoom = Math.max(0.3, Math.min(5, root.zoom * factor)) }
+    /// Wheel notches, fractional for touchpads and high-resolution wheels (as in PdfViewer).
+    function wheelSteps(event) {
+        const d = event.angleDelta.y || event.angleDelta.x
+        if (d) return d / 120
+        const p = event.pixelDelta.y || event.pixelDelta.x
+        return p / 50
+    }
     function applyState(state) { if (state && state.zoom) root.zoom = state.zoom }
     function viewState() { return { zoom: root.zoom } }
     function focusContent() { list.forceActiveFocus() }
@@ -79,11 +93,15 @@ Rectangle {
             bottomMargin: 16
             model: root.info.pages
             boundsBehavior: Flickable.StopAtBounds
+            // Zoomed in wider than the view: scroll sideways too.
+            flickableDirection: Flickable.AutoFlickIfNeeded
+            contentWidth: Math.max(width, root.pageWidth + 48)
             ScrollBar.vertical: ScrollBar {}
+            ScrollBar.horizontal: ScrollBar {}
             delegate: Item {
                 required property var modelData
                 required property int index
-                width: list.width
+                width: list.contentWidth
                 height: root.pageWidth * modelData.height / 1000
                 Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -113,9 +131,44 @@ Rectangle {
                     }
                 }
             }
+            // Ctrl+wheel zooms and keeps the spot under the mouse in place. Qt on
+            // Wayland reports mouse wheels as touchpads with finger pointers and
+            // high-resolution wheels with pixel deltas only: accept every device.
             WheelHandler {
+                acceptedDevices: PointerDevice.AllDevices
+                acceptedPointerTypes: PointerDevice.AllPointerTypes
                 acceptedModifiers: Qt.ControlModifier
-                onWheel: (event) => root.zoomBy(event.angleDelta.y > 0 ? 1.1 : 1 / 1.1)
+                onWheel: (event) => {
+                    event.accepted = true
+                    const steps = root.wheelSteps(event)
+                    if (!steps) return
+                    list.cancelFlick()
+                    // The handler sits in the content: convert to view coordinates.
+                    const at = list.mapFromItem(list.contentItem, event.x, event.y)
+                    const before = root.pageWidth
+                    const offset = (w) => (Math.max(list.width, w + 48) - w) / 2
+                    const fx = (list.contentX - list.originX + at.x - offset(before)) / before
+                    const cy = list.contentY + at.y
+                    let index = list.indexAt(list.contentWidth / 2, cy)
+                    if (index < 0) index = list.indexAt(list.contentWidth / 2, cy - list.spacing)
+                    const item = index >= 0 ? list.itemAtIndex(index) : null
+                    const along = item && item.height > 0 ? (cy - item.y) / item.height : 0
+                    root.zoomBy(Math.pow(1.1, steps))
+                    const place = () => {
+                        const width = root.pageWidth
+                        const maxX = Math.max(0, list.contentWidth - list.width)
+                        list.contentX = Math.max(0, Math.min(maxX, offset(width) + fx * width - at.x)) + list.originX
+                        if (!item) return
+                        list.forceLayout()
+                        const now = list.itemAtIndex(index)
+                        if (!now) return
+                        const minY = list.originY - list.topMargin
+                        const maxY = Math.max(minY, list.originY + list.contentHeight + list.bottomMargin - list.height)
+                        list.contentY = Math.max(minY, Math.min(maxY, now.y + along * now.height - at.y))
+                    }
+                    place()
+                    Qt.callLater(place)
+                }
             }
         }
     }
