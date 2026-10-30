@@ -312,7 +312,7 @@ pre .s { color: var(--a-ok); }
   </div>
   <div class="cols">
     <div class="term"><b>Anpassen, wo man arbeitet</b><span>Jeder Baustein hat ein Menü in seiner Kopfzeile. Für größere Umbauten gibt es einen Bearbeitungsmodus direkt in der Leiste. Die Einstellungen zeigen nur noch die Übersicht.</span></div>
-    <div class="term"><b>Gute Standards</b><span>Wer nie etwas anpasst, bekommt sinnvolle Profile für PDF, Markdown und Code. Anpassen ist ein Angebot.</span></div>
+    <div class="term"><b>Gute Standards</b><span>Wer nichts einstellt, bekommt das Standardprofil „Allgemein“, für jede Datei gleich, wie heute. Anpassen ist ein Angebot.</span></div>
     <div class="term"><b>Folgt der Datei</b><span>Die Leiste wechselt das Profil mit dem aktiven Tab, ohne dass man umschalten muss.</span></div>
     <div class="term"><b>Lesbar in der Config</b><span>Alles steht als Liste von Namen in <code>config.toml</code>. Alte Schlüssel werden übernommen.</span></div>
   </div>
@@ -326,7 +326,7 @@ pre .s { color: var(--a-ok); }
   <div class="cols">
     <div class="term"><b>Baustein</b><span>Ein Teil der Leiste mit Kopfzeile: Anmerkungen, Heute, Graph, eine Erweiterungskarte usw. Jeder Baustein hat einen festen Namen (<code>annotations</code>, <code>today</code>, <code>ext:bnki</code>).</span></div>
     <div class="term"><b>Bereich</b><span>Wo ein Baustein steht: in der <b>Übersicht</b>, als <b>eigener Reiter</b> oder <b>unten angeheftet</b> (sichtbar auf jedem Reiter, wie heute die Lernzeit).</span></div>
-    <div class="term"><b>Profil</b><span>Eine Zusammenstellung von Bausteinen und Reitern für einen Dateityp: Allgemein, PDF, Markdown, Code, Kalender. Was ein Profil nicht festlegt, kommt aus „Allgemein“.</span></div>
+    <div class="term"><b>Profil</b><span>Eine Zusammenstellung von Bausteinen und Reitern für einen Dateityp: Allgemein, PDF, Markdown, Code, Kalender. „Allgemein“ ist das Standardprofil: Es gilt immer, wenn für einen Dateityp nichts eingestellt ist, und füllt alles, was ein Profil nicht festlegt.</span></div>
   </div>
 </section>
 
@@ -484,16 +484,17 @@ pre .s { color: var(--a-ok); }
   <div class="prose">
     <h2>3 · Profile je Dateityp</h2>
     <p>Die Leiste wählt das Profil nach der Art des aktiven Tabs. Es gibt fünf feste Profile; eigene Profile gibt es bewusst nicht, damit die Zuordnung eindeutig bleibt.</p>
+    <p><b>Solange für einen Dateityp nichts eingestellt ist, gilt das Standardprofil „Allgemein“.</b> Ein Profil für PDF, Markdown, Code oder Kalender entsteht erst, wenn man es anpasst (über „Gilt für: Nur PDFs“ oder den Bearbeitungsmodus). Die Spalten unten sind Vorschläge, mit denen ein neues Profil vorausgefüllt wird.</p>
   </div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>Profil</th><th>Gilt für</th><th>Reiter (Standard)</th><th>Übersicht (Standard)</th></tr></thead>
+      <thead><tr><th>Profil</th><th>Gilt für</th><th>Reiter</th><th>Übersicht</th></tr></thead>
       <tbody>
-        <tr><td>Allgemein</td><td>alles ohne eigenes Profil: Ordner, Bilder, Terminal</td><td>Übersicht, Verknüpfungen, Graph, Aktionen</td><td>Heute, Aufgaben, Graph, Aktionen</td></tr>
-        <tr><td>PDF</td><td>.pdf, .atlasnote</td><td>Übersicht, Verknüpfungen, Aktionen</td><td>Anmerkungen, Gliederung, Heute, Graph (zu), Aktionen</td></tr>
-        <tr><td>Markdown</td><td>.md</td><td>Übersicht, Graph, Aktionen</td><td>Verknüpfungen, Tags, Gliederung, Heute</td></tr>
-        <tr><td>Code</td><td>Quelltext, Skripte, .ipynb</td><td>Übersicht, Aktionen</td><td>Aktionen, Erweiterungen, Dateiinfo</td></tr>
-        <tr><td>Kalender</td><td>Kalender-Tab</td><td>Übersicht</td><td>Ausgewählter Termin, Diese Woche, Aufgaben</td></tr>
+        <tr><td>Allgemein (Standard)</td><td>alles, wofür kein eigenes Profil eingestellt ist</td><td>Übersicht, Verknüpfungen, Graph, Aktionen</td><td>Heute, Aufgaben, Graph, Aktionen</td></tr>
+        <tr><td>PDF</td><td>.pdf, .atlasnote</td><td><span style="color:var(--muted)">Vorschlag:</span> Übersicht, Verknüpfungen, Aktionen</td><td>Anmerkungen, Gliederung, Heute, Graph (zu), Aktionen</td></tr>
+        <tr><td>Markdown</td><td>.md</td><td><span style="color:var(--muted)">Vorschlag:</span> Übersicht, Graph, Aktionen</td><td>Verknüpfungen, Tags, Gliederung, Heute</td></tr>
+        <tr><td>Code</td><td>Quelltext, Skripte, .ipynb</td><td><span style="color:var(--muted)">Vorschlag:</span> Übersicht, Aktionen</td><td>Aktionen, Erweiterungen, Dateiinfo</td></tr>
+        <tr><td>Kalender</td><td>Kalender-Tab</td><td><span style="color:var(--muted)">Vorschlag:</span> Übersicht</td><td>Ausgewählter Termin, Diese Woche, Aufgaben</td></tr>
       </tbody>
     </table>
   </div>
@@ -588,11 +589,11 @@ pre .s { color: var(--a-ok); }
       <div class="settings">
         <div class="s-label">Kontextleiste · Profile</div>
         <div class="s-card">
-          <div class="s-row"><svg class="i ico"><use href="#i-folder"/></svg><b>Allgemein</b><span class="r"><span class="minibar"><i class="a"></i><i></i><i></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Heute · Aufgaben · Graph · Aktionen · unten: Lernzeit</small></div>
+          <div class="s-row"><svg class="i ico"><use href="#i-folder"/></svg><b>Allgemein <span style="font-weight:400;color:var(--a-muted)">· Standard</span></b><span class="r"><span class="minibar"><i class="a"></i><i></i><i></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Heute · Aufgaben · Graph · Aktionen · unten: Lernzeit</small></div>
           <div class="s-row"><svg class="i ico"><use href="#i-pdf"/></svg><b>PDF</b><span class="r"><span class="minibar"><i class="a"></i><i></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Anmerkungen · Gliederung · Heute · Graph · Aktionen <span style="color:var(--a-accent)">· geändert</span></small></div>
           <div class="s-row"><svg class="i ico"><use href="#i-file"/></svg><b>Markdown</b><span class="r"><span class="minibar"><i class="a"></i><i></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Verknüpfungen · Tags · Gliederung · Heute</small></div>
           <div class="s-row"><svg class="i ico"><use href="#i-code"/></svg><b>Code</b><span class="r"><span class="minibar"><i class="a"></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Aktionen · Jupyter · Dateiinfo</small></div>
-          <div class="s-row"><svg class="i ico"><use href="#i-cal"/></svg><b>Kalender</b><span class="r"><span class="minibar"><i class="a"></i></span><span class="sbtn">Anpassen …</span></span><small>Ausgewählter Termin · Diese Woche · Aufgaben</small></div>
+          <div class="s-row" style="opacity:.75"><svg class="i ico"><use href="#i-cal"/></svg><b>Kalender</b><span class="r"><span class="sbtn">Einstellen …</span></span><small>Nicht eingestellt – wie Allgemein</small></div>
         </div>
         <div class="s-label">Verhalten</div>
         <div class="s-card">
@@ -668,7 +669,7 @@ overview = [<span class="s">"actions"</span>, <span class="s">"ext:jupyter"</spa
     <ul class="plain">
       <li><code>calendar = false</code>, <code>tasks = false</code>, <code>pomodoro = false</code> werden zu Einträgen in <code>hidden</code> von <code>default</code>. Die alten Schlüssel werden danach nicht mehr geschrieben, aber weiter gelesen, solange es keine Profile gibt.</li>
       <li><code>[context.extensions]</code> mit <code>bnki = true</code> wird zu <code>"ext:bnki"</code> am Ende von <code>overview</code> im Profil „Allgemein“. Erweiterungen mit <code>context: true</code> im Manifest erscheinen wie bisher von selbst, bis man sie ausblendet.</li>
-      <li>Fehlt <code>[context.profiles]</code> ganz, gelten die eingebauten Standardprofile aus der Tabelle oben.</li>
+      <li>Fehlt <code>[context.profiles]</code> ganz, gilt überall das Standardprofil <code>default</code> mit den eingebauten Werten, also dieselbe Leiste wie heute. Fehlt nur ein Profil, etwa <code>pdf</code>, gilt für PDFs ebenfalls <code>default</code>.</li>
     </ul>
   </div>
 </section>
@@ -707,7 +708,7 @@ overview = [<span class="s">"actions"</span>, <span class="s">"ext:jupyter"</spa
       <ul><li>Bearbeitungsmodus mit Ziehen und Galerie</li><li>Reiter anpassen, Bausteine als Reiter</li><li>Bereich „Unten angeheftet“</li></ul>
       <div class="files">Inspector.qml · PomodoroTimer.qml · neues ContextEditor.qml</div></div>
     <div class="phase"><span class="when">Schritt 3</span><h3>Profile</h3>
-      <ul><li>Profile PDF, Markdown, Code, Kalender</li><li>Profilwahl nach aktivem Tab</li><li>Neuer Abschnitt in den Einstellungen</li></ul>
+      <ul><li>Profile PDF, Markdown, Code, Kalender (nur wenn eingestellt, sonst Standardprofil)</li><li>Profilwahl nach aktivem Tab</li><li>Neuer Abschnitt in den Einstellungen</li></ul>
       <div class="files">Inspector.qml · SettingsDialog.qml · atlas-core (config)</div></div>
     <div class="phase"><span class="when">Schritt 4</span><h3>Neue Bausteine &amp; schmale Leiste</h3>
       <ul><li>Gliederung, Tags, Dateiinfo, Diese Woche</li><li>Reiter als Symbole bei wenig Platz</li></ul>
