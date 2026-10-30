@@ -551,7 +551,7 @@ pre .s { color: var(--a-ok); }
 <section>
   <div class="prose">
     <h2>4 · Schmale Leiste</h2>
-    <p>Statt seitwärts zu scrollen, zeigen die Reiter bei wenig Platz nur noch Symbole mit Tooltip. Der gewählte Reiter behält seinen Text. Die Einstellung „Reiterbeschriftung“ kennt <b>Automatisch</b> (Standard), <b>Text</b> (heutiges Verhalten) und <b>Symbole</b>.</p>
+    <p>Statt seitwärts zu scrollen, zeigen die Reiter bei wenig Platz nur noch Symbole mit Tooltip. Der gewählte Reiter behält seinen Text. Die Breite selbst bleibt, wie sie ist: Man zieht sie mit der Maus, und sie ist für alle Profile gleich. Ein Profil speichert keine Breite, damit beim Tabwechsel nichts springt. Die Leiste passt ihren Inhalt an die Breite an. Die Einstellung „Reiterbeschriftung“ kennt <b>Automatisch</b> (Standard), <b>Text</b> (heutiges Verhalten) und <b>Symbole</b>.</p>
   </div>
   <figure>
     <div class="stage"><div class="stage-inner">
@@ -720,7 +720,6 @@ overview = [<span class="s">"actions"</span>, <span class="s">"ext:jupyter"</spa
   <div class="prose">
     <h2>Offene Fragen</h2>
     <div class="q">
-      <div><b>Breite pro Profil?</b> Bei PDFs braucht die Leiste oft mehr Platz als bei Code. Die Breite könnte im Profil mitgespeichert werden.</div>
       <div><b>Leiste automatisch ausblenden?</b> Ein Profil ohne Bausteine (z. B. für Bilder) könnte die Leiste ganz einklappen.</div>
       <div><b>Erweiterungen mit eigenen Bausteinen?</b> Heute liefern Erweiterungen nur Karten mit Knöpfen. Ein echter Baustein mit eigener Ansicht bräuchte eine neue Stelle im Manifest und eine höhere <code>atlas_api</code>.</div>
     </div>
