@@ -415,6 +415,8 @@ Rectangle {
                             }
                             else if (text.startsWith("atlas:scroll:")) {
                                 const s = JSON.parse(text.slice(13))
+                                pageScroll.track(s.y, s.height)
+                                if (s.own) return
                                 root.previewLine = s.line
                                 root.previewY = s.y
                                 // Split view: the editor follows the preview (#7).
@@ -426,6 +428,48 @@ Rectangle {
                         }
                         // Never stays black after a workspace switch (#2).
                         WebRepaint { id: webRepaint }
+
+                        // Touchpad and wheel scroll like in the editor (TouchpadFling,
+                        // brisk): it moves `pageScroll`, which keeps track of the
+                        // page's position and height (CSS pixels) so that a glide
+                        // ends at the top and bottom, and the page follows each
+                        // step with scrollBy – relative, so a position reported
+                        // late never makes it jump. Sideways steps stay with the
+                        // page (wide code blocks and tables); Ctrl+wheel too.
+                        Flickable {
+                            id: pageScroll
+                            visible: false
+                            width: webView.width / webView.zoomFactor
+                            height: webView.height / webView.zoomFactor
+                            contentWidth: width
+                            /// The page moved by itself (keys, scroll bar, links,
+                            /// following the editor) or changed its height: taken
+                            /// over while no swipe or glide is going on.
+                            function track(y, pageHeight) {
+                                contentHeight = Math.max(height, pageHeight || 0)
+                                if (!pageFling.gliding && Date.now() - pageFling.lastStep > 250) contentY = y
+                            }
+                        }
+                        TouchpadFling {
+                            id: pageFling
+                            /// When the last step was handed to the page.
+                            property real lastStep: 0
+                            anchors.fill: parent
+                            z: 1
+                            flickable: pageScroll
+                            brisk: true
+                            horizontal: false
+                            active: root.app.touchpadFling
+                            app: root.app
+                            scroller: (dx, dy) => {
+                                const before = pageScroll.contentY
+                                const max = Math.max(0, pageScroll.contentHeight - pageScroll.height)
+                                pageScroll.contentY = Math.max(0, Math.min(max, before + dy / webView.zoomFactor))
+                                const d = pageScroll.contentY - before
+                                lastStep = Date.now()
+                                if (d) webView.runJavaScript("window.scrollBy(0, " + d + ")")
+                            }
+                        }
                     }
                 }
             }

@@ -31,6 +31,9 @@ Item {
     property bool active: true
     /// Scroll here; false: the view handles the wheel and calls sample().
     property bool handleWheel: true
+    /// Takes mostly sideways steps too; false leaves them to the items
+    /// below (e.g. wide code blocks in a web page).
+    property bool horizontal: true
     /// Pixels per mouse wheel notch.
     property real wheelStep: 100
     /// Faster, more direct touchpad scrolling (.atlasnote and Markdown):
@@ -261,6 +264,10 @@ Item {
         acceptedPointerTypes: PointerDevice.AllPointerTypes
         acceptedModifiers: Qt.NoModifier
         onWheel: (event) => {
+            if (!fling.horizontal && Math.abs(event.angleDelta.x) > Math.abs(event.angleDelta.y)) {
+                event.accepted = false
+                return
+            }
             fling.scroll(event)
             event.accepted = true
         }

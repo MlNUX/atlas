@@ -260,22 +260,33 @@ window.atlas = (function () {
     });
     document.addEventListener("auxclick", (ev) => { if (ev.button === 1) ev.target.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true })); });
 
-    // Scrolling by the user is reported once per frame (the editor follows);
-    // movements made for the editor are not.
+    // The position is reported once per frame: as scrolling by the user
+    // (the editor follows), or `own` for movements made for the editor and
+    // changes of the page height (QML only keeps track of where it is).
     let scrollPending = false;
-    window.addEventListener("scroll", () => {
-        if (!reportScroll) return;
-        if (ownScroll >= 0 && Math.abs(window.scrollY - ownScroll) <= 1) { ownScroll = -1; return; }
-        ownScroll = -1;
+    let scrollOwn = true;
+    function report(own) {
+        scrollOwn = scrollOwn && own;
         if (scrollPending) return;
         scrollPending = true;
         requestAnimationFrame(() => {
             scrollPending = false;
             // The middle of the view is where content lines up with the editor.
             const mid = Math.round(window.innerHeight / 2);
-            post("scroll", { line: topLine(), exact: exactLineAt(mid), at: mid, y: window.scrollY });
+            post("scroll", { line: topLine(), exact: exactLineAt(mid), at: mid, y: window.scrollY,
+                             height: document.documentElement.scrollHeight, own: scrollOwn });
+            scrollOwn = true;
         });
+    }
+    window.addEventListener("scroll", () => {
+        let own = !reportScroll;
+        if (reportScroll) {
+            own = ownScroll >= 0 && Math.abs(window.scrollY - ownScroll) <= 1;
+            ownScroll = -1;
+        }
+        report(own);
     });
+    new ResizeObserver(() => report(true)).observe(document.documentElement);
 
     function scrollToAnchor(slug) {
         const el = document.getElementById(slug);
