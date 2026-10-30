@@ -68,16 +68,16 @@ Rectangle {
     }
     /// Icon and colour of an entry; files by the type in their name or info.
     function iconOf(node) {
-        if (node.kind === "crs") return ["school", "#5aa2ff"]
-        if (node.kind === "grp") return ["session", "#c792ea"]
-        if (node.kind === "sess") return ["calendar", "#7bd88f"]
-        if (node.kind !== "file") return ["folder-fill", "#e0b33a"]
+        if (node.kind === "crs") return ["school", Theme.light ? "#2f6fe0" : "#5aa2ff"]
+        if (node.kind === "grp") return ["session", Theme.light ? "#8a55d8" : "#c792ea"]
+        if (node.kind === "sess") return ["calendar", Theme.light ? "#1e9455" : "#7bd88f"]
+        if (node.kind !== "file") return ["folder-fill", Theme.warn]
         const t = (node.name + " " + (node.info || "")).toLowerCase()
-        if (/\bpdf\b|\.pdf/.test(t)) return ["file-pdf", "#f2575f"]
-        if (/\b(png|jpe?g|gif|svg|webp)\b/.test(t)) return ["file-image", "#7bd88f"]
-        if (/\b(xlsx?|csv|ods)\b/.test(t)) return ["file-table", "#7bd88f"]
-        if (/\b(py|java|c|cpp|rs|js|ts|m|ipynb|zip)\b/.test(t)) return ["file-code", "#c792ea"]
-        return ["file-text", "#8a97ad"]
+        if (/\bpdf\b|\.pdf/.test(t)) return ["file-pdf", Theme.kindColors.pdf]
+        if (/\b(png|jpe?g|gif|svg|webp)\b/.test(t)) return ["file-image", Theme.light ? "#1e9455" : "#7bd88f"]
+        if (/\b(xlsx?|csv|ods)\b/.test(t)) return ["file-table", Theme.light ? "#1e9455" : "#7bd88f"]
+        if (/\b(py|java|c|cpp|rs|js|ts|m|ipynb|zip)\b/.test(t)) return ["file-code", Theme.light ? "#8a55d8" : "#c792ea"]
+        return ["file-text", Theme.textMuted]
     }
     function count(node) {
         const c = node.children || []

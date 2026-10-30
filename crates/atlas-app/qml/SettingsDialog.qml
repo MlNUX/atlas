@@ -115,7 +115,42 @@ Dialog {
                 width: body.availableWidth - 36
                 spacing: 8
 
-                SectionLabel { text: qsTr("Seitenleiste") }
+                SectionLabel { text: qsTr("Darstellung") }
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: themeRow.implicitHeight + 24
+                    RowLayout {
+                        id: themeRow
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+                        Icon { Layout.alignment: Qt.AlignTop; name: Theme.light ? "sun" : "moon"; size: 18; color: Theme.accent }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Text { text: qsTr("Farbschema"); color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.smallFontSize
+                                text: qsTr("Dunkel oder hell für alle Fenster, Vorschau und Terminal; „System“ folgt der Einstellung des Desktops. Der Dunkelmodus für PDF-Seiten bleibt davon getrennt.")
+                            }
+                        }
+                        Segmented {
+                            Layout.alignment: Qt.AlignVCenter
+                            current: dialog.app.theme
+                            choices: [
+                                { value: "dark", text: qsTr("Dunkel") },
+                                { value: "light", text: qsTr("Hell") },
+                                { value: "system", text: qsTr("System") },
+                            ]
+                            onChosen: (value) => dialog.app.theme = value
+                        }
+                    }
+                }
+
+                SectionLabel { text: qsTr("Seitenleiste"); Layout.topMargin: 10 }
                 Card {
                     Layout.fillWidth: true
                     implicitHeight: placesRow.implicitHeight + 24
@@ -734,6 +769,45 @@ Dialog {
             Behavior on x { NumberAnimation { duration: 120 } }
         }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: toggle.toggled() }
+    }
+
+    /// A choice of a few values side by side.
+    component Segmented: Rectangle {
+        id: segmented
+        property var choices: []
+        property string current
+        signal chosen(string value)
+        implicitWidth: segmentRow.implicitWidth + 6
+        implicitHeight: 28
+        radius: 8
+        color: Theme.raised
+        border.color: Theme.border
+        Row {
+            id: segmentRow
+            anchors.centerIn: parent
+            spacing: 2
+            Repeater {
+                model: segmented.choices
+                Rectangle {
+                    id: segment
+                    required property var modelData
+                    readonly property bool selected: segmented.current === modelData.value
+                    width: segmentText.implicitWidth + 20
+                    height: 22
+                    radius: 6
+                    color: selected ? Theme.accent : segmentHover.hovered ? Theme.hover : "transparent"
+                    HoverHandler { id: segmentHover }
+                    Text {
+                        id: segmentText
+                        anchors.centerIn: parent
+                        text: segment.modelData.text
+                        color: segment.selected ? "white" : Theme.text
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: segmented.chosen(segment.modelData.value) }
+                }
+            }
+        }
     }
 
     FolderChooser {

@@ -26,7 +26,7 @@ T.ToolTip {
     }
     background: Rectangle {
         radius: 7
-        color: "#1b2840"
+        color: Colors.tooltip
         border.color: Colors.borderStrong
     }
 }

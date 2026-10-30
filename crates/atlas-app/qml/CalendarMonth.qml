@@ -78,7 +78,7 @@ Item {
                     readonly property real hours: month.load(items)
                     width: month.cellWidth
                     height: month.cellHeight
-                    color: month.dragTo === index ? Theme.hover : drop.containsDrag ? Qt.rgba(0.18, 0.63, 0.26, 0.2) : inMonth ? "transparent" : Qt.rgba(0, 0, 0, 0.18)
+                    color: month.dragTo === index ? Theme.hover : drop.containsDrag ? Qt.rgba(0.18, 0.63, 0.26, 0.2) : inMonth ? "transparent" : Theme.shade
                     border.color: Theme.border
                     border.width: 0.5
                     MouseArea {
@@ -130,7 +130,7 @@ Item {
                                 height: 16
                                 radius: 3
                                 readonly property bool flag: modelData.kind === "deadline" || modelData.kind === "note"
-                                color: month.calendar.selected === modelData.uid ? Theme.selection : modelData.allDay || flag ? Qt.darker(month.calendar.colorOf(modelData), 2.2) : "transparent"
+                                color: month.calendar.selected === modelData.uid ? Theme.selection : modelData.allDay || flag ? Theme.entryFill(month.calendar.colorOf(modelData), 2.2) : "transparent"
                                 opacity: modelData.status === "done" ? 0.55 : 1
                                 Row {
                                     x: 3

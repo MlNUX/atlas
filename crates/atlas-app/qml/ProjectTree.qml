@@ -114,7 +114,7 @@ Rectangle {
                 anchors.leftMargin: 6
                 anchors.rightMargin: 6
                 spacing: 6
-                Icon { name: "folder-fill"; size: 16; color: "#5aa2ff" }
+                Icon { name: "folder-fill"; size: 16; color: Theme.kindColors.dir }
                 Label {
                     Layout.fillWidth: true
                     text: root.projectName

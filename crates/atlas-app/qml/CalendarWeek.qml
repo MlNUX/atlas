@@ -188,7 +188,7 @@ Item {
                     width: (modelData.to - modelData.from + 1) * week.dayWidth - 4
                     height: 19
                     radius: 3
-                    color: week.calendar.selected === o.uid ? week.calendar.colorOf(o) : Qt.darker(week.calendar.colorOf(o), 2.2)
+                    color: week.calendar.selected === o.uid ? week.calendar.colorOf(o) : Theme.entryFill(week.calendar.colorOf(o), 2.2)
                     border.color: week.calendar.colorOf(o)
                     opacity: o.status === "done" ? 0.55 : 1
                     z: barMouse.drag.active ? 10 : 1
@@ -199,7 +199,7 @@ Item {
                         verticalAlignment: Text.AlignVCenter
                         text: (bar.o.kind === "deadline" || bar.o.kind === "note" ? "⚑ " : "") + bar.o.title + (bar.o.recurring ? " ↻" : "")
                             + (bar.o.files && bar.o.files.length ? "  📎" + bar.o.files.length : "")
-                        color: "white"
+                        color: week.calendar.selected === bar.o.uid ? "white" : Theme.entryText
                         font.strikeout: bar.o.status === "done"
                         font.pixelSize: Theme.smallFontSize
                         elide: Text.ElideRight
@@ -282,7 +282,7 @@ Item {
                         x: week.gutter + index * week.dayWidth
                         width: week.dayWidth
                         height: canvas.height
-                        color: week.calendar.sameDay(week.days[index], week.now) ? Qt.rgba(0, 0.47, 0.83, 0.05) : index >= 5 ? Qt.rgba(1, 1, 1, 0.015) : "transparent"
+                        color: week.calendar.sameDay(week.days[index], week.now) ? Qt.rgba(0, 0.47, 0.83, 0.05) : index >= 5 ? (Theme.light ? Qt.rgba(0, 0, 0, 0.025) : Qt.rgba(1, 1, 1, 0.015)) : "transparent"
                         Rectangle { width: 1; height: parent.height; color: Theme.border }
                     }
                 }
@@ -329,7 +329,7 @@ Item {
                         anchors.top: parent.top
                         anchors.margins: 4
                         text: freeArea.from && freeArea.to ? week.calendar.fmtTime(freeArea.from) + "–" + week.calendar.fmtTime(freeArea.to) : ""
-                        color: "white"
+                        color: Theme.textStrong
                         font.pixelSize: Theme.smallFontSize
                     }
                 }
@@ -375,7 +375,7 @@ Item {
                         anchors.top: parent.top
                         anchors.margins: 4
                         text: gridDrop.hover ? week.calendar.fmtTime(gridDrop.hover) + qsTr(" · Arbeitsblock") : ""
-                        color: "white"
+                        color: Theme.textStrong
                         font.pixelSize: Theme.smallFontSize
                     }
                 }
@@ -402,8 +402,8 @@ Item {
                         z: dragging ? 20 : 2
                         readonly property bool dragging: dragDX !== 0 || dragDY !== 0 || extra !== 0
                         readonly property color tone: week.calendar.colorOf(o)
-                        color: week.calendar.selected === o.uid ? Qt.darker(tone, 1.3) : Qt.darker(tone, 2.4)
-                        border.color: week.calendar.selected === o.uid ? "white" : tone
+                        color: week.calendar.selected === o.uid ? Theme.entryFill(tone, 1.3) : Theme.entryFill(tone, 2.4)
+                        border.color: week.calendar.selected === o.uid ? Theme.textStrong : tone
                         border.width: week.calendar.selected === o.uid ? 1 : 0
                         opacity: o.status === "done" ? 0.55 : 1
                         Rectangle { width: 3; height: parent.height; radius: 2; color: item.tone }
@@ -416,7 +416,7 @@ Item {
                                 width: parent.width
                                 text: (item.o.kind === "deadline" || item.o.kind === "note" ? "⚑ " : item.o.kind === "block" ? "▣ " : "")
                                     + item.o.title + (item.o.recurring ? " ↻" : "")
-                                color: "white"
+                                color: Theme.entryText
                                 font.pixelSize: Theme.smallFontSize
                                 font.bold: true
                                 font.strikeout: item.o.status === "done"
@@ -435,7 +435,7 @@ Item {
                                         + (item.o.session ? "  ⧉" : "")
                                         + (item.o.checklist && item.o.checklist[1] ? "  ☑" + item.o.checklist[0] + "/" + item.o.checklist[1] : "")
                                 }
-                                color: Qt.rgba(1, 1, 1, 0.75)
+                                color: Theme.entryTextMuted
                                 font.pixelSize: 10
                                 elide: Text.ElideRight
                             }

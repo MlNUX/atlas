@@ -190,11 +190,14 @@ Rectangle {
         }
     }
 
+    // The preview follows the design (diagrams are drawn again).
+    Connections { target: Theme; function onLightChanged() { root.render() } }
+
     function render() {
         if (!pageReady) return
         const result = JSON.parse(root.app.renderMarkdown(editor.text, root.source))
         root.info = result
-        web.runJavaScript("atlas.set(" + JSON.stringify(result.html) + ")")
+        web.runJavaScript("atlas.setLight(" + Theme.light + "); atlas.set(" + JSON.stringify(result.html) + ")")
         // New content: line up with the editor again.
         if (root.mode === "split") followTimer.restart()
     }
@@ -283,7 +286,7 @@ Rectangle {
                     Label {
                         required property string modelData
                         text: "#" + modelData
-                        color: "#9dd1ff"
+                        color: Theme.link
                         font.pixelSize: Theme.smallFontSize
                         leftPadding: 4
                     }

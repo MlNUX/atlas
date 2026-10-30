@@ -11,6 +11,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Hinzugefügt
+- **Helles Farbschema** für die ganze App: Hauptfenster, alle Dialoge und
+  Menüs, Kalender, Kontextleiste und Graph, Suche, ILIAS-Anmeldung,
+  Markdown-Vorschau (mit hellem Code-Highlighting und Diagrammen) und
+  Terminal. Umschalten unter Einstellungen → Darstellung („Dunkel“,
+  „Hell“ oder „System“, das dem Desktop folgt) oder in der Arbeitsleiste
+  (Strg+P, „Helles Farbschema“); gespeichert als `[appearance] theme` in
+  `config.toml`. Der Dunkelmodus für PDF-Seiten bleibt davon unabhängig.
 - **Erweiterungen, API 2** (`atlas_api: 2`, docs/extensions.md); Format 1
   läuft unverändert weiter:
   - **Rechte** (`permissions`): welche Programme die Erweiterung startet,

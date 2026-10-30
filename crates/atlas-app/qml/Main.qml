@@ -28,12 +28,23 @@ ApplicationWindow {
         toolTipBase: Theme.raised
         toolTipText: Theme.text
         mid: Theme.border
-        dark: "#070b14"
+        dark: Theme.light ? "#8c98ab" : "#070b14"
         light: Theme.borderStrong
         midlight: Theme.border
     }
 
     AppController { id: app }
+
+    // The design: `[appearance] theme` – dark, light or as the desktop.
+    Binding {
+        target: Theme
+        property: "light"
+        value: app.theme === "light" || (app.theme === "system" && Application.styleHints.colorScheme === Qt.ColorScheme.Light)
+    }
+    Connections {
+        target: Theme
+        function onLightChanged() { app.setTerminalLight(Theme.light) }
+    }
 
     FileActions {
         id: fileActions
@@ -186,7 +197,7 @@ ApplicationWindow {
             { name: qsTr("Neue Frist …"), run: () => window.newCalendarEntry("deadline") },
             { name: qsTr("Neue Aufgabe …"), run: () => window.newCalendarEntry("task") },
             { name: qsTr("Einstellungen …"), hint: qsTr("Orte, Editor, Kalender"), run: () => settingsDialog.open() },
-
+            { name: Theme.light ? qsTr("Dunkles Farbschema") : qsTr("Helles Farbschema"), hint: qsTr("Darstellung"), run: () => app.theme = Theme.light ? "dark" : "light" },
             { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
         ]
         if (calendar.connected) {
@@ -998,7 +1009,7 @@ ApplicationWindow {
                             width: disk.usage.total ? parent.width * (1 - disk.usage.free / disk.usage.total) : 0
                             height: parent.height
                             radius: 3
-                            color: disk.usage.total && disk.usage.free / disk.usage.total < 0.1 ? Theme.warn : "#4cc3ff"
+                            color: disk.usage.total && disk.usage.free / disk.usage.total < 0.1 ? Theme.warn : Theme.light ? "#1d8fd0" : "#4cc3ff"
                         }
                     }
                     Label {

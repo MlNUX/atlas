@@ -35,6 +35,7 @@ verändert weder PDFs noch Notizen ungefragt.
   Die **Arbeitsleiste** (`Strg+P`) findet Dateien, Aktionen, Tags, Zitate
   und Termine.
 - **Terminal** im Fenster, **eigene Aktionen** und **Erweiterungen**.
+- **Dunkles oder helles Farbschema** (oder wie der Desktop) für alle Fenster.
 - **Kalender** mit Fristen aus Notizen, optional mit Nextcloud (CalDAV) oder
   Google ([Einrichtung](docs/google-kalender.md)).
 - **ILIAS** (z. B. KIT): Favoriten als Ordner, Dateien mit einem Klick laden.

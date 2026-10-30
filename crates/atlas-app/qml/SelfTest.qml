@@ -1201,6 +1201,12 @@ Item {
                 inspector.graphWindow.close()
                 settingsDialog.open()
                 check("Einstellungen öffnen", settingsDialog.visible)
+                // The design: light for all windows, stored in config.toml.
+                app.theme = "light"
+                check("Helles Farbschema", app.theme === "light" && Theme.light && Qt.colorEqual(Theme.editor, "#ffffff")
+                      && Qt.colorEqual(window.color, Theme.window), Theme.editor)
+                app.theme = "unbekannt"
+                check("Unbekanntes Farbschema wird dunkel", app.theme === "dark" && !Theme.light, app.theme)
                 // The ILIAS address: settable, checked, applied.
                 const field = settingsDialog.iliasAddressField
                 const before = JSON.parse(app.iliasConfig).base_url
