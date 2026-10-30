@@ -23,6 +23,8 @@ Rectangle {
     readonly property alias pomodoro: pomodoroTimer
 
     signal openRequested(string path, int line, string where, var state)
+    /// A view or command from an extension card ({id, name}).
+    signal keyActionRequested(var binding)
 
     color: Theme.panel
     radius: Theme.radius
@@ -54,11 +56,13 @@ Rectangle {
     /// User actions for the document, then for the project: {id, name,
     /// description, source, paths}.
     readonly property var actionList: {
+        const t = Timing.now()
         const out = []
         const seen = {}
         for (const paths of document ? [[document], []] : [[]])
             for (const a of actions.actionsFor(paths))
-                if (!seen[a.id]) { seen[a.id] = true; out.push(Object.assign({ paths: paths }, a)) }
+                if (!seen[a.id] && a.menu) { seen[a.id] = true; out.push(Object.assign({ paths: paths }, a)) }
+        Timing.took("Kontextleiste: Aktionen", t)
         return out
     }
 
@@ -74,6 +78,7 @@ Rectangle {
 
     /// Built-in actions for the document next to the user's own.
     readonly property var builtins: {
+        const t = Timing.now()
         const out = []
         const kind = document ? app.fileKind(document) : ""
         if (kind === "pdf" && pdfViewer) {
@@ -111,6 +116,7 @@ Rectangle {
         if (document)
             out.push({ icon: "calendar", name: qsTr("Als Aufgabe einplanen"), enabled: true, tip: qsTr("Aufgabe im Kalender anlegen"),
                        run: () => actions.planAsTask(document) })
+        Timing.took("Kontextleiste: eingebaute Aktionen", t)
         return out
     }
 
@@ -275,6 +281,7 @@ Rectangle {
             // ---- links
             ContextPanel {
                 id: linksPanel
+                lazy: true
                 app: inspector.app
                 path: inspector.document
                 tab: 0
@@ -285,6 +292,7 @@ Rectangle {
 
             // ---- graph
             ContextPanel {
+                lazy: true
                 app: inspector.app
                 path: inspector.document
                 tab: 1
@@ -318,6 +326,15 @@ Rectangle {
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
                         text: qsTr("Noch keine eigenen Aktionen für diese Datei. Lege welche für das Projekt an oder installiere Erweiterungen.")
+                    }
+                    // Cards of extensions („In der Kontextleiste anzeigen“ in
+                    // the settings).
+                    SectionLabel { text: qsTr("Erweiterungen"); Layout.topMargin: 6; visible: extensionCards.visible }
+                    ExtensionCards {
+                        id: extensionCards
+                        Layout.fillWidth: true
+                        app: inspector.app
+                        onKeyActionRequested: (binding) => inspector.keyActionRequested(binding)
                     }
                     // (Wraps in a narrow bar instead of widening it.)
                     Flow {

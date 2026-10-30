@@ -240,6 +240,10 @@ pub struct ContextConfig {
     pub pomodoro_break: u32,
     #[serde(default = "pomodoro_long")]
     pub pomodoro_long_break: u32,
+    /// Extensions shown (true) or hidden (false) as a card in the context
+    /// bar; not listed: what the extension asks for (`context:`).
+    #[serde(default)]
+    pub extensions: std::collections::BTreeMap<String, bool>,
 }
 
 fn pomodoro_work() -> u32 {
@@ -261,6 +265,7 @@ impl Default for ContextConfig {
             pomodoro_work: pomodoro_work(),
             pomodoro_break: pomodoro_short(),
             pomodoro_long_break: pomodoro_long(),
+            extensions: Default::default(),
         }
     }
 }
@@ -271,6 +276,25 @@ pub struct PdfConfig {
     /// Dark mode: pages with inverted brightness (hues are kept).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dark: bool,
+}
+
+/// `[appearance]`: the design of the whole app.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppearanceConfig {
+    /// "dark" (default), "light" or "system" (follows the desktop).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub theme: String,
+}
+
+impl AppearanceConfig {
+    /// The theme as one of "dark", "light" and "system".
+    pub fn theme(&self) -> &str {
+        match self.theme.as_str() {
+            "light" => "light",
+            "system" => "system",
+            _ => "dark",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -293,6 +317,8 @@ pub struct Config {
     pub files: FilesConfig,
     #[serde(default)]
     pub ilias: IliasConfig,
+    #[serde(default)]
+    pub appearance: AppearanceConfig,
 }
 
 pub fn config_dir() -> PathBuf {
@@ -351,6 +377,11 @@ impl Config {
     /// Updates only the `[context]` table.
     pub fn save_context(context: &ContextConfig) -> Result<()> {
         save_table(&config_file(), "context", context)
+    }
+
+    /// Updates only the `[appearance]` table.
+    pub fn save_appearance(appearance: &AppearanceConfig) -> Result<()> {
+        save_table(&config_file(), "appearance", appearance)
     }
 
     /// Updates only the `[pdf]` table.
@@ -524,6 +555,15 @@ mod tests {
         );
         let cfg = EditorConfig { command: "my-term-editor {file}".into(), terminal: Some(true), spellcheck: None };
         assert!(matches!(editor_launch(&cfg, file, 1, 1).unwrap(), EditorLaunch::Terminal(_)));
+    }
+
+    #[test]
+    fn reads_the_theme() {
+        let theme = |text: &str| toml::from_str::<Config>(text).unwrap().appearance.theme().to_owned();
+        assert_eq!(theme(""), "dark");
+        assert_eq!(theme("[appearance]\ntheme = \"light\"\n"), "light");
+        assert_eq!(theme("[appearance]\ntheme = \"system\"\n"), "system");
+        assert_eq!(theme("[appearance]\ntheme = \"pink\"\n"), "dark");
     }
 
     #[test]

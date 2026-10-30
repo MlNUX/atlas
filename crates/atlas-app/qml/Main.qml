@@ -28,12 +28,40 @@ ApplicationWindow {
         toolTipBase: Theme.raised
         toolTipText: Theme.text
         mid: Theme.border
-        dark: "#070b14"
+        dark: Theme.light ? "#8c98ab" : "#070b14"
         light: Theme.borderStrong
         midlight: Theme.border
     }
 
     AppController { id: app }
+
+    // ATLAS_TIMING=1: how long opening and switching files takes (Timing.qml,
+    // switched on first thing in Component.onCompleted below).
+    Connections {
+        target: window
+        enabled: Timing.on
+        function onFrameSwapped() { Timing.frame() }
+    }
+
+    // Holds the Markdown preview loaded ahead (PreviewPool), hidden.
+    Item {
+        id: previewSpare
+        visible: false
+        width: window.width / 2
+        height: window.height
+        Component.onCompleted: PreviewPool.host = previewSpare
+    }
+
+    // The design: `[appearance] theme` – dark, light or as the desktop.
+    Binding {
+        target: Theme
+        property: "light"
+        value: app.theme === "light" || (app.theme === "system" && Application.styleHints.colorScheme === Qt.ColorScheme.Light)
+    }
+    Connections {
+        target: Theme
+        function onLightChanged() { app.setTerminalLight(Theme.light) }
+    }
 
     FileActions {
         id: fileActions
@@ -56,6 +84,7 @@ ApplicationWindow {
         }
         function onOpenWithState(path, state) { editor.open(path, 0, "tab", state) }
         function onExtensionsRequested() { extensionsDialog.open() }
+        function onRevealRequested(path) { window.revealInTree(path) }
         function onRunInTerminalTab(command, cwd) {
             editor.open("terminal:" + cwd + "#" + (++window.terminalTabs), 0, "tab", { command: command })
         }
@@ -145,11 +174,11 @@ ApplicationWindow {
         app: app
         calendar: fileActions.calendar
         onCalendarEntryRequested: (uid, start) => window.openCalendar({ selected: uid, date: start ? start.slice(0, 10) : "" })
-        actions: window.paletteActions()
+        // Filled when it opens (onAboutToShow), not on every tab change.
         onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
         onSearchRequested: (text) => { searchDialog.setQuery(text) }
         onLineRequested: (line) => { if (editor.activeTab) editor.activeTab.reveal(line) }
-        onAboutToShow: actions = window.paletteActions()
+        onAboutToShow: { actions = window.paletteActions(); window.reloadActionKeys() }
     }
 
     /// Actions of the universal bar (Ctrl+P, ">" for actions only).
@@ -185,6 +214,7 @@ ApplicationWindow {
             { name: qsTr("Neue Frist …"), run: () => window.newCalendarEntry("deadline") },
             { name: qsTr("Neue Aufgabe …"), run: () => window.newCalendarEntry("task") },
             { name: qsTr("Einstellungen …"), hint: qsTr("Orte, Editor, Kalender"), run: () => settingsDialog.open() },
+            { name: Theme.light ? qsTr("Dunkles Farbschema") : qsTr("Helles Farbschema"), hint: qsTr("Darstellung"), run: () => app.theme = Theme.light ? "dark" : "light" },
             { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
         ]
         if (calendar.connected) {
@@ -227,10 +257,10 @@ ApplicationWindow {
         const line = textEditor && textEditor.currentLine ? textEditor.currentLine() : 0
         for (const ctx of current ? [[current], []] : [[]]) {
             for (const a of fileActions.actionsFor(ctx)) {
-                if (seen[a.id]) continue
+                if (seen[a.id] || !a.palette) continue
                 seen[a.id] = true
                 const paths = ctx
-                list.push({ name: qsTr("Aktion: %1").arg(a.name), hint: ctx.length ? app.fileName(current) : a.source,
+                list.push({ name: qsTr("Aktion: %1").arg(a.name), hint: a.keybinding || (ctx.length ? app.fileName(current) : a.source),
                             run: () => fileActions.runAction(a.id, paths, line) })
             }
         }
@@ -240,9 +270,22 @@ ApplicationWindow {
         if (current) {
             for (const x of fileActions.exportersFor([current]))
                 list.push({ name: qsTr("Exportieren: %1").arg(x.name), hint: "." + x.target, run: () => fileActions.exportWith(x, current) })
-            for (const p of fileActions.processorsFor(current))
+            const shown = fileActions.processorsFor(current)
+            for (const p of shown)
                 list.push({ name: qsTr("Anzeigen mit: %1").arg(p.name), hint: p.extension, run: () => editor.open(current, 0, "tab", { processor: p.id }) })
+            if (shown.some(p => p.auto && p.output === "view"))
+                list.push({ name: qsTr("Anzeigen mit: Atlas (Datei selbst)"), run: () => editor.open(current, 0, "tab", { processor: "atlas:source" }) })
         }
+        // Commands running in the background (e.g. the Jupyter server).
+        for (const job of JSON.parse(app.backgroundJobs()).filter(j => j.running))
+            list.push({ name: qsTr("Beenden: %1").arg(job.name), hint: qsTr("im Hintergrund"), run: () => { app.stopBackground(job.key); fileActions.showMessage(qsTr("„%1“ wird beendet").arg(job.name)) } })
+        // Extensions that come with Atlas.
+        for (const b of JSON.parse(app.bundledExtensions()))
+            list.push({ name: (b.installed ? qsTr("Erweiterung aktualisieren: %1") : qsTr("Erweiterung installieren: %1")).arg(b.title), hint: qsTr("mitgeliefert"),
+                        run: () => { const error = app.installBundled(b.name); fileActions.showMessage(error || qsTr("„%1“ installiert").arg(b.title)) } })
+        // Views of extensions, opened on the project.
+        for (const v of JSON.parse(app.extensionViews()))
+            list.push({ name: qsTr("Öffnen: %1").arg(v.name), hint: v.keybinding || v.extension, run: () => window.openExtensionView(v.id, "") })
         list.push({ name: qsTr("Erweiterungen verwalten …"), run: () => extensionsDialog.open() })
         list.push({ name: qsTr("Neue Erweiterung …"), run: () => { extensionsDialog.open(); extensionsDialog.askNew() } })
         return list
@@ -480,6 +523,8 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        Timing.on = app.timing
+        reloadActionKeys()
         if (app.projectRoot) restoreSession()
         else if (app.openFiles.length > 0) openCliFiles()
         else editor.addGroup()
@@ -601,6 +646,48 @@ ApplicationWindow {
     }
 
     // -------------------------------------------------------------- shortcuts
+
+    // Key sequences of actions and extensions (re-read when extensions or
+    // their settings change). The action runs on the active document if it
+    // fits, otherwise on the project.
+    property var actionKeys: []
+    function reloadActionKeys() { try { actionKeys = JSON.parse(app.keybindings()) } catch (e) { actionKeys = [] } }
+    Connections {
+        target: app
+        function onUntrustedExtensionsChanged() { window.reloadActionKeys() }
+    }
+    Instantiator {
+        model: window.actionKeys
+        delegate: Shortcut {
+            required property var modelData
+            sequence: modelData.sequence
+            context: Qt.ApplicationShortcut
+            onActivated: window.runKeyAction(modelData)
+        }
+    }
+    /// Opens view `id` of an extension on `path` if it fits, otherwise on
+    /// the project.
+    function openExtensionView(id, path) {
+        const fits = path && fileActions.processorsFor(path).some(p => p.id === id)
+        const target = fits ? path : app.projectRoot
+        if (target) editor.open(target, 0, "tab", { processor: id })
+        else fileActions.showMessage(qsTr("Erst einen Projektordner öffnen"))
+    }
+    function runKeyAction(binding) {
+        const tab = editor.activeTab
+        const current = tab && tab.path && app.exists(tab.path) ? tab.path : ""
+        if (binding.id.startsWith("view:")) return window.openExtensionView(binding.id, current)
+        const viewer = tab ? tab.viewerItem : null
+        const textEditor = viewer && viewer.editorItem ? viewer.editorItem : viewer && viewer.currentLine ? viewer : null
+        const line = textEditor && textEditor.currentLine ? textEditor.currentLine() : 0
+        for (const ctx of current ? [[current], []] : [[]]) {
+            if (fileActions.actionsFor(ctx).some(a => a.id === binding.id)) {
+                fileActions.runAction(binding.id, ctx, line)
+                return
+            }
+        }
+        fileActions.showMessage(qsTr("„%1“ passt nicht zum aktiven Dokument").arg(binding.name))
+    }
 
     Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.askProject() }
     Shortcut { sequence: "Ctrl+P"; context: Qt.ApplicationShortcut; onActivated: commandPalette.show("") }
@@ -940,7 +1027,7 @@ ApplicationWindow {
                             width: disk.usage.total ? parent.width * (1 - disk.usage.free / disk.usage.total) : 0
                             height: parent.height
                             radius: 3
-                            color: disk.usage.total && disk.usage.free / disk.usage.total < 0.1 ? Theme.warn : "#4cc3ff"
+                            color: disk.usage.total && disk.usage.free / disk.usage.total < 0.1 ? Theme.warn : Theme.light ? "#1d8fd0" : "#4cc3ff"
                         }
                     }
                     Label {
@@ -988,6 +1075,7 @@ ApplicationWindow {
             editor: editor
             actions: fileActions
             onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
+            onKeyActionRequested: (binding) => window.runKeyAction(binding)
         }
     }
 

@@ -10,6 +10,165 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+### Hinzugefügt
+- **Helles Farbschema** für die ganze App: Hauptfenster, alle Dialoge und
+  Menüs, Kalender, Kontextleiste und Graph, Suche, ILIAS-Anmeldung,
+  Markdown-Vorschau (mit hellem Code-Highlighting und Diagrammen) und
+  Terminal. Umschalten unter Einstellungen → Darstellung („Dunkel“,
+  „Hell“ oder „System“, das dem Desktop folgt) oder in der Arbeitsleiste
+  (Strg+P, „Helles Farbschema“); gespeichert als `[appearance] theme` in
+  `config.toml`. Der Dunkelmodus für PDF-Seiten bleibt davon unabhängig.
+- **Erweiterungen, API 2** (`atlas_api: 2`, docs/extensions.md); Format 1
+  läuft unverändert weiter:
+  - **Rechte** (`permissions`): welche Programme die Erweiterung startet,
+    welche Dateien sie braucht, ob sie ins Netz geht. Atlas zeigt sie in der
+    Liste und vor der Freigabe; Befehle mit nicht angemeldeten Programmen
+    werden abgelehnt.
+  - **Einstellungen** mit Typ (Text, Pfad, Schalter, Zahl, Auswahl,
+    Geheimnis), die Atlas als Formular zeigt; in Befehlen als
+    `{setting:…}` und `ATLAS_SETTING_…`, Geheimnisse verschlüsselt und nur
+    in der Umgebung.
+  - **Befehle** mit Tastenkürzel (`keybinding`) und Platz im Kontextmenü
+    oder in der Arbeitsleiste (`menu`) – auch für eigene Aktionen.
+  - Neuere API-Versionen werden erkannt und mit Hinweis nicht geladen.
+- **Ansichten** für Erweiterungen (`views`): eine HTML-Seite der
+  Erweiterung als Tab, mit einer Brücke zu Atlas (Dateien lesen, schreiben,
+  umbenennen, in den Papierkorb, öffnen). Jeder Pfad wird gegen die
+  angemeldeten Rechte geprüft; ins Netz nur mit `network`.
+- **Mitgelieferte Erweiterungen**, mit einem Klick installiert (in den
+  Einstellungen, im Erweiterungsdialog, in der Arbeitsleiste):
+  - **bnki-Karten**: Karteikarten für die bnki-App schreiben (Strg+Alt+B) –
+    mit Vorschau für Formeln und Code; jeder Stapel ist eine CSV-Datei im
+    Projekt, sofort gespeichert und direkt in bnki importierbar.
+- Die Einstellungen von Erweiterungen stehen direkt im Einstellungsdialog.
+- **Erweiterungen deinstallieren** (Erweiterungsdialog und Einstellungen):
+  der Ordner kommt in den Papierkorb, Einstellungen, Geheimnisse und
+  Freigabe werden gelöscht.
+- **Jupyter 1.6.0:** Nach dem Wechsel auf einen frisch gestarteten Kernel
+  (z. B. eine gerade gebaute nix-Umgebung) liefen Zellen nicht: der
+  Jupyter-Server leitete Antworten erst nach einem Neuverbinden weiter. Die
+  Ansicht prüft jetzt nach dem Verbinden, ob der Kernel antwortet, und
+  verbindet sich sonst neu. Ist der Server nicht erreichbar, steht das als
+  Hinweis mit „Neu verbinden“ in der Ansicht statt als „Failed to fetch“ in
+  Atlas.
+- **Jupyter 1.5.0 (NixOS):** Neu **„Mit nix bauen“**: Conda-Umgebungsdateien
+  werden mit nix zu `python3XY.withPackages` aus nixpkgs (Python-Version
+  der Datei, alle Pakete der Datei), läuft unter NixOS ohne nix-ld und ist
+  dort der empfohlene Weg. Das Python des Servers wird am laufenden
+  Prozess abgelesen (hinter allen Hüllskripten); fehlt jedes Python, holt
+  die Ansicht mit `nix` eins aus nixpkgs, in der Version der
+  Umgebungsdatei. NixOS ohne nix-ld wird erkannt: Auswahl und Hilfe zeigen
+  den nix-Weg und die nötige Einstellung für Conda, statt micromamba zu
+  laden, das nicht startet; ein
+  Conda-Programm, das nicht startet, gilt nicht als gefunden. Lange
+  Hilfetexte in der Auswahl scrollen (mit „Zurück“).
+- **Jupyter 1.4.0:** findet ein Python auch ohne `python3` im Pfad (wie
+  oft unter NixOS): Einstellung, Pfad, Python des Servers (aus dessen Log,
+  auch hinter nix-Hüllskripten) oder des Kernels; Pakete gehen mit dem
+  Python des Kernels, Kernel abmelden braucht kein Jupyter-Programm mehr.
+  micromamba wird mit curl/wget geladen. Aufgaben warten aufeinander statt
+  abgelehnt zu werden.
+- **Hintergrundbefehle neu starten:** Wurde ein Hintergrundbefehl beendet
+  und gleich wieder gestartet (z. B. „Jupyter-Server neu starten“), traf
+  das SIGKILL für den alten Prozess fünf Sekunden später den neuen.
+- **Jupyter 1.3.0:** Rückmeldung beim Start des Servers (Schritte mit
+  Sekunden und Log-Zeile, dann „Jupyter-Server gestartet“). Umgebungen
+  bauen und suchen läuft jetzt als Hintergrundbefehl von Atlas statt im
+  Terminal des Jupyter-Servers – „Kein Terminal: Failed to fetch“ bei
+  Jupyter ohne Terminals ist damit weg, und Conda wird auch ohne Server
+  gefunden.
+- **Jupyter überarbeitet** (Erweiterung 1.2.0): neue Oberfläche mit
+  schlanker Werkzeugleiste, Syntaxfarben, Ausführen-Knopf und Laufzeit an
+  jeder Zelle, Einfügen zwischen Zellen, Befehlsmodus wie in Jupyter
+  (A, B, D D, M, Y) und einklappbaren langen Ausgaben. Statt des Dialogs
+  „Kernel …“ eine **Umgebungsauswahl** wie in VS Code: sie findet venvs,
+  Conda-Umgebungen, Conda-Umgebungsdateien (`*.yml`, `*.sec`) und
+  `requirements.txt`, baut daraus auf Klick die Umgebung, bindet sie als
+  Kernel ein und verwendet sie; ohne Conda richtet sie micromamba ein oder
+  baut mit pip.
+- **Mitgelieferte Erweiterungen aktualisieren sich:** Ist die installierte
+  Fassung älter als die in Atlas, erneuert Atlas sie beim Start (die
+  Einstellungen bleiben).
+- **Hintergrundbefehle:** Befehle von Erweiterungen und Aktionen mit
+  `terminal: background` laufen ohne Terminal; Atlas schreibt ihre Ausgabe
+  in ein Log, startet jeden höchstens einmal und beendet sie mit Atlas.
+  „Beenden: …“ in der Arbeitsleiste stoppt sie; Ansichten sehen ihren
+  Zustand über `atlas.commandStatus` und `atlas.stopCommand`.
+- **Jupyter-Notebooks** (mitgelieferte Erweiterung „Jupyter-Notebooks“):
+  `.ipynb` öffnen sich direkt in einer Notebook-Ansicht – Markdown mit
+  Formeln, Ausgaben mit Tabellen, Bildern und farbigen Tracebacks. Einzelne
+  Zellen (Umschalt+Enter, Strg+Enter) oder alle ausführen (hält beim ersten
+  Fehler), unterbrechen, Kernel neu starten oder wechseln; Zellen
+  bearbeiten, hinzufügen, verschieben, löschen. Gespeichert wird
+  automatisch im Format von Jupyter. Der Server (`jupyter_server`, nur
+  127.0.0.1, eigenes Token) startet beim Öffnen von selbst im Hintergrund
+  und endet mit Atlas; fehlt Jupyter, richtet die Ansicht es in einer
+  `.venv` im Projekt ein.
+  Unter „Kernel …“ legt man virtuelle Umgebungen als Kernel an oder bindet
+  vorhandene ein, installiert Pakete und entfernt Kernel – mit
+  Live-Ausgabe im Dialog.
+- **Ansichten mit `auto: true`** öffnen passende Dateien jetzt immer
+  direkt, auch Text-Dateien; „Anzeigen mit → Atlas (Datei selbst)“ zeigt
+  die Datei. Neu in der Brücke: `renderMarkdown` (HTML wie in der
+  Vorschau) und `atlas.runCommand` (Befehl der eigenen Erweiterung).
+- **Erweiterungen in der Kontextleiste:** Jede aktive Erweiterung mit
+  Ansichten oder Befehlen kann als Karte im Reiter „Aktionen“ der
+  Kontextleiste erscheinen – mit Anfangsbuchstabe, Titel und Beschreibung
+  und einer Zeile je Ansicht und Befehl samt Tastenkürzel. Schalter unter
+  Einstellungen → Kontextleiste oder × auf der Karte (`[context.extensions]`); im Manifest
+  zeigt `context: true` die Karte standardmäßig. **bnki-Karten** ist so
+  eingestellt (nach „Erweiterung aktualisieren: bnki-Karten“).
+- **Handbuch für Erweiterungen** (`docs/extensions-guide.md`): Laufzeitvertrag
+  für Programme (Start, Umgebung, Ausgabe, Fehler, Cache), vollständige
+  Manifest- und Brücken-Referenz, Rechte, Debugging, Weitergabe; mit einer
+  Beispiel-Erweiterung in Rust (`docs/examples/atlas-tabelle/`: CSV als
+  Tabelle anzeigen, auswerten, als HTML exportieren).
+- **`.atlasnote`-Dateien von Atlas Tablet öffnen** (auch `.atlasnote.zip`):
+  Seiten untereinander mit Papier, Handschrift (inkl. Druckstärke),
+  Textmarker, Bleistift, Textfeldern, eingefügten Bildern und
+  PDF-Hintergründen; Zoom mit Strg+Mausrad. Nur lesend: das Archiv wird
+  einmal in `~/.cache/atlas/atlasnote` entpackt und die Seiten werden dort
+  gerendert; die Datei selbst bleibt unverändert.
+
+### Sicherheit
+- **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht
+  mehr nur für die `extension.yaml`: Ein Skript, das die Erweiterung
+  aufruft (`{extension}/…`), ließ sich nach der Freigabe austauschen und
+  lief ohne neue Nachfrage. Jetzt sperrt jede Änderung einer Datei, eines
+  Ausführrechts oder eines Link-Ziels (bei Links auf Ordner auch deren
+  Inhalt) die Erweiterung wieder; geprüft wird
+  bei jeder Ausführung. Bereits freigegebene Projekt-Erweiterungen müssen
+  einmal neu freigegeben werden.
+
+### Geändert
+- **Markdown öffnet schneller:** Nach der ersten Notiz wartet eine
+  Vorschau fertig geladen im Hintergrund; die nächste Notiz übernimmt sie
+  und ist sofort zu sehen, statt erst einen Browser-Prozess zu starten.
+- **Touchpad in Markdown und `.atlasnote`:** Editor, Vorschau und
+  Notizbuch scrollen doppelt so weit wie die Finger und ohne Verzögerung,
+  gleiten nach dem Wischen weiter (auch in der Markdown-Vorschau) und
+  bleiben dabei nicht an halben Pixeln hängen.
+- **Weniger Arbeitsspeicher:**
+  - Geschlossene PDFs werden freigegeben: Schließt der letzte Tab einer
+    PDF, schließen alle PDF-Threads das Dokument; jeder hält ohnehin nur
+    noch wenige offen (die zuletzt benutzten). Vorher blieb jede einmal
+    geöffnete PDF bis zum Beenden bis zu viermal im Speicher.
+  - Die Markdown-Vorschau (ein Chromium-Browser mit eigenem Prozess)
+    entsteht erst, wenn sie gezeigt wird – Notizen im Bearbeiten-Modus und
+    nach dem Start noch nicht angesehene Tabs brauchen keine; nach
+    5 Minuten verdeckt wird sie geschlossen und beim Zeigen neu erstellt.
+  - Bilder im Bild-Tab werden höchstens in Bildschirmgröße geladen (ein
+    Foto mit 24 Megapixeln brauchte sonst rund 92 MiB); das Vergrößern-
+    Fenster gibt sein Bild beim Schließen frei.
+  - Seitenbilder der PDF-Ansicht: Zwischenspeicher 128 statt 256 MB, ältere
+    Fassungen einer geänderten Datei fliegen sofort raus, die Grenze wird
+    nie überschritten.
+  - PDF-Text der Suche: Zwischenspeicher hält seine 64 MB wirklich ein
+    (vorher erst nach dem Einfügen geprüft); pro PDF höchstens 32 MB Text.
+  - Das Formelmodell verlässt den Speicher nach 3 Minuten ohne Nutzung.
+  - Der Notizindex überspringt Build- und Abhängigkeitsordner
+    (`node_modules`, `target`, …) auch ohne `.gitignore`.
+
 ## [1.1.2] – 2026-10-27
 
 ### Neu

@@ -36,6 +36,8 @@ bool clipboardSaveImage(const QString& path);
 void initWebEngine();
 // Serves `atlas://` URLs for the Markdown preview; needs the application.
 void installWebSchemeHandler();
+// Pages of extension `name` are served from `dir` ("" removes it).
+void setExtensionDir(const QString& name, const QString& dir);
 
 // Renders a QQuickWindow (passed from QML as QObject) into a PNG file.
 bool saveWindowImage(QObject* window, const QString& path);

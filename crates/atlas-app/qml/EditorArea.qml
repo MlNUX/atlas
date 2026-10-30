@@ -178,6 +178,8 @@ SplitView {
     ///   "temporary" – the temporary split (created or reused)
     function open(path, line, where, state) {
         if (!path) return
+        Timing.start("öffnen: " + path)
+        Timing.opening = true
         let tab = null
         if (where === "split" || where === "temporary") {
             // An empty split is used instead of opening another one.
@@ -190,6 +192,8 @@ SplitView {
             tab = activeGroup.openTab(path, line, where === "tab" ? "tab" : "preview", state)
         }
         pruneEmpty()
+        Timing.opening = false
+        Timing.mark("open() fertig (Tab und Ansicht erzeugt)")
         return tab
     }
 

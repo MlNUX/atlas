@@ -356,10 +356,42 @@ pub fn post_process(s: &str) -> String {
 }
 
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
+/// When the model was used last.
+static LAST_USE: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+/// Unused this long, the model leaves memory (loading it again takes a
+/// moment on the next formula).
+pub const IDLE_UNLOAD: std::time::Duration = std::time::Duration::from_secs(180);
 
 /// Whether the model is loaded (later recognitions are quick).
 pub fn is_running() -> bool {
     ENGINE.lock().map(|e| e.is_some()).unwrap_or(false)
+}
+
+/// Frees the model if it was not used for `idle`; true if it was freed.
+pub fn unload_if_idle(idle: std::time::Duration) -> bool {
+    // Not while a recognition runs (it holds the engine).
+    let Ok(mut slot) = ENGINE.try_lock() else { return false };
+    let unused = LAST_USE.lock().ok().and_then(|t| *t).is_none_or(|t| t.elapsed() >= idle);
+    if slot.is_some() && unused {
+        *slot = None;
+        log::info!("latex-ocr: model unloaded after {} s unused", idle.as_secs());
+        return true;
+    }
+    false
+}
+
+/// Checks now and then whether the model can be freed (started with the
+/// first recognition).
+fn watch_idle() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        let _ = std::thread::Builder::new().name("atlas-ocr-idle".into()).spawn(|| {
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(30));
+                unload_if_idle(IDLE_UNLOAD);
+            }
+        });
+    });
 }
 
 /// LaTeX of the formula in the greyscale picture `img` (models from
@@ -368,8 +400,13 @@ pub fn recognize_in(dir: &Path, img: &GrayImage) -> Result<String> {
     let mut slot = ENGINE.lock().unwrap_or_else(|e| e.into_inner());
     if slot.is_none() {
         *slot = Some(Engine::load(dir)?);
+        watch_idle();
     }
-    slot.as_mut().context("kein Modell")?.recognize(img)
+    let result = slot.as_mut().context("kein Modell")?.recognize(img);
+    if let Ok(mut last) = LAST_USE.lock() {
+        *last = Some(std::time::Instant::now());
+    }
+    result
 }
 
 /// LaTeX of the formula in a greyscale picture (`w × h`, one byte per
@@ -446,6 +483,10 @@ mod tests {
         assert!(models_present(&dir));
         assert_eq!(recognize_in(&dir, &formula(300, 80)).unwrap(), "\\frac{a}{b}");
         assert!(is_running(), "the model stays loaded");
+        assert!(!unload_if_idle(IDLE_UNLOAD), "just used: stays");
+        assert_eq!(recognize_in(&dir, &formula(120, 50)).unwrap(), "\\frac{a}{b}");
+        // Unused for a while: freed, and loaded again when needed.
+        assert!(unload_if_idle(std::time::Duration::ZERO) && !is_running());
         assert_eq!(recognize_in(&dir, &formula(120, 50)).unwrap(), "\\frac{a}{b}");
     }
 }

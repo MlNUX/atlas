@@ -3,22 +3,32 @@
 
 //! A small, declarative extension system.
 //!
-//! An extension is a folder with an `extension.yaml` (format version 1, see
-//! docs/extensions.md) – for the user in `$XDG_CONFIG_HOME/atlas/extensions/`
-//! or for one project in `.atlas/extensions/`. It can contribute
+//! An extension is a folder with an `extension.yaml` (API version 1 or 2,
+//! see docs/extensions.md) – for the user in
+//! `$XDG_CONFIG_HOME/atlas/extensions/` or for one project in
+//! `.atlas/extensions/`. It can contribute
 //!
-//! - **actions** (same format as `actions.yaml`),
+//! - **commands** (actions in the format of `actions.yaml`, with a key
+//!   sequence and a place in the menus),
 //! - **processors** that show files Atlas cannot display itself (a command
-//!   turns them into Markdown, text or a PDF), and
-//! - **exporters** that write a file in another format.
+//!   turns them into Markdown, text or a PDF),
+//! - **exporters** that write a file in another format,
+//! - **views**: an HTML page of the extension shown as a tab, talking to
+//!   Atlas through a small bridge ([`call`]) whose file access is limited
+//!   by the declared permissions, and
+//! - **settings** the user fills in (in Atlas), passed to the commands.
+//!
+//! Version 2 also declares **permissions** (programs it runs, files,
+//! network); the programs are checked when the manifest is read, the rest
+//! is shown before trusting the extension.
 //!
 //! Extensions cannot change the user interface. Commands follow the rules
 //! of actions: program plus arguments, a shell only with `shell: true`,
 //! placeholders filled in after splitting. Extensions that come with a
-//! project run only after the user trusted them; a changed manifest needs
-//! trust again.
+//! project run only after the user trusted them; any changed file of the
+//! extension needs trust again.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -29,9 +39,12 @@ use yaml_rust2::Yaml;
 
 use crate::actions::{self, Action, Command, Context, LoadError, Source};
 
-pub const FORMAT_VERSION: i64 = 1;
+/// Newest extension API this Atlas understands (`atlas_api:`).
+pub const API_VERSION: i64 = 2;
 pub const MANIFEST: &str = "extension.yaml";
 pub const DIR: &str = "extensions";
+/// User settings of extensions, in the config folder.
+pub const SETTINGS_FILE: &str = "extension-settings.toml";
 /// Output of a processor or exporter that is kept (and shown on errors).
 const MAX_OUTPUT: usize = 16 * 1024 * 1024;
 
@@ -68,6 +81,103 @@ impl OutputKind {
     }
 }
 
+/// Which files an extension says it reads or writes (shown, not enforced).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileAccess {
+    None,
+    Project,
+    Home,
+    All,
+}
+
+impl FileAccess {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FileAccess::None => "none",
+            FileAccess::Project => "project",
+            FileAccess::Home => "home",
+            FileAccess::All => "all",
+        }
+    }
+}
+
+/// What an extension of API version 2 says it needs. Programs are checked
+/// when the manifest is read: a command may only start a program from
+/// `run`, a file of the extension, or one the user chose in a setting.
+/// Files and network are shown before trusting the extension (not yet
+/// enforced: scripts of the extension may do more).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Permissions {
+    pub run: Vec<String>,
+    pub files: FileAccess,
+    /// Hosts it connects to; `["*"]` for any.
+    pub network: Vec<String>,
+}
+
+/// Kind of a setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingKind {
+    String,
+    Path,
+    Bool,
+    Number,
+    Choice,
+    /// Kept encrypted like the Nextcloud password; only passed in the
+    /// environment of commands that do not run in a terminal.
+    Secret,
+}
+
+impl SettingKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SettingKind::String => "string",
+            SettingKind::Path => "path",
+            SettingKind::Bool => "bool",
+            SettingKind::Number => "number",
+            SettingKind::Choice => "choice",
+            SettingKind::Secret => "secret",
+        }
+    }
+}
+
+/// A value the user sets for an extension (`settings:` in the manifest).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Setting {
+    pub key: String,
+    pub title: String,
+    pub description: String,
+    pub kind: SettingKind,
+    /// Default (never set for secrets).
+    pub default: toml::Value,
+    pub choices: Vec<String>,
+}
+
+impl Setting {
+    /// `ATLAS_SETTING_<KEY>`.
+    pub fn env_name(&self) -> String {
+        format!("ATLAS_SETTING_{}", self.key.to_ascii_uppercase().replace('-', "_"))
+    }
+
+    /// Whether `value` fits this setting.
+    pub fn accepts(&self, value: &toml::Value) -> bool {
+        match (self.kind, value) {
+            (SettingKind::String | SettingKind::Path, toml::Value::String(_)) => true,
+            (SettingKind::Bool, toml::Value::Boolean(_)) => true,
+            (SettingKind::Number, toml::Value::Integer(_) | toml::Value::Float(_)) => true,
+            (SettingKind::Choice, toml::Value::String(s)) => self.choices.contains(s),
+            _ => false,
+        }
+    }
+}
+
+/// A setting value as text (placeholders and environment).
+fn setting_text(value: &toml::Value) -> String {
+    match value {
+        toml::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// Shows files of a type Atlas has no viewer for.
 #[derive(Debug, Clone)]
 pub struct Processor {
@@ -82,6 +192,7 @@ pub struct Processor {
     /// Used automatically when such a file is opened (otherwise offered).
     pub auto: bool,
     pub base_dir: PathBuf,
+    pub settings: Applied,
     globs: globset::GlobSet,
 }
 
@@ -100,7 +211,62 @@ pub struct Exporter {
     /// Open the result in Atlas afterwards.
     pub open: bool,
     pub base_dir: PathBuf,
+    pub settings: Applied,
     globs: globset::GlobSet,
+}
+
+/// A tab showing an HTML page of the extension (API 2). It opens on a file
+/// matching `applies_to` („Anzeigen mit“) or on the project folder.
+#[derive(Debug, Clone)]
+pub struct View {
+    /// `view:<extension>/<id>`: the processor ID of the tab.
+    pub id: String,
+    pub name: String,
+    pub extension: String,
+    /// The page, relative to the extension folder.
+    pub page: String,
+    pub applies_to: Vec<String>,
+    /// Opened automatically for matching files.
+    pub auto: bool,
+    pub keybinding: Option<String>,
+    globs: Option<globset::GlobSet>,
+}
+
+impl View {
+    pub fn applies(&self, file: &Path, project: Option<&Path>) -> bool {
+        self.globs.as_ref().is_some_and(|g| matches(g, file, project))
+    }
+}
+
+/// Setting values for one command: placeholders, environment, and the
+/// secrets that are read just before it runs (environment name, store).
+#[derive(Debug, Clone, Default)]
+pub struct Applied {
+    pub extra: Vec<(String, String)>,
+    pub env: Vec<(String, String)>,
+    pub secrets: Vec<(String, String)>,
+}
+
+impl Applied {
+    fn placeholders(&self, output: &Path, base_dir: &Path) -> Vec<(String, String)> {
+        let mut extra = vec![
+            ("{output}".to_owned(), output.to_string_lossy().into_owned()),
+            ("{extension}".to_owned(), base_dir.to_string_lossy().into_owned()),
+        ];
+        extra.extend(self.extra.iter().cloned());
+        extra
+    }
+
+    /// The environment, with the secrets read now.
+    fn environment(&self) -> Result<Vec<(String, String)>> {
+        let mut env = self.env.clone();
+        for (name, store) in &self.secrets {
+            if let Some((secret, _)) = crate::secret::SecretStore::default_for(store).load()? {
+                env.push((name.clone(), secret));
+            }
+        }
+        Ok(env)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -109,13 +275,26 @@ pub struct Extension {
     pub title: String,
     pub version: String,
     pub description: String,
+    /// API version of the manifest (1 or 2; 0 if unreadable).
+    pub api: i64,
+    /// Declared permissions (API 2); `None`: an extension of version 1,
+    /// which may run anything the user can.
+    pub permissions: Option<Permissions>,
+    pub settings: Vec<Setting>,
     pub dir: PathBuf,
     pub location: Location,
-    /// BLAKE3 of the manifest (trust is bound to it).
+    /// What trust is bound to: for project extensions BLAKE3 over every
+    /// file of the folder (see [`folder_hash`]), for user extensions over
+    /// the manifest. Empty if it could not be computed.
     pub hash: String,
     pub actions: Vec<Action>,
     pub processors: Vec<Processor>,
     pub exporters: Vec<Exporter>,
+    pub views: Vec<View>,
+    /// Shown as a card in the context bar unless the user hides it
+    /// (`context: true`, API 2); every extension with views or commands can
+    /// be shown there.
+    pub context: bool,
     pub errors: Vec<String>,
 }
 
@@ -141,17 +320,35 @@ impl Status {
 }
 
 pub const TEMPLATE: &str = r#"# Atlas-Erweiterung (Format: docs/extensions.md)
-atlas_extension: 1
+atlas_api: 2
 name: beispiel
 title: Beispiel-Erweiterung
 version: 0.1.0
 description: Zeigt, was eine Erweiterung beitragen kann.
 
-# Aktionen wie in actions.yaml; {extension} ist dieser Ordner.
-actions:
+# Was die Erweiterung braucht; Atlas zeigt es vor der Freigabe. Befehle
+# dürfen nur Programme aus „run“ starten (und Dateien dieses Ordners).
+permissions:
+  run: [wc, od, pandoc]
+  files: project            # none, project, home oder all
+  network: false            # true oder Liste von Rechnern
+
+# Befehle: wie Aktionen in actions.yaml; {extension} ist dieser Ordner.
+commands:
   - name: Wörter zählen
     applies_to: "*.md"
     command: [wc, -w, "{file}"]
+    keybinding: Ctrl+Alt+W    # optional
+    menu: [context, palette]  # Standard: beides
+
+# Einstellungen: Atlas zeigt sie in „Erweiterungen“; in Befehlen als
+# {setting:schlüssel}, in der Umgebung als ATLAS_SETTING_SCHLÜSSEL.
+settings:
+  - key: format
+    title: Exportformat
+    type: choice              # string, path, bool, number, choice, secret
+    choices: [html, docx]
+    default: html
 
 # Dateiverarbeitung: Dateien anzeigen, für die Atlas keine Ansicht hat.
 # Ausgabe: markdown, text (Standardausgabe oder {output}) oder pdf ({output}).
@@ -163,7 +360,7 @@ processors:
 
 # Exporter: schreiben eine Datei in einem anderen Format nach {output}.
 exporters:
-  - name: HTML (pandoc)
+  - name: Export (pandoc)
     applies_to: "*.md"
     target: html
     command: [pandoc, "{file}", --standalone, -o, "{output}"]
@@ -185,9 +382,10 @@ pub fn starter(title: &str) -> (String, String) {
             "name: beispiel" => format!("name: {name}"),
             "title: Beispiel-Erweiterung" => format!("title: {}", yaml_text(title)),
             l if l.starts_with("description:") => "description: \"\"".to_owned(),
+            "  run: [wc, od, pandoc]" => "  run: []".to_owned(),
             l => l.to_owned(),
         };
-        examples |= line.starts_with("# Aktionen");
+        examples |= line.starts_with("# Befehle");
         if examples && !line.is_empty() && !line.starts_with('#') {
             out.push_str("# ");
         }
@@ -283,6 +481,7 @@ fn parse_processor(entry: &Yaml, ext: &str, dir: &Path) -> Result<Processor> {
         timeout: timeout(entry, 30),
         auto: entry["auto"].as_bool().unwrap_or(true),
         base_dir: dir.to_path_buf(),
+        settings: Applied::default(),
     })
 }
 
@@ -307,6 +506,7 @@ fn parse_exporter(entry: &Yaml, ext: &str, dir: &Path) -> Result<Exporter> {
         timeout: timeout(entry, 300),
         open: entry["open"].as_bool().unwrap_or(true),
         base_dir: dir.to_path_buf(),
+        settings: Applied::default(),
     })
 }
 
@@ -315,6 +515,149 @@ fn uses(command: &Command, placeholder: &str) -> bool {
         Command::Argv(argv) => argv.iter().any(|a| a.contains(placeholder)),
         Command::Shell(s) => s.contains(placeholder),
     }
+}
+
+fn parse_permissions(doc: &Yaml) -> Result<Permissions> {
+    let run = strings(&doc["run"]);
+    if let Some(bad) = run.iter().find(|p| p.trim().is_empty() || p.contains(char::is_whitespace)) {
+        bail!("„run“: „{bad}“ ist kein Programmname");
+    }
+    let files = match doc["files"].as_str().map(str::trim) {
+        None if doc["files"].as_bool() == Some(false) => FileAccess::None,
+        None | Some("project" | "projekt") => FileAccess::Project,
+        Some("none" | "keine") => FileAccess::None,
+        Some("home") => FileAccess::Home,
+        Some("all" | "alle") => FileAccess::All,
+        Some(other) => bail!("unbekanntes „files: {other}“ (none, project, home, all)"),
+    };
+    let network = match &doc["network"] {
+        Yaml::Boolean(true) => vec!["*".to_owned()],
+        Yaml::Boolean(false) | Yaml::BadValue | Yaml::Null => Vec::new(),
+        other => strings(other),
+    };
+    Ok(Permissions { run, files, network })
+}
+
+fn valid_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 64
+        && key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+fn parse_setting(entry: &Yaml) -> Result<Setting> {
+    let key = entry["key"].as_str().map(str::trim).context("„key“ fehlt")?;
+    if !valid_key(key) {
+        bail!("ungültiger Schlüssel „{key}“ (Kleinbuchstaben, Ziffern, - und _)");
+    }
+    let kind = match entry["type"].as_str().unwrap_or("string") {
+        "string" | "text" => SettingKind::String,
+        "path" | "pfad" => SettingKind::Path,
+        "bool" | "boolean" => SettingKind::Bool,
+        "number" | "zahl" => SettingKind::Number,
+        "choice" | "auswahl" => SettingKind::Choice,
+        "secret" | "passwort" => SettingKind::Secret,
+        other => bail!("„{key}“: unbekannter Typ „{other}“ (string, path, bool, number, choice, secret)"),
+    };
+    let choices = strings(&entry["choices"]);
+    if kind == SettingKind::Choice && choices.is_empty() {
+        bail!("„{key}“: Auswahl ohne „choices“");
+    }
+    let default = match (&entry["default"], kind) {
+        (Yaml::BadValue | Yaml::Null, SettingKind::Bool) => toml::Value::Boolean(false),
+        (Yaml::BadValue | Yaml::Null, SettingKind::Number) => toml::Value::Integer(0),
+        (Yaml::BadValue | Yaml::Null, SettingKind::Choice) => toml::Value::String(choices[0].clone()),
+        (Yaml::BadValue | Yaml::Null, _) => toml::Value::String(String::new()),
+        (_, SettingKind::Secret) => bail!("„{key}“: ein Geheimnis hat keinen Standardwert"),
+        (Yaml::Boolean(b), _) => toml::Value::Boolean(*b),
+        (Yaml::Integer(i), _) => toml::Value::Integer(*i),
+        (Yaml::Real(r), _) => toml::Value::Float(r.parse().unwrap_or_default()),
+        (Yaml::String(t), _) => toml::Value::String(t.clone()),
+        _ => bail!("„{key}“: unlesbarer Standardwert"),
+    };
+    let setting = Setting {
+        key: key.to_owned(),
+        title: entry["title"].as_str().unwrap_or(key).to_owned(),
+        description: entry["description"].as_str().unwrap_or_default().to_owned(),
+        kind,
+        default,
+        choices,
+    };
+    if kind != SettingKind::Secret && !setting.accepts(&setting.default) {
+        bail!("„{key}“: der Standardwert passt nicht zum Typ {}", kind.as_str());
+    }
+    Ok(setting)
+}
+
+/// `{setting:…}` placeholders used in `text`.
+fn setting_placeholders(text: &str) -> Vec<&str> {
+    text.match_indices("{setting:")
+        .filter_map(|(i, _)| text[i + 9..].find('}').map(|end| &text[i + 9..i + 9 + end]))
+        .collect()
+}
+
+/// Checks a command of an API 2 extension against its settings and
+/// permissions: placeholders name settings (secrets only reach the
+/// environment), and the program is declared in `run`, lies in the
+/// extension folder, or is chosen by the user in a setting.
+fn check_command(command: &Command, settings: &[Setting], permissions: &Permissions) -> Result<()> {
+    let texts: Vec<&str> = match command {
+        Command::Argv(argv) => argv.iter().map(String::as_str).collect(),
+        Command::Shell(line) => vec![line.as_str()],
+    };
+    for key in texts.iter().flat_map(|t| setting_placeholders(t)) {
+        match settings.iter().find(|s| s.key == key) {
+            None => bail!("unbekannte Einstellung {{setting:{key}}}"),
+            Some(s) if s.kind == SettingKind::Secret => {
+                bail!("das Geheimnis „{key}“ gibt es nur als Umgebungsvariable {}", s.env_name())
+            }
+            Some(_) => {}
+        }
+    }
+    let program = match command {
+        Command::Shell(_) => "sh",
+        Command::Argv(argv) => argv.first().map(String::as_str).unwrap_or_default(),
+    };
+    let allowed = permissions.run.iter().any(|p| p == program)
+        || (program.starts_with("{extension}/") && !program.contains(".."))
+        // A program the user chooses; its default must be declared too.
+        || (program.starts_with("{setting:")
+            && program.ends_with('}')
+            && settings.iter().any(|s| {
+                program[9..program.len() - 1] == s.key
+                    && matches!(s.kind, SettingKind::String | SettingKind::Path)
+                    && s.default.as_str().is_some_and(|d| d.is_empty() || permissions.run.iter().any(|p| p == d))
+            }));
+    if !allowed {
+        bail!("„{program}“ fehlt in „permissions: run“");
+    }
+    Ok(())
+}
+
+fn parse_view(entry: &Yaml, ext: &str, dir: &Path) -> Result<View> {
+    let name = entry["name"].as_str().filter(|n| !n.trim().is_empty()).context("„name“ fehlt")?.trim();
+    let page = entry["page"].as_str().map(str::trim).context("„page“ (HTML-Datei der Erweiterung) fehlt")?;
+    let relative = Path::new(page);
+    if relative.is_absolute() || relative.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+        bail!("„page“ muss im Ordner der Erweiterung liegen");
+    }
+    if !dir.join(relative).is_file() {
+        bail!("„{page}“ fehlt");
+    }
+    let applies_to = strings(&entry["applies_to"]);
+    let keybinding = match entry["keybinding"].as_str() {
+        Some(k) => Some(actions::keybinding(k)?),
+        None => None,
+    };
+    Ok(View {
+        id: format!("view:{ext}/{}", entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| slug(name))),
+        name: name.to_owned(),
+        extension: ext.to_owned(),
+        page: page.to_owned(),
+        globs: if applies_to.is_empty() { None } else { Some(globs(&applies_to)?) },
+        applies_to,
+        auto: entry["auto"].as_bool().unwrap_or(false),
+        keybinding,
+    })
 }
 
 fn valid_name(name: &str) -> bool {
@@ -331,12 +674,17 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         title: fallback.clone(),
         version: String::new(),
         description: String::new(),
+        api: 0,
+        permissions: None,
+        settings: Vec::new(),
         dir: dir.to_path_buf(),
         location,
         hash: String::new(),
         actions: Vec::new(),
         processors: Vec::new(),
         exporters: Vec::new(),
+        views: Vec::new(),
+        context: false,
         errors: Vec::new(),
     };
     let bytes = match std::fs::read(&manifest) {
@@ -346,7 +694,16 @@ pub fn load(dir: &Path, location: Location) -> Extension {
             return ext;
         }
     };
-    ext.hash = blake3::hash(&bytes).to_hex().to_string();
+    ext.hash = match location {
+        Location::User => blake3::hash(&bytes).to_hex().to_string(),
+        Location::Project => match folder_hash(dir) {
+            Ok(hash) => hash,
+            Err(err) => {
+                ext.errors.push(format!("{err:#}"));
+                String::new()
+            }
+        },
+    };
     let docs = match yaml_rust2::YamlLoader::load_from_str(&String::from_utf8_lossy(&bytes)) {
         Ok(d) => d,
         Err(err) => {
@@ -358,14 +715,17 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         ext.errors.push("leeres Manifest".into());
         return ext;
     };
-    match doc["atlas_extension"].as_i64() {
-        Some(v) if v > FORMAT_VERSION => {
-            ext.errors.push(format!("Format {v} ist neuer als diese Atlas-Version ({FORMAT_VERSION})"));
+    // `atlas_extension: 1` is the name version 1 used.
+    match doc["atlas_api"].as_i64().or_else(|| doc["atlas_extension"].as_i64()) {
+        Some(v) if v > API_VERSION => {
+            ext.errors.push(format!(
+                "braucht eine neuere Atlas-Version (Erweiterungs-API {v}, diese Version kann {API_VERSION})"
+            ));
             return ext;
         }
-        Some(_) => {}
-        None => {
-            ext.errors.push("„atlas_extension: 1“ fehlt".into());
+        Some(v) if v >= 1 => ext.api = v,
+        _ => {
+            ext.errors.push(format!("„atlas_api: {API_VERSION}“ fehlt"));
             return ext;
         }
     }
@@ -382,9 +742,34 @@ pub fn load(dir: &Path, location: Location) -> Extension {
         .or_else(|| doc["version"].as_f64().map(|v| v.to_string()))
         .unwrap_or_default();
     ext.description = doc["description"].as_str().unwrap_or_default().to_owned();
+    ext.context = ext.api >= 2 && doc["context"].as_bool().unwrap_or(false);
+
+    if ext.api >= 2 {
+        match parse_permissions(&doc["permissions"]) {
+            Ok(p) => ext.permissions = Some(p),
+            Err(err) => {
+                // Without readable permissions nothing may run.
+                ext.errors.push(format!("permissions: {err:#}"));
+                return ext;
+            }
+        }
+        for (i, entry) in doc["settings"].as_vec().into_iter().flatten().enumerate() {
+            match parse_setting(entry) {
+                Ok(s) if ext.settings.iter().any(|o| o.key == s.key) => {
+                    ext.errors.push(format!("Einstellung {}: „{}“ gibt es zweimal", i + 1, s.key))
+                }
+                Ok(s) => ext.settings.push(s),
+                Err(err) => ext.errors.push(format!("Einstellung {}: {err:#}", i + 1)),
+            }
+        }
+    }
 
     let mut errors = Vec::new();
-    actions::parse_list(&doc["actions"], &Source::Extension(name.clone()), &manifest, &mut ext.actions, &mut errors);
+    let source = Source::Extension(name.clone());
+    // Version 2 calls them commands; `actions:` still works.
+    for list in ["actions", "commands"] {
+        actions::parse_list(&doc[list], &source, &manifest, &mut ext.actions, &mut errors);
+    }
     ext.errors.extend(errors.into_iter().map(|e: LoadError| e.message));
     for action in &mut ext.actions {
         action.base_dir = Some(dir.to_path_buf());
@@ -401,7 +786,152 @@ pub fn load(dir: &Path, location: Location) -> Extension {
             Err(err) => ext.errors.push(format!("Exporter {}: {err:#}", i + 1)),
         }
     }
+    if ext.api >= 2 {
+        for (i, entry) in doc["views"].as_vec().into_iter().flatten().enumerate() {
+            match parse_view(entry, &name, dir) {
+                Ok(v) => ext.views.push(v),
+                Err(err) => ext.errors.push(format!("Ansicht {}: {err:#}", i + 1)),
+            }
+        }
+    }
+    if let Some(permissions) = &ext.permissions {
+        let settings = &ext.settings;
+        let mut errors = Vec::new();
+        let mut check = |what: String, command: &Command| match check_command(command, settings, permissions) {
+            Ok(()) => true,
+            Err(err) => {
+                errors.push(format!("{what}: {err:#}"));
+                false
+            }
+        };
+        ext.actions.retain(|a| check(format!("Befehl „{}“", a.name), &a.command));
+        ext.processors.retain(|p| check(format!("Verarbeitung „{}“", p.name), &p.command));
+        ext.exporters.retain(|x| check(format!("Exporter „{}“", x.name), &x.command));
+        ext.errors.extend(errors);
+    }
     ext
+}
+
+// ----------------------------------------------------------------- settings
+
+pub fn settings_file(config_dir: &Path) -> PathBuf {
+    config_dir.join(SETTINGS_FILE)
+}
+
+/// What the user set for all extensions: extension name → key → value.
+pub fn load_settings(config_dir: &Path) -> toml::Table {
+    let file = settings_file(config_dir);
+    match std::fs::read_to_string(&file) {
+        Ok(text) => text.parse().unwrap_or_else(|err| {
+            log::warn!("{} is not valid TOML: {err}", file.display());
+            toml::Table::new()
+        }),
+        Err(_) => toml::Table::new(),
+    }
+}
+
+/// Where the secret `key` of extension `ext` is kept.
+pub fn secret_store(ext: &str, key: &str) -> String {
+    format!("extension-{ext}-{key}")
+}
+
+/// Sets (or with `None` resets) one value; secrets go to the secret store,
+/// never into the file.
+pub fn save_setting(config_dir: &Path, ext: &Extension, key: &str, value: Option<toml::Value>) -> Result<()> {
+    let setting = ext.settings.iter().find(|s| s.key == key).with_context(|| format!("keine Einstellung „{key}“"))?;
+    if setting.kind == SettingKind::Secret {
+        let store = crate::secret::SecretStore::default_for(&secret_store(&ext.name, key));
+        return match value {
+            Some(toml::Value::String(secret)) if !secret.is_empty() => store.store(&secret).map(|_| ()),
+            None | Some(toml::Value::String(_)) => store.forget(),
+            Some(_) => bail!("ein Geheimnis ist ein Text"),
+        };
+    }
+    if let Some(v) = &value
+        && !setting.accepts(v)
+    {
+        bail!("„{v}“ passt nicht zu „{}“", setting.title);
+    }
+    let mut all = load_settings(config_dir);
+    let table = all.entry(ext.name.clone()).or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let toml::Value::Table(table) = table else { bail!("[{}] in {SETTINGS_FILE} ist keine Tabelle", ext.name) };
+    match value {
+        Some(v) => table.insert(key.to_owned(), v),
+        None => table.remove(key),
+    };
+    if table.is_empty() {
+        all.remove(&ext.name);
+    }
+    crate::paths::write_atomic(&settings_file(config_dir), toml::to_string_pretty(&all)?.as_bytes())
+}
+
+/// [`save_setting`] with the value as JSON (`null` resets it).
+pub fn save_setting_json(config_dir: &Path, ext: &Extension, key: &str, json: &str) -> Result<()> {
+    let value = match serde_json::from_str::<serde_json::Value>(json).context("kein gültiger Wert")? {
+        serde_json::Value::Null => None,
+        v => Some(toml::Value::try_from(v).context("kein gültiger Wert")?),
+    };
+    save_setting(config_dir, ext, key, value)
+}
+
+/// Forgets what Atlas keeps about `ext` outside its folder: its settings,
+/// its secrets and its trust. Uninstalling also moves the folder to the
+/// trash (done by the caller, so it can be restored from there).
+pub fn forget(ext: &Extension, config_dir: &Path, trust: &mut Trust) -> Result<()> {
+    for setting in ext.settings.iter().filter(|s| s.kind == SettingKind::Secret) {
+        crate::secret::SecretStore::default_for(&secret_store(&ext.name, &setting.key)).forget()?;
+    }
+    let mut all = load_settings(config_dir);
+    if all.remove(&ext.name).is_some() {
+        crate::paths::write_atomic(&settings_file(config_dir), toml::to_string_pretty(&all)?.as_bytes())?;
+    }
+    if ext.location == Location::Project {
+        trust.revoke(ext)?;
+    }
+    Ok(())
+}
+
+impl Extension {
+    /// Current value of each setting (secrets: whether one is stored).
+    pub fn setting_values(&self, all: &toml::Table) -> Vec<(&Setting, toml::Value)> {
+        let mine = all.get(&self.name).and_then(toml::Value::as_table);
+        self.settings
+            .iter()
+            .map(|s| {
+                let value = if s.kind == SettingKind::Secret {
+                    let store = crate::secret::SecretStore::default_for(&secret_store(&self.name, &s.key));
+                    toml::Value::Boolean(store.kind().is_some())
+                } else {
+                    mine.and_then(|t| t.get(&s.key)).filter(|v| s.accepts(v)).cloned().unwrap_or(s.default.clone())
+                };
+                (s, value)
+            })
+            .collect()
+    }
+
+    /// Hands the setting values to every command of the extension.
+    pub fn apply_settings(&mut self, all: &toml::Table) {
+        let mut applied = Applied::default();
+        for (setting, value) in self.setting_values(all) {
+            if setting.kind == SettingKind::Secret {
+                applied.secrets.push((setting.env_name(), secret_store(&self.name, &setting.key)));
+            } else {
+                let text = setting_text(&value);
+                applied.extra.push((format!("{{setting:{}}}", setting.key), text.clone()));
+                applied.env.push((setting.env_name(), text));
+            }
+        }
+        for action in &mut self.actions {
+            action.extra = applied.extra.clone();
+            action.env = applied.env.clone();
+        }
+        for p in &mut self.processors {
+            p.settings = applied.clone();
+        }
+        for x in &mut self.exporters {
+            x.settings = applied.clone();
+        }
+    }
 }
 
 fn scan(root: &Path, location: Location, out: &mut Vec<Extension>) {
@@ -495,6 +1025,92 @@ pub fn migrate_legacy(user_root: &Path) -> Vec<(String, String)> {
     renamed
 }
 
+/// An extension that comes with Atlas (`crates/atlas-core/bundled/<name>/`),
+/// embedded in the program and installed on request.
+pub struct Bundled {
+    pub name: &'static str,
+    pub title: &'static str,
+    pub description: &'static str,
+    /// File name, content, executable.
+    files: &'static [(&'static str, &'static str, bool)],
+}
+
+pub const BUNDLED: &[Bundled] = &[
+    Bundled {
+        name: "bnki",
+        title: "bnki-Karten",
+        description: "Karteikarten für bnki schreiben – jeder Stapel eine CSV-Datei im Projekt.",
+        files: &[
+            (MANIFEST, include_str!("../bundled/bnki/extension.yaml"), false),
+            ("editor.html", include_str!("../bundled/bnki/editor.html"), false),
+        ],
+    },
+    Bundled {
+        name: "jupyter",
+        title: "Jupyter-Notebooks",
+        description: "Notebooks (.ipynb) öffnen, bearbeiten und Zellen ausführen – mit einem lokalen Jupyter-Server.",
+        files: &[
+            (MANIFEST, include_str!("../bundled/jupyter/extension.yaml"), false),
+            ("notebook.html", include_str!("../bundled/jupyter/notebook.html"), false),
+            ("notebook.css", include_str!("../bundled/jupyter/notebook.css"), false),
+            ("notebook.js", include_str!("../bundled/jupyter/notebook.js"), false),
+            ("server.sh", include_str!("../bundled/jupyter/server.sh"), true),
+            ("setup.sh", include_str!("../bundled/jupyter/setup.sh"), true),
+            ("job.sh", include_str!("../bundled/jupyter/job.sh"), true),
+        ],
+    },
+];
+
+/// Installs (or updates) the bundled extension `name` among the user's
+/// extensions; returns its folder. Its settings are kept.
+pub fn install_bundled(user_root: &Path, name: &str) -> Result<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let bundled = BUNDLED.iter().find(|b| b.name == name).with_context(|| format!("„{name}“ kommt nicht mit Atlas"))?;
+    let dir = user_root.join(bundled.name);
+    for (file, content, executable) in bundled.files {
+        let path = dir.join(file);
+        crate::paths::write_atomic(&path, content.as_bytes())?;
+        let mode = if *executable { 0o755 } else { 0o644 };
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
+            .with_context(|| format!("{} kann nicht geändert werden", path.display()))?;
+    }
+    Ok(dir)
+}
+
+/// Version numbers as numbers ("1.10.0" > "1.9.2"); missing parts are 0.
+fn version_key(version: &str) -> Vec<u64> {
+    version
+        .trim()
+        .split('.')
+        .map(|p| p.trim_start_matches(|c: char| !c.is_ascii_digit()).parse().unwrap_or(0))
+        .collect()
+}
+
+/// Brings installed bundled extensions up to date: each one whose installed
+/// version is older than the one in Atlas is installed again (its settings
+/// stay). Returns the updated names.
+pub fn update_bundled(user_root: &Path) -> Vec<String> {
+    let mut updated = Vec::new();
+    for bundled in BUNDLED {
+        let dir = user_root.join(bundled.name);
+        if !dir.join(MANIFEST).is_file() {
+            continue;
+        }
+        let shipped = bundled
+            .files
+            .iter()
+            .find(|(f, _, _)| *f == MANIFEST)
+            .and_then(|(_, text, _)| yaml_rust2::YamlLoader::load_from_str(text).ok())
+            .and_then(|docs| docs.first().and_then(|d| d["version"].as_str().map(str::to_owned)))
+            .unwrap_or_default();
+        let installed = load(&dir, Location::User).version;
+        if version_key(&installed) < version_key(&shipped) && install_bundled(user_root, bundled.name).is_ok() {
+            updated.push(bundled.name.to_owned());
+        }
+    }
+    updated
+}
+
 pub fn user_root(config_dir: &Path) -> PathBuf {
     config_dir.join(DIR)
 }
@@ -504,6 +1120,113 @@ pub fn project_root(atlas_dir: &Path) -> PathBuf {
 }
 
 // -------------------------------------------------------------------- trust
+
+/// Largest extension folder that is checked (files, bytes).
+const MAX_FILES: usize = 10_000;
+const MAX_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Content hash of a file, remembered by its metadata: a change of the
+/// content always changes the ctime, which (unlike the mtime) cannot be set
+/// back by hand.
+fn file_hash(path: &Path, meta: &std::fs::Metadata) -> Result<String> {
+    use std::os::unix::fs::MetadataExt;
+    type Seen = HashMap<PathBuf, ((u64, u64, i64, i64, i64, i64), String)>;
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<Seen>> = std::sync::OnceLock::new();
+    let key = (
+        meta.dev(),
+        meta.ino(),
+        meta.size() as i64,
+        meta.mtime_nsec() + meta.mtime() * 1_000_000_000,
+        meta.ctime(),
+        meta.ctime_nsec(),
+    );
+    let seen = SEEN.get_or_init(Default::default);
+    if let Some((k, hash)) = seen.lock().ok().and_then(|s| s.get(path).cloned())
+        && k == key
+    {
+        return Ok(hash);
+    }
+    let mut hasher = blake3::Hasher::new();
+    hasher.update_reader(std::fs::File::open(path)?)?;
+    let hash = hasher.finalize().to_hex().to_string();
+    if let Ok(mut s) = seen.lock() {
+        s.insert(path.to_path_buf(), (key, hash.clone()));
+    }
+    Ok(hash)
+}
+
+/// BLAKE3 over the whole extension folder: every file's relative path,
+/// executable bit and content, every symbolic link's target (a link to a
+/// file also with that file's content, a link to a folder with everything
+/// in it) – so a trusted extension whose script changed is untrusted again,
+/// not only one whose manifest changed.
+pub fn folder_hash(dir: &Path) -> Result<String> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"atlas-extension-folder-v2\0");
+    let (mut files, mut bytes) = (0usize, 0u64);
+    // Folders on the current path, so that a link loop ends.
+    let mut stack = vec![(PathBuf::new(), Vec::<(u64, u64)>::new())];
+    while let Some((rel, mut parents)) = stack.pop() {
+        let meta = std::fs::metadata(dir.join(&rel))?;
+        if parents.contains(&(meta.dev(), meta.ino())) {
+            hasher.update(b"C");
+            hasher.update(rel.as_os_str().as_encoded_bytes());
+            hasher.update(b"\0");
+            continue;
+        }
+        parents.push((meta.dev(), meta.ino()));
+        let mut entries: Vec<_> = std::fs::read_dir(dir.join(&rel))
+            .with_context(|| format!("{} nicht lesbar", dir.join(&rel).display()))?
+            .collect::<std::io::Result<_>>()?;
+        entries.sort_by_key(|e| e.file_name());
+        // Depth first, in name order (sub folders after the files).
+        let mut subdirs = Vec::new();
+        for entry in entries {
+            let rel = rel.join(entry.file_name());
+            let path = entry.path();
+            let link = std::fs::symlink_metadata(&path)?;
+            let kind = if link.file_type().is_symlink() {
+                hasher.update(b"L");
+                hasher.update(rel.as_os_str().as_encoded_bytes());
+                hasher.update(b"\0");
+                hasher.update(std::fs::read_link(&path)?.as_os_str().as_encoded_bytes());
+                hasher.update(b"\0");
+                // What it points to: a file counts with its content, a
+                // folder with everything in it.
+                match std::fs::metadata(&path) {
+                    Ok(m) if m.is_file() => Some(m),
+                    Ok(m) if m.is_dir() => {
+                        subdirs.push(rel.clone());
+                        None
+                    }
+                    _ => None,
+                }
+            } else if link.is_dir() {
+                subdirs.push(rel.clone());
+                None
+            } else if link.is_file() {
+                Some(link)
+            } else {
+                None
+            };
+            if let Some(meta) = kind {
+                files += 1;
+                bytes += meta.len();
+                if files > MAX_FILES || bytes > MAX_BYTES {
+                    bail!("Erweiterung zu groß zum Prüfen (mehr als {MAX_FILES} Dateien oder {} MB)", MAX_BYTES >> 20);
+                }
+                hasher.update(b"F");
+                hasher.update(rel.as_os_str().as_encoded_bytes());
+                hasher.update(if meta.permissions().mode() & 0o111 != 0 { b"\0x\0" } else { b"\0-\0" });
+                hasher.update(file_hash(&path, &meta)?.as_bytes());
+            }
+        }
+        subdirs.reverse();
+        stack.extend(subdirs.into_iter().map(|rel| (rel, parents.clone())));
+    }
+    Ok(format!("v2:{}", hasher.finalize().to_hex()))
+}
 
 /// Project extensions the user trusted: folder → manifest hash, in
 /// `$XDG_STATE_HOME/atlas/trusted-extensions.json`.
@@ -542,7 +1265,11 @@ impl Trust {
 
 pub fn status(ext: &Extension, trust: &Trust, disabled: &[String]) -> Status {
     if ext.hash.is_empty()
-        || (ext.actions.is_empty() && ext.processors.is_empty() && ext.exporters.is_empty() && !ext.errors.is_empty())
+        || (ext.actions.is_empty()
+            && ext.processors.is_empty()
+            && ext.exporters.is_empty()
+            && ext.views.is_empty()
+            && !ext.errors.is_empty())
     {
         Status::Broken
     } else if disabled.contains(&ext.name) {
@@ -571,6 +1298,7 @@ pub fn run(built: &actions::Built, timeout: Duration) -> Result<Finished> {
     let (program, args) = built.argv.split_first().context("leerer Befehl")?;
     let mut child = Process::new(program)
         .args(args)
+        .envs(built.env.iter().map(|(k, v)| (k, v)))
         .current_dir(&built.cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -638,7 +1366,7 @@ impl Processor {
     pub fn process(&self, file: &Path, project: Option<&Path>, cache_dir: &Path) -> Result<Processed> {
         let mut hasher = blake3::Hasher::new();
         hasher.update(self.id.as_bytes());
-        hasher.update(format!("{:?}", self.command).as_bytes());
+        hasher.update(format!("{:?}{:?}", self.command, self.settings.env).as_bytes());
         let source =
             std::fs::File::open(file).with_context(|| format!("{} kann nicht gelesen werden", file.display()))?;
         hasher.update_reader(source)?;
@@ -653,11 +1381,9 @@ impl Processor {
             let tmp =
                 cache_dir.join(format!(".{key}.tmp-{}-{run_id}.{}", std::process::id(), self.output.file_extension()));
             let ctx = Context { project: project.map(Path::to_path_buf), paths: vec![file.to_path_buf()], line: 0 };
-            let extra = [
-                ("{output}", tmp.to_string_lossy().into_owned()),
-                ("{extension}", self.base_dir.to_string_lossy().into_owned()),
-            ];
-            let built = actions::build(&self.command, self.cwd.as_deref(), &ctx, &extra)?;
+            let extra = self.settings.placeholders(&tmp, &self.base_dir);
+            let mut built = actions::build(&self.command, self.cwd.as_deref(), &ctx, &extra)?;
+            built.env = self.settings.environment()?;
             let finished = run(&built, self.timeout)?;
             if finished.code != Some(0) {
                 let _ = std::fs::remove_file(&tmp);
@@ -713,11 +1439,9 @@ impl Exporter {
             self.target
         ));
         let ctx = Context { project: project.map(Path::to_path_buf), paths: vec![file.to_path_buf()], line: 0 };
-        let extra = [
-            ("{output}", tmp.to_string_lossy().into_owned()),
-            ("{extension}", self.base_dir.to_string_lossy().into_owned()),
-        ];
-        let built = actions::build(&self.command, self.cwd.as_deref(), &ctx, &extra)?;
+        let extra = self.settings.placeholders(&tmp, &self.base_dir);
+        let mut built = actions::build(&self.command, self.cwd.as_deref(), &ctx, &extra)?;
+        built.env = self.settings.environment()?;
         let finished = run(&built, self.timeout);
         let finished = match finished {
             Ok(f) => f,
@@ -736,6 +1460,162 @@ impl Exporter {
         std::fs::rename(&tmp, output).with_context(|| format!("{} kann nicht geschrieben werden", output.display()))?;
         Ok(())
     }
+}
+
+// ------------------------------------------------------------------- bridge
+
+/// Largest file a view reads or writes through the bridge.
+const MAX_BRIDGE_FILE: u64 = 32 * 1024 * 1024;
+
+/// `path` (absolute, or relative to the project) if the extension may use
+/// it: inside the project (`files: project`), the home folder (`home`) or
+/// anywhere (`all`). Links are followed before checking, so a link in the
+/// project cannot lead outside.
+pub fn scoped_path(ext: &Extension, project: Option<&Path>, path: &str) -> Result<PathBuf> {
+    let access = ext.permissions.as_ref().map(|p| p.files).unwrap_or(FileAccess::None);
+    let root = match access {
+        FileAccess::None => bail!("„{}“ hat keinen Dateizugriff angemeldet", ext.title),
+        FileAccess::Project => project.context("kein Projekt geöffnet")?.to_path_buf(),
+        FileAccess::Home => dirs::home_dir().context("kein persönlicher Ordner")?,
+        FileAccess::All => PathBuf::from("/"),
+    };
+    let wanted = Path::new(path);
+    let joined = if wanted.is_absolute() {
+        wanted.to_path_buf()
+    } else {
+        project.context("ohne Projekt nur absolute Pfade")?.join(wanted)
+    };
+    if joined.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        bail!("„..“ ist in Pfaden nicht erlaubt");
+    }
+    // The nearest existing folder decides (the file may not exist yet).
+    let mut existing = joined.as_path();
+    let mut rest = Vec::new();
+    while !existing.exists() {
+        rest.push(existing.file_name().context("ungültiger Pfad")?.to_owned());
+        existing = existing.parent().context("ungültiger Pfad")?;
+    }
+    let mut real = existing.canonicalize()?;
+    for part in rest.into_iter().rev() {
+        real.push(part);
+    }
+    let root = root.canonicalize().unwrap_or(root);
+    if !real.starts_with(&root) {
+        bail!("„{}“ liegt außerhalb dessen, was „{}“ angemeldet hat ({})", path, ext.title, access.as_str());
+    }
+    Ok(real)
+}
+
+/// Answers a request of a view's page (`atlas.call(method, params)`):
+///
+/// - `context`: project, settings (without secrets), permissions
+/// - `listFiles {dir, pattern?}`: entries of a folder
+/// - `readFile {path}` → text, `writeFile {path, text}` (atomic, creates
+///   folders), `exists {path}`
+/// - `renameFile {path, name}` → new path, `trashFile {path}`
+///
+/// Paths are checked with [`scoped_path`]. Opening files, messages and the
+/// theme are answered by the user interface.
+pub fn call(
+    ext: &Extension,
+    project: Option<&Path>,
+    settings: &toml::Table,
+    method: &str,
+    params: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    use serde_json::json;
+    let text = |key: &str| params[key].as_str().with_context(|| format!("„{key}“ fehlt"));
+    let path = |key: &str| -> Result<PathBuf> { scoped_path(ext, project, text(key)?) };
+    Ok(match method {
+        "context" => {
+            let values: serde_json::Map<String, serde_json::Value> = ext
+                .setting_values(settings)
+                .into_iter()
+                .filter(|(s, _)| s.kind != SettingKind::Secret)
+                .map(|(s, v)| (s.key.clone(), serde_json::to_value(v).unwrap_or_default()))
+                .collect();
+            json!({
+                "extension": ext.name,
+                "project": project.map(|p| p.to_string_lossy().into_owned()),
+                "settings": values,
+                "files": ext.permissions.as_ref().map(|p| p.files.as_str()).unwrap_or("none"),
+            })
+        }
+        "listFiles" => {
+            let dir = path("dir")?;
+            let pattern = match params["pattern"].as_str() {
+                Some(p) => Some(globs(&[p.to_owned()])?),
+                None => None,
+            };
+            let mut out = Vec::new();
+            if dir.is_dir() {
+                for entry in std::fs::read_dir(&dir)?.flatten() {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    let meta = entry.metadata()?;
+                    if name.starts_with('.') || pattern.as_ref().is_some_and(|g| !meta.is_dir() && !g.is_match(&name)) {
+                        continue;
+                    }
+                    let modified = meta
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or_default();
+                    out.push(json!({
+                        "name": name,
+                        "path": entry.path().to_string_lossy(),
+                        "dir": meta.is_dir(),
+                        "size": meta.len(),
+                        "modified": modified,
+                    }));
+                }
+            }
+            out.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+            json!(out)
+        }
+        "readFile" => {
+            let file = path("path")?;
+            if std::fs::metadata(&file).with_context(|| format!("{} fehlt", file.display()))?.len() > MAX_BRIDGE_FILE {
+                bail!("{} ist zu groß", file.display());
+            }
+            json!(std::fs::read_to_string(&file).with_context(|| format!("{} ist nicht lesbar", file.display()))?)
+        }
+        "writeFile" => {
+            let file = path("path")?;
+            let content = text("text")?;
+            if content.len() as u64 > MAX_BRIDGE_FILE {
+                bail!("zu viel Text");
+            }
+            if file.is_dir() {
+                bail!("{} ist ein Ordner", file.display());
+            }
+            crate::paths::write_atomic(&file, content.as_bytes())?;
+            json!(file.to_string_lossy())
+        }
+        "exists" => json!(path("path")?.exists()),
+        "renameFile" => {
+            let file = path("path")?;
+            let renamed = crate::fileops::rename(&file, text("name")?)?;
+            json!(scoped_path(ext, project, &renamed.to_string_lossy())?.to_string_lossy())
+        }
+        "trashFile" => {
+            crate::fileops::trash(&[path("path")?])?;
+            json!(true)
+        }
+        "renderMarkdown" => {
+            let source = text("text")?;
+            if source.len() as u64 > MAX_BRIDGE_FILE {
+                bail!("zu viel Text");
+            }
+            // Relative links and images resolve against `path` (default: the project).
+            let file = match params["path"].as_str() {
+                Some(_) => path("path")?,
+                None => project.map(|p| p.join("_.md")).unwrap_or_default(),
+            };
+            json!({ "html": crate::markdown::render(source, &file, project).html })
+        }
+        other => bail!("unbekannte Anfrage „{other}“"),
+    })
 }
 
 #[cfg(test)]
@@ -777,7 +1657,7 @@ mod tests {
         assert!(proj.errors.iter().any(|e| e.contains("applies_to")));
         assert!(proj.errors.iter().any(|e| e.contains("target")));
         assert!(proj.errors.iter().any(|e| e.contains("{output}")));
-        assert!(found[2].errors[0].contains("atlas_extension"));
+        assert!(found[2].errors[0].contains("atlas_api"));
 
         // A new extension: own name, examples only as comments.
         let (name, text) = starter("Projekt-Werkzeuge: PDF");
@@ -800,6 +1680,248 @@ mod tests {
     }
 
     #[test]
+    fn uninstalling_forgets_settings_and_trust() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("extensions");
+        let config = dir.path().join("config");
+        let ext_dir = install_bundled(&root, "bnki").unwrap();
+        let ext = load(&ext_dir, Location::User);
+        save_setting(&config, &ext, "ordner", Some(toml::Value::String("karten".into()))).unwrap();
+        let other = write_ext(
+            dir.path(),
+            "andere",
+            "atlas_api: 2\nname: andere\nsettings: [{key: x, default: a}]\ncommands: [{name: A, command: ['{extension}/a.sh']}]\n",
+        );
+        let other = load(&other, Location::User);
+        save_setting(&config, &other, "x", Some(toml::Value::String("b".into()))).unwrap();
+        let mut trust = Trust::load(&dir.path().join("state"));
+        forget(&ext, &config, &mut trust).unwrap();
+        let left = load_settings(&config);
+        assert!(!left.contains_key("bnki") && left.contains_key("andere"), "{left:?}");
+
+        // A project extension also loses its trust.
+        let project = write_ext(
+            &dir.path().join("p"),
+            "proj",
+            "atlas_api: 2\nname: proj\ncommands: [{name: A, command: ['{extension}/a.sh']}]\n",
+        );
+        let proj = load(&project, Location::Project);
+        trust.trust(&proj).unwrap();
+        assert!(Trust::load(&dir.path().join("state")).is_trusted(&proj));
+        forget(&proj, &config, &mut trust).unwrap();
+        assert!(!Trust::load(&dir.path().join("state")).is_trusted(&proj));
+
+        // Installed again: like new.
+        install_bundled(&root, "bnki").unwrap();
+        let again = load(&ext_dir, Location::User);
+        assert_eq!(again.setting_values(&load_settings(&config))[0].1.as_str(), Some("bnki"));
+    }
+
+    #[test]
+    fn bundled_extensions_update_themselves_when_older() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("extensions");
+        assert!(update_bundled(&root).is_empty(), "not installed: nothing to do");
+        let ext_dir = install_bundled(&root, "jupyter").unwrap();
+        assert!(update_bundled(&root).is_empty(), "same version");
+        // An older copy (the manifest of 1.0.0, run in a terminal tab).
+        let manifest = ext_dir.join(MANIFEST);
+        let shipped = load(&ext_dir, Location::User).version;
+        let old = std::fs::read_to_string(&manifest)
+            .unwrap()
+            .replace(&format!("version: {shipped}"), "version: 1.0.0")
+            .replace("background", "tab");
+        std::fs::write(&manifest, old).unwrap();
+        assert_eq!(update_bundled(&root), ["jupyter"]);
+        let ext = load(&ext_dir, Location::User);
+        assert_eq!(ext.version, shipped);
+        assert_eq!(ext.actions[0].placement, crate::actions::Placement::Background);
+        assert!(version_key("1.10.0") > version_key("1.9.2") && version_key("1.0") == version_key("1.0"));
+    }
+
+    #[test]
+    fn jupyter_opens_notebooks_and_starts_its_server() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = install_bundled(&dir.path().join("extensions"), "jupyter").unwrap();
+        let ext = load(&ext_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        assert!(ext.context);
+        let view = &ext.views[0];
+        assert_eq!(view.id, "view:jupyter/notebook");
+        assert!(view.auto);
+        let project = dir.path().join("projekt");
+        std::fs::create_dir(&project).unwrap();
+        assert!(view.applies(&project.join("Analyse.ipynb"), Some(&project)));
+        assert!(!view.applies(&project.join("Analyse.py"), Some(&project)));
+        // The page starts the server through this command (`runCommand`).
+        let server = &ext.actions[0];
+        assert_eq!(server.id, "jupyter/server");
+        assert_eq!(server.placement, crate::actions::Placement::Background);
+        assert_eq!(ext.actions[1].id, "jupyter/setup");
+        for script in ["server.sh", "setup.sh", "job.sh"] {
+            let mode = std::fs::metadata(ext_dir.join(script)).unwrap().permissions().mode();
+            assert_eq!(mode & 0o111, 0o111, "{script} ausführbar");
+        }
+
+        let settings = toml::Table::new();
+        let call = |method: &str, params: serde_json::Value| call(&ext, Some(&project), &settings, method, &params);
+        assert_eq!(call("context", serde_json::json!({})).unwrap()["settings"]["port"], 8899.0);
+        // The token written by server.sh is readable inside the project.
+        std::fs::create_dir_all(project.join(".atlas/cache/jupyter")).unwrap();
+        std::fs::write(project.join(".atlas/cache/jupyter/token"), "abc").unwrap();
+        assert_eq!(call("readFile", serde_json::json!({ "path": ".atlas/cache/jupyter/token" })).unwrap(), "abc");
+        // Markdown cells are rendered by Atlas (math for KaTeX).
+        let html =
+            call("renderMarkdown", serde_json::json!({ "text": "# Titel\n\n$x^2$", "path": "Analyse.ipynb" })).unwrap();
+        assert!(html["html"].as_str().unwrap().contains("data-tex=\"x^2\""), "{html}");
+        assert!(call("renderMarkdown", serde_json::json!({ "text": "x", "path": "/etc/passwd" })).is_err());
+    }
+
+    #[test]
+    fn bnki_view_and_bridge_stay_in_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = install_bundled(&dir.path().join("extensions"), "bnki").unwrap();
+        let ext = load(&ext_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        assert_eq!(ext.views.len(), 1);
+        let view = &ext.views[0];
+        assert_eq!((view.id.as_str(), view.page.as_str()), ("view:bnki/editor", "editor.html"));
+        assert_eq!(view.keybinding.as_deref(), Some("Ctrl+Alt+B"));
+        let project = dir.path().join("projekt");
+        std::fs::create_dir(&project).unwrap();
+        assert!(view.applies(&project.join("stapel.csv"), Some(&project)));
+        assert!(!view.applies(&project.join("notiz.md"), Some(&project)));
+
+        let settings = toml::Table::new();
+        let call = |method: &str, params: serde_json::Value| call(&ext, Some(&project), &settings, method, &params);
+        let ctx = call("context", serde_json::json!({})).unwrap();
+        assert_eq!(ctx["settings"]["ordner"], "bnki");
+        assert_eq!(ctx["files"], "project");
+
+        // A deck: written (folder created), listed, read, renamed.
+        let csv = "front;back;hint;tags\nFrage;Antwort;;bio\n";
+        let written = call("writeFile", serde_json::json!({ "path": "bnki/Bio.csv", "text": csv })).unwrap();
+        let real = project.canonicalize().unwrap().join("bnki/Bio.csv");
+        assert_eq!(written, real.to_string_lossy().as_ref());
+        let listed = call("listFiles", serde_json::json!({ "dir": "bnki", "pattern": "*.csv" })).unwrap();
+        assert_eq!(listed[0]["name"], "Bio.csv");
+        assert_eq!(call("readFile", serde_json::json!({ "path": written })).unwrap(), csv);
+        assert_eq!(call("exists", serde_json::json!({ "path": "bnki/Bio.csv" })).unwrap(), true);
+        let renamed = call("renameFile", serde_json::json!({ "path": "bnki/Bio.csv", "name": "Zelle.csv" })).unwrap();
+        assert!(renamed.as_str().unwrap().ends_with("/bnki/Zelle.csv"));
+
+        // Outside the project: refused – also through „..“ or a link.
+        for path in ["/etc/passwd", "../geheim.txt", "bnki/../../geheim.txt"] {
+            let err = call("readFile", serde_json::json!({ "path": path })).unwrap_err().to_string();
+            assert!(err.contains("außerhalb") || err.contains(".."), "{path}: {err}");
+        }
+        std::fs::write(dir.path().join("geheim.txt"), "x").unwrap();
+        std::os::unix::fs::symlink(dir.path(), project.join("raus")).unwrap();
+        assert!(call("readFile", serde_json::json!({ "path": "raus/geheim.txt" })).is_err());
+        assert!(call("writeFile", serde_json::json!({ "path": "raus/neu.txt", "text": "x" })).is_err());
+        assert!(!dir.path().join("neu.txt").exists());
+        assert!(call("unbekannt", serde_json::json!({})).is_err());
+        // Without a project nothing is reachable.
+        assert!(super::call(&ext, None, &settings, "readFile", &serde_json::json!({ "path": "/etc/passwd" })).is_err());
+    }
+
+    #[test]
+    fn api_2_declares_permissions_settings_and_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = write_ext(
+            dir.path(),
+            "nb",
+            r#"atlas_api: 2
+name: nb
+permissions: {run: [cat, jupyter], files: home, network: [cloud.example.org]}
+settings:
+- {key: format, type: choice, choices: [html, md], default: md}
+- {key: python, type: path, default: jupyter}
+- {key: anders, type: path, default: /tmp/fremd}
+- {key: token, type: secret}
+- {key: zahl, type: number, default: nein}
+commands:
+- {name: Umwandeln, applies_to: "*.ipynb", command: [jupyter, nbconvert, --to, "{setting:format}", "{file}"], keybinding: strg+alt+j, menu: palette}
+- {name: Python, command: ["{setting:python}", -V]}
+- {name: Anders, command: ["{setting:anders}", -V]}
+- {name: Fremd, command: [curl, x]}
+- {name: Shell, shell: true, command: "cat {file}"}
+- {name: Geheim, command: [cat, "{setting:token}"]}
+- {name: Skript, command: ["{extension}/run.sh"]}
+processors:
+- {name: Zeigen, applies_to: "*.ipynb", output: text, command: [sh, -c, "echo $ATLAS_SETTING_FORMAT"]}
+- {name: Katze, applies_to: "*.ipynb", output: text, command: [cat, "{file}"]}
+"#,
+        );
+        let mut ext = load(&ext_dir, Location::User);
+        assert_eq!(ext.api, 2);
+        let permissions = ext.permissions.clone().unwrap();
+        assert_eq!(permissions.files, FileAccess::Home);
+        assert_eq!(permissions.network, ["cloud.example.org"]);
+        let keys: Vec<_> = ext.settings.iter().map(|s| s.key.as_str()).collect();
+        assert_eq!(keys, ["format", "python", "anders", "token"], "{:?}", ext.errors);
+        let names: Vec<_> = ext.actions.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Umwandeln", "Python", "Skript"], "{:?}", ext.errors);
+        assert_eq!(ext.actions[0].keybinding.as_deref(), Some("Ctrl+Alt+J"));
+        assert_eq!((ext.actions[0].in_menu, ext.actions[0].in_palette), (false, true));
+        assert_eq!(ext.processors.len(), 1, "sh is not declared");
+        for wanted in ["zahl", "„curl“ fehlt", "„sh“ fehlt", "ATLAS_SETTING_TOKEN", "„{setting:anders}“ fehlt"]
+        {
+            assert!(ext.errors.iter().any(|e| e.contains(wanted)), "{wanted}: {:?}", ext.errors);
+        }
+
+        // Settings: defaults, then the user's values (wrong types ignored).
+        let config = dir.path().join("config");
+        let ctx = Context { project: None, paths: vec![ext_dir.join("a.ipynb")], line: 0 };
+        let argv = |ext: &Extension| ext.actions[0].prepare(&ctx).unwrap().argv;
+        ext.apply_settings(&load_settings(&config));
+        assert!(argv(&ext).ends_with(&["--to".into(), "md".into(), ext_dir.join("a.ipynb").to_string_lossy().into()]));
+        assert!(argv(&ext).contains(&"ATLAS_SETTING_FORMAT=md".to_owned()));
+        save_setting(&config, &ext, "format", Some(toml::Value::String("html".into()))).unwrap();
+        assert!(save_setting(&config, &ext, "format", Some(toml::Value::String("pdf".into()))).is_err());
+        assert!(save_setting(&config, &ext, "fehlt", None).is_err());
+        ext.apply_settings(&load_settings(&config));
+        assert!(argv(&ext).contains(&"html".to_owned()));
+        save_setting(&config, &ext, "format", None).unwrap();
+        assert!(!settings_file(&config).exists() || load_settings(&config).is_empty());
+
+        // Processors get the values in their environment.
+        let mut ext = load(&ext_dir, Location::User);
+        ext.permissions.as_mut().unwrap().run.push("sh".into());
+        let _ = &ext;
+        let text = r#"atlas_api: 2
+name: env
+permissions: {run: [sh]}
+settings: [{key: format, type: choice, choices: [html, md], default: md}]
+processors:
+- name: Zeigen
+  applies_to: "*.txt"
+  output: text
+  command: [sh, -c, 'printf %s "$ATLAS_SETTING_FORMAT"']
+"#;
+        let env_dir = write_ext(dir.path(), "env", text);
+        let mut ext = load(&env_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        save_setting(&config, &ext, "format", Some(toml::Value::String("html".into()))).unwrap();
+        ext.apply_settings(&load_settings(&config));
+        let file = dir.path().join("x.txt");
+        std::fs::write(&file, "x").unwrap();
+        let out = ext.processors[0].process(&file, None, &dir.path().join("cache")).unwrap();
+        assert_eq!(out, Processed::Text("html".into()));
+
+        // Newer API: not loaded.
+        let future = write_ext(
+            dir.path(),
+            "neu",
+            "atlas_api: 3
+name: neu
+",
+        );
+        assert!(load(&future, Location::User).errors[0].contains("neuere Atlas-Version"));
+    }
+
+    #[test]
     fn old_template_extensions_become_core() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -818,6 +1940,61 @@ mod tests {
         assert_eq!(load(&root.join("core-2"), Location::User).title, "Core 2");
         assert!(root.join("beispiel-3").is_dir(), "own titles stay");
         assert!(migrate_legacy(root).is_empty(), "runs once");
+    }
+
+    #[test]
+    fn trust_covers_every_file_of_a_project_extension() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = write_ext(
+            dir.path(),
+            "skript",
+            "atlas_extension: 1\nname: skript\nactions:\n- {name: A, command: [\"{extension}/run.sh\"]}\n",
+        );
+        std::fs::create_dir(ext_dir.join("lib")).unwrap();
+        std::fs::write(ext_dir.join("run.sh"), "#!/bin/sh\necho harmlos\n").unwrap();
+        std::fs::write(ext_dir.join("lib/helfer.py"), "print(1)\n").unwrap();
+        let state = dir.path().join("state");
+        let mut trust = Trust::load(&state);
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        let active = || status(&load(&ext_dir, Location::Project), &Trust::load(&state), &[]) == Status::Active;
+        assert!(active());
+        // The script changes (same size even), the manifest does not.
+        std::fs::write(ext_dir.join("run.sh"), "#!/bin/sh\necho bösartig\n").unwrap();
+        assert!(!active(), "a changed script needs a new approval");
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        assert!(active());
+        // A file in a sub folder, a new file, the executable bit, a link.
+        std::fs::write(ext_dir.join("lib/helfer.py"), "print(2)\n").unwrap();
+        assert!(!active());
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        std::fs::write(ext_dir.join("neu.sh"), "x").unwrap();
+        assert!(!active());
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        std::fs::set_permissions(ext_dir.join("neu.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!active());
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        let outside = dir.path().join("draussen.sh");
+        std::fs::write(&outside, "echo 1").unwrap();
+        std::os::unix::fs::symlink(&outside, ext_dir.join("link.sh")).unwrap();
+        assert!(!active());
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        assert!(active());
+        std::fs::write(&outside, "echo 2").unwrap();
+        assert!(!active(), "the file a link points to counts too");
+        // A link to a folder counts with everything in it.
+        let werkzeuge = dir.path().join("werkzeuge");
+        std::fs::create_dir(&werkzeuge).unwrap();
+        std::fs::write(werkzeuge.join("run.sh"), "echo 1").unwrap();
+        std::os::unix::fs::symlink(&werkzeuge, ext_dir.join("werkzeuge")).unwrap();
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        assert!(active());
+        std::fs::write(werkzeuge.join("run.sh"), "echo 2").unwrap();
+        assert!(!active(), "a file behind a folder link counts too");
+        // A link loop ends instead of hanging.
+        std::os::unix::fs::symlink(&ext_dir, werkzeuge.join("zurueck")).unwrap();
+        trust.trust(&load(&ext_dir, Location::Project)).unwrap();
+        assert!(active());
     }
 
     #[test]

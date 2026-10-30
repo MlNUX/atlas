@@ -13,6 +13,8 @@ window.atlas = (function () {
     let reportScroll = true;
     // The PDF export prints on white paper: diagrams in light colours then.
     let printMode = false;
+    // The light design of Atlas (see `setLight`).
+    let light = false;
     // Diagrams in the colours of the page (navy design), see preview.css.
     const DARK_DIAGRAMS = {
         theme: "base",
@@ -53,6 +55,11 @@ window.atlas = (function () {
         });
     }
 
+    function initMermaid() {
+        mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: "strict" },
+            printMode || light ? { theme: "default" } : DARK_DIAGRAMS));
+    }
+
     function renderMermaid(root) {
         const blocks = root.querySelectorAll("pre.mermaid");
         if (!blocks.length) return;
@@ -61,8 +68,7 @@ window.atlas = (function () {
                 const s = document.createElement("script");
                 s.src = "vendor/mermaid/mermaid.min.js";
                 s.onload = () => {
-                    mermaid.initialize(Object.assign({ startOnLoad: false, securityLevel: "strict" },
-                        printMode ? { theme: "default" } : DARK_DIAGRAMS));
+                    initMermaid();
                     resolve();
                 };
                 document.head.appendChild(s);
@@ -254,22 +260,33 @@ window.atlas = (function () {
     });
     document.addEventListener("auxclick", (ev) => { if (ev.button === 1) ev.target.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true })); });
 
-    // Scrolling by the user is reported once per frame (the editor follows);
-    // movements made for the editor are not.
+    // The position is reported once per frame: as scrolling by the user
+    // (the editor follows), or `own` for movements made for the editor and
+    // changes of the page height (QML only keeps track of where it is).
     let scrollPending = false;
-    window.addEventListener("scroll", () => {
-        if (!reportScroll) return;
-        if (ownScroll >= 0 && Math.abs(window.scrollY - ownScroll) <= 1) { ownScroll = -1; return; }
-        ownScroll = -1;
+    let scrollOwn = true;
+    function report(own) {
+        scrollOwn = scrollOwn && own;
         if (scrollPending) return;
         scrollPending = true;
         requestAnimationFrame(() => {
             scrollPending = false;
             // The middle of the view is where content lines up with the editor.
             const mid = Math.round(window.innerHeight / 2);
-            post("scroll", { line: topLine(), exact: exactLineAt(mid), at: mid, y: window.scrollY });
+            post("scroll", { line: topLine(), exact: exactLineAt(mid), at: mid, y: window.scrollY,
+                             height: document.documentElement.scrollHeight, own: scrollOwn });
+            scrollOwn = true;
         });
+    }
+    window.addEventListener("scroll", () => {
+        let own = !reportScroll;
+        if (reportScroll) {
+            own = ownScroll >= 0 && Math.abs(window.scrollY - ownScroll) <= 1;
+            ownScroll = -1;
+        }
+        report(own);
     });
+    new ResizeObserver(() => report(true)).observe(document.documentElement);
 
     function scrollToAnchor(slug) {
         const el = document.getElementById(slug);
@@ -342,6 +359,8 @@ window.atlas = (function () {
             // drag the editor along in the split view).
             ownScroll = y;
             window.scrollTo(0, y);
+            // For the timing log (ATLAS_TIMING): the content is on screen.
+            requestAnimationFrame(() => post("rendered", {}));
         },
         scrollToLine(line) {
             let target = null;
@@ -356,6 +375,13 @@ window.atlas = (function () {
         scrollToY(y) { window.scrollTo(0, y); },
         /// The PDF export: light diagrams (call before `set`).
         setPrintMode(on) { printMode = !!on; },
+        /// Light colours for the page and later diagrams (call before `set`).
+        setLight(on) {
+            if (light === !!on) return;
+            light = !!on;
+            document.documentElement.classList.toggle("light", light);
+            if (window.mermaid) initMermaid();
+        },
         /// Follows the editor smoothly to source line `line` (fractional).
         follow,
         exactTopLine,

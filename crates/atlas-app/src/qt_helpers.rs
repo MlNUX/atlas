@@ -42,6 +42,8 @@ pub mod ffi {
         fn init_web_engine();
         #[cxx_name = "installWebSchemeHandler"]
         fn install_web_scheme_handler();
+        #[cxx_name = "setExtensionDir"]
+        fn set_extension_dir(name: &QString, dir: &QString);
         #[cxx_name = "saveWindowImage"]
         unsafe fn save_window_image(window: *mut QObject, path: &QString) -> bool;
         #[cxx_name = "sendWheel"]

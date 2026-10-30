@@ -37,6 +37,9 @@ Rectangle {
     property var actions: null
     /// Suggest project files after `[[` (Markdown).
     property bool wikiCompletion: false
+    /// Faster, more direct touchpad scrolling (TouchpadFling.brisk), as in
+    /// the .atlasnote view.
+    property bool briskScrolling: false
 
     /// Shows file suggestions while the cursor is inside an unfinished
     /// `[[…` (no `|`, `#` or `]]` typed yet).
@@ -651,7 +654,7 @@ Rectangle {
                     width: flick.contentWidth
                     height: area.cursorRectangle.height
                     y: area.cursorRectangle.y
-                    color: "#262626"
+                    color: Theme.light ? "#f0f3f8" : "#262626"
                 }
                 Rectangle {
                     id: flashLine
@@ -742,7 +745,7 @@ Rectangle {
                             y: modelData.y
                             width: modelData.w
                             height: 1.6
-                            color: "#f2575f"
+                            color: Theme.error
                             opacity: 0.9
                         }
                     }
@@ -827,7 +830,7 @@ Rectangle {
                                     anchors.verticalCenter: parent.verticalCenter
                                     x: 6
                                     spacing: 8
-                                    Text { text: modelData.kind === "tag" ? "#" : modelData.kind === "note" ? "📝" : "📄"; font.pixelSize: 12; color: "#9dd1ff" }
+                                    Text { text: modelData.kind === "tag" ? "#" : modelData.kind === "note" ? "📝" : "📄"; font.pixelSize: 12; color: Theme.link }
                                     Text {
                                         text: modelData.title ? modelData.title + "  ·  " + modelData.relative : modelData.relative
                                         color: Theme.text
@@ -850,6 +853,7 @@ Rectangle {
                 id: touchpadFling
                 anchors.fill: flick
                 flickable: flick
+                brisk: root.briskScrolling
                 active: root.app.touchpadFling
                 app: root.app
             }
@@ -862,7 +866,7 @@ Rectangle {
             SyntaxHighlighter {
                 textEdit: area
                 definition: root.large ? "None" : Repository.definitionForFileName(root.source).name
-                theme: Repository.theme("Breeze Dark")
+                theme: Repository.theme(Theme.light ? "Breeze Light" : "Breeze Dark")
             }
 
             // ---- symbol overview (where it can be determined reliably)

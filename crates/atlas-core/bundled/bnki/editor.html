@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2026 Minux
+SPDX-License-Identifier: GPL-3.0-or-later
+
+bnki-Karten-Editor als Ansicht in Atlas. Jeder Stapel ist eine CSV-Datei
+im Projekt (Ordner aus der Einstellung „Ordner der Stapel“); Änderungen
+werden sofort gespeichert. Format und Vorschau wie in der bnki-App
+(CsvIo.kt, LatexText.kt).
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>bnki-Karten</title>
+<link rel="stylesheet" href="atlas://app/web/vendor/katex/katex.min.css">
+<script src="atlas://app/web/vendor/katex/katex.min.js"></script>
+<script src="atlas://app/web/extension.js"></script>
+<style>
+  /* Farben von Atlas (--atlas-…), sonst die der Web-Version. */
+  :root {
+    --bg: var(--atlas-editor, #f6f6f8); --surface: var(--atlas-header, #ffffff); --text: var(--atlas-text, #1c1c22);
+    --muted: var(--atlas-muted, #6b6b76); --border: var(--atlas-border, #dcdce2); --accent: var(--atlas-accent, #4f46e5);
+    --accent-text: #ffffff; --danger: var(--atlas-error, #c0392b); --ok: var(--atlas-ok, #2e8b57);
+    --code-bg: var(--atlas-raised, #f0f0f4); --focus: var(--atlas-accent-soft, #a5b4fc);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
+  header .spacer { flex: 1; }
+  .status { font-size: 12px; color: var(--muted); }
+  .status.error { color: var(--danger); }
+  .bar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .bar input { max-width: 320px; }
+  main {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+  }
+  h2 { font-size: 14px; margin: 0 0 12px; }
+  label { display: block; font-weight: 600; font-size: 13px; margin: 12px 0 4px; }
+  label .opt { font-weight: 400; color: var(--muted); }
+  textarea, input[type=text], select {
+    width: 100%; font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px;
+  }
+  textarea { resize: vertical; min-height: 70px; font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 13px; }
+  textarea:focus, input:focus, select:focus { outline: 2px solid var(--focus); outline-offset: 0; }
+  header select { width: auto; max-width: 280px; }
+  button {
+    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button.danger { color: var(--danger); }
+  button.small { font-size: 12px; padding: 3px 8px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .error { color: var(--danger); font-size: 13px; min-height: 1em; }
+
+  .preview-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 8px; background: var(--bg); }
+  .preview-card .side { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+  .preview-card + .preview-card { margin-top: 10px; }
+  .rendered { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .rendered .katex-display { margin: 6px 0; overflow-x: auto; overflow-y: hidden; }
+  .codeblock {
+    background: var(--code-bg); border-radius: 6px; padding: 8px 10px; margin: 6px 0;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; white-space: pre; overflow-x: auto;
+  }
+  .codeblock .lang { display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px; font-family: system-ui, sans-serif; }
+  .rendered .bad-latex { color: var(--danger); }
+  .tags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag { font-size: 12px; background: var(--code-bg); border-radius: 999px; padding: 1px 8px; }
+
+  .list-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .list-head h2 { margin: 0; flex: 1; }
+  .list-head input { max-width: 220px; }
+  .cards { display: flex; flex-direction: column; gap: 8px; }
+  .card-item { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .card-item.editing { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .card-item .q { font-weight: 600; }
+  .card-item .a { color: var(--muted); margin-top: 4px; }
+  .card-item .actions { display: flex; gap: 6px; margin-top: 8px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; }
+  .start { max-width: 560px; margin: 48px auto; text-align: center; color: var(--muted); }
+  .start h2 { color: var(--text); font-size: 17px; }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details code { background: var(--code-bg); padding: 0 4px; border-radius: 4px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>bnki-Karten</h1>
+  <select id="deckSelect" aria-label="Stapel"></select>
+  <button id="newDeckBtn" title="Neuen Stapel als CSV-Datei anlegen">+ Stapel</button>
+  <button id="renameDeckBtn">Umbenennen</button>
+  <button id="deleteDeckBtn" class="danger" title="Die CSV-Datei in den Papierkorb legen">Löschen</button>
+  <span class="spacer"></span>
+  <span class="status" id="status"></span>
+  <button id="revealBtn" title="Die CSV-Datei im Explorer zeigen – von dort aufs Handy">Im Explorer</button>
+  <button id="openFileBtn" title="Die CSV-Datei als Text öffnen">Als Text</button>
+</header>
+
+<!-- Name für einen neuen oder umbenannten Stapel -->
+<div class="bar" id="nameBar" hidden>
+  <span id="nameLabel">Name des neuen Stapels:</span>
+  <input id="nameInput" type="text" aria-label="Name">
+  <button id="nameOk" class="primary">OK</button>
+  <button id="nameCancel">Abbrechen</button>
+  <span class="error" id="nameError"></span>
+</div>
+
+<!-- Löschen bestätigen -->
+<div class="bar" id="deleteBar" hidden>
+  <span id="deleteText"></span>
+  <button id="deleteOk" class="danger">In den Papierkorb</button>
+  <button id="deleteCancel">Abbrechen</button>
+</div>
+
+<div class="start" id="startScreen" hidden>
+  <h2>Noch kein Stapel</h2>
+  <p id="startText"></p>
+  <button class="primary" id="startBtn">Ersten Stapel anlegen</button>
+</div>
+
+<main id="editorMain" hidden>
+  <section>
+    <h2 id="formTitle">Neue Karte</h2>
+    <form id="cardForm" autocomplete="off">
+      <label for="front">Vorderseite (Frage)</label>
+      <textarea id="front" rows="4"></textarea>
+      <label for="back">Rückseite (Antwort)</label>
+      <textarea id="back" rows="4"></textarea>
+      <label for="hint">Tipp <span class="opt">(optional)</span></label>
+      <textarea id="hint" rows="2"></textarea>
+      <label for="tags">Tags <span class="opt">(optional, kommagetrennt)</span></label>
+      <input id="tags" type="text" placeholder="bio,zelle,prüfung">
+      <div class="error" id="formError"></div>
+      <div class="row">
+        <button type="submit" class="primary" id="saveBtn">Karte hinzufügen</button>
+        <button type="button" id="cancelBtn" hidden>Abbrechen</button>
+        <span class="hint">Strg+Enter speichert · Tags bleiben für die nächste Karte stehen</span>
+      </div>
+    </form>
+
+    <h2 style="margin-top:20px">Vorschau</h2>
+    <div class="preview-card"><div class="side">Vorderseite</div><div class="rendered" id="pvFront"></div></div>
+    <div class="preview-card"><div class="side">Rückseite</div><div class="rendered" id="pvBack"></div></div>
+    <div class="preview-card" id="pvHintBox"><div class="side">Tipp</div><div class="rendered" id="pvHint"></div></div>
+    <div class="tags" id="pvTags"></div>
+
+    <details>
+      <summary>Formatierung und Import in bnki</summary>
+      <p>Inline-Formel: <code>$x^2$</code> · abgesetzt: <code>$$\frac{a}{b}$$</code></p>
+      <p>Codeblock: eine Zeile mit <code>```kotlin</code>, darunter der Code, dann eine Zeile mit <code>```</code>.</p>
+      <p>Einfache <code>`Backticks`</code> zeigt die App als normalen Text an.</p>
+      <p>Jeder Stapel ist eine CSV-Datei im Projekt und wird bei jeder Änderung gespeichert.
+         Auf dem Handy: Stapel öffnen → CSV importieren. Die Karten werden in den geöffneten Stapel eingefügt.</p>
+    </details>
+  </section>
+
+  <section>
+    <div class="list-head">
+      <h2 id="listTitle">Karten</h2>
+      <input id="search" type="text" placeholder="Suchen …" aria-label="Karten durchsuchen">
+    </div>
+    <div class="cards" id="cardList"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// ---------- CSV (identisch zu CsvIo.kt) ----------
+const SEP = ";";
+const HEADER = ["front", "back", "hint", "tags"].join(SEP);
+
+function escapeField(f) {
+  if (f.includes(SEP) || f.includes('"') || f.includes("\n") || f.includes("\r")) {
+    return '"' + f.replace(/"/g, '""') + '"';
+  }
+  return f;
+}
+
+function toCsv(cards) {
+  let out = HEADER + "\n";
+  for (const c of cards) {
+    out += [c.front, c.back, c.hint, c.tags].map(escapeField).join(SEP) + "\n";
+  }
+  return out;
+}
+
+function parseCsv(text) {
+  text = text.replace(/^﻿/, "");
+  const rows = [];
+  let cur = [], field = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
+      } else field += ch;
+    } else if (ch === '"') inQuotes = true;
+    else if (ch === SEP) { cur.push(field); field = ""; }
+    else if (ch === "\n") { cur.push(field); field = ""; rows.push(cur); cur = []; }
+    else if (ch !== "\r") field += ch;
+  }
+  if (field || cur.length) { cur.push(field); rows.push(cur); }
+
+  const start = rows.length && (rows[0][0] || "").toLowerCase() === "front" ? 1 : 0;
+  return rows.slice(start)
+    .filter(r => !r.every(f => !f.trim()))
+    .map(r => ({ front: r[0] || "", back: r[1] || "", hint: r[2] || "", tags: r[3] || "" }));
+}
+
+// ---------- Vorschau (spiegelt LatexText.kt) ----------
+const CODE_BLOCK_RE = /^[\t ]*```([A-Za-z0-9_+.-]*)[\t ]*\r?\n([\s\S]*?)^[\t ]*```[\t ]*(?:\r?\n|$)/gm;
+const LATEX_RE = /\$\$([\s\S]+?)\$\$|\$([\s\S]+?)\$/g;
+
+function renderInto(el, text) {
+  el.replaceChildren();
+  let last = 0;
+  for (const m of text.matchAll(CODE_BLOCK_RE)) {
+    const plain = text.slice(last, m.index).replace(/\r?\n$/, "");
+    if (plain) renderPlain(el, plain);
+    const pre = document.createElement("div");
+    pre.className = "codeblock";
+    if (m[1]) {
+      const lang = document.createElement("span");
+      lang.className = "lang"; lang.textContent = m[1];
+      pre.appendChild(lang);
+    }
+    pre.appendChild(document.createTextNode(m[2].replace(/\r?\n$/, "")));
+    el.appendChild(pre);
+    last = m.index + m[0].length;
+  }
+  const trailing = text.slice(last).replace(/^\r?\n/, "");
+  if (trailing) renderPlain(el, trailing);
+}
+
+function renderPlain(el, text) {
+  const span = document.createElement("div");
+  let last = 0;
+  for (const m of text.matchAll(LATEX_RE)) {
+    span.appendChild(document.createTextNode(text.slice(last, m.index)));
+    const display = m[1] !== undefined;
+    const latex = display ? m[1] : m[2];
+    const holder = document.createElement("span");
+    if (window.katex) {
+      try {
+        katex.render(latex, holder, { displayMode: display, throwOnError: true });
+      } catch (e) {
+        holder.className = "bad-latex"; holder.textContent = m[0];
+        holder.title = "Ungültige Formel – die App zeigt hier den Rohtext an.";
+      }
+    } else {
+      holder.textContent = m[0];
+    }
+    span.appendChild(holder);
+    last = m.index + m[0].length;
+  }
+  span.appendChild(document.createTextNode(text.slice(last)));
+  el.appendChild(span);
+}
+
+// ---------- Stapel = CSV-Dateien im Projekt ----------
+// decks: [{ name, path, cards (null bis geladen), text (zuletzt gelesen/geschrieben) }]
+let folder = "bnki";
+let decks = [];
+let current = -1;
+let editingIndex = null;
+let saveTimer = null;
+let saving = Promise.resolve();
+
+const $ = id => document.getElementById(id);
+const fields = ["front", "back", "hint", "tags"];
+const deck = () => decks[current];
+const stem = path => path.slice(path.lastIndexOf("/") + 1).replace(/\.csv$/i, "");
+
+function setStatus(text, error) {
+  $("status").textContent = text;
+  $("status").className = "status" + (error ? " error" : "");
+}
+
+async function loadDeck(d) {
+  const text = await atlas.call("readFile", { path: d.path });
+  d.text = text;
+  d.cards = parseCsv(text);
+}
+
+// Sofort speichern (kurz gebündelt); jede Änderung landet in der Datei.
+function scheduleSave() {
+  const d = deck();
+  if (!d) return;
+  setStatus("Speichert …");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const text = toCsv(d.cards);
+    saving = saving.then(() => atlas.call("writeFile", { path: d.path, text }))
+      .then(() => { d.text = text; setStatus("Gespeichert"); })
+      .catch(e => setStatus("Nicht gespeichert: " + e.message, true));
+  }, 300);
+}
+
+async function selectDeck(i) {
+  current = i;
+  editingIndex = null;
+  const d = deck();
+  if (d && !d.cards) {
+    try { await loadDeck(d); }
+    catch (e) { setStatus(e.message, true); d.cards = []; }
+  }
+  resetForm(false); $("search").value = "";
+  render();
+}
+
+async function refreshDecks(selectPath) {
+  let files = [];
+  try {
+    files = await atlas.call("listFiles", { dir: folder, pattern: "*.csv" });
+  } catch (e) { setStatus(e.message, true); }
+  const known = new Map(decks.map(d => [d.path, d]));
+  const list = files.filter(f => !f.dir).map(f => known.get(f.path) || { name: stem(f.path), path: f.path, cards: null });
+  // Ein geöffneter Stapel außerhalb des Ordners bleibt in der Liste.
+  for (const d of decks) if (!list.some(x => x.path === d.path) && d.outside) list.unshift(d);
+  decks = list;
+  const at = decks.findIndex(d => d.path === selectPath);
+  await selectDeck(at >= 0 ? at : Math.min(Math.max(current, 0), decks.length - 1));
+}
+
+// ---------- Darstellung ----------
+function readForm() {
+  return {
+    front: $("front").value.trim(),
+    back: $("back").value.trim(),
+    hint: $("hint").value.trim(),
+    tags: $("tags").value.split(",").map(s => s.trim()).filter(Boolean).join(","),
+  };
+}
+
+function updatePreview() {
+  const c = readForm();
+  renderInto($("pvFront"), c.front);
+  renderInto($("pvBack"), c.back);
+  renderInto($("pvHint"), c.hint);
+  $("pvHintBox").hidden = !c.hint;
+  renderTags($("pvTags"), c.tags);
+}
+
+function renderTags(el, tags) {
+  el.replaceChildren();
+  for (const t of tags ? tags.split(",") : []) {
+    const s = document.createElement("span");
+    s.className = "tag"; s.textContent = t;
+    el.appendChild(s);
+  }
+}
+
+function render() {
+  const has = decks.length > 0;
+  $("startScreen").hidden = has;
+  $("editorMain").hidden = !has;
+  for (const id of ["deckSelect", "renameDeckBtn", "deleteDeckBtn", "revealBtn", "openFileBtn"]) $(id).disabled = !has;
+  $("startText").textContent = `Stapel sind CSV-Dateien in „${folder}/“ im Projekt. Lege einen an oder öffne eine CSV-Datei mit „Anzeigen mit → bnki-Karten“.`;
+  const sel = $("deckSelect");
+  sel.replaceChildren();
+  decks.forEach((d, i) => {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = d.cards ? `${d.name} (${d.cards.length})` : d.name;
+    sel.appendChild(o);
+  });
+  sel.value = current;
+  if (has) renderList();
+}
+
+function renderList() {
+  const list = $("cardList");
+  const q = $("search").value.trim().toLowerCase();
+  const cards = deck().cards || [];
+  $("listTitle").textContent = `Karten (${cards.length})`;
+  list.replaceChildren();
+  let shown = 0;
+  cards.forEach((c, i) => {
+    if (q && !fields.some(f => c[f].toLowerCase().includes(q))) return;
+    shown++;
+    const item = document.createElement("div");
+    item.className = "card-item" + (i === editingIndex ? " editing" : "");
+    const front = document.createElement("div");
+    front.className = "q rendered"; renderInto(front, c.front);
+    const back = document.createElement("div");
+    back.className = "a rendered"; renderInto(back, c.back);
+    const tags = document.createElement("div");
+    tags.className = "tags"; renderTags(tags, c.tags);
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    const del = button("Löschen", () => {
+      // Zweiter Klick löscht (kein Dialog im Tab).
+      if (!del.dataset.armed) { del.dataset.armed = "1"; del.textContent = "Wirklich löschen?"; return; }
+      cards.splice(i, 1);
+      if (editingIndex === i) resetForm(false);
+      else if (editingIndex !== null && editingIndex > i) editingIndex--;
+      commit();
+    }, "danger");
+    actions.append(
+      button("Bearbeiten", () => startEdit(i)),
+      button("Duplizieren", () => { cards.splice(i + 1, 0, { ...c }); commit(); }),
+      del,
+    );
+    item.append(front, back);
+    if (c.tags) item.append(tags);
+    item.append(actions);
+    list.appendChild(item);
+  });
+  if (!shown) {
+    const e = document.createElement("div");
+    e.className = "empty";
+    e.textContent = cards.length ? "Keine Treffer." : "Noch keine Karten in diesem Stapel.";
+    list.appendChild(e);
+  }
+}
+
+function button(label, onClick, cls = "") {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "small " + cls; b.textContent = label;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function commit() { scheduleSave(); render(); }
+
+function startEdit(i) {
+  editingIndex = i;
+  const c = deck().cards[i];
+  fields.forEach(f => $(f).value = c[f]);
+  $("formTitle").textContent = `Karte ${i + 1} bearbeiten`;
+  $("saveBtn").textContent = "Änderungen speichern";
+  $("cancelBtn").hidden = false;
+  $("formError").textContent = "";
+  updatePreview(); renderList();
+  $("front").focus();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function resetForm(keepTags) {
+  const tags = $("tags").value;
+  $("cardForm").reset();
+  if (keepTags) $("tags").value = tags;
+  editingIndex = null;
+  $("formTitle").textContent = "Neue Karte";
+  $("saveBtn").textContent = "Karte hinzufügen";
+  $("cancelBtn").hidden = true;
+  $("formError").textContent = "";
+  updatePreview();
+}
+
+// ---------- Namen (neu, umbenennen) ----------
+let nameAction = null;
+function askName(label, value, action) {
+  $("deleteBar").hidden = true;
+  $("nameLabel").textContent = label;
+  $("nameInput").value = value;
+  $("nameError").textContent = "";
+  $("nameBar").hidden = false;
+  nameAction = action;
+  $("nameInput").focus();
+  $("nameInput").select();
+}
+function cleanName(name) {
+  return name.trim().replace(/\.csv$/i, "").replace(/[\/\\]/g, "-").replace(/^\.+/, "");
+}
+async function confirmName() {
+  const name = cleanName($("nameInput").value);
+  if (!name) { $("nameError").textContent = "Bitte einen Namen eingeben."; return; }
+  try {
+    await nameAction(name);
+    $("nameBar").hidden = true;
+  } catch (e) {
+    $("nameError").textContent = e.message;
+  }
+}
+
+async function createDeck(name) {
+  const path = `${folder}/${name}.csv`;
+  if (await atlas.call("exists", { path })) throw new Error(`„${name}“ gibt es schon.`);
+  const written = await atlas.call("writeFile", { path, text: toCsv([]) });
+  await refreshDecks(written);
+  setStatus(`Stapel „${name}“ angelegt`);
+  $("front").focus();
+}
+
+async function renameDeck(name) {
+  const d = deck();
+  await saving;
+  const path = await atlas.call("renameFile", { path: d.path, name: name + ".csv" });
+  d.path = path; d.name = stem(path);
+  await refreshDecks(path);
+  setStatus("Umbenannt");
+}
+
+// ---------- Ereignisse ----------
+$("cardForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const c = readForm();
+  if (!c.front || !c.back) {
+    $("formError").textContent = "Vorder- und Rückseite sind Pflicht – sonst überspringt die App die Karte beim Import.";
+    return;
+  }
+  const wasEditing = editingIndex !== null;
+  if (wasEditing) deck().cards[editingIndex] = c;
+  else deck().cards.push(c);
+  resetForm(!wasEditing);
+  commit();
+  $("front").focus();
+});
+$("cancelBtn").addEventListener("click", () => { resetForm(false); renderList(); });
+$("cardForm").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("cardForm").requestSubmit(); }
+});
+fields.forEach(f => $(f).addEventListener("input", updatePreview));
+$("search").addEventListener("input", renderList);
+$("deckSelect").addEventListener("change", e => selectDeck(Number(e.target.value)));
+
+$("newDeckBtn").addEventListener("click", () => askName("Name des neuen Stapels:", "", createDeck));
+$("startBtn").addEventListener("click", () => askName("Name des neuen Stapels:", "", createDeck));
+$("renameDeckBtn").addEventListener("click", () => askName("Neuer Name:", deck().name, renameDeck));
+$("nameOk").addEventListener("click", confirmName);
+$("nameCancel").addEventListener("click", () => { $("nameBar").hidden = true; });
+$("nameInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") confirmName();
+  else if (e.key === "Escape") $("nameBar").hidden = true;
+});
+
+$("deleteDeckBtn").addEventListener("click", () => {
+  $("nameBar").hidden = true;
+  $("deleteText").textContent = `Stapel „${deck().name}“ mit ${(deck().cards || []).length} Karten in den Papierkorb legen?`;
+  $("deleteBar").hidden = false;
+});
+$("deleteCancel").addEventListener("click", () => { $("deleteBar").hidden = true; });
+$("deleteOk").addEventListener("click", async () => {
+  $("deleteBar").hidden = true;
+  const d = deck();
+  try {
+    await saving;
+    await atlas.call("trashFile", { path: d.path });
+    decks.splice(current, 1);
+    current = Math.min(current, decks.length - 1);
+    await selectDeck(current);
+    setStatus(`„${d.name}“ liegt im Papierkorb`);
+  } catch (e) { setStatus(e.message, true); }
+});
+
+$("revealBtn").addEventListener("click", () => atlas.reveal(deck().path));
+$("openFileBtn").addEventListener("click", () => atlas.open(deck().path));
+
+// Zurück im Tab: eine außerhalb geänderte Datei neu lesen (nicht während
+// des Speicherns oder Bearbeitens).
+window.addEventListener("focus", async () => {
+  const d = deck();
+  if (!d || saveTimer || editingIndex !== null) return;
+  try {
+    await saving;
+    const text = await atlas.call("readFile", { path: d.path });
+    if (text !== d.text) { d.text = text; d.cards = parseCsv(text); render(); setStatus("Neu geladen"); }
+  } catch (e) { /* gelöscht oder umbenannt: beim nächsten Neuladen weg */ }
+});
+
+// ---------- Start ----------
+atlas.ready.then(async ctx => {
+  folder = (ctx.settings.ordner || "bnki").replace(/\/+$/, "") || "bnki";
+  // Geöffnet auf einer CSV-Datei: dieser Stapel, auch außerhalb des Ordners.
+  const file = ctx.file && /\.csv$/i.test(ctx.file) ? ctx.file : "";
+  if (file) decks = [{ name: stem(file), path: file, cards: null, outside: true }];
+  await refreshDecks(file);
+  updatePreview();
+}).catch(e => setStatus(e.message, true));
+</script>
+</body>
+</html>

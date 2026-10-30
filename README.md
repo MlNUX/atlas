@@ -23,6 +23,10 @@ verändert weder PDFs noch Notizen ungefragt.
   Formeln als LaTeX erkennen (lokal, [latex-ocr.md](docs/latex-ocr.md)),
   Abbildungen als Bild zitieren, Präsentationsmodus (F5), Dunkelmodus,
   Export als Kopie mit Anmerkungen.
+- **Atlas-Notizen vom Tablet** (`.atlasnote` aus Atlas Tablet) ansehen: alle
+  Seiten mit Handschrift, Textfeldern, eingefügten Bildern und
+  PDF-Hintergründen. Nur Ansicht – die Datei wird nie verändert; bearbeitet
+  wird auf dem Tablet.
 - **Markdown** mit Live-Vorschau, Formeln (KaTeX), Diagrammen (Mermaid,
   mit Vorlagen), Tabellen, Bildern, Ordnerbäumen, Checklisten, `#Tags`,
   Wiki-Links, Backlinks und Graph; Rechtschreibprüfung Deutsch und Englisch.
@@ -31,6 +35,7 @@ verändert weder PDFs noch Notizen ungefragt.
   Die **Arbeitsleiste** (`Strg+P`) findet Dateien, Aktionen, Tags, Zitate
   und Termine.
 - **Terminal** im Fenster, **eigene Aktionen** und **Erweiterungen**.
+- **Dunkles oder helles Farbschema** (oder wie der Desktop) für alle Fenster.
 - **Kalender** mit Fristen aus Notizen, optional mit Nextcloud (CalDAV) oder
   Google ([Einrichtung](docs/google-kalender.md)).
 - **ILIAS** (z. B. KIT): Favoriten als Ordner, Dateien mit einem Klick laden.
@@ -53,7 +58,7 @@ Fest in einer NixOS-Konfiguration mit Flakes:
 ```nix
 # flake.nix des Systems
 {
-  inputs.atlas.url = "github:MlNUX/atlas/v1.1.2";
+  inputs.atlas.url = "github:MlNUX/atlas/v1.1.3";
   inputs.atlas.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs = { nixpkgs, atlas, ... }: {
@@ -125,7 +130,8 @@ Alle Kürzel: [docs/shortcuts.md](docs/shortcuts.md).
 - Einstellungen im Dialog (Menü oben rechts) oder in
   `~/.config/atlas/config.toml`.
 - Eigene Aktionen: [docs/actions.md](docs/actions.md), Erweiterungen:
-  [docs/extensions.md](docs/extensions.md).
+  [docs/extensions.md](docs/extensions.md); Handbuch zum Entwickeln mit
+  Beispiel in Rust: [docs/extensions-guide.md](docs/extensions-guide.md).
 - Projektdaten liegen in `.atlas/` im Projekt, gerätebezogene unter
   `~/.local/state/atlas`; alle Dateien und Optionen:
   [docs/data-format.md](docs/data-format.md).

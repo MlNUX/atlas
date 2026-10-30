@@ -42,6 +42,12 @@ fn main() {
     }
 
     rename_legacy_extensions();
+    // Bundled extensions installed by an older Atlas get the current files.
+    for name in
+        atlas_core::extensions::update_bundled(&atlas_core::extensions::user_root(&atlas_core::config::config_dir()))
+    {
+        log::info!("bundled extension {name} updated");
+    }
     atlas_core::listing::set_natural_sort(atlas_core::config::Config::load().files.natural_sort);
 
     // The Markdown preview uses QtWebEngine, which must be set up first.
@@ -61,7 +67,10 @@ fn main() {
         engine.load(&QUrl::from("qrc:/qt/qml/Atlas/qml/Main.qml"));
     }
     if let Some(app) = app.as_mut() {
-        std::process::exit(app.exec());
+        let code = app.exec();
+        // Servers and other background commands end with Atlas.
+        atlas_core::background::stop_all();
+        std::process::exit(code);
     }
 }
 

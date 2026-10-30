@@ -77,7 +77,8 @@ pub fn list(root: &Path) -> Vec<Entry> {
     out
 }
 
-fn is_build_dir(name: &std::ffi::OsStr) -> bool {
+/// One of [`BUILD_DIRS`] (build output, dependencies, VCS data).
+pub fn is_build_dir(name: &std::ffi::OsStr) -> bool {
     name.to_str().is_some_and(|n| BUILD_DIRS.contains(&n))
 }
 

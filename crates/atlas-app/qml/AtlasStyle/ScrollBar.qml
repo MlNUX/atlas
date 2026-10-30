@@ -17,7 +17,7 @@ T.ScrollBar {
         implicitWidth: control.interactive ? 7 : 3
         implicitHeight: control.interactive ? 7 : 3
         radius: width / 2
-        color: control.pressed ? "#4a6189" : control.hovered ? "#36496b" : "#26354f"
+        color: control.pressed ? Colors.scrollHandlePressed : control.hovered ? Colors.scrollHandleHover : Colors.scrollHandle
         opacity: control.policy === T.ScrollBar.AlwaysOn || (control.size < 1 && (control.active || control.hovered)) ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 160 } }
     }

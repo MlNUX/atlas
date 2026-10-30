@@ -33,9 +33,11 @@ Rectangle {
     function applyState(state) { if (state && state.processor) root.processor = state.processor }
 
     function run() {
+        if (processor.startsWith("view:")) return
         choices = JSON.parse(app.processorsFor(source))
         if (!processor || !choices.some(c => c.id === processor)) {
-            const auto = choices.find(c => c.auto) || choices[0]
+            // Views of extensions are no conversions (DocumentView shows them).
+            const auto = choices.find(c => c.auto && c.output !== "view") || choices.find(c => c.output !== "view")
             processor = auto ? auto.id : ""
         }
         kind = ""
@@ -152,12 +154,19 @@ Rectangle {
             settings.localContentCanAccessRemoteUrls: false
             settings.javascriptCanOpenWindows: false
             settings.focusOnNavigationEnabled: false
-            onLoadingChanged: (request) => {
-                if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus) return
+            property bool ready: false
+            function render() {
+                if (!ready) return
                 // Links resolve relative to the original file.
                 const result = JSON.parse(root.app.renderMarkdown(root.content, root.source))
-                web.runJavaScript("atlas.set(" + JSON.stringify(result.html) + ")")
+                web.runJavaScript("atlas.setLight(" + Theme.light + "); atlas.set(" + JSON.stringify(result.html) + ")")
             }
+            onLoadingChanged: (request) => {
+                if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus) return
+                ready = true
+                render()
+            }
+            Connections { target: Theme; function onLightChanged() { web.render() } }
             onNavigationRequested: (request) => { if (request.url.toString() !== "atlas://app/web/preview.html") request.reject() }
             onJavaScriptConsoleMessage: (level, text) => {
                 if (!text.startsWith("atlas:link:")) return

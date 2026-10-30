@@ -14,17 +14,45 @@ use poppler_sys as ffi;
 use super::formulas::Glyph;
 use super::{Backend, LinkTarget, OutlineItem, PageLink, SearchHit, scaled_height};
 
-#[derive(Default)]
 pub struct PopplerBackend {
     docs: HashMap<PathBuf, poppler::Document>,
+    /// Paths of `docs` by last use (most recent last).
+    recent: Vec<PathBuf>,
+    /// Open documents kept at most; the least recently used one is closed
+    /// (and opened again when it is needed).
+    max_open: usize,
+}
+
+impl Default for PopplerBackend {
+    fn default() -> Self {
+        Self::with_limit(super::MAX_OPEN_DOCUMENTS)
+    }
 }
 
 impl PopplerBackend {
+    pub fn with_limit(max_open: usize) -> Self {
+        Self { docs: HashMap::new(), recent: Vec::new(), max_open: max_open.max(1) }
+    }
+
+    /// Number of open documents.
+    #[cfg(test)]
+    pub fn open_count(&self) -> usize {
+        self.docs.len()
+    }
+
     fn doc(&mut self, path: &Path) -> Result<&poppler::Document> {
         if !self.docs.contains_key(path) {
             let uri = glib::filename_to_uri(path, None).context("invalid path")?;
             let doc = poppler::Document::from_file(&uri, None).map_err(|e| anyhow::anyhow!("poppler: {e}"))?;
             self.docs.insert(path.to_path_buf(), doc);
+        }
+        if self.recent.last().is_none_or(|p| p != path) {
+            self.recent.retain(|p| p != path);
+            self.recent.push(path.to_path_buf());
+        }
+        while self.docs.len() > self.max_open && self.recent.len() > 1 {
+            let oldest = self.recent.remove(0);
+            self.docs.remove(&oldest);
         }
         Ok(&self.docs[path])
     }
@@ -197,6 +225,7 @@ impl Backend for PopplerBackend {
 
     fn close(&mut self, path: &Path) {
         self.docs.remove(path);
+        self.recent.retain(|p| p != path);
     }
 }
 

@@ -53,6 +53,8 @@ Rectangle {
         onHeightChanged: ensureStarted()
         onActiveFocusChanged: if (activeFocus) pane.activated()
         onExited: pane.closed()
+        // The palette follows the design (see Main.qml).
+        Connections { target: Theme; function onLightChanged() { term.update() } }
 
         function ensureStarted() {
             if (width < 10 || height < 10) return

@@ -26,6 +26,8 @@ Q_GUI_EXPORT void qt_handleMouseEvent(QWindow* window, const QPointF& local, con
 #include <QtCore/QFile>
 #include <QtCore/QMimeDatabase>
 #include <QtWebEngineCore/QWebEngineUrlRequestJob>
+#include <QtCore/QHash>
+#include <QtCore/QFileInfo>
 #include <QtWebEngineCore/QWebEngineUrlScheme>
 #include <QtWebEngineCore/QWebEngineUrlSchemeHandler>
 #include <QtWebEngineCore/QWebEngineCookieStore>
@@ -214,9 +216,27 @@ void initWebEngine()
 
 namespace {
 
+// Folders of extensions whose pages may be shown (name → folder).
+QHash<QString, QString> extensionDirs;
+
+// A file of extension `name`'s folder (`rest` relative to it), or "" if it
+// is not registered or the path leads outside the folder.
+QString extensionFile(const QString& name, const QString& rest)
+{
+    const QString dir = extensionDirs.value(name);
+    if (dir.isEmpty() || rest.isEmpty())
+        return {};
+    const QString root = QFileInfo(dir).canonicalFilePath();
+    const QString file = QFileInfo(dir + QLatin1Char('/') + rest).canonicalFilePath();
+    if (root.isEmpty() || !file.startsWith(root + QLatin1Char('/')))
+        return {};
+    return file;
+}
+
 // `atlas://app/<path>` serves the bundled preview page from the resources,
-// `atlas://file/<absolute path>` local files (images in notes). Both share
-// one origin, so the preview can show images next to the Markdown file.
+// `atlas://app/ext/<name>/<path>` the pages of extension views (with the
+// bundled KaTeX and the bridge script in reach), `atlas://file/<absolute
+// path>` local files (images in notes).
 class AtlasSchemeHandler : public QWebEngineUrlSchemeHandler {
 public:
     using QWebEngineUrlSchemeHandler::QWebEngineUrlSchemeHandler;
@@ -225,7 +245,12 @@ public:
     {
         const QUrl url = job->requestUrl();
         QString path;
-        if (url.host() == QLatin1String("app"))
+        if (url.host() == QLatin1String("app") && url.path().startsWith(QLatin1String("/ext/"))) {
+            const QString rest = url.path().mid(5);
+            const int slash = rest.indexOf(QLatin1Char('/'));
+            if (slash > 0)
+                path = extensionFile(rest.left(slash), rest.mid(slash + 1));
+        } else if (url.host() == QLatin1String("app"))
             path = QStringLiteral(":/atlas") + url.path();
         else if (url.host() == QLatin1String("file"))
             path = url.path();
@@ -242,6 +267,14 @@ public:
 } // namespace
 
 namespace atlas {
+
+void setExtensionDir(const QString& name, const QString& dir)
+{
+    if (dir.isEmpty())
+        extensionDirs.remove(name);
+    else
+        extensionDirs.insert(name, dir);
+}
 
 void installWebSchemeHandler()
 {

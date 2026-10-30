@@ -488,7 +488,7 @@ Rectangle {
                                 spacing: 4
                                 Repeater {
                                     model: parent.parent.e.tags || []
-                                    Label { required property string modelData; text: "#" + modelData; color: "#9dd1ff"; font.pixelSize: Theme.smallFontSize }
+                                    Label { required property string modelData; text: "#" + modelData; color: Theme.link; font.pixelSize: Theme.smallFontSize }
                                 }
                             }
                             Label {
@@ -528,7 +528,7 @@ Rectangle {
                                     Label {
                                         Layout.fillWidth: true
                                         text: "📄 " + modelData
-                                        color: cal.app.exists(cal.absolute(modelData)) ? "#4daafc" : Theme.error
+                                        color: cal.app.exists(cal.absolute(modelData)) ? Theme.accent : Theme.error
                                         elide: Text.ElideMiddle
                                         font.pixelSize: Theme.smallFontSize
                                         MouseArea {

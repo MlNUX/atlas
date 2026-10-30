@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2026 Minux
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Jupyter-Notebook als Ansicht in Atlas: zeigt und bearbeitet eine .ipynb-Datei
+und führt ihre Zellen in einem Kernel eines lokalen Jupyter-Servers aus
+(REST und WebSocket, Nachrichtenprotokoll 5). Die Umgebung (venv, Conda,
+Umgebungsdatei) wählt man oben rechts wie in VS Code.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Jupyter-Notebook</title>
+<link rel="stylesheet" href="atlas://app/web/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="notebook.css">
+<script src="atlas://app/web/vendor/katex/katex.min.js"></script>
+<script src="atlas://app/web/vendor/highlight/highlight.min.js"></script>
+<script src="atlas://app/web/extension.js"></script>
+</head>
+<body>
+<header class="toolbar">
+  <div class="title">
+    <span id="title">Notebook</span>
+    <span id="saved" class="saved" title="Gespeichert"></span>
+  </div>
+  <div class="actions">
+    <button id="run-all" class="tb primary" title="Alle Zellen nacheinander ausführen – hält beim ersten Fehler" disabled><span class="ico">▶▶</span>Alle ausführen</button>
+    <button id="interrupt" class="tb" title="Laufende Zelle unterbrechen" disabled><span class="ico">■</span>Stopp</button>
+    <div class="split">
+      <button id="restart" class="tb" title="Kernel neu starten – Variablen gehen verloren" disabled><span class="ico">↻</span>Neustart</button>
+      <button id="restart-menu" class="tb caret" title="Mehr zum Neustart" disabled>▾</button>
+    </div>
+    <button id="more" class="tb icon" title="Mehr">⋯</button>
+  </div>
+  <button id="env" class="env off" title="Umgebung (Kernel) wählen">
+    <span class="dot"></span><span id="env-label">Umgebung wählen</span><span class="chev">▾</span>
+  </button>
+</header>
+
+<div id="menu" class="menu" hidden></div>
+
+<div id="notice" class="notice" hidden>
+  <div class="notice-row">
+    <span id="notice-spin" class="spin" hidden></span>
+    <span id="notice-icon" class="notice-icon" hidden>✓</span>
+    <span id="notice-text"></span>
+    <span id="notice-actions" class="notice-actions"></span>
+  </div>
+  <pre id="notice-log" hidden></pre>
+</div>
+
+<main id="cells"></main>
+<div id="end" class="end" hidden>
+  <button id="add-code">+ Code</button>
+  <button id="add-markdown">+ Markdown</button>
+</div>
+
+<section id="browser" class="browser" hidden>
+  <h2>Notebooks</h2>
+  <ul id="notebooks"></ul>
+  <div class="row">
+    <input id="new-name" type="text" placeholder="Name des neuen Notebooks" value="Unbenannt.ipynb">
+    <button id="new-notebook" class="primary">Neues Notebook</button>
+  </div>
+</section>
+
+<!-- Umgebung wählen (wie die Kernel-Auswahl in VS Code) -->
+<div id="picker" class="picker" hidden>
+  <input id="picker-filter" type="text" placeholder="Umgebung suchen …" autocomplete="off">
+  <div id="picker-list" class="picker-list"></div>
+  <div id="picker-form" class="picker-form" hidden></div>
+  <div class="picker-foot">
+    <span id="server-info"></span>
+    <button id="server-restart" class="link" title="Server beenden und neu starten (laufende Kernel enden)">Server neu starten</button>
+    <button id="server-stop" class="link" title="Server beenden (er startet wieder, sobald ein Notebook ihn braucht)">beenden</button>
+  </div>
+</div>
+
+<!-- Laufende Aufgabe (Umgebung bauen, Pakete installieren …) -->
+<div id="task" class="task" hidden>
+  <div class="task-head">
+    <span id="task-spin" class="spin"></span>
+    <strong id="task-title"></strong>
+    <span id="task-status"></span>
+    <button id="task-log-toggle" class="link">Log</button>
+    <button id="task-cancel" class="link">Abbrechen</button>
+    <button id="task-close" class="link" title="Schließen">✕</button>
+  </div>
+  <pre id="task-log" hidden></pre>
+</div>
+
+<script src="notebook.js"></script>
+</body>
+</html>

@@ -310,7 +310,14 @@ fn walker(root: &Path) -> ignore::Walk {
         .git_global(false)
         .parents(true)
         .require_git(false)
-        .filter_entry(|e| e.file_name() != crate::project::ATLAS_DIR && e.file_name() != ".git")
+        // Not .atlas, .git and build or dependency folders (node_modules,
+        // target, …: the same as the quick open list skips).
+        .filter_entry(|e| {
+            e.depth() == 0
+                || !(e.file_name() == crate::project::ATLAS_DIR
+                    || e.file_name() == ".git"
+                    || (e.file_type().is_some_and(|t| t.is_dir()) && crate::finder::is_build_dir(e.file_name())))
+        })
         .build()
 }
 
@@ -325,11 +332,14 @@ pub fn moved_path(path: &Path, old: &Path, new: &Path) -> Option<PathBuf> {
 pub struct NoteIndex {
     root: PathBuf,
     notes: BTreeMap<PathBuf, Note>,
+    /// Hash of the text each note was indexed from: reading it again
+    /// unchanged (opening it) is no change.
+    hashes: BTreeMap<PathBuf, u64>,
 }
 
 impl NoteIndex {
     pub fn new(root: &Path) -> Self {
-        Self { root: root.to_path_buf(), notes: BTreeMap::new() }
+        Self { root: root.to_path_buf(), notes: BTreeMap::new(), hashes: BTreeMap::new() }
     }
 
     /// Scans all Markdown files of the project.
@@ -368,16 +378,30 @@ impl NoteIndex {
     }
 
     /// Re-reads one file (removes it if it is gone or no Markdown file).
-    pub fn update(&mut self, path: &Path) {
+    /// Reads the note at `path` again; false if nothing changed (opening a
+    /// note reads it unchanged).
+    pub fn update(&mut self, path: &Path) -> bool {
         match std::fs::read_to_string(path) {
             Ok(text) if is_markdown(path) => self.update_text(path, &text),
             _ => {
-                self.notes.remove(path);
+                self.hashes.remove(path);
+                self.notes.remove(path).is_some()
             }
         }
     }
 
-    pub fn update_text(&mut self, path: &Path, text: &str) {
+    /// False if the note was indexed from this very text already.
+    pub fn update_text(&mut self, path: &Path, text: &str) -> bool {
+        let hash = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            text.hash(&mut h);
+            h.finish()
+        };
+        if self.hashes.get(path) == Some(&hash) && self.notes.contains_key(path) {
+            return false;
+        }
+        self.hashes.insert(path.to_path_buf(), hash);
         let analysis = markdown::analyze(text, path, Some(&self.root));
         // Definitions only carry destinations of reference links (which are
         // counted where they are used).
@@ -400,10 +424,12 @@ impl NoteIndex {
         let fm = analysis.front_matter;
         let planning = Planning { due: fm.due, status: fm.status, estimate: fm.estimate };
         self.notes.insert(path.to_path_buf(), Note { title: analysis.title, tags: analysis.tags, links, planning });
+        true
     }
 
     pub fn remove(&mut self, path: &Path) {
         self.notes.retain(|p, _| !p.starts_with(path));
+        self.hashes.retain(|p, _| !p.starts_with(path));
     }
 
     /// Notes linking to `target` (a file, or anything below a folder).
@@ -594,6 +620,7 @@ impl NoteIndex {
             let moved: Vec<PathBuf> = self.notes.keys().filter(|p| p.starts_with(old)).cloned().collect();
             for path in moved {
                 self.notes.remove(&path);
+                self.hashes.remove(&path);
                 if let Some(path) = moved_path(&path, old, new) {
                     self.update(&path);
                 }
@@ -668,6 +695,21 @@ mod tests {
     }
 
     #[test]
+    fn update_reports_only_real_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let a = write(root, "a.md", "# A\n[B](b.md)\n");
+        let mut index = NoteIndex::build(root);
+        assert!(!index.update(&a), "reading an unchanged note changes nothing");
+        write(root, "a.md", "# A\n> Zitat\n[B](b.md)\n");
+        assert!(index.update(&a), "any edit counts (quotes above links are shown too)");
+        assert!(!index.update(&a), "reading it again does not");
+        std::fs::remove_file(&a).unwrap();
+        assert!(index.update(&a), "a removed note does");
+        assert!(!index.update(&a), "and only once");
+    }
+
+    #[test]
     fn backlinks_tags_and_relink() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -680,9 +722,11 @@ mod tests {
         let b = write(root, "docs/b.md", "---\ntags: [architektur]\n---\n# Start\n[A](../notes/a.md)\n");
         write(root, "target/ignored.md", "[P](/src/parser.rs)");
         write(root, ".gitignore", "target/\n");
+        // Dependencies are skipped without an ignore file too.
+        write(root, "web/node_modules/pkg/README.md", "[P](/src/parser.rs)");
 
         let mut index = NoteIndex::build(root);
-        assert_eq!(index.len(), 2, "ignored folders are skipped");
+        assert_eq!(index.len(), 2, "ignored and dependency folders are skipped");
         assert_eq!(
             index.backlinks(&parser),
             vec![Backlink {

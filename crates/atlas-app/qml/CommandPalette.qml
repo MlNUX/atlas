@@ -133,7 +133,7 @@ Popup {
     /// [icon, colour] of a result.
     function iconOf(r) {
         const fixed = { action: ["play", Theme.textMuted], tag: ["", ""], line: ["arrow-right", Theme.textMuted], search: ["search", Theme.textMuted],
-                        annotation: ["quote", "#e0b33a"], calendar: ["calendar", Theme.accent] }[r.kind]
+                        annotation: ["quote", Theme.warn], calendar: ["calendar", Theme.accent] }[r.kind]
         if (fixed) return fixed
         return Theme.fileIcon(r.relative || r.title || "", r.kind === "dir")
     }
@@ -147,7 +147,7 @@ Popup {
     focus: true
     padding: 8
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    background: Rectangle { color: "#131d30"; border.color: Theme.borderStrong; radius: 12 }
+    background: Rectangle { color: Theme.popup; border.color: Theme.borderStrong; radius: 12 }
 
     ColumnLayout {
         anchors.fill: parent

@@ -35,6 +35,8 @@ Item {
     property var steps: []
     property string annotId
     property string pdfBefore
+    property string memPdf
+    property int memBase
     property string calUid
     property var term: null
     property var moved: null
@@ -64,6 +66,9 @@ Item {
     property var fullscreenTab: null
     property var folderTab: null
     property var imageView: null
+    property var bnkiView: null
+    property var bnkiPage: null
+    property var jupyterPage: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -496,6 +501,21 @@ Item {
                 app.setExtensionEnabled("demo", false)
                 check("Ausgeschaltet: keine Aktionen", projectActions().indexOf("Hallo") < 0, projectActions())
                 app.setExtensionEnabled("demo", true)
+                // API 2: permissions, settings, key sequences, menus.
+                const nb = JSON.parse(app.extensions()).find(e => e.name === "nb") || {}
+                check("API 2: Rechte gelesen", nb.api === 2 && !!nb.permissions && nb.permissions.run.join() === "echo" && nb.permissions.files === "project",
+                      JSON.stringify(nb.permissions))
+                check("API 2: nicht angemeldetes Programm abgelehnt", (nb.errors || []).some(e => e.indexOf("curl") >= 0), JSON.stringify(nb.errors))
+                const greet = fileActions.actionsFor([]).find(a => a.id === "nb/grüßen")
+                check("API 2: Befehl nur in der Arbeitsleiste, mit Kürzel", !!greet && greet.palette && !greet.menu && greet.keybinding === "Ctrl+Alt+G", JSON.stringify(greet))
+                check("API 2: Kürzel angemeldet", JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+G" && k.id === "nb/grüßen"), app.keybindings())
+                const greetArgv = () => JSON.parse(app.prepareAction("nb/grüßen", [], 0)).argv || []
+                check("Einstellung: Standardwert als Platzhalter und Variable",
+                      greetArgv().slice(-2).join(" ") === "echo hallo" && greetArgv().indexOf("ATLAS_SETTING_GRUSS=hallo") >= 0, greetArgv().join(" "))
+                check("Einstellung ändern", app.setExtensionSetting("nb", "gruss", JSON.stringify("servus")) === "" && greetArgv().slice(-1)[0] === "servus", greetArgv().join(" "))
+                check("Einstellung: falscher Typ abgelehnt", app.setExtensionSetting("nb", "gruss", "5") !== "")
+                app.setExtensionSetting("nb", "gruss", "null")
+                check("Einstellung zurückgesetzt", greetArgv().slice(-1)[0] === "hallo", greetArgv().join(" "))
                 editor.open(path("daten.dat"), 0, "tab")
                 const exporter = fileActions.exportersFor([note])[0]
                 check("Exporter für Markdown", !!exporter && exporter.output === path("notes/idee.txt"), JSON.stringify(exporter))
@@ -508,6 +528,80 @@ Item {
                       tab ? tab.kind + " " + tab.processed + " " + tab.viewerItem : "kein Tab")
                 check("Export geöffnet", !!editor.viewerFor(path("notes/idee.txt")))
                 check("Export geschrieben", app.readTextFile(path("notes/idee.txt")).indexOf("Autosave-Test") >= 0)
+                // ---- Extension views: the bnki plugin in a tab
+                check("bnki-Karten installiert", app.installBundled("bnki") === "")
+                check("bnki: Ansicht mit Strg+Alt+B", JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+B" && k.id === "view:bnki/editor"), app.keybindings())
+                settingsDialog.reloadExtensions()
+                check("Einstellungsdialog zeigt die Einstellungen von bnki-Karten", settingsDialog.configurable.some(e => e.name === "bnki"),
+                      JSON.stringify(settingsDialog.configurable.map(e => e.name)))
+                window.openExtensionView("view:bnki/editor", "")
+            },
+            () => {
+                const v = editor.activeTab ? editor.activeTab.viewerItem : null
+                if (waitFor(() => !!v && v.started === true)) return
+                check("bnki: Tab mit der Seite der Erweiterung", !!v && v.viewId === "view:bnki/editor" && editor.activeTab.title === "bnki-Karten" && v.started === true,
+                      editor.activeTab ? editor.activeTab.title + " " + (v ? v.started + " " + JSON.stringify(v.pageErrors) : "") : "kein Tab")
+                check("bnki: Ordner ohne Projekt-Ordner bleibt unangetastet", !app.exists(path("bnki")))
+                test.bnkiView = v
+                if (v) v.webItem.runJavaScript("createDeck('Biologie').then(() => { $('front').value = 'Was ist $E=mc^2$?'; $('back').value = 'Energie'; $('tags').value = 'physik';"
+                    + " $('cardForm').requestSubmit(); return true })")
+            },
+            () => {
+                const csv = app.readTextFile(path("bnki/Biologie.csv"))
+                if (waitFor(() => csv.indexOf("Energie") > 0)) return
+                check("bnki: Stapel als CSV-Datei im Projekt gespeichert", csv === "front;back;hint;tags\nWas ist $E=mc^2$?;Energie;;physik\n", JSON.stringify(csv))
+                const outside = JSON.parse(app.extensionCall("bnki", "readFile", JSON.stringify({ path: "/etc/hostname" })))
+                check("bnki: Dateien außerhalb des Projekts gesperrt", outside.ok === false && outside.error.indexOf("außerhalb") >= 0, JSON.stringify(outside))
+                test.bnkiView.webItem.runJavaScript("[typeof katex, document.querySelector('#cardList .katex') !== null, getComputedStyle(document.body).backgroundColor]",
+                    (r) => { test.bnkiPage = r })
+                editor.open(path("bnki/Biologie.csv"), 0, "tab", { processor: "view:bnki/editor" })
+            },
+            () => {
+                if (waitFor(() => !!test.bnkiPage)) return
+                check("bnki: KaTeX von Atlas, Formel in der Liste gesetzt", !!test.bnkiPage && test.bnkiPage[0] === "object" && test.bnkiPage[1] === true, JSON.stringify(test.bnkiPage))
+                check("bnki: Farben von Atlas", !!test.bnkiPage && test.bnkiPage[2] === "rgb(15, 23, 38)", JSON.stringify(test.bnkiPage))
+                const tab = editor.activeTab
+                check("bnki: CSV-Datei mit „Anzeigen mit“ als eigener Tab", !!tab && tab.title === "bnki-Karten – Biologie.csv" && tab.path === path("bnki/Biologie.csv"), tab ? tab.title : "kein Tab")
+                // Uninstalling: folder in the trash, settings gone, the decks stay.
+                const bnki = JSON.parse(app.extensions()).find(e => e.name === "bnki") || {}
+                app.setExtensionSetting("bnki", "ordner", JSON.stringify("karten"))
+                check("bnki deinstalliert", app.uninstallExtension(bnki.dir || "") === "" && !app.exists(bnki.dir || "/fehlt"))
+                check("Deinstalliert: nicht mehr in der Liste, Kürzel frei",
+                      !JSON.parse(app.extensions()).some(e => e.name === "bnki") && !JSON.parse(app.keybindings()).some(k => k.sequence === "Ctrl+Alt+B"))
+                check("Deinstalliert: wieder installierbar", JSON.parse(app.bundledExtensions()).some(b => b.name === "bnki" && !b.installed))
+                check("Deinstalliert: offener Tab sagt es", !!tab && !!tab.viewerItem.info.error, tab ? JSON.stringify(tab.viewerItem.info) : "")
+                check("Deinstalliert: Stapel bleiben", app.readTextFile(path("bnki/Biologie.csv")).indexOf("Energie") > 0)
+                app.installBundled("bnki")
+                const fresh = JSON.parse(app.extensions()).find(e => e.name === "bnki") || { settings: [] }
+                check("Neu installiert: Einstellungen wie neu", (fresh.settings.find(x => x.key === "ordner") || {}).value === "bnki", JSON.stringify(fresh.settings))
+                // ---- Jupyter: notebooks open by themselves in the view of the extension
+                check("Jupyter installiert", app.installBundled("jupyter") === "")
+                const nb = { cells: [{ cell_type: "markdown", id: "m", metadata: {}, source: ["# Titel $x^2$"] },
+                                     { cell_type: "code", execution_count: 1, id: "c", metadata: {}, outputs: [{ output_type: "stream", name: "stdout", text: ["42\n"] }], source: ["print(42)"] }],
+                             metadata: {}, nbformat: 4, nbformat_minor: 5 }
+                const written = JSON.parse(app.extensionCall("jupyter", "writeFile", JSON.stringify({ path: "analyse.ipynb", text: JSON.stringify(nb) })))
+                check("Jupyter: Notebook über die Brücke geschrieben", written.ok, JSON.stringify(written))
+                editor.open(path("analyse.ipynb"), 0, "tab", {})
+            },
+            () => {
+                const tab = editor.activeTab
+                const v = tab ? tab.viewerItem : null
+                if (waitFor(() => !!v && v.started === true)) return
+                check("Jupyter: .ipynb öffnet in der Notebook-Ansicht", !!v && v.viewId === "view:jupyter/notebook" && tab.title === "Jupyter-Notebook – analyse.ipynb",
+                      tab ? tab.title + " " + (v ? v.viewId + " " + JSON.stringify(v.pageErrors) : "") : "kein Tab")
+                check("Jupyter: Ansicht nicht als Zustand gespeichert", tab && tab.viewState().processor === undefined, tab ? JSON.stringify(tab.viewState()) : "")
+                if (v) v.webItem.runJavaScript("[state.cells.length, document.querySelectorAll('.markdown-out .katex').length, document.querySelector('.output pre') ? document.querySelector('.output pre').textContent : '', $('notice').hidden]",
+                    (r) => { test.jupyterPage = r })
+            },
+            () => {
+                if (waitFor(() => !!test.jupyterPage)) return
+                const r = test.jupyterPage
+                check("Jupyter: Zellen, Formel und Ausgabe gezeigt", !!r && r[0] === 2 && r[1] === 1 && r[2] === "42\n", JSON.stringify(r))
+                editor.open(path("analyse.ipynb"), 0, "tab", { processor: "atlas:source" })
+            },
+            () => {
+                const tab = editor.activeTab
+                check("Jupyter: „Datei selbst“ zeigt das JSON", !!tab && tab.shownProcessor === "" && tab.kind === "text", tab ? tab.kind + " " + tab.shownProcessor : "kein Tab")
                 // ---- Phase 2: project calendar
                 window.openCalendar({ mode: "week", date: "2026-10-19" })
             },
@@ -1107,6 +1201,12 @@ Item {
                 inspector.graphWindow.close()
                 settingsDialog.open()
                 check("Einstellungen öffnen", settingsDialog.visible)
+                // The design: light for all windows, stored in config.toml.
+                app.theme = "light"
+                check("Helles Farbschema", app.theme === "light" && Theme.light && Qt.colorEqual(Theme.editor, "#ffffff")
+                      && Qt.colorEqual(window.color, Theme.window), Theme.editor)
+                app.theme = "unbekannt"
+                check("Unbekanntes Farbschema wird dunkel", app.theme === "dark" && !Theme.light, app.theme)
                 // The ILIAS address: settable, checked, applied.
                 const field = settingsDialog.iliasAddressField
                 const before = JSON.parse(app.iliasConfig).base_url
@@ -1513,8 +1613,9 @@ Item {
                 check("Zitat aus PDF: Formel als LaTeX im Zitat", !!a && a.text.indexOf("$\\frac{a}{b}$") >= 0, a ? a.text : "kein Zitat")
                 sendToNote.close()
                 if (a) v.removeAnnot(a.id)
-                const md = app.pdfAreaToNote(path("docs/quelle.pdf"), 2, JSON.stringify([60, 200, 300, 300]), path("notes/zitate.md"))
-                const m = /^!\[quelle\.pdf, S\. 2\]\(\.\.\/(assets\/quelle-s2-[0-9-]+\.png)\)\n\*\[quelle\.pdf, S\. 2\]\(\/docs\/quelle\.pdf#page=2\)\*$/.exec(md)
+                // (quelle.pdf was renamed further up.)
+                const md = app.pdfAreaToNote(path("docs/umbenannt.pdf"), 2, JSON.stringify([60, 200, 300, 300]), path("notes/zitate.md"))
+                const m = /^!\[umbenannt\.pdf, S\. 2\]\(\.\.\/(assets\/umbenannt-s2-[0-9-]+\.png)\)\n\*\[umbenannt\.pdf, S\. 2\]\(\/docs\/umbenannt\.pdf#page=2\)\*$/.exec(md)
                 check("Bild aus PDF als Zitat: PNG in assets/, Bildunterschrift mit Link auf die Seite", !!m && app.exists(path(m[1])), md)
             },
             () => {
@@ -2031,6 +2132,42 @@ Item {
                 check("Offene Session lässt sich nicht entfernen", !app.forgetProject(test.firstRoot))
                 check("Andere Session aus der Liste entfernt", app.forgetProject(test.before)
                       && JSON.parse(app.allSessions()).length === 1, app.allSessions())
+            },
+            () => {
+                // ---- Memory: a closed PDF tab lets go of its document (other
+                // users, e.g. thumbnails of an open folder view, keep theirs).
+                test.memPdf = path("docs/umbenannt.pdf")
+                test.memBase = app.pdfUsers(test.memPdf)
+                editor.open(test.memPdf, 0, "split")
+            },
+            () => {
+                check("PDF-Tab hält sein Dokument offen", app.pdfUsers(test.memPdf) === test.memBase + 1, test.memBase + " → " + app.pdfUsers(test.memPdf))
+                editor.activeGroup.closeCurrent()
+            },
+            () => {
+                check("Geschlossener PDF-Tab gibt das Dokument frei", app.pdfUsers(test.memPdf) === test.memBase, test.memBase + " → " + app.pdfUsers(test.memPdf))
+                // A note in edit mode starts no preview page.
+                const note = fileActions.ops.newFile(path("notes"), "speicher.md")
+                editor.open(note, 0, "split", { mode: "edit" })
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                check("Markdown im Bearbeiten-Modus hat keine Vorschau (kein Browser)", md.mode === "edit" && !md.previewItem && !md.pageReady,
+                      md.mode + " " + md.previewItem)
+                md.mode = "preview"
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => md.pageReady)) return
+                check("Vorschau entsteht beim ersten Anzeigen", md.pageReady && !!md.previewItem)
+                md.mode = "edit"
+                check("Verdeckte Vorschau wird verworfen", md.discardPreview() && !md.pageReady && !md.previewItem)
+                md.mode = "preview"
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => md.pageReady)) return
+                check("Verworfene Vorschau entsteht beim Zeigen neu", md.pageReady && !!md.previewItem)
             },
         ]
         timer.start()

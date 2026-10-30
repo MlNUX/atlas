@@ -28,10 +28,21 @@ Dialog {
     /// Read when the dialog opens.
     property string editorText
     property int extensionCount: 0
+    /// Extensions with settings (shown with their form).
+    property var configurable: []
+    /// Extensions that come with Atlas.
+    property var bundled: []
+    function reloadExtensions() {
+        let list = []
+        try { list = JSON.parse(dialog.app.extensions()) } catch (e) {}
+        try { bundled = JSON.parse(dialog.app.bundledExtensions()) } catch (e) { bundled = [] }
+        extensionCount = list.length
+        configurable = list.filter(e => e.settings.length > 0 && e.status !== "broken")
+    }
     onAboutToShow: {
         const command = dialog.app.editorCommand()
         editorText = command ? command : qsTr("Standard: $VISUAL, $EDITOR oder das Programm des Systems")
-        try { extensionCount = JSON.parse(dialog.app.extensions()).length } catch (e) { extensionCount = 0 }
+        reloadExtensions()
     }
     readonly property var calendar: dialog.actions ? dialog.actions.calendar : null
     /// The calendars offered for new events (for the smoke test).
@@ -104,7 +115,42 @@ Dialog {
                 width: body.availableWidth - 36
                 spacing: 8
 
-                SectionLabel { text: qsTr("Seitenleiste") }
+                SectionLabel { text: qsTr("Darstellung") }
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: themeRow.implicitHeight + 24
+                    RowLayout {
+                        id: themeRow
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+                        Icon { Layout.alignment: Qt.AlignTop; name: Theme.light ? "sun" : "moon"; size: 18; color: Theme.accent }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Text { text: qsTr("Farbschema"); color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.smallFontSize
+                                text: qsTr("Dunkel oder hell für alle Fenster, Vorschau und Terminal; „System“ folgt der Einstellung des Desktops. Der Dunkelmodus für PDF-Seiten bleibt davon getrennt.")
+                            }
+                        }
+                        Segmented {
+                            Layout.alignment: Qt.AlignVCenter
+                            current: dialog.app.theme
+                            choices: [
+                                { value: "dark", text: qsTr("Dunkel") },
+                                { value: "light", text: qsTr("Hell") },
+                                { value: "system", text: qsTr("System") },
+                            ]
+                            onChosen: (value) => dialog.app.theme = value
+                        }
+                    }
+                }
+
+                SectionLabel { text: qsTr("Seitenleiste"); Layout.topMargin: 10 }
                 Card {
                     Layout.fillWidth: true
                     implicitHeight: placesRow.implicitHeight + 24
@@ -464,7 +510,135 @@ Dialog {
                             icon: "check-square"
                             title: qsTr("Aufgaben")
                             detail: qsTr("Offene Aufgaben abhaken und neue anlegen")
-                            last: true
+                            last: extensionRows.count === 0
+                        }
+                        // Extensions with views or commands: a card with buttons.
+                        Repeater {
+                            id: extensionRows
+                            model: { dialog.app.contextModules; dialog.app.untrustedExtensions
+                                     try { return JSON.parse(dialog.app.contextExtensions()) } catch (e) { return [] } }
+                            ModuleRow {
+                                required property var modelData
+                                required property int index
+                                key: "ext:" + modelData.name
+                                on: modelData.shown
+                                icon: "grid"
+                                title: qsTr("Erweiterung: %1").arg(modelData.title)
+                                detail: qsTr("Karte mit Knöpfen für: %1").arg(modelData.entries.map(e => e.name).join(", "))
+                                last: index === extensionRows.count - 1
+                            }
+                        }
+                    }
+                }
+
+                // Settings the extensions declare (API 2).
+                SectionLabel { text: qsTr("Erweiterungen"); Layout.topMargin: 10 }
+                Repeater {
+                    model: dialog.configurable
+                    Card {
+                        id: extCard
+                        required property var modelData
+                        Layout.fillWidth: true
+                        implicitHeight: extColumn.implicitHeight + 24
+                        ColumnLayout {
+                            id: extColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 12
+                            spacing: 8
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+                                Icon { name: "grid"; size: 18; color: Theme.accent }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: extCard.modelData.title
+                                    color: Theme.textStrong
+                                    font.pixelSize: Theme.fontSize
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: extCard.modelData.status === "active" ? qsTr("Aktiv")
+                                        : extCard.modelData.status === "disabled" ? qsTr("Ausgeschaltet") : qsTr("Nicht freigegeben")
+                                    color: extCard.modelData.status === "active" ? Theme.ok : Theme.textFaint
+                                    font.pixelSize: Theme.smallFontSize
+                                }
+                                // Second click uninstalls (folder to the trash).
+                                Button {
+                                    id: uninstallButton
+                                    property bool armed: false
+                                    flat: true
+                                    text: armed ? qsTr("Wirklich deinstallieren?") : qsTr("Deinstallieren")
+                                    onClicked: {
+                                        if (!armed) { armed = true; disarm.restart(); return }
+                                        const error = dialog.app.uninstallExtension(extCard.modelData.dir)
+                                        if (dialog.actions) dialog.actions.showMessage(error || qsTr("„%1“ deinstalliert – der Ordner liegt im Papierkorb").arg(extCard.modelData.title))
+                                        dialog.reloadExtensions()
+                                    }
+                                    Timer { id: disarm; interval: 4000; onTriggered: uninstallButton.armed = false }
+                                }
+                            }
+                            ExtensionSettings {
+                                Layout.fillWidth: true
+                                app: dialog.app
+                                actions: dialog.actions
+                                ext: extCard.modelData
+                                onChanged: dialog.reloadExtensions()
+                            }
+                        }
+                    }
+                }
+                // Extensions that come with Atlas, installed with one click.
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: bundledColumn.implicitHeight + 24
+                    ColumnLayout {
+                        id: bundledColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.smallFontSize
+                            text: dialog.configurable.length === 0
+                                ? qsTr("Keine Erweiterung mit Einstellungen installiert. Mitgeliefert:")
+                                : qsTr("Mitgeliefert:")
+                        }
+                        Repeater {
+                            model: dialog.bundled
+                            RowLayout {
+                                id: bundledRow
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 12
+                                Icon { name: "grid"; size: 18; color: Theme.accent }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 1
+                                    Text { text: bundledRow.modelData.title; color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: bundledRow.modelData.description
+                                        color: Theme.textMuted
+                                        font.pixelSize: Theme.smallFontSize
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                                Button {
+                                    text: bundledRow.modelData.installed ? qsTr("Aktualisieren") : qsTr("Installieren")
+                                    flat: bundledRow.modelData.installed
+                                    onClicked: {
+                                        const error = dialog.app.installBundled(bundledRow.modelData.name)
+                                        if (dialog.actions) dialog.actions.showMessage(error || qsTr("„%1“ installiert").arg(bundledRow.modelData.title))
+                                        dialog.reloadExtensions()
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -597,6 +771,45 @@ Dialog {
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: toggle.toggled() }
     }
 
+    /// A choice of a few values side by side.
+    component Segmented: Rectangle {
+        id: segmented
+        property var choices: []
+        property string current
+        signal chosen(string value)
+        implicitWidth: segmentRow.implicitWidth + 6
+        implicitHeight: 28
+        radius: 8
+        color: Theme.raised
+        border.color: Theme.border
+        Row {
+            id: segmentRow
+            anchors.centerIn: parent
+            spacing: 2
+            Repeater {
+                model: segmented.choices
+                Rectangle {
+                    id: segment
+                    required property var modelData
+                    readonly property bool selected: segmented.current === modelData.value
+                    width: segmentText.implicitWidth + 20
+                    height: 22
+                    radius: 6
+                    color: selected ? Theme.accent : segmentHover.hovered ? Theme.hover : "transparent"
+                    HoverHandler { id: segmentHover }
+                    Text {
+                        id: segmentText
+                        anchors.centerIn: parent
+                        text: segment.modelData.text
+                        color: segment.selected ? "white" : Theme.text
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: segmented.chosen(segment.modelData.value) }
+                }
+            }
+        }
+    }
+
     FolderChooser {
         id: iliasDirChooser
         app: dialog.app
@@ -616,7 +829,7 @@ Dialog {
         property string detail
         property bool last: false
         default property alias extra: extraArea.data
-        readonly property bool on: dialog.context[key] !== false
+        property bool on: dialog.context[key] !== false
         Layout.fillWidth: true
         implicitHeight: moduleLayout.implicitHeight + 20
         color: "transparent"

@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Jupyter-Notebooks: .ipynb-Dateien öffnen, bearbeiten und Zellen ausführen.
+# Die Ansicht spricht mit einem lokalen Jupyter-Server (nur 127.0.0.1), den
+# sie beim Öffnen im Hintergrund startet (Befehl „server“, endet mit Atlas).
+# Fehlt Jupyter, richtet „Jupyter im Projekt einrichten“ es in einer .venv ein;
+# Umgebungen (venv, Conda, Umgebungsdateien) wählt und baut die Ansicht oben rechts.
+atlas_api: 2
+name: jupyter
+title: Jupyter-Notebooks
+version: 1.6.0
+description: Notebooks (.ipynb) öffnen, bearbeiten und einzelne oder alle Zellen ausführen – mit einem lokalen Jupyter-Server.
+context: true                 # als Karte in der Kontextleiste (abschaltbar)
+
+permissions:
+  run: [jupyter, python3]
+  files: project              # liest und schreibt nur Dateien im Projekt
+  network: [127.0.0.1]        # nur der eigene Jupyter-Server
+
+settings:
+  - key: port
+    title: Port des Servers
+    description: Der Jupyter-Server lauscht nur auf 127.0.0.1.
+    type: number
+    default: 8899
+  - key: jupyter
+    title: Jupyter-Programm
+    description: z. B. der Pfad in einer virtuellen Umgebung (…/venv/bin/jupyter).
+    type: path
+    default: jupyter
+  - key: python
+    title: Python für neue Umgebungen
+    description: Damit legt die Ansicht virtuelle Umgebungen (.venv) für Kernel an.
+    type: path
+    default: python3
+
+commands:
+  - id: server
+    name: Jupyter-Server
+    description: Startet den Jupyter-Server für dieses Projekt im Hintergrund (er endet mit Atlas).
+    command: ["{extension}/server.sh", "{project}", "{setting:port}", "{setting:jupyter}"]
+    terminal: background
+    menu: [palette]
+  - id: setup
+    name: Jupyter im Projekt einrichten
+    description: Legt im Projekt eine .venv mit jupyter_server und ipykernel an und startet den Server aus ihr.
+    command: ["{extension}/setup.sh", "{project}", "{setting:python}", "{setting:port}"]
+    terminal: background
+    menu: [palette]
+
+  # Für die Ansicht: Umgebungen suchen (probe) und bauen (task); das Skript
+  # schreibt sie nach .atlas/cache/jupyter/<id>.sh im Projekt.
+  - id: task
+    name: Jupyter-Aufgabe
+    command: ["{extension}/job.sh", "{project}", "task"]
+    terminal: background
+    menu: [none]
+  - id: probe
+    name: Jupyter-Umgebungen suchen
+    command: ["{extension}/job.sh", "{project}", "probe"]
+    terminal: background
+    menu: [none]
+
+views:
+  - id: notebook
+    name: Jupyter-Notebook
+    page: notebook.html
+    applies_to: "*.ipynb"
+    auto: true                # .ipynb öffnet direkt in dieser Ansicht
+    keybinding: Ctrl+Alt+J

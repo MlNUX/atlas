@@ -24,10 +24,19 @@ Item {
     readonly property string kind: path && revision >= 0 ? app.fileKind(path) : ""
     /// Show through an extension's processor (ID; set by "Anzeigen mit …").
     property string processor: ""
+    /// Automatic viewers of extensions for this file (`auto: true`); none
+    /// once a viewer was chosen. "atlas:source" shows the file itself.
+    readonly property var autoChoices: processor === "" && path && ["", "dir", "missing", "trash", "terminal", "calendar", "ilias"].indexOf(kind) < 0
+        ? JSON.parse(app.processorsFor(path)).filter(p => p.auto) : []
+    /// An automatic view (e.g. notebooks) wins over the own viewer.
+    readonly property string autoView: (autoChoices.find(p => p.output === "view") || { id: "" }).id
+    /// The viewer of an extension in use ("" for Atlas' own).
+    readonly property string shownProcessor: processor === "atlas:source" ? "" : processor || autoView
     /// Files without own viewer use an automatic processor if one fits.
-    readonly property bool processed: processor !== ""
-        || (kind === "binary" && JSON.parse(app.processorsFor(path)).some(p => p.auto))
-    readonly property string title: kind === "trash" ? qsTr("Papierkorb")
+    readonly property bool processed: (shownProcessor !== "" && !shownProcessor.startsWith("view:"))
+        || (kind === "binary" && autoChoices.some(p => p.output !== "view"))
+    readonly property string title: shownProcessor.startsWith("view:") && viewer.item && viewer.item.title ? viewer.item.title
+        : kind === "trash" ? qsTr("Papierkorb")
         : kind === "calendar" ? qsTr("Kalender")
         : kind === "ilias" ? "ILIAS"
         : kind === "terminal" ? (viewer.item && viewer.item.title ? viewer.item.title : qsTr("Terminal"))
@@ -110,6 +119,8 @@ Item {
     function viewState() {
         const s = { kind: view.kind }
         if (viewer.item && viewer.item.viewState) Object.assign(s, viewer.item.viewState())
+        // An automatic view is chosen again next time (or not, if switched off).
+        if (view.processor === "" && s.processor && s.processor === view.autoView) delete s.processor
         return s
     }
     function applyState(state) {
@@ -123,7 +134,8 @@ Item {
     Loader {
         id: viewer
         anchors.fill: parent
-        sourceComponent: view.kind === "trash" ? trashComponent
+        sourceComponent: view.shownProcessor.startsWith("view:") && view.kind !== "missing" ? extensionViewComponent
+            : view.kind === "trash" ? trashComponent
             : view.kind === "dir" ? folderComponent
             : view.kind === "terminal" ? terminalComponent
             : view.kind === "calendar" ? calendarComponent
@@ -131,12 +143,14 @@ Item {
             : view.processor === "atlas:html" && view.kind !== "missing" ? htmlComponent
             : view.processed && view.kind !== "missing" ? processedComponent
             : view.kind === "pdf" ? pdfComponent
+            : view.kind === "atlasnote" ? atlasNoteComponent
             : view.kind === "markdown" ? markdownComponent
             : view.kind === "text" ? textComponent
             : view.kind === "image" ? imageComponent
             : view.kind === "missing" ? missingComponent
             : view.path ? unsupportedComponent : emptyComponent
         onLoaded: {
+            Timing.mark("Ansicht erzeugt (" + view.kind + ")")
             // Links into PDFs carry a page (`#page=N`) as line.
             if (view.kind === "pdf" && view.line > 0) view.pendingState = Object.assign({}, view.pendingState, { page: view.line - 1 })
             // The quick look shows whole PDF pages.
@@ -146,6 +160,16 @@ Item {
         }
     }
 
+    Component {
+        id: extensionViewComponent
+        // A view of an extension on this file or folder.
+        ExtensionView {
+            source: view.path
+            viewId: view.shownProcessor
+            app: view.app
+            actions: view.actions
+        }
+    }
     Component {
         id: trashComponent
         TrashView { actions: view.actions }
@@ -205,6 +229,14 @@ Item {
                 if (newPane) view.openRequested(path, line, "split", state)
                 else view.navigate(path, line, state)
             }
+        }
+    }
+    Component {
+        id: atlasNoteComponent
+        // Notebook from Atlas Tablet, read-only.
+        AtlasNoteView {
+            source: view.path
+            app: view.app
         }
     }
     Component {
@@ -270,6 +302,10 @@ Item {
                 source: "file://" + view.path
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
+                // Decoded at most at screen size: a 24-megapixel photo
+                // would take about 92 MiB in full (larger ones scale down,
+                // smaller ones stay as they are).
+                sourceSize: Qt.size(Screen.width * Screen.devicePixelRatio, Screen.height * Screen.devicePixelRatio)
             }
         }
     }

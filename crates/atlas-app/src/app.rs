@@ -59,6 +59,9 @@ pub mod qobject {
         #[qproperty(bool, file_manager_places, cxx_name = "fileManagerPlaces", READ, WRITE = set_file_manager_places, NOTIFY = places_changed)]
         /// PDFs in dark mode (inverted brightness); `[pdf] dark` in config.toml.
         #[qproperty(bool, pdf_dark, cxx_name = "pdfDark", READ, WRITE = set_pdf_dark, NOTIFY)]
+        /// Design of the app: "dark", "light" or "system" (`[appearance]
+        /// theme` in config.toml).
+        #[qproperty(QString, theme, READ, WRITE = set_theme, NOTIFY)]
         /// Modules of the context bar (`[context]` in config.toml) as JSON:
         /// {calendar, tasks, pomodoro, pomodoro_work, pomodoro_break,
         /// pomodoro_long_break}; change with `setContextModule`.
@@ -77,6 +80,8 @@ pub mod qobject {
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
+        /// `ATLAS_TIMING` is set: log how long opening files takes (Timing.qml).
+        #[qproperty(bool, timing, READ, CONSTANT)]
         #[qproperty(i32, screenshot_delay_ms, cxx_name = "screenshotDelayMs", READ, CONSTANT)]
         #[qproperty(QString, screenshot_dialog, cxx_name = "screenshotDialog", READ, CONSTANT)]
         #[qproperty(QString, initial_search, cxx_name = "initialSearch", READ, CONSTANT)]
@@ -117,6 +122,13 @@ pub mod qobject {
         #[cxx_name = "setFileManagerPlaces"]
         fn set_file_manager_places(self: Pin<&mut AppController>, on: bool);
         fn set_pdf_dark(self: Pin<&mut AppController>, on: bool);
+        fn set_theme(self: Pin<&mut AppController>, theme: QString);
+
+        /// Terminals in the light palette (the design actually shown, also
+        /// when `theme` follows the system).
+        #[qinvokable]
+        #[cxx_name = "setTerminalLight"]
+        fn set_terminal_light(self: &AppController, on: bool);
         fn set_natural_sort(self: Pin<&mut AppController>, on: bool);
         fn set_touchpad_fling(self: Pin<&mut AppController>, on: bool);
         fn set_spellcheck(self: Pin<&mut AppController>, on: bool);
@@ -136,6 +148,11 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "spellAdd"]
         fn spell_add(self: &AppController, word: &QString);
+
+        /// Viewers keeping `path` open in the PDF service (smoke test).
+        #[qinvokable]
+        #[cxx_name = "pdfUsers"]
+        fn pdf_users(self: &AppController, path: &QString) -> i32;
 
         /// The dictionaries in use ("de_DE, en_US"; "" if none was found).
         #[qinvokable]
@@ -315,6 +332,12 @@ pub mod qobject {
         #[cxx_name = "urlToPath"]
         fn url_to_path(self: &AppController, url: &QString) -> QString;
 
+        /// Active extensions that can appear as a card in the context bar:
+        /// JSON [{name, title, description, shown, entries: [{id, name, kind, keybinding}]}].
+        #[qinvokable]
+        #[cxx_name = "contextExtensions"]
+        fn context_extensions(self: &AppController) -> QString;
+
         #[qinvokable]
         #[cxx_name = "fileKind"]
         fn file_kind(self: &AppController, path: &QString) -> QString;
@@ -349,6 +372,24 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "readTextFile"]
         fn read_text_file(self: &AppController, path: &QString) -> QString;
+
+        /// Pages of an `.atlasnote` from Atlas Tablet: JSON {pages: [{height}], error}.
+        #[qinvokable]
+        #[cxx_name = "atlasNoteInfo"]
+        fn atlas_note_info(self: &AppController, path: &QString) -> QString;
+
+        /// Page `index` of an `.atlasnote` rendered `width` pixels wide, as a
+        /// `file://` URL into the cache. Never blocks: "" while the page is
+        /// rendered on a background thread (ask again a moment later).
+        #[qinvokable]
+        #[cxx_name = "atlasNotePage"]
+        fn atlas_note_page(self: &AppController, path: &QString, index: i32, width: i32) -> QString;
+
+        /// Any rendering of page `index` that exists already, at another size
+        /// ("" if none): shown scaled until `atlasNotePage` has the right one.
+        #[qinvokable]
+        #[cxx_name = "atlasNotePreview"]
+        fn atlas_note_preview(self: &AppController, path: &QString, index: i32) -> QString;
 
         /// Layout JSON of this device's session ("" if none).
         #[qinvokable]
@@ -677,6 +718,34 @@ pub mod qobject {
         #[cxx_name = "prepareAction"]
         fn prepare_action(self: &AppController, id: &QString, paths: &QStringList, line: i32) -> QString;
 
+        /// Starts a prepared command (`argv`: JSON list) in the background
+        /// as job `key` (an action id); error text or "".
+        #[qinvokable]
+        #[cxx_name = "startBackground"]
+        fn start_background(
+            self: &AppController,
+            key: &QString,
+            name: &QString,
+            argv: &QString,
+            cwd: &QString,
+        ) -> QString;
+
+        /// Background job `key`: JSON {key, name, cwd, running, code, log}
+        /// or {} if it never ran.
+        #[qinvokable]
+        #[cxx_name = "backgroundStatus"]
+        fn background_status(self: &AppController, key: &QString) -> QString;
+
+        /// All background jobs: JSON list of {key, name, cwd, running, code}.
+        #[qinvokable]
+        #[cxx_name = "backgroundJobs"]
+        fn background_jobs(self: &AppController) -> QString;
+
+        /// Ends background job `key`; false if it does not run.
+        #[qinvokable]
+        #[cxx_name = "stopBackground"]
+        fn stop_background(self: &AppController, key: &QString) -> bool;
+
         /// Path of the project (`global` false) or user action file; created
         /// from a commented template if missing. "" on error.
         #[qinvokable]
@@ -709,6 +778,59 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "refreshExtensions"]
         fn refresh_extensions(self: Pin<&mut AppController>);
+
+        /// Sets one setting of extension `name` (`value`: JSON; null resets
+        /// it, a secret is a text); error text or "".
+        #[qinvokable]
+        #[cxx_name = "setExtensionSetting"]
+        fn set_extension_setting(
+            self: Pin<&mut AppController>,
+            name: &QString,
+            key: &QString,
+            value: &QString,
+        ) -> QString;
+
+        /// Extensions that come with Atlas: JSON list of {name, title,
+        /// description, installed}.
+        #[qinvokable]
+        #[cxx_name = "bundledExtensions"]
+        fn bundled_extensions(self: &AppController) -> QString;
+
+        /// Installs (or updates) the bundled extension `name`; error text
+        /// or "".
+        #[qinvokable]
+        #[cxx_name = "installBundled"]
+        fn install_bundled(self: Pin<&mut AppController>, name: &QString) -> QString;
+
+        /// Uninstalls the extension in folder `dir`: the folder goes to the
+        /// trash, its settings, secrets and trust are forgotten; error text
+        /// or "".
+        #[qinvokable]
+        #[cxx_name = "uninstallExtension"]
+        fn uninstall_extension(self: Pin<&mut AppController>, dir: &QString) -> QString;
+
+        /// Views of active extensions: JSON list of {id, name, extension,
+        /// keybinding}.
+        #[qinvokable]
+        #[cxx_name = "extensionViews"]
+        fn extension_views(self: &AppController) -> QString;
+
+        /// The page of view `id` (`view:<extension>/<id>`): JSON {url, name,
+        /// extension, network} or {error}.
+        #[qinvokable]
+        #[cxx_name = "extensionView"]
+        fn extension_view(self: &AppController, id: &QString) -> QString;
+
+        /// A request of a view's page (see atlas_core::extensions::call):
+        /// JSON {ok, value} or {ok: false, error}.
+        #[qinvokable]
+        #[cxx_name = "extensionCall"]
+        fn extension_call(self: &AppController, name: &QString, method: &QString, params: &QString) -> QString;
+
+        /// Key sequences of actions and active extensions: JSON list of
+        /// {sequence, id, name}.
+        #[qinvokable]
+        fn keybindings(self: &AppController) -> QString;
 
         /// Processors of active extensions for `path`: JSON list of {id,
         /// name, extension, output, auto}.
@@ -830,6 +952,7 @@ pub struct AppControllerRust {
     fixed_place_count: i32,
     file_manager_places: bool,
     pdf_dark: bool,
+    theme: QString,
     context_modules: QString,
     natural_sort: bool,
     touchpad_fling: bool,
@@ -841,6 +964,7 @@ pub struct AppControllerRust {
     screenshot_path: QString,
     quit_after_ms: i32,
     self_test: bool,
+    timing: bool,
     screenshot_delay_ms: i32,
     screenshot_dialog: QString,
     initial_search: QString,
@@ -902,6 +1026,7 @@ impl Default for AppControllerRust {
             fixed_place_count: 0,
             file_manager_places: Config::load().places.file_manager,
             pdf_dark: Config::load().pdf.dark,
+            theme: qs(Config::load().appearance.theme()),
             context_modules: context_json(&Config::load().context),
             natural_sort: Config::load().files.natural_sort,
             touchpad_fling: Config::load().files.touchpad_fling,
@@ -912,6 +1037,7 @@ impl Default for AppControllerRust {
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
             self_test: cli.self_test,
+            timing: std::env::var_os("ATLAS_TIMING").is_some(),
             screenshot_delay_ms: cli.screenshot_delay_ms.unwrap_or(2500) as i32,
             screenshot_dialog: qs(cli.screenshot_dialog.clone().unwrap_or_default()),
             initial_search: qs(cli.search.as_deref().unwrap_or_default()),
@@ -1039,6 +1165,25 @@ impl qobject::AppController {
         self.as_mut().pdf_dark_changed();
     }
 
+    pub fn set_theme(mut self: Pin<&mut Self>, theme: QString) {
+        let mut config = Config::load().appearance;
+        config.theme = theme.to_string();
+        let theme = qs(config.theme());
+        if self.theme == theme {
+            return;
+        }
+        config.theme = theme.to_string();
+        if let Err(err) = Config::save_appearance(&config) {
+            log::warn!("cannot save [appearance]: {err:#}");
+        }
+        self.as_mut().rust_mut().theme = theme;
+        self.as_mut().theme_changed();
+    }
+
+    pub fn set_terminal_light(&self, on: bool) {
+        atlas_core::terminal::colors::set_light(on);
+    }
+
     pub fn set_natural_sort(mut self: Pin<&mut Self>, on: bool) {
         if self.natural_sort == on {
             return;
@@ -1078,6 +1223,10 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().spellcheck = on;
         self.as_mut().spellcheck_changed();
+    }
+
+    pub fn pdf_users(&self, path: &QString) -> i32 {
+        atlas_core::pdf::PdfService::get().users_of(std::path::Path::new(&path.to_string())) as i32
     }
 
     pub fn spell_check(&self, text: &QString) -> QString {
@@ -1364,6 +1513,10 @@ impl qobject::AppController {
             "pomodoro_work" => config.pomodoro_work = minutes,
             "pomodoro_break" => config.pomodoro_break = minutes,
             "pomodoro_long_break" => config.pomodoro_long_break = minutes,
+            // `ext:<name>`: the card of an extension.
+            other if other.starts_with("ext:") && other.len() > 4 => {
+                config.extensions.insert(other[4..].to_owned(), value != 0);
+            }
             other => {
                 log::warn!("unknown context module {other}");
                 return;
@@ -1575,6 +1728,31 @@ impl qobject::AppController {
             && std::fs::read_to_string(&path).is_ok_and(|text| !atlas_core::calendar::checklist_items(&text).is_empty())
     }
 
+    pub fn context_extensions(&self) -> QString {
+        let config = Config::load().context;
+        let list: Vec<_> = self
+            .active_extensions()
+            .iter()
+            .filter(|e| !e.views.is_empty() || e.actions.iter().any(|a| a.in_palette))
+            .map(|e| {
+                let views = e.views.iter().map(
+                    |v| serde_json::json!({ "id": v.id, "name": v.name, "kind": "view", "keybinding": v.keybinding }),
+                );
+                let commands = e.actions.iter().filter(|a| a.in_palette).map(|a| {
+                    serde_json::json!({ "id": a.id, "name": a.name, "kind": "command", "keybinding": a.keybinding })
+                });
+                serde_json::json!({
+                    "name": e.name,
+                    "title": e.title,
+                    "description": e.description,
+                    "shown": config.extensions.get(&e.name).copied().unwrap_or(e.context),
+                    "entries": views.chain(commands).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
     pub fn file_kind(&self, path: &QString) -> QString {
         qs(file_kind(&path_of(path)))
     }
@@ -1631,6 +1809,36 @@ impl qobject::AppController {
         use std::io::Read;
         let _ = file.take(LIMIT).read_to_end(&mut data);
         qs(String::from_utf8_lossy(&data))
+    }
+
+    pub fn atlas_note_info(&self, path: &QString) -> QString {
+        let info = match atlas_core::atlasnote::NoteFile::open_cached(&path_of(path)) {
+            Ok(note) => serde_json::json!({
+                "pages": note.notebook.pages.iter().map(|p| serde_json::json!({ "height": p.height })).collect::<Vec<_>>(),
+                "error": "",
+            }),
+            Err(err) => serde_json::json!({ "pages": [], "error": format!("{err:#}") }),
+        };
+        qs(info.to_string())
+    }
+
+    pub fn atlas_note_page(&self, path: &QString, index: i32, width: i32) -> QString {
+        let Ok(note) = atlas_core::atlasnote::NoteFile::open_cached(&path_of(path)) else { return QString::default() };
+        let (index, width) = (index.max(0) as usize, width.max(1) as u32);
+        match note.rendered(index, width) {
+            Some(file) => qs(format!("file://{}", file.display())),
+            None => {
+                note.render_in_background(index, width);
+                QString::default()
+            }
+        }
+    }
+
+    pub fn atlas_note_preview(&self, path: &QString, index: i32) -> QString {
+        atlas_core::atlasnote::NoteFile::open_cached(&path_of(path))
+            .ok()
+            .and_then(|note| note.any_rendered(index.max(0) as usize))
+            .map_or_else(QString::default, |file| qs(format!("file://{}", file.display())))
     }
 
     fn session(&self) -> Option<ProjectSession> {
@@ -2419,7 +2627,8 @@ impl qobject::AppController {
 
     pub fn note_changed(self: Pin<&mut Self>, path: &QString) {
         let path = path_of(path);
-        if self.root.as_ref().is_some_and(|r| path.starts_with(r)) && self.with_notes(|n| n.update(&path)).is_some() {
+        if self.root.as_ref().is_some_and(|r| path.starts_with(r)) && self.with_notes(|n| n.update(&path)) == Some(true)
+        {
             self.bump_notes();
         }
     }
@@ -2569,18 +2778,48 @@ impl qobject::AppController {
         (actions, errors)
     }
 
-    /// All extensions with their status.
+    /// All extensions with their status and the user's settings. A key
+    /// sequence that an action or an earlier extension already uses is
+    /// dropped (with an error).
     fn extension_list(&self) -> Vec<(atlas_core::extensions::Extension, atlas_core::extensions::Status)> {
         use atlas_core::extensions;
+        let config_dir = atlas_core::config::config_dir();
         let project_root = self.project.as_ref().map(|p| extensions::project_root(&p.atlas_dir()));
-        let found =
-            extensions::discover(&extensions::user_root(&atlas_core::config::config_dir()), project_root.as_deref());
+        let found = extensions::discover(&extensions::user_root(&config_dir), project_root.as_deref());
         let trust = extensions::Trust::load(&atlas_core::paths::state_root());
         let disabled = Config::load().extensions.disabled;
+        let settings = extensions::load_settings(&config_dir);
+        let atlas_dir = self.project.as_ref().map(|p| p.atlas_dir());
+        let (own, _) = atlas_core::actions::load(atlas_dir.as_deref(), &config_dir);
+        let mut taken: Vec<(String, String)> =
+            own.iter().filter_map(|a| a.keybinding.clone().map(|k| (k, a.source.label()))).collect();
         found
             .into_iter()
-            .map(|e| {
+            .map(|mut e| {
+                e.apply_settings(&settings);
                 let status = extensions::status(&e, &trust, &disabled);
+                let mut errors = Vec::new();
+                for action in &mut e.actions {
+                    let Some(key) = action.keybinding.clone() else { continue };
+                    if let Some((_, owner)) = taken.iter().find(|(k, _)| *k == key) {
+                        errors.push(format!("„{}“: {key} ist schon belegt ({owner})", action.name));
+                        action.keybinding = None;
+                    } else if status == extensions::Status::Active {
+                        taken.push((key, format!("Erweiterung {}", e.name)));
+                    }
+                }
+                let mut view_errors = Vec::new();
+                for view in &mut e.views {
+                    let Some(key) = view.keybinding.clone() else { continue };
+                    if let Some((_, owner)) = taken.iter().find(|(k, _)| *k == key) {
+                        view_errors.push(format!("„{}“: {key} ist schon belegt ({owner})", view.name));
+                        view.keybinding = None;
+                    } else if status == extensions::Status::Active {
+                        taken.push((key, format!("Erweiterung {}", e.name)));
+                    }
+                }
+                e.errors.extend(errors);
+                e.errors.extend(view_errors);
                 (e, status)
             })
             .collect()
@@ -2596,6 +2835,7 @@ impl qobject::AppController {
 
     pub fn extensions(&self) -> QString {
         use atlas_core::extensions::Location;
+        let settings = atlas_core::extensions::load_settings(&atlas_core::config::config_dir());
         let list: Vec<_> = self
             .extension_list()
             .iter()
@@ -2604,22 +2844,36 @@ impl qobject::AppController {
                     atlas_core::actions::Command::Argv(argv) => argv.join(" "),
                     atlas_core::actions::Command::Shell(s) => format!("sh -c {s}"),
                 };
+                let values = e.setting_values(&settings);
                 serde_json::json!({
                     "name": e.name,
                     "title": e.title,
                     "version": e.version,
                     "description": e.description,
+                    "api": e.api,
+                    "permissions": e.permissions.as_ref().map(|p| serde_json::json!({
+                        "run": p.run, "files": p.files.as_str(), "network": p.network,
+                    })),
+                    "settings": values.iter().map(|(s, value)| serde_json::json!({
+                        "key": s.key, "title": s.title, "description": s.description, "type": s.kind.as_str(),
+                        "choices": s.choices, "value": value, "default": s.default,
+                    })).collect::<Vec<_>>(),
                     "dir": e.dir.to_string_lossy(),
                     "manifest": e.dir.join(atlas_core::extensions::MANIFEST).to_string_lossy(),
                     "location": if e.location == Location::User { "user" } else { "project" },
                     "status": status.as_str(),
                     "errors": e.errors,
-                    "actions": e.actions.iter().map(|a| serde_json::json!({ "name": a.name, "command": commands(&a.command) })).collect::<Vec<_>>(),
+                    "actions": e.actions.iter().map(|a| serde_json::json!({
+                        "name": a.name, "command": commands(&a.command), "keybinding": a.keybinding,
+                    })).collect::<Vec<_>>(),
                     "processors": e.processors.iter().map(|p| serde_json::json!({
                         "name": p.name, "applies_to": p.applies_to, "output": p.output.as_str(), "command": commands(&p.command),
                     })).collect::<Vec<_>>(),
                     "exporters": e.exporters.iter().map(|x| serde_json::json!({
                         "name": x.name, "applies_to": x.applies_to, "target": x.target, "command": commands(&x.command),
+                    })).collect::<Vec<_>>(),
+                    "views": e.views.iter().map(|v| serde_json::json!({
+                        "id": v.id, "name": v.name, "page": v.page, "applies_to": v.applies_to, "keybinding": v.keybinding,
                     })).collect::<Vec<_>>(),
                 })
             })
@@ -2636,6 +2890,142 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().untrusted_extensions = names;
         self.untrusted_extensions_changed();
+    }
+
+    pub fn set_extension_setting(mut self: Pin<&mut Self>, name: &QString, key: &QString, value: &QString) -> QString {
+        let (name, key) = (name.to_string(), key.to_string());
+        let Some((ext, _)) = self.extension_list().into_iter().find(|(e, _)| e.name == name) else {
+            return qs(format!("Die Erweiterung „{name}“ gibt es nicht (mehr)."));
+        };
+        let config_dir = atlas_core::config::config_dir();
+        let result = match atlas_core::extensions::save_setting_json(&config_dir, &ext, &key, &value.to_string()) {
+            Ok(()) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        };
+        self.as_mut().refresh_extensions();
+        result
+    }
+
+    pub fn bundled_extensions(&self) -> QString {
+        let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
+        let list: Vec<_> = atlas_core::extensions::BUNDLED
+            .iter()
+            .map(|b| {
+                serde_json::json!({
+                    "name": b.name, "title": b.title, "description": b.description,
+                    "installed": root.join(b.name).join(atlas_core::extensions::MANIFEST).is_file(),
+                })
+            })
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn install_bundled(mut self: Pin<&mut Self>, name: &QString) -> QString {
+        let root = atlas_core::extensions::user_root(&atlas_core::config::config_dir());
+        let result = match atlas_core::extensions::install_bundled(&root, &name.to_string()) {
+            Ok(_) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        };
+        self.as_mut().refresh_extensions();
+        result
+    }
+
+    pub fn uninstall_extension(mut self: Pin<&mut Self>, dir: &QString) -> QString {
+        use atlas_core::extensions;
+        let dir = path_of(dir);
+        let result = (|| -> anyhow::Result<()> {
+            let (ext, _) = self
+                .extension_list()
+                .into_iter()
+                .find(|(e, _)| e.dir == dir)
+                .ok_or_else(|| anyhow::anyhow!("Unter {} ist keine Erweiterung (mehr).", dir.display()))?;
+            atlas_core::fileops::trash(std::slice::from_ref(&ext.dir))?;
+            let mut trust = extensions::Trust::load(&atlas_core::paths::state_root());
+            extensions::forget(&ext, &atlas_core::config::config_dir(), &mut trust)?;
+            // A project extension of the same name may still be there.
+            if !self.extension_list().iter().any(|(e, _)| e.name == ext.name) {
+                let mut config = Config::load().extensions;
+                config.disabled.retain(|n| n != &ext.name);
+                Config::save_extensions(&config)?;
+            }
+            crate::qt_helpers::set_extension_dir(&qs(&ext.name), &QString::default());
+            Ok(())
+        })();
+        self.as_mut().refresh_extensions();
+        match result {
+            Ok(()) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        }
+    }
+
+    pub fn extension_views(&self) -> QString {
+        let list: Vec<_> = self
+            .active_extensions()
+            .iter()
+            .flat_map(|e| e.views.iter())
+            .map(|v| serde_json::json!({ "id": v.id, "name": v.name, "extension": v.extension, "keybinding": v.keybinding }))
+            .collect();
+        qs(serde_json::Value::from(list).to_string())
+    }
+
+    pub fn extension_view(&self, id: &QString) -> QString {
+        let id = id.to_string();
+        let found = self
+            .active_extensions()
+            .into_iter()
+            .find_map(|e| e.views.iter().find(|v| v.id == id).cloned().map(|v| (v, e)));
+        let result = match found {
+            None => {
+                serde_json::json!({ "error": format!("Die Ansicht „{id}“ ist nicht (mehr) aktiv – Erweiterung ausgeschaltet, nicht freigegeben oder entfernt.") })
+            }
+            Some((view, ext)) => {
+                crate::qt_helpers::set_extension_dir(&qs(&ext.name), &qs(ext.dir.to_string_lossy()));
+                let page: String = view.page.split('/').map(|p| url_escape(p)).collect::<Vec<_>>().join("/");
+                serde_json::json!({
+                    "url": format!("atlas://app/ext/{}/{page}", ext.name),
+                    "name": view.name,
+                    "extension": ext.name,
+                    "network": ext.permissions.as_ref().is_some_and(|p| !p.network.is_empty()),
+                })
+            }
+        };
+        qs(result.to_string())
+    }
+
+    pub fn extension_call(&self, name: &QString, method: &QString, params: &QString) -> QString {
+        let name = name.to_string();
+        let result = (|| -> anyhow::Result<serde_json::Value> {
+            let ext = self
+                .active_extensions()
+                .into_iter()
+                .find(|e| e.name == name)
+                .ok_or_else(|| anyhow::anyhow!("Die Erweiterung „{name}“ ist nicht aktiv."))?;
+            let params: serde_json::Value = serde_json::from_str(&params.to_string()).unwrap_or_default();
+            let settings = atlas_core::extensions::load_settings(&atlas_core::config::config_dir());
+            atlas_core::extensions::call(&ext, self.root.as_deref(), &settings, &method.to_string(), &params)
+        })();
+        qs(match result {
+            Ok(value) => serde_json::json!({ "ok": true, "value": value }),
+            Err(err) => serde_json::json!({ "ok": false, "error": format!("{err:#}") }),
+        }
+        .to_string())
+    }
+
+    pub fn keybindings(&self) -> QString {
+        let (actions, _) = self.load_actions();
+        let mut seen = std::collections::HashSet::new();
+        let mut list: Vec<_> = actions
+            .iter()
+            .filter_map(|a| a.keybinding.as_ref().map(|k| (k, a)))
+            .filter(|(k, _)| seen.insert(k.to_string()))
+            .map(|(k, a)| serde_json::json!({ "sequence": k, "id": a.id, "name": a.name }))
+            .collect();
+        for ext in self.active_extensions() {
+            for view in ext.views.iter().filter(|v| v.keybinding.as_ref().is_some_and(|k| seen.insert(k.clone()))) {
+                list.push(serde_json::json!({ "sequence": view.keybinding, "id": view.id, "name": view.name }));
+            }
+        }
+        qs(serde_json::Value::from(list).to_string())
     }
 
     pub fn trust_extension(mut self: Pin<&mut Self>, name: &QString) -> bool {
@@ -2705,6 +3095,13 @@ impl qobject::AppController {
             .map(|p| {
                 serde_json::json!({ "id": p.id, "name": p.name, "extension": p.extension, "output": p.output.as_str(), "auto": p.auto })
             })
+            .chain(
+                self.active_extensions()
+                    .iter()
+                    .flat_map(|e| e.views.iter())
+                    .filter(|v| v.applies(&file, self.root.as_deref()))
+                    .map(|v| serde_json::json!({ "id": v.id, "name": v.name, "extension": v.extension, "output": "view", "auto": v.auto })),
+            )
             .collect();
         qs(serde_json::Value::from(list).to_string())
     }
@@ -2797,6 +3194,9 @@ impl qobject::AppController {
                     "name": name,
                     "description": a.description,
                     "source": a.source.label(),
+                    "menu": a.in_menu,
+                    "palette": a.in_palette,
+                    "keybinding": a.keybinding,
                 })
             })
             .collect();
@@ -2832,12 +3232,34 @@ impl qobject::AppController {
                     "placement": match p.placement {
                         atlas_core::actions::Placement::Panel => "panel",
                         atlas_core::actions::Placement::Tab => "tab",
+                        atlas_core::actions::Placement::Background => "background",
                     },
                 }),
                 Err(err) => serde_json::json!({ "error": format!("„{}“: {err:#}", action.name) }),
             },
         };
         qs(result.to_string())
+    }
+
+    pub fn start_background(&self, key: &QString, name: &QString, argv: &QString, cwd: &QString) -> QString {
+        let argv: Vec<String> = serde_json::from_str(&argv.to_string()).unwrap_or_default();
+        match atlas_core::background::start(&key.to_string(), &name.to_string(), &argv, &path_of(cwd), &[]) {
+            Ok(()) => QString::default(),
+            Err(err) => qs(format!("{err:#}")),
+        }
+    }
+
+    pub fn background_status(&self, key: &QString) -> QString {
+        let status = atlas_core::background::status(&key.to_string());
+        qs(status.map_or_else(|| "{}".to_owned(), |s| serde_json::to_string(&s).unwrap_or_default()))
+    }
+
+    pub fn background_jobs(&self) -> QString {
+        qs(serde_json::to_string(&atlas_core::background::list()).unwrap_or_default())
+    }
+
+    pub fn stop_background(&self, key: &QString) -> bool {
+        atlas_core::background::stop(&key.to_string())
     }
 
     pub fn is_runnable(&self, path: &QString) -> bool {
@@ -3048,6 +3470,9 @@ pub fn file_kind(path: &Path) -> &'static str {
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     match ext.as_str() {
         "pdf" => "pdf",
+        // Notebooks from Atlas Tablet (ZIP); also when a sync tool appended ".zip".
+        "atlasnote" => "atlasnote",
+        "zip" if path.to_string_lossy().to_lowercase().ends_with(".atlasnote.zip") => "atlasnote",
         "md" | "markdown" | "mdown" | "mkd" => "markdown",
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" => "image",
         _ => {
@@ -3057,6 +3482,17 @@ pub fn file_kind(path: &Path) -> &'static str {
             if buf[..n].contains(&0) { "binary" } else { "text" }
         }
     }
+}
+
+/// `segment` for a URL path (everything but unreserved characters escaped).
+fn url_escape(segment: &str) -> String {
+    segment
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 fn percent_decode(s: &str) -> String {

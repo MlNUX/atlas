@@ -39,7 +39,9 @@ actions:
     command: [pandoc, "{file}", -o, "{stem}.pdf"]
     cwd: "{dir}"                            # Standard: Projektordner
     confirm: false                          # vor dem Start fragen
-    terminal: panel                         # panel (Standard) oder tab
+    terminal: panel                         # panel (Standard), tab oder background (ohne Terminal)
+    keybinding: Ctrl+Alt+E                  # optional (siehe extensions.md)
+    menu: [context, palette]                # Standard: Kontextmenü und Arbeitsleiste
 ```
 
 ### Befehle

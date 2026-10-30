@@ -138,6 +138,19 @@ processors:
 exporters:
   - {name: Kopie als Text, applies_to: "*.md", target: txt, command: [cp, "{file}", "{output}"]}
 YAML
+# API 2: permissions, a setting, a key sequence; one command is refused.
+mkdir -p "$work/config/extensions/nb"
+cat > "$work/config/extensions/nb/extension.yaml" <<'YAML'
+atlas_api: 2
+name: nb
+title: Notizbuch
+permissions: {run: [echo], files: project, network: false}
+settings:
+  - {key: gruss, title: Gruß, default: hallo}
+commands:
+  - {name: Grüßen, when: project, command: [echo, "{setting:gruss}"], keybinding: Ctrl+Alt+G, menu: palette}
+  - {name: Verboten, when: project, command: [curl, example.org]}
+YAML
 # Made from the template of Atlas 1.0: becomes „Core“ on start.
 mkdir -p "$work/config/extensions/beispiel"
 printf 'atlas_extension: 1\nname: beispiel\ntitle: Beispiel-Erweiterung\nversion: 0.1.0\n' \

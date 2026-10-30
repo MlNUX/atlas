@@ -16,6 +16,8 @@ Dialog {
     property var list: []
     /// Extension waiting for the trust confirmation.
     property var pending: null
+    /// Extension waiting for the uninstall confirmation.
+    property var removing: null
 
     anchors.centerIn: Overlay.overlay
     width: Math.min(760, Overlay.overlay ? Overlay.overlay.width - 60 : 760)
@@ -38,9 +40,25 @@ Dialog {
         return ({ active: Theme.ok, disabled: Theme.textFaint, untrusted: Theme.warn, broken: Theme.error })[s] || Theme.text
     }
     function commandsOf(e) {
-        return e.actions.map(a => "▶ " + a.name + ":  " + a.command)
+        return e.actions.map(a => "▶ " + a.name + (a.keybinding ? " [" + a.keybinding + "]" : "") + ":  " + a.command)
             .concat(e.processors.map(p => "👁 " + p.name + " (" + p.applies_to.join(", ") + " → " + p.output + "):  " + p.command))
             .concat(e.exporters.map(x => "⇪ " + x.name + " (→ ." + x.target + "):  " + x.command))
+            .concat((e.views || []).map(v => "▣ " + v.name + (v.keybinding ? " [" + v.keybinding + "]" : "") + ":  " + qsTr("Ansicht %1").arg(v.page)
+                + (v.applies_to.length ? " (" + v.applies_to.join(", ") + ")" : "")))
+    }
+
+    /// What the extension says it needs (API 2), as lines.
+    function permissionsOf(e) {
+        const p = e.permissions
+        if (!p) return [qsTr("Format 1: keine Rechte angemeldet – die Befehle dürfen alles, was du darfst.")]
+        const files = ({ none: qsTr("keine"), project: qsTr("nur das Projekt"), home: qsTr("dein persönlicher Ordner"), all: qsTr("alle") })[p.files] || p.files
+        const network = p.network.length === 0 ? qsTr("keins")
+            : p.network.indexOf("*") >= 0 ? qsTr("beliebige Rechner") : p.network.join(", ")
+        return [
+            qsTr("Startet: %1").arg(p.run.length ? p.run.join(", ") + qsTr(" und Dateien der Erweiterung") : qsTr("nur Dateien der Erweiterung")),
+            qsTr("Dateien: %1").arg(files),
+            qsTr("Netzwerk: %1").arg(network),
+        ]
     }
 
     contentItem: ColumnLayout {
@@ -133,9 +151,9 @@ Dialog {
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: qsTr("%1 Aktion(en) · %2 Anzeige(n) · %3 Exporter · %4")
+                        text: qsTr("%1 Aktion(en) · %2 Anzeige(n) · %3 Exporter · %4 Ansicht(en) · %5")
                             .arg(card.modelData.actions.length).arg(card.modelData.processors.length)
-                            .arg(card.modelData.exporters.length).arg(card.modelData.name)
+                            .arg(card.modelData.exporters.length).arg((card.modelData.views || []).length).arg(card.modelData.name)
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
                     }
@@ -146,6 +164,17 @@ Dialog {
                             Layout.fillWidth: true
                             text: "⚠ " + modelData
                             color: Theme.error
+                            wrapMode: Text.Wrap
+                            font.pixelSize: Theme.smallFontSize
+                        }
+                    }
+                    Repeater {
+                        model: card.expanded ? dialog.permissionsOf(card.modelData) : []
+                        Label {
+                            required property string modelData
+                            Layout.fillWidth: true
+                            text: "🔑 " + modelData
+                            color: Theme.textMuted
                             wrapMode: Text.Wrap
                             font.pixelSize: Theme.smallFontSize
                         }
@@ -181,11 +210,22 @@ Dialog {
                                 dialog.reload()
                             }
                         }
+                        Button {
+                            visible: card.modelData.settings.length > 0
+                            text: qsTr("Einstellungen …")
+                            flat: true
+                            onClicked: settingsDialog.show(card.modelData.name)
+                        }
                         Item { Layout.fillWidth: true }
                         Button {
-                            text: card.expanded ? qsTr("Befehle ausblenden") : qsTr("Befehle zeigen")
+                            text: card.expanded ? qsTr("Details ausblenden") : qsTr("Details zeigen")
                             flat: true
                             onClicked: card.expanded = !card.expanded
+                        }
+                        Button {
+                            text: qsTr("Deinstallieren …")
+                            flat: true
+                            onClicked: { dialog.removing = card.modelData; uninstallDialog.open() }
                         }
                         Button {
                             text: qsTr("Manifest öffnen")
@@ -225,6 +265,29 @@ Dialog {
             }
             IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: dialog.reload() }
             Item { Layout.fillWidth: true }
+            Button {
+                id: bundledButton
+                text: qsTr("Mitgeliefert …")
+                flat: true
+                onClicked: bundledMenu.popup(bundledButton, 0, bundledButton.height)
+                Menu {
+                    id: bundledMenu
+                    Instantiator {
+                        model: bundledMenu.visible ? JSON.parse(dialog.app.bundledExtensions()) : []
+                        delegate: MenuItem {
+                            required property var modelData
+                            text: (modelData.installed ? qsTr("Aktualisieren: %1") : qsTr("Installieren: %1")).arg(modelData.title)
+                            onTriggered: {
+                                const error = dialog.app.installBundled(modelData.name)
+                                if (dialog.actions) dialog.actions.showMessage(error || qsTr("„%1“ installiert").arg(modelData.title))
+                                dialog.reload()
+                            }
+                        }
+                        onObjectAdded: (index, object) => bundledMenu.insertItem(index, object)
+                        onObjectRemoved: (index, object) => bundledMenu.removeItem(object)
+                    }
+                }
+            }
             Button { text: qsTr("Neue Erweiterung …"); onClicked: dialog.askNew() }
             Button { text: qsTr("Schließen"); highlighted: true; onClicked: dialog.close() }
         }
@@ -268,6 +331,45 @@ Dialog {
         }
     }
 
+    // Uninstalling: the folder goes to the trash, settings and secrets are
+    // forgotten.
+    Dialog {
+        id: uninstallDialog
+        anchors.centerIn: Overlay.overlay
+        parent: Overlay.overlay
+        width: Math.min(520, dialog.width)
+        modal: true
+        title: qsTr("Erweiterung deinstallieren?")
+        standardButtons: Dialog.Cancel
+        ColumnLayout {
+            width: parent.width
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: !dialog.removing ? ""
+                    : (dialog.removing.location === "project"
+                        ? qsTr("„%1“ gehört zu diesem Projekt. Ihr Ordner %2 kommt in den Papierkorb – auch für alle, mit denen du das Projekt teilst.")
+                        : qsTr("Der Ordner von „%1“ (%2) kommt in den Papierkorb."))
+                        .arg(dialog.removing.title).arg(dialog.removing.dir)
+                      + "\n\n" + qsTr("Ihre Einstellungen und gespeicherten Geheimnisse löscht Atlas. Dateien, die sie in deinen Projekten angelegt hat, bleiben.")
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Button {
+                    text: qsTr("Deinstallieren")
+                    onClicked: {
+                        const title = dialog.removing ? dialog.removing.title : ""
+                        const error = dialog.removing ? dialog.app.uninstallExtension(dialog.removing.dir) : ""
+                        if (dialog.actions) dialog.actions.showMessage(error || qsTr("„%1“ deinstalliert – der Ordner liegt im Papierkorb").arg(title))
+                        uninstallDialog.close()
+                        dialog.reload()
+                    }
+                }
+            }
+        }
+    }
+
     // Trusting a project extension: show exactly what it may run.
     Dialog {
         id: trustDialog
@@ -283,9 +385,37 @@ Dialog {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 text: dialog.pending
-                    ? qsTr("„%1“ gehört zu diesem Projekt (%2). Nach der Freigabe kann Atlas folgende Befehle ausführen – Anzeigen auch automatisch beim Öffnen passender Dateien. Gib sie nur frei, wenn du dem Projekt vertraust.")
+                    ? qsTr("„%1“ gehört zu diesem Projekt (%2). Nach der Freigabe kann Atlas folgende Befehle ausführen – Anzeigen auch automatisch beim Öffnen passender Dateien. Gib sie nur frei, wenn du dem Projekt vertraust. Ändert sich danach eine Datei der Erweiterung, fragt Atlas erneut.")
                         .arg(dialog.pending.title).arg(dialog.pending.dir)
                     : ""
+            }
+            Label {
+                text: qsTr("Angemeldete Rechte")
+                color: Theme.textStrong
+                font.bold: true
+            }
+            Repeater {
+                model: dialog.pending ? dialog.permissionsOf(dialog.pending) : []
+                Label {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    text: "🔑 " + modelData
+                    wrapMode: Text.Wrap
+                    color: Theme.textStrong
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: !!(dialog.pending && dialog.pending.permissions)
+                wrapMode: Text.Wrap
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("Programme außerhalb dieser Liste lehnt Atlas ab; Dateien und Netzwerk sind Angaben der Erweiterung, ihre Skripte können sie (noch) überschreiten.")
+            }
+            Label {
+                text: qsTr("Befehle")
+                color: Theme.textStrong
+                font.bold: true
             }
             Repeater {
                 model: dialog.pending ? dialog.commandsOf(dialog.pending) : []
@@ -304,7 +434,7 @@ Dialog {
                 wrapMode: Text.Wrap
                 color: Theme.textMuted
                 font.pixelSize: Theme.smallFontSize
-                text: qsTr("Ändert sich die extension.yaml, wird erneut gefragt.")
+                text: qsTr("Ändert sich eine Datei der Erweiterung, wird erneut gefragt.")
             }
             RowLayout {
                 Layout.alignment: Qt.AlignRight
@@ -317,6 +447,36 @@ Dialog {
                     }
                 }
             }
+        }
+    }
+
+    // Settings of one extension, drawn from its manifest. Every change is
+    // stored at once (secrets in the secret store, never in a file).
+    Dialog {
+        id: settingsDialog
+        property string name
+        property var ext: null
+        function show(name) {
+            settingsDialog.name = name
+            settingsDialog.reload()
+            open()
+        }
+        function reload() {
+            dialog.list = JSON.parse(dialog.app.extensions())
+            ext = dialog.list.find(e => e.name === name) || null
+        }
+        anchors.centerIn: Overlay.overlay
+        parent: Overlay.overlay
+        width: Math.min(560, dialog.width)
+        modal: true
+        title: ext ? qsTr("Einstellungen: %1").arg(ext.title) : ""
+        standardButtons: Dialog.Close
+        ExtensionSettings {
+            width: parent.width
+            app: dialog.app
+            actions: dialog.actions
+            ext: settingsDialog.ext
+            onChanged: settingsDialog.reload()
         }
     }
 }

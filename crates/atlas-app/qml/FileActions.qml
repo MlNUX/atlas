@@ -34,6 +34,8 @@ Item {
     /// Open `path` in a tab with viewer state (e.g. `{processor: id}`).
     signal openWithState(string path, var state)
     signal extensionsRequested()
+    /// Show `path` in the explorer (e.g. asked by an extension view).
+    signal revealRequested(string path)
     /// Open a terminal in `dir`; `where`: "panel", "tab" or "split".
     signal openTerminalRequested(string dir, string where)
     /// Put `text` (terminal output) into a note; `cwd` suggests a folder.
@@ -161,19 +163,29 @@ Item {
 
     /// Runs action `id` on `paths` visibly in a terminal; asks first if the
     /// action wants it or the command looks destructive.
-    function runAction(id, paths, line) {
+    /// Runs action `id`; for background commands without confirmation the
+    /// error text ("" when started). `quiet`: no message when it starts
+    /// (e.g. started by an extension's page).
+    function runAction(id, paths, line, quiet) {
         const p = JSON.parse(app.prepareAction(id, paths, line || 0))
         if (p.error) {
             errorDialog.text = p.error
             errorDialog.open()
-            return
+            return p.error
         }
+        let error = ""
         const run = () => {
+            if (p.placement === "background") {
+                // No terminal: Atlas keeps it running (one per action) until it quits.
+                error = app.startBackground(id, p.name, JSON.stringify(p.argv), p.cwd)
+                if (error || !quiet) showMessage(error || qsTr("„%1“ läuft im Hintergrund").arg(p.name))
+                return
+            }
             if (p.placement === "tab") actions.runInTerminalTab(p.argv, p.cwd)
             else actions.runInTerminal(p.argv, p.cwd)
             showMessage(qsTr("Aktion „%1“ gestartet").arg(p.name))
         }
-        if (!p.confirm) { run(); return }
+        if (!p.confirm) { run(); return error }
         confirmDialog.ask(
             qsTr("Aktion ausführen?"),
             qsTr("„%1“ führt in %2 aus:\n\n%3").arg(p.name).arg(p.cwd).arg(p.display)
@@ -334,7 +346,7 @@ Item {
     function showMenu(paths, dir) {
         menu.paths = paths
         menu.dir = dir
-        menu.actionList = actionsFor(paths)
+        menu.actionList = actionsFor(paths).filter(a => a.menu)
         menu.processorList = paths.length === 1 ? processorsFor(paths[0]) : []
         menu.exporterList = exportersFor(paths)
         menu.canPaste = canPaste()
@@ -473,6 +485,13 @@ Item {
                 }
                 onObjectAdded: (index, object) => viewMenu.insertItem(index, object)
                 onObjectRemoved: (index, object) => viewMenu.removeItem(object)
+            }
+            // Files an extension shows by itself (e.g. notebooks) also open as they are.
+            MenuItem {
+                text: qsTr("Atlas (Datei selbst)")
+                visible: menu.processorList.some(p => p.auto && p.output === "view")
+                height: visible ? implicitHeight : 0
+                onTriggered: actions.openWithState(menu.paths[0], { processor: "atlas:source" })
             }
         }
         Menu {

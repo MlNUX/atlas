@@ -401,7 +401,8 @@ impl Frame {
     fn build<T: EventListener>(term: &Term<T>, focused: bool) -> Self {
         let content = term.renderable_content();
         let colors = content.colors;
-        let background = colors[alacritty_terminal::vte::ansi::NamedColor::Background].unwrap_or(colors::BACKGROUND);
+        let background =
+            colors[alacritty_terminal::vte::ansi::NamedColor::Background].unwrap_or_else(colors::background);
         let screen_lines = term.screen_lines();
         let mut lines = vec![FrameLine::default(); screen_lines];
         let selection = content.selection;
@@ -429,7 +430,7 @@ impl Frame {
             let selected =
                 selection.is_some_and(|s| s.contains_cell(&indexed, content.cursor.point, content.cursor.shape));
             if selected {
-                bg = colors::SELECTION;
+                bg = colors::selection();
             }
             let width: u16 = if flags.contains(Flags::WIDE_CHAR) { 2 } else { 1 };
             let col = indexed.point.column.0 as u16;
@@ -502,7 +503,7 @@ impl Frame {
             lines,
             cursor,
             background,
-            cursor_color: colors[alacritty_terminal::vte::ansi::NamedColor::Cursor].unwrap_or(colors::CURSOR),
+            cursor_color: colors[alacritty_terminal::vte::ansi::NamedColor::Cursor].unwrap_or_else(colors::cursor),
             display_offset: offset,
             history_size: term.grid().history_size(),
         }

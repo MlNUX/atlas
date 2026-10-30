@@ -21,7 +21,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use crossbeam_channel::{Sender, unbounded};
+use crossbeam_channel::{Sender, select, unbounded};
 
 #[derive(Debug, Clone)]
 pub struct DocInfo {
@@ -140,12 +140,24 @@ trait Backend {
     fn close(&mut self, path: &Path);
 }
 
-/// The plain text of every page (lines separated by `\n`), read with a
+/// The plain text of the pages (lines separated by `\n`), read with a
 /// document of its own: callable from any thread, e.g. the project search.
-pub fn page_texts(path: &Path) -> Result<Vec<String>> {
-    let mut backend = poppler::PopplerBackend::default();
+/// Stops after `max_bytes` of text (the pages read so far).
+pub fn page_texts(path: &Path, max_bytes: usize) -> Result<Vec<String>> {
+    let mut backend = poppler::PopplerBackend::with_limit(1);
     let pages = backend.open(path)?.len();
-    (0..pages).map(|page| backend.text(path, page)).collect()
+    let mut out = Vec::new();
+    let mut bytes = 0;
+    for page in 0..pages {
+        let mut text = backend.text(path, page)?;
+        text.shrink_to_fit();
+        bytes += text.len();
+        out.push(text);
+        if bytes >= max_bytes {
+            break;
+        }
+    }
+    Ok(out)
 }
 
 /// Splits a drag from `start` to `end` (`(page, x, y)`, points) into one
@@ -189,10 +201,19 @@ type Job = Box<dyn FnOnce(&mut dyn Backend, &mut HashMap<PathBuf, DocInfo>) + Se
 pub struct PdfService {
     jobs: Sender<Job>,
     renders: Sender<RenderJob>,
+    /// One per render thread: documents to close there now.
+    render_closes: Vec<Sender<PathBuf>>,
+    /// Users (viewers) of each document, see [`PdfService::retain`].
+    users: std::sync::Mutex<HashMap<PathBuf, usize>>,
     /// Bumped by [`PdfService::close`]: render threads reopen a document
     /// whose number changed (it changed on disk).
     closed: Arc<std::sync::Mutex<HashMap<PathBuf, u64>>>,
 }
+
+/// Documents a worker keeps open at most (the least recently used is
+/// closed and opened again when needed): a PDF is open once per worker that
+/// used it, so browsing many PDFs must not keep them all.
+pub const MAX_OPEN_DOCUMENTS: usize = 6;
 
 struct RenderJob {
     path: PathBuf,
@@ -242,16 +263,28 @@ impl PdfService {
             .expect("spawn pdf worker");
         let closed: Arc<std::sync::Mutex<HashMap<PathBuf, u64>>> = Arc::default();
         let (renders, render_rx) = unbounded::<RenderJob>();
+        let mut render_closes = Vec::new();
         for i in 0..render_threads() {
             let rx = render_rx.clone();
+            let (close_tx, close_rx) = unbounded::<PathBuf>();
+            render_closes.push(close_tx);
             let closed = closed.clone();
             std::thread::Builder::new()
                 .name(format!("atlas-pdf-render-{i}"))
                 .spawn(move || {
-                    let mut backend = poppler::PopplerBackend::default();
+                    let mut backend = poppler::PopplerBackend::with_limit(MAX_OPEN_DOCUMENTS / 2);
                     // Documents open here, with the close number they were opened at.
                     let mut open: HashMap<PathBuf, u64> = HashMap::new();
-                    for job in rx {
+                    loop {
+                        let job = select! {
+                            recv(close_rx) -> path => {
+                                let Ok(path) = path else { return };
+                                backend.close(&path);
+                                open.remove(&path);
+                                continue;
+                            }
+                            recv(rx) -> job => match job { Ok(job) => job, Err(_) => return },
+                        };
                         if job.cancel.is_cancelled() {
                             continue;
                         }
@@ -274,7 +307,7 @@ impl PdfService {
                 })
                 .expect("spawn pdf render worker");
         }
-        Self { jobs: tx, renders, closed }
+        Self { jobs: tx, renders, render_closes, users: Default::default(), closed }
     }
 
     fn submit(&self, job: Job) {
@@ -296,6 +329,52 @@ impl PdfService {
             });
             done(result)
         }));
+    }
+
+    /// A viewer shows `path`: it stays open until the last one calls
+    /// [`PdfService::release`].
+    pub fn retain(&self, path: &Path) {
+        if let Ok(mut users) = self.users.lock() {
+            *users.entry(path.to_path_buf()).or_default() += 1;
+        }
+    }
+
+    /// A viewer no longer shows `path`; after the last one the document is
+    /// closed in every worker (memory of Poppler and its caches).
+    pub fn release(&self, path: &Path) {
+        let last = match self.users.lock() {
+            Ok(mut users) => match users.get_mut(path) {
+                Some(n) if *n > 1 => {
+                    *n -= 1;
+                    false
+                }
+                Some(_) => {
+                    users.remove(path);
+                    true
+                }
+                None => false,
+            },
+            Err(_) => false,
+        };
+        if !last {
+            return;
+        }
+        if let Ok(mut closed) = self.closed.lock() {
+            closed.remove(path);
+        }
+        for tx in &self.render_closes {
+            let _ = tx.send(path.to_path_buf());
+        }
+        let path = path.to_path_buf();
+        self.submit(Box::new(move |backend, docs| {
+            docs.remove(&path);
+            backend.close(&path);
+        }));
+    }
+
+    /// Number of viewers of `path` (for tests).
+    pub fn users_of(&self, path: &Path) -> usize {
+        self.users.lock().map(|u| u.get(path).copied().unwrap_or(0)).unwrap_or(0)
     }
 
     /// Forgets a document, e.g. after it changed on disk.
@@ -878,6 +957,42 @@ mod outline_tests {
             cr.show_page().unwrap();
         }
         surface.finish();
+    }
+
+    #[test]
+    fn keeps_few_documents_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths: Vec<PathBuf> = (0..4).map(|i| dir.path().join(format!("{i}.pdf"))).collect();
+        for p in &paths {
+            outlined_pdf(p);
+        }
+        let mut backend = poppler::PopplerBackend::with_limit(2);
+        for p in &paths {
+            backend.open(p).unwrap();
+        }
+        assert_eq!(backend.open_count(), 2);
+        // A closed one opens again on use.
+        assert!(backend.text(&paths[0], 1).unwrap().contains("Suchwort"));
+        assert_eq!(backend.open_count(), 2);
+    }
+
+    #[test]
+    fn last_viewer_releases_the_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.pdf");
+        outlined_pdf(&path);
+        let service = PdfService::get();
+        service.retain(&path);
+        service.retain(&path);
+        assert_eq!(service.users_of(&path), 2);
+        service.release(&path);
+        assert_eq!(service.users_of(&path), 1);
+        service.release(&path);
+        assert_eq!(service.users_of(&path), 0);
+        // Still usable afterwards (opened again).
+        assert_eq!(service.open_blocking(&path).unwrap().page_sizes.len(), 3);
+        service.release(&path);
+        assert_eq!(service.users_of(&path), 0);
     }
 
     #[test]

@@ -14,12 +14,15 @@ const QML_FILES: &[&str] = &[
     "qml/CalendarWeek.qml",
     "qml/CommandPalette.qml",
     "qml/ContextModules.qml",
+    "qml/ExtensionCards.qml",
     "qml/ContextPanel.qml",
     "qml/DocumentView.qml",
     "qml/EditorArea.qml",
     "qml/EditorGroup.qml",
     "qml/EntryDialog.qml",
     "qml/ExtensionsDialog.qml",
+    "qml/ExtensionSettings.qml",
+    "qml/ExtensionView.qml",
     "qml/FileActions.qml",
     "qml/FolderView.qml",
     "qml/Icon.qml",
@@ -30,6 +33,7 @@ const QML_FILES: &[&str] = &[
     "qml/MarkdownView.qml",
     "qml/MarkdownPdfExport.qml",
     "qml/PdfViewer.qml",
+    "qml/AtlasNoteView.qml",
     "qml/PomodoroTimer.qml",
     "qml/PlacesList.qml",
     "qml/ProcessedView.qml",
@@ -74,7 +78,9 @@ const RUST_BRIDGES: &[&str] = &[
 fn main() {
     let module = QmlModule::new("Atlas")
         .qml_files(QML_FILES.iter().map(QmlFile::from))
-        .qml_file(QmlFile::from("qml/Theme.qml").singleton(true));
+        .qml_file(QmlFile::from("qml/Theme.qml").singleton(true))
+        .qml_file(QmlFile::from("qml/PreviewPool.qml").singleton(true))
+        .qml_file(QmlFile::from("qml/Timing.qml").singleton(true));
     let builder = CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")
         .qt_module("QuickControls2")

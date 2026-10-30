@@ -38,13 +38,38 @@ Rectangle {
 
     color: Theme.sidebar
 
+    /// Only filled while visible (a hidden tab of the context bar): opening
+    /// a file does not look up what nobody sees; showing it fills it.
+    property bool lazy: false
     function refresh() {
+        if (lazy && !visible) return
+        const t = Timing.now()
         // (`scope`, not `projectScope`: this also runs from onScopeChanged.)
         if (scope === "project" && tab === 0) { backlinkList = JSON.parse(app.projectQuotes()); return }
-        if (!path) { backlinkList = []; relatedList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
+        if (!path) { backlinkList = []; relatedList = []; graphJson = ""; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
         backlinkList = JSON.parse(app.backlinks(path))
         relatedList = JSON.parse(app.relatedFiles(path))
-        if (visible && tab === 1) graph = JSON.parse(app.contextGraph(path, 0))
+        Timing.took("Kontext: Rückverweise und Verknüpfungen", t)
+        if (visible && tab === 1) graphTimer.restart()
+    }
+    // The graph (up to 500 files, laid out in JavaScript) comes a moment
+    // after the rest: opening a file switches the tab at once instead of
+    // waiting for it, and clicking through files lays it out only once.
+    Timer {
+        id: graphTimer
+        interval: 120
+        onTriggered: {
+            if (!panel.path || !panel.visible || panel.tab !== 1) return
+            const t = Timing.now()
+            const json = panel.app.contextGraph(panel.path, 0)
+            if (json === panel.graphJson) return
+            const graph = JSON.parse(json)
+            Timing.took("Graph: contextGraph (Rust), " + graph.nodes.length + " Dateien", t)
+            const t2 = Timing.now()
+            panel.graphJson = json
+            panel.graph = graph
+            Timing.took("Graph: Layout und Elemente", t2)
+        }
     }
     onPathChanged: refresh()
     onTabChanged: refresh()
@@ -229,7 +254,26 @@ Rectangle {
     }
     readonly property var positions: world.map(p => ({ x: panX + p.x * zoom, y: panY + p.y * zoom }))
     onPositionsChanged: edgeCanvas.requestPaint()
-    function relayout() { world = layout(); fit() }
+    /// The graph as Rust gave it (key of the layout cache).
+    property string graphJson: ""
+    /// Layouts of graphs seen lately, by graphJson: switching back to a file
+    /// does not lay out its graph again (deterministic anyway).
+    property var layoutCache: ({})
+    property var layoutKeys: []
+    function relayout() {
+        const key = graphJson
+        let pos = key ? layoutCache[key] : undefined
+        if (!pos) {
+            pos = layout()
+            if (key) {
+                layoutCache[key] = pos
+                layoutKeys.push(key)
+                if (layoutKeys.length > 16) delete layoutCache[layoutKeys.shift()]
+            }
+        }
+        world = pos
+        fit()
+    }
     onGraphChanged: relayout()
 
     // ---------------------------------------------------------------- view
@@ -464,7 +508,7 @@ Rectangle {
                                 Label {
                                     visible: !!row.modelData.anchor
                                     text: row.modelData.anchor || ""
-                                    color: row.modelData.anchorKind === "quote" ? "#ffd400" : "#9dd1ff"
+                                    color: row.modelData.anchorKind === "quote" ? Theme.quote : Theme.link
                                     font.pixelSize: Theme.smallFontSize
                                 }
                                 Label {
@@ -630,6 +674,7 @@ Rectangle {
                     Canvas {
                         id: edgeCanvas
                         anchors.fill: parent
+                        Connections { target: Theme; function onLightChanged() { edgeCanvas.requestPaint() } }
                         onPaint: {
                             const ctx = getContext("2d")
                             ctx.reset()
@@ -641,7 +686,7 @@ Rectangle {
                                 // Related by hand only: dashed, green, no direction.
                                 if (e.related && e.count === 0) {
                                     ctx.beginPath()
-                                    ctx.strokeStyle = "rgba(52, 194, 122, 0.85)"
+                                    ctx.strokeStyle = Theme.light ? "rgba(30, 148, 85, 0.85)" : "rgba(52, 194, 122, 0.85)"
                                     ctx.lineWidth = Math.max(1.6, 2.5 * scale)
                                     ctx.setLineDash([5, 3])
                                     ctx.moveTo(a.x, a.y)
@@ -651,7 +696,7 @@ Rectangle {
                                     continue
                                 }
                                 ctx.beginPath()
-                                ctx.strokeStyle = e.quotes > 0 ? "rgba(255, 212, 0, 0.75)" : "rgba(120, 140, 175, 0.45)"
+                                ctx.strokeStyle = e.quotes > 0 ? (Theme.light ? "rgba(217, 164, 0, 0.85)" : "rgba(255, 212, 0, 0.75)") : (Theme.light ? "rgba(90, 105, 130, 0.5)" : "rgba(120, 140, 175, 0.45)")
                                 ctx.lineWidth = (Math.min(4, 1 + (e.count - 1) * 0.6) + (e.quotes > 0 ? 0.5 : 0)) * scale
                                 ctx.moveTo(a.x, a.y)
                                 ctx.lineTo(b.x, b.y)
@@ -672,11 +717,14 @@ Rectangle {
 
                     Repeater {
                         // Alone, the file itself would sit on the hint below.
-                        model: panel.graph.nodes.length > 1 ? panel.graph.nodes : []
+                        // A count, not the list: with as many files as before
+                        // (the same project) the nodes stay and only take the
+                        // new data, instead of all being built again.
+                        model: panel.graph.nodes.length > 1 ? panel.graph.nodes.length : 0
                         delegate: Item {
                             id: node
-                            required property var modelData
                             required property int index
+                            readonly property var modelData: panel.graph.nodes[index] || ({ label: "", relative: "", path: "", kind: "", depth: 0 })
                             readonly property var p: panel.positions[index] || { x: 0, y: 0 }
                             readonly property bool far: modelData.depth === panel.unconnected
                             // Smaller when zoomed out, so dense parts stay apart.
@@ -698,7 +746,7 @@ Rectangle {
                                 width: node.radius * 2
                                 height: width
                                 radius: width / 2
-                                color: node.modelData.missing ? "transparent" : (panel.kindColors[node.modelData.kind] || "#9da5b4")
+                                color: node.modelData.missing ? "transparent" : (panel.kindColors[node.modelData.kind] || Theme.textMuted)
                                 border.width: node.index === 0 ? 3 : node.modelData.missing ? 1 : 0
                                 border.color: node.modelData.missing ? Theme.textFaint : Qt.rgba(0.24, 0.55, 0.99, 0.35)
                                 opacity: node.far ? 0.55 : node.modelData.depth >= 2 ? 0.8 : 1
@@ -774,7 +822,7 @@ Rectangle {
                                 width: line ? 14 : 8
                                 height: line ? 2 : 8
                                 radius: line ? 0 : 4
-                                color: modelData.kind === "quote" ? "#ffd400" : modelData.kind === "related" ? "#34c27a" : panel.kindColors[modelData.kind]
+                                color: modelData.kind === "quote" ? Theme.quote : modelData.kind === "related" ? Theme.ok : panel.kindColors[modelData.kind]
                             }
                             Label { text: modelData.text; color: Theme.textFaint; font.pixelSize: 10 }
                         }

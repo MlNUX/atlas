@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Beispiel-Erweiterung in Rust: CSV-Tabellen ansehen, auswerten, exportieren.
+# Anleitung: docs/extensions-guide.md im Atlas-Repository.
+atlas_api: 2
+name: tabelle
+title: Tabellen (CSV)
+version: 0.1.0
+description: Zeigt CSV-Dateien als Tabelle, zählt Zeilen und Spalten und exportiert HTML.
+
+permissions:
+  run: []              # nur das eigene Programm in {extension}/bin
+  files: project
+  network: false
+
+settings:
+  - key: trennzeichen
+    title: Trennzeichen
+    description: Wie die Spalten getrennt sind; „auto“ erkennt Komma, Semikolon oder Tab.
+    type: choice
+    choices: [auto, komma, semikolon, tab]
+    default: auto
+  - key: max_zeilen
+    title: Höchstens angezeigte Zeilen
+    type: number
+    default: 500
+
+commands:
+  - name: Tabelle auswerten
+    applies_to: ["*.csv", "*.tsv"]
+    command: ["{extension}/bin/atlas-tabelle", statistik, "{file}"]
+    keybinding: Ctrl+Alt+Y    # Strg+Alt+T öffnet auf vielen Desktops ein Terminal
+
+processors:
+  - name: Tabelle
+    applies_to: ["*.csv", "*.tsv"]
+    output: markdown
+    auto: false        # Atlas zeigt CSV selbst als Text; „Anzeigen mit → Tabelle“
+    command: ["{extension}/bin/atlas-tabelle", markdown, "{file}"]
+    timeout: 20
+
+exporters:
+  - name: HTML-Tabelle
+    applies_to: ["*.csv", "*.tsv"]
+    target: html
+    command: ["{extension}/bin/atlas-tabelle", html, "{file}", "{output}"]

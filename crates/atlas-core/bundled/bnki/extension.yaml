@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# bnki-Karten: Karteikarten für die bnki-App schreiben. Jeder Stapel ist
+# eine CSV-Datei (front;back;hint;tags) im Projekt, die bnki unter
+# „Stapel öffnen → CSV importieren“ einliest.
+atlas_api: 2
+name: bnki
+title: bnki-Karten
+version: 1.0.0
+description: Karteikarten für bnki schreiben, mit Vorschau für Formeln und Code. Jeder Stapel ist eine CSV-Datei im Projekt.
+context: true                 # als Karte in der Kontextleiste (abschaltbar)
+
+permissions:
+  run: []
+  files: project              # liest und schreibt nur Dateien im Projekt
+  network: false
+
+settings:
+  - key: ordner
+    title: Ordner der Stapel
+    description: Relativ zum Projekt; neue Stapel landen hier, der Editor zeigt alle CSV-Dateien darin.
+    type: path
+    default: bnki
+
+views:
+  - id: editor
+    name: bnki-Karten
+    page: editor.html
+    applies_to: "*.csv"       # „Anzeigen mit → bnki-Karten“ für CSV-Dateien
+    keybinding: Ctrl+Alt+B

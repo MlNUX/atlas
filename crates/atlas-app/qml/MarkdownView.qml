@@ -20,7 +20,39 @@ Rectangle {
     property string mode: "preview"
     property bool showBacklinks: false
     property var info: ({ tags: [], headings: [], broken: 0 })
-    property bool pageReady: false
+    /// preview.html is loaded in the preview.
+    property bool pageLoaded: false
+    /// The preview can take content (loaded, and the view is there).
+    readonly property bool pageReady: pageLoaded && web !== null
+
+    // ---- memory of the preview (Chromium): created when first shown,
+    // destroyed after a while out of sight (with its browser process),
+    // created again when shown.
+    readonly property bool previewShown: root.visible && root.mode !== "edit"
+    property bool previewWanted: false
+    /// Out of sight this long, the preview is destroyed.
+    property int discardAfter: 5 * 60 * 1000
+    // Decided a moment later: a new tab becomes visible before it applies
+    // its state (a restored tab may be in edit mode).
+    onPreviewShownChanged: Qt.callLater(updatePreview)
+    function updatePreview() {
+        if (previewShown) {
+            previewWanted = true
+            discardTimer.stop()
+        } else if (previewWanted) {
+            discardTimer.restart()
+        }
+    }
+    /// Destroys a hidden preview (it is created again when shown).
+    function discardPreview() {
+        if (previewShown || !previewWanted) return false
+        pageLoaded = false
+        previewWanted = false
+        return true
+    }
+    /// The preview (WebEngineView), null while there is none.
+    readonly property var web: webLoader.item ? webLoader.item.webView : null
+    Timer { id: discardTimer; interval: root.discardAfter; onTriggered: root.discardPreview() }
     property int previewLine: 1
     /// When the editor last moved because the preview was scrolled (no echo).
     property real syncedFromPreview: 0
@@ -37,6 +69,7 @@ Rectangle {
         // Lined up in the middle of the view, where one reads: the preview
         // sets type larger, so heights differ further up and down.
         onTriggered: {
+            if (!root.web || !root.pageReady) return
             const mid = Math.round(Math.min(editor.viewHeight, web.height) / 2)
             web.runJavaScript("atlas.follow(" + editor.exactLineAt(mid) + "," + mid + ")")
         }
@@ -109,8 +142,8 @@ Rectangle {
     readonly property alias imageWindowItem: imageWindow
     ImageWindow { id: imageWindow }
 
-    readonly property alias previewItem: web
-    readonly property alias previewRepaint: webRepaint
+    readonly property var previewItem: root.web
+    readonly property var previewRepaint: webLoader.item ? webLoader.item.repaint : null
     readonly property alias contextPanelItem: contextPanel
 
     color: Theme.editor
@@ -160,11 +193,16 @@ Rectangle {
         }
     }
 
+    // The preview follows the design (diagrams are drawn again).
+    Connections { target: Theme; function onLightChanged() { root.render() } }
+
     function render() {
         if (!pageReady) return
+        const t = Timing.now()
         const result = JSON.parse(root.app.renderMarkdown(editor.text, root.source))
+        Timing.took("renderMarkdown (Rust)", t)
         root.info = result
-        web.runJavaScript("atlas.set(" + JSON.stringify(result.html) + ")")
+        web.runJavaScript("atlas.setLight(" + Theme.light + "); atlas.set(" + JSON.stringify(result.html) + ")")
         // New content: line up with the editor again.
         if (root.mode === "split") followTimer.restart()
     }
@@ -185,7 +223,11 @@ Rectangle {
 
     onSourceChanged: Qt.callLater(render)
     onLineChanged: reveal(line)
-    Component.onCompleted: Qt.callLater(checkAttention)
+    Component.onCompleted: {
+        // After the tab applied its state (a restored tab may be in edit mode).
+        Qt.callLater(updatePreview)
+        Qt.callLater(checkAttention)
+    }
 
     Connections {
         target: root.app
@@ -249,7 +291,7 @@ Rectangle {
                     Label {
                         required property string modelData
                         text: "#" + modelData
-                        color: "#9dd1ff"
+                        color: Theme.link
                         font.pixelSize: Theme.smallFontSize
                         leftPadding: 4
                     }
@@ -325,6 +367,7 @@ Rectangle {
                 source: root.source
                 wrap: true
                 wikiCompletion: true
+                briskScrolling: true
                 actions: root.actions
                 onEdited: renderTimer.restart()
                 onSynced: { root.render(); root.app.noteChanged(root.source) }
@@ -334,53 +377,130 @@ Rectangle {
                 onScrollYChanged: if (root.mode === "split" && root.pageReady && Date.now() - root.syncedFromPreview > 200) followTimer.restart()
             }
 
-            WebEngineView {
-                id: web
+            // Created only once the preview is shown (a tab in edit mode, or
+            // one not looked at since a session restore, starts no browser).
+            // The view comes from PreviewPool: after the first note, one waits
+            // loaded, so switching to another note shows it at once.
+            Loader {
+                id: webLoader
                 SplitView.fillWidth: true
                 visible: root.mode !== "edit"
-                url: "atlas://app/web/preview.html"
-                backgroundColor: Theme.editor
-                settings.localContentCanAccessFileUrls: true
-                settings.localContentCanAccessRemoteUrls: false
-                settings.javascriptCanOpenWindows: false
-                settings.focusOnNavigationEnabled: false
-                onLoadingChanged: (request) => {
-                    if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus) return
-                    root.pageReady = true
-                    root.render()
-                    if (root.previewLine > 1) web.runJavaScript("atlas.scrollToLine(" + root.previewLine + ")")
-                    root.applyHits()
-                }
-                // Links inside the page never navigate it.
-                onNavigationRequested: (request) => {
-                    if (request.url.toString() !== "atlas://app/web/preview.html") request.reject()
-                }
-                onNewWindowRequested: (request) => Qt.openUrlExternally(request.requestedUrl)
-                onJavaScriptConsoleMessage: (level, text, lineNumber, sourceId) => {
-                    if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
-                    else if (text.startsWith("atlas:copy:")) {
-                        root.app.copyToClipboard(JSON.parse(text.slice(11)).text)
-                        root.message(qsTr("Code kopiert"))
-                    }
-                    else if (text.startsWith("atlas:run:")) root.runCode(JSON.parse(text.slice(10)).code)
-                    else if (text.startsWith("atlas:image:")) root.showImage(JSON.parse(text.slice(12)))
-                    else if (text.startsWith("atlas:task:")) {
-                        const t = JSON.parse(text.slice(11))
-                        if (!editor.toggleTask(t.line, t.checked)) root.render()
-                    }
-                    else if (text.startsWith("atlas:scroll:")) {
-                        const s = JSON.parse(text.slice(13))
-                        root.previewLine = s.line
-                        root.previewY = s.y
-                        // Split view: the editor follows the preview (#7).
-                        if (root.mode === "split" && s.exact) {
-                            root.syncedFromPreview = Date.now()
-                            editor.scrollToExactLine(s.exact, s.at || 0)
+                active: root.previewWanted
+                sourceComponent: Component {
+                    Item {
+                        id: webHost
+                        readonly property alias repaint: webRepaint
+                        /// The WebEngineView with preview.html (from the pool).
+                        property var webView: null
+                        Component.onCompleted: {
+                            webView = PreviewPool.take(webHost)
+                            Timing.mark(webView.ready ? "Vorschau aus dem Vorrat (geladen)" : "Vorschau neu erzeugt (lädt)")
+                            webView.anchors.fill = webHost
+                            // A spare was hidden: have Chromium paint it here.
+                            webRepaint.request()
+                            // Loaded already (the pool's spare): once the Loader
+                            // has set its item, so `root.web` is there.
+                            if (webView.ready) Qt.callLater(loaded)
                         }
-                    } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
+                        Component.onDestruction: if (webView) webView.destroy()
+                        function loaded() {
+                            Timing.mark("Vorschauseite bereit")
+                            root.pageLoaded = true
+                            root.render()
+                            if (root.previewLine > 1) webView.runJavaScript("atlas.scrollToLine(" + root.previewLine + ")")
+                            root.applyHits()
+                        }
+                        Connections {
+                            target: webHost.webView
+                            function onLoadingChanged(request) {
+                                if (request.status === WebEngineLoadingInfo.LoadSucceededStatus) webHost.loaded()
+                            }
+                            // Links inside the page never navigate it.
+                            function onNavigationRequested(request) {
+                                if (request.url.toString() !== "atlas://app/web/preview.html") request.reject()
+                            }
+                            function onNewWindowRequested(request) { Qt.openUrlExternally(request.requestedUrl) }
+                            function onJavaScriptConsoleMessage(level, text, lineNumber, sourceId) {
+                                if (text.startsWith("atlas:rendered:")) Timing.mark("Vorschau hat den Inhalt gezeichnet")
+                                else if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
+                                else if (text.startsWith("atlas:copy:")) {
+                                    root.app.copyToClipboard(JSON.parse(text.slice(11)).text)
+                                    root.message(qsTr("Code kopiert"))
+                                }
+                                else if (text.startsWith("atlas:run:")) root.runCode(JSON.parse(text.slice(10)).code)
+                                else if (text.startsWith("atlas:image:")) root.showImage(JSON.parse(text.slice(12)))
+                                else if (text.startsWith("atlas:task:")) {
+                                    const t = JSON.parse(text.slice(11))
+                                    if (!editor.toggleTask(t.line, t.checked)) root.render()
+                                }
+                                else if (text.startsWith("atlas:scroll:")) {
+                                    const s = JSON.parse(text.slice(13))
+                                    pageScroll.track(s.y, s.height)
+                                    if (s.own) return
+                                    root.previewLine = s.line
+                                    root.previewY = s.y
+                                    // Split view: the editor follows the preview (#7).
+                                    if (root.mode === "split" && s.exact) {
+                                        root.syncedFromPreview = Date.now()
+                                        editor.scrollToExactLine(s.exact, s.at || 0)
+                                    }
+                                } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
+                            }
+                        }
+                        // Never stays black after a workspace switch (#2).
+                        WebRepaint { id: webRepaint; view: webHost.webView; z: 1 }
+
+                        // Touchpad and wheel scroll like in the editor (TouchpadFling,
+                        // brisk): it moves `pageScroll`, which keeps track of the
+                        // page's position and height (CSS pixels) so that a glide
+                        // ends at the top and bottom, and the page follows each
+                        // step with scrollBy – relative, so a position reported
+                        // late never makes it jump. Sideways steps stay with the
+                        // page (wide code blocks and tables); Ctrl+wheel too.
+                        Flickable {
+                            id: pageScroll
+                            visible: false
+                            width: webHost.webView ? webHost.width / webHost.webView.zoomFactor : 0
+                            height: webHost.webView ? webHost.height / webHost.webView.zoomFactor : 0
+                            contentWidth: width
+                            /// The page moved by itself (keys, scroll bar, links,
+                            /// following the editor) or changed its height: taken
+                            /// over while no swipe or glide is going on.
+                            function track(y, pageHeight) {
+                                contentHeight = Math.max(height, pageHeight || 0)
+                                if (pageFling.gliding || Date.now() - pageFling.lastStep <= 250) return
+                                contentY = y
+                                pageFling.carry = 0
+                            }
+                        }
+                        TouchpadFling {
+                            id: pageFling
+                            /// When the last step was handed to the page.
+                            property real lastStep: 0
+                            /// Movement not handed on yet: Chromium drops scrollBy steps
+                            /// below half a pixel, so only whole pixels go to the page.
+                            property real carry: 0
+                            anchors.fill: parent
+                            z: 2
+                            flickable: pageScroll
+                            brisk: true
+                            horizontal: false
+                            active: root.app.touchpadFling
+                            app: root.app
+                            scroller: (dx, dy) => {
+                                const before = pageScroll.contentY
+                                const max = Math.max(0, pageScroll.contentHeight - pageScroll.height)
+                                pageScroll.contentY = Math.max(0, Math.min(max, before + dy / webHost.webView.zoomFactor))
+                                pageFling.carry += pageScroll.contentY - before
+                                pageFling.lastStep = Date.now()
+                                const step = Math.round(pageFling.carry)
+                                if (!step) return
+                                pageFling.carry -= step
+                                webHost.webView.runJavaScript("window.scrollBy(0, " + step + ")")
+                            }
+                        }
+                    }
                 }
-                // Never stays black after a workspace switch (#2).
-                WebRepaint { id: webRepaint }
             }
 
             // ---- backlinks and local graph
