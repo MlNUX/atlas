@@ -638,6 +638,7 @@ pre .s { color: var(--a-ok); }
 <section>
   <div class="prose">
     <h2>Speicherung in <code>config.toml</code></h2>
+    <p><b>Entschieden:</b> Profile gelten pro Nutzer. Sie stehen nur in der eigenen <code>config.toml</code>, in jedem Projekt gleich; im Projektordner (<code>.atlas/</code>) wird nichts zur Kontextleiste gespeichert.</p>
     <p>Die Profile stehen unter <code>[context.profiles]</code>. Profile außer <code>default</code> enthalten nur Abweichungen; fehlt ein Schlüssel, gilt der Wert aus <code>default</code>. Die Einstellungen der Lernzeit bleiben, wo sie sind.</p>
   </div>
 <pre><span class="k">[context]</span>
@@ -719,7 +720,6 @@ overview = [<span class="s">"actions"</span>, <span class="s">"ext:jupyter"</spa
   <div class="prose">
     <h2>Offene Fragen</h2>
     <div class="q">
-      <div><b>Pro Projekt oder pro Nutzer?</b> Das Konzept speichert in der globalen <code>config.toml</code>. Denkbar wäre zusätzlich <code>.atlas/context.toml</code> pro Projektordner, etwa für ein Informatik-Projekt mit anderen Bausteinen als die Bachelorarbeit.</div>
       <div><b>Breite pro Profil?</b> Bei PDFs braucht die Leiste oft mehr Platz als bei Code. Die Breite könnte im Profil mitgespeichert werden.</div>
       <div><b>Leiste automatisch ausblenden?</b> Ein Profil ohne Bausteine (z. B. für Bilder) könnte die Leiste ganz einklappen.</div>
       <div><b>Erweiterungen mit eigenen Bausteinen?</b> Heute liefern Erweiterungen nur Karten mit Knöpfen. Ein echter Baustein mit eigener Ansicht bräuchte eine neue Stelle im Manifest und eine höhere <code>atlas_api</code>.</div>
