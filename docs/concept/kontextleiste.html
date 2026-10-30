@@ -1,0 +1,746 @@
+<title>Kontextleiste anpassen</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: Konzepttext in einer Lesespalte, Mockups auf breiten „Bühnen“ im Fensterhintergrund von Atlas.
+   Farben der Mockups = Theme.qml (hell / navy), damit die Entwürfe wie die App aussehen. */
+:root {
+  --page: #eef1f6; --ink: #0e1624; --ink-2: #283345; --muted: #5a6577; --faint: #8a94a5; --rule: #d6dde7;
+  --a-window: #e6eaf0; --a-panel: #f5f7fa; --a-editor: #ffffff; --a-raised: #e9eef5; --a-header: #eef1f6;
+  --a-border: #d6dde7; --a-border-strong: #b9c4d4; --a-hover: #e3e9f2; --a-sel: #dce7fa;
+  --a-accent: #2f6fe0; --a-accent-soft: #dbe7fd; --a-text: #283345; --a-strong: #0e1624; --a-muted: #5a6577; --a-faint: #8a94a5;
+  --a-ok: #1e9455; --a-warn: #b07e12; --a-err: #d33a43; --a-quote: #d9a400; --a-note: #7c4bd6; --a-popup: #ffffff;
+  --a-shadow: 0 12px 32px rgba(20, 30, 50, .18);
+  --new: #1e9455;
+  --sans: "IBM Plex Sans", "Inter", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --ui: "Inter", "Noto Sans", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --page: #0a101c; --ink: #eef3fb; --ink-2: #c5d0e0; --muted: #8a97ad; --faint: #5c6981; --rule: #1e2a40;
+  --a-window: #0a101c; --a-panel: #0d1422; --a-editor: #0f1726; --a-raised: #152036; --a-header: #111a2b;
+  --a-border: #1e2a40; --a-border-strong: #2a3a57; --a-hover: #18233a; --a-sel: #1a2a45;
+  --a-accent: #3d8bfd; --a-accent-soft: #16305a; --a-text: #c5d0e0; --a-strong: #eef3fb; --a-muted: #8a97ad; --a-faint: #5c6981;
+  --a-ok: #34c27a; --a-warn: #e0b33a; --a-err: #f2575f; --a-quote: #ffd400; --a-note: #a678ed; --a-popup: #131d30;
+  --a-shadow: 0 14px 36px rgba(0, 0, 0, .55); --new: #34c27a; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --page: #0a101c; --ink: #eef3fb; --ink-2: #c5d0e0; --muted: #8a97ad; --faint: #5c6981; --rule: #1e2a40;
+  --a-window: #0a101c; --a-panel: #0d1422; --a-editor: #0f1726; --a-raised: #152036; --a-header: #111a2b;
+  --a-border: #1e2a40; --a-border-strong: #2a3a57; --a-hover: #18233a; --a-sel: #1a2a45;
+  --a-accent: #3d8bfd; --a-accent-soft: #16305a; --a-text: #c5d0e0; --a-strong: #eef3fb; --a-muted: #8a97ad; --a-faint: #5c6981;
+  --a-ok: #34c27a; --a-warn: #e0b33a; --a-err: #f2575f; --a-quote: #ffd400; --a-note: #a678ed; --a-popup: #131d30;
+  --a-shadow: 0 14px 36px rgba(0, 0, 0, .55); --new: #34c27a; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--ink-2); font-family: var(--sans); font-size: 16px; line-height: 1.6; }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 48px 96px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.prose { max-width: 68ch; }
+h1, h2, h3 { color: var(--ink); text-wrap: balance; line-height: 1.2; }
+h1 { font-size: clamp(2rem, 4vw, 2.75rem); font-weight: 700; margin: 0 0 12px; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 600; margin: 0 0 12px; }
+h3 { font-size: 1.05rem; font-weight: 600; margin: 24px 0 6px; }
+p { margin: 0 0 12px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--a-accent); margin-bottom: 14px; }
+.lede { font-size: 1.15rem; color: var(--muted); }
+code, .mono { font-family: var(--mono); font-size: .88em; }
+code { background: var(--a-raised); padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+section { padding-block: 40px; border-top: 1px solid var(--rule); }
+section:first-of-type { border-top: 0; }
+ul.plain { margin: 0 0 12px; padding-left: 1.1em; }
+ul.plain li { margin-bottom: 6px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font: 13px/1.4 var(--mono); color: var(--muted); margin-top: 18px; }
+.meta b { color: var(--ink); font-weight: 500; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 28px; }
+.cols > * { min-width: 0; }
+.term { border-left: 2px solid var(--a-accent); padding-left: 14px; }
+.term b { color: var(--ink); display: block; }
+.term span { color: var(--muted); font-size: .95rem; }
+
+.tag-new { display: inline-block; font: 500 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--new); border: 1px solid currentColor; border-radius: 4px; padding: 3px 5px; vertical-align: 2px; margin-left: 6px; }
+
+/* Bühne für Mockups */
+figure { margin: 24px 0 0; }
+.stage { background: var(--a-window); border: 1px solid var(--rule); border-radius: 14px; padding: 28px; overflow-x: auto; }
+.stage-inner { display: flex; gap: 28px; align-items: flex-start; width: max-content; margin: 0 auto; }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; max-width: 80ch; }
+figcaption b { color: var(--ink); font-weight: 600; }
+.fig-n { font-family: var(--mono); color: var(--a-accent); margin-right: 6px; }
+.callouts { display: grid; gap: 10px; width: 250px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); align-self: center; }
+.callouts div { display: grid; grid-template-columns: 22px 1fr; gap: 8px; }
+.pin { width: 20px; height: 20px; border-radius: 50%; background: var(--a-accent); color: #fff; font: 600 11px/20px var(--ui); text-align: center; display: inline-block; }
+
+/* ---------- Atlas-Bausteine (Mockup) ---------- */
+.bar { font-family: var(--ui); font-size: 13px; line-height: 1.35; color: var(--a-text); background: var(--a-panel); border: 1px solid var(--a-border); border-radius: 10px; width: 320px; display: flex; flex-direction: column; overflow: hidden; position: relative; flex: none; }
+.bar.narrow { width: 236px; }
+.bar.mini { width: 250px; }
+.tabs { display: flex; align-items: flex-end; height: 42px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--a-border); gap: 2px; }
+.tab { height: 40px; padding: 0 8px; display: flex; align-items: center; gap: 6px; position: relative; white-space: nowrap; color: var(--a-text); }
+.tab.on { color: var(--a-accent); }
+.tab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 1px; background: var(--a-accent); }
+.tabs .spacer { flex: 1; }
+.ibtn { width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--a-muted); flex: none; }
+.ibtn.hot { background: var(--a-hover); color: var(--a-strong); }
+.tabs .ibtn { align-self: center; }
+svg.i { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+svg.i.s { width: 13px; height: 13px; }
+
+.scroll { display: flex; flex-direction: column; }
+.blk { border-bottom: 1px solid var(--a-border); }
+.blk:last-child { border-bottom: 0; }
+.blk-h { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 8px 0 10px; color: var(--a-strong); font-weight: 600; cursor: default; user-select: none; }
+.blk-h .chev { color: var(--a-faint); transition: transform .15s; }
+.blk.closed .chev { transform: rotate(-90deg); }
+.blk-h .ico { color: var(--a-muted); }
+.blk-h .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blk-h .count { font-weight: 500; color: var(--a-muted); font-size: 11px; background: var(--a-raised); border-radius: 9px; padding: 1px 7px; }
+.blk-h .hint { font-weight: 400; color: var(--a-faint); font-size: 11px; }
+.blk-h .more { opacity: 0; }
+.blk-h:hover .more, .blk-h .more.hot { opacity: 1; }
+.blk-b { padding: 0 12px 12px; display: grid; gap: 6px; }
+.blk.closed .blk-b { display: none; }
+.clickable .blk-h { cursor: pointer; }
+
+.ann { background: var(--a-raised); border-radius: 8px; padding: 7px 10px 8px; display: grid; gap: 3px; border-left: 3px solid var(--a-quote); }
+.ann.note { border-left-color: var(--a-accent); }
+.ann q { color: var(--a-strong); quotes: none; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ann small { color: var(--a-muted); font-size: 11px; display: flex; justify-content: space-between; }
+.link-more { color: var(--a-accent); font-size: 11.5px; }
+.ev { display: grid; grid-template-columns: 3px 1fr; gap: 8px; align-items: center; padding: 3px 4px; }
+.ev i { height: 22px; border-radius: 2px; background: var(--a-accent); }
+.ev b { color: var(--a-strong); font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev span { color: var(--a-muted); font-size: 11px; }
+.todo { display: flex; gap: 8px; align-items: center; padding: 2px 4px; }
+.box { width: 14px; height: 14px; border: 1.5px solid var(--a-border-strong); border-radius: 3px; flex: none; }
+.out { display: grid; gap: 1px; }
+.out div { padding: 3px 6px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.out div.l2 { padding-left: 20px; color: var(--a-muted); }
+.out div.cur { background: var(--a-sel); color: var(--a-strong); }
+.act { display: flex; align-items: center; gap: 10px; background: var(--a-raised); border: 1px solid var(--a-border); border-radius: 8px; padding: 0 10px; height: 34px; color: var(--a-strong); font-weight: 500; }
+.act .k { margin-left: auto; color: var(--a-faint); font: 11px var(--mono); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { border: 1px solid var(--a-border-strong); border-radius: 6px; padding: 1px 7px; font-size: 11.5px; color: var(--a-accent); background: var(--a-accent-soft); }
+.chip.purple { color: var(--a-note); }
+.kv { display: grid; grid-template-columns: 78px 1fr; gap: 3px 8px; font-size: 12px; }
+.kv dt { color: var(--a-muted); } .kv dd { margin: 0; color: var(--a-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.graph svg { width: 100%; height: 118px; display: block; }
+.graph .edge { stroke: var(--a-border-strong); stroke-width: 1.4; }
+.graph .n { fill: var(--a-accent); } .graph .n.pdf { fill: var(--a-err); } .graph .n.cur { stroke: var(--a-accent-soft); stroke-width: 5; }
+.graph text { fill: var(--a-text); font: 10px var(--ui); }
+
+.pomo { margin-top: auto; border-top: 1px solid var(--a-border); background: var(--a-header); display: flex; align-items: center; gap: 12px; padding: 10px 12px; }
+.ring { width: 38px; height: 38px; flex: none; }
+.ring circle { fill: none; stroke-width: 3.5; }
+.ring .bg { stroke: var(--a-border-strong); } .ring .fg { stroke: var(--a-ok); stroke-dasharray: 94 120; transform: rotate(-90deg); transform-origin: center; stroke-linecap: round; }
+.pomo b { color: var(--a-strong); font: 600 15px var(--ui); font-variant-numeric: tabular-nums; display: block; }
+.pomo span { color: var(--a-muted); font-size: 11px; }
+.pomo .ctl { margin-left: auto; display: flex; gap: 2px; }
+
+/* Bearbeitungsmodus */
+.editbar { background: var(--a-accent-soft); color: var(--a-strong); padding: 9px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--a-border); }
+.editbar b { font-weight: 600; flex: 1; }
+.select { display: inline-flex; align-items: center; gap: 6px; background: var(--a-editor); border: 1px solid var(--a-border-strong); border-radius: 6px; padding: 3px 6px 3px 8px; font-size: 12px; color: var(--a-strong); white-space: nowrap; }
+.zone { padding: 10px 12px 4px; }
+.zone-l { font: 600 10.5px/1 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--a-muted); margin-bottom: 7px; display: flex; justify-content: space-between; }
+.zone-l em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--a-faint); }
+.erow { display: flex; align-items: center; gap: 8px; height: 34px; border: 1px solid var(--a-border); background: var(--a-editor); border-radius: 7px; padding: 0 6px 0 4px; margin-bottom: 5px; color: var(--a-strong); }
+.erow .grip { color: var(--a-faint); cursor: grab; }
+.erow .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erow.off { opacity: .5; border-style: dashed; }
+.erow.off .t { text-decoration: line-through; text-decoration-color: var(--a-faint); }
+.erow.drag { border-color: var(--a-accent); box-shadow: var(--a-shadow); transform: translateX(10px) rotate(-1deg); background: var(--a-popup); }
+.drop { height: 3px; border-radius: 2px; background: var(--a-accent); margin: -2px 0 3px; }
+.tabchips { display: flex; flex-wrap: wrap; gap: 5px; }
+.tchip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--a-border-strong); border-radius: 6px; height: 26px; padding: 0 4px 0 3px; background: var(--a-editor); color: var(--a-strong); font-size: 12px; }
+.tchip.fixed { padding-left: 8px; color: var(--a-muted); }
+.tchip.add { border-style: dashed; color: var(--a-accent); padding: 0 8px; }
+.addbtn { display: flex; align-items: center; justify-content: center; gap: 6px; height: 34px; border: 1px dashed var(--a-border-strong); border-radius: 7px; color: var(--a-accent); font-weight: 500; margin-bottom: 6px; }
+.addbtn.on { background: var(--a-accent-soft); border-style: solid; border-color: var(--a-accent); }
+.efoot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--a-border); background: var(--a-header); align-items: center; }
+.btn { height: 28px; padding: 0 12px; border-radius: 6px; display: inline-flex; align-items: center; font-weight: 500; color: var(--a-text); white-space: nowrap; }
+.btn.flat:hover { background: var(--a-hover); }
+.btn.primary { background: var(--a-accent); color: #fff; margin-left: auto; }
+
+/* Popups */
+.pop { font-family: var(--ui); font-size: 13px; color: var(--a-text); background: var(--a-popup); border: 1px solid var(--a-border-strong); border-radius: 10px; box-shadow: var(--a-shadow); flex: none; }
+.menu { width: 236px; padding: 5px; align-self: flex-start; margin-top: 70px; }
+.mi { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: var(--a-strong); white-space: nowrap; }
+.mi .ico { color: var(--a-muted); }
+.mi .k { margin-left: auto; color: var(--a-faint); font: 11px var(--mono); }
+.mi.hot { background: var(--a-sel); }
+.mi.danger { color: var(--a-err); } .mi.danger .ico { color: var(--a-err); }
+.msep { height: 1px; background: var(--a-border); margin: 4px 2px; }
+.mhead { font: 600 10.5px/1 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--a-muted); padding: 8px 8px 6px; }
+.radio { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--a-border-strong); flex: none; }
+.radio.on { border-color: var(--a-accent); background: radial-gradient(circle, var(--a-accent) 0 3.5px, transparent 4px); }
+
+.gallery { width: 330px; align-self: flex-start; margin-top: 210px; }
+.gal-search { margin: 10px; height: 30px; border-radius: 6px; background: var(--a-raised); display: flex; align-items: center; gap: 8px; padding: 0 9px; color: var(--a-faint); }
+.gal-sec { padding: 2px 10px 6px; }
+.gal-item { display: grid; grid-template-columns: 28px 1fr auto; gap: 2px 10px; align-items: center; padding: 6px; border-radius: 7px; }
+.gal-item.hot { background: var(--a-hover); }
+.gal-item .bi { grid-row: span 2; width: 28px; height: 28px; border-radius: 7px; background: var(--a-raised); display: flex; align-items: center; justify-content: center; color: var(--a-accent); }
+.gal-item b { color: var(--a-strong); font-weight: 500; }
+.gal-item small { color: var(--a-muted); font-size: 11.5px; grid-column: 2; }
+.gal-item .st { grid-row: span 2; color: var(--a-faint); font-size: 11px; }
+.gal-item .st.add { color: var(--a-accent); font-weight: 500; }
+.gal-item .ext { background: var(--a-raised); color: var(--a-strong); font: 600 13px var(--ui); }
+
+/* Profile im Vergleich */
+.prof-head { font: 600 11px/1 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--a-muted); display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.prof-col { display: flex; flex-direction: column; }
+.ctxline { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-bottom: 1px solid var(--a-border); font-size: 11.5px; color: var(--a-muted); background: var(--a-header); }
+.ctxline b { color: var(--a-strong); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Einstellungen */
+.settings { width: 640px; font-family: var(--ui); font-size: 13px; color: var(--a-text); background: var(--a-panel); border: 1px solid var(--a-border); border-radius: 12px; padding: 18px 20px 20px; flex: none; }
+.s-label { font: 600 11px/1 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--a-muted); margin: 6px 0 8px; }
+.s-card { background: var(--a-editor); border: 1px solid var(--a-border); border-radius: 10px; margin-bottom: 18px; }
+.s-row { display: grid; grid-template-columns: 30px 1fr auto; gap: 2px 12px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--a-border); }
+.s-row:last-child { border-bottom: 0; }
+.s-row .ico { color: var(--a-muted); grid-row: span 2; justify-self: center; }
+.s-row b { color: var(--a-strong); font-weight: 500; }
+.s-row small { color: var(--a-muted); font-size: 11.5px; grid-column: 2; }
+.s-row .r { grid-row: span 2; display: flex; align-items: center; gap: 6px; }
+.minibar { display: flex; gap: 3px; }
+.minibar i { width: 22px; height: 6px; border-radius: 2px; background: var(--a-border-strong); }
+.minibar i.a { background: var(--a-accent); }
+.switch { width: 32px; height: 18px; border-radius: 9px; background: var(--a-border-strong); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
+.switch.on { background: var(--a-accent); } .switch.on::after { left: 16px; }
+.seg { display: inline-flex; border: 1px solid var(--a-border-strong); border-radius: 6px; overflow: hidden; }
+.seg span { padding: 3px 9px; font-size: 12px; border-left: 1px solid var(--a-border-strong); }
+.seg span:first-child { border-left: 0; }
+.seg span.on { background: var(--a-accent-soft); color: var(--a-accent); font-weight: 500; }
+.sbtn { border: 1px solid var(--a-border-strong); border-radius: 6px; padding: 3px 10px; font-size: 12px; color: var(--a-strong); background: var(--a-raised); white-space: nowrap; }
+.spin { border: 1px solid var(--a-border-strong); border-radius: 6px; padding: 2px 8px; font-size: 12px; color: var(--a-strong); font-variant-numeric: tabular-nums; }
+
+/* Tabellen & Code */
+.tbl-wrap { overflow-x: auto; margin: 16px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; min-width: 560px; }
+th, td { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 11.5px/1.3 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td:first-child { color: var(--ink); font-weight: 500; white-space: nowrap; }
+pre { background: var(--a-editor); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; overflow-x: auto; font: 13.5px/1.6 var(--mono); color: var(--ink); margin: 16px 0; }
+pre .c { color: var(--faint); }
+pre .k { color: var(--a-accent); }
+pre .s { color: var(--a-ok); }
+
+.phases { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 16px; }
+.phase { background: var(--a-editor); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; min-width: 0; }
+.phase h3 { margin: 0 0 4px; }
+.phase .when { font: 12px var(--mono); color: var(--a-accent); }
+.phase ul { margin: 8px 0 0; padding-left: 1.1em; font-size: 14.5px; }
+.phase .files { font: 12px/1.6 var(--mono); color: var(--muted); margin-top: 10px; }
+.q { display: grid; gap: 14px; margin-top: 12px; }
+.q div { border-left: 2px solid var(--a-warn); padding-left: 14px; }
+.q b { color: var(--ink); }
+
+@media (max-width: 640px) {
+  .stage { padding: 16px; }
+  body { font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+  <symbol id="i-mark" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="10" cy="18" r="2.5"/><path d="M8.3 7 15.6 7.8M7.2 8.2 9.2 15.6M16.4 10 11.8 16.2"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 24 24"><path d="M5 9h15M4 15h15M10 3 8 21M16 3l-2 18"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-chevr" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3 3.9M6.6 6.6A16 16 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5M8 3h8l-1 6 3 4H6l3-4z"/></symbol>
+  <symbol id="i-tab" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 10h18M9 5v5"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-fold" viewBox="0 0 24 24"><path d="m7 15 5-5 5 5"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></symbol>
+  <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 15h8M8 18h5"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+</svg>
+
+<div class="wrap">
+
+<header class="prose">
+  <div class="eyebrow">Atlas · Konzept · Kontextleiste</div>
+  <h1>Kontextleiste anpassen</h1>
+  <p class="lede">Die rechte Leiste zeigt heute für jede Datei dieselben Reiter und dieselbe Übersicht. Dieses Konzept macht sie zu einer Leiste aus <b>Bausteinen</b>, die man direkt in der Leiste ordnen, einklappen und ausblenden kann, und die sich je nach Dateityp anders zusammensetzt.</p>
+  <div class="meta"><span>Stand <b>30.10.2026</b></span><span>Basis <b>release-1.1.4</b></span><span>Status <b>Entwurf, noch nicht umgesetzt</b></span></div>
+</header>
+
+<section>
+  <div class="prose">
+    <h2>Ausgangslage</h2>
+    <p>Die Kontextleiste (<code>Inspector.qml</code>) hat vier feste Reiter: Übersicht, Verknüpfungen, Graph und Aktionen. Die Übersicht stapelt immer dieselben Teile: „Heute“ und „Aufgaben“ (<code>ContextModules.qml</code>), Anmerkungen, Graph und Aktionen. Die Lernzeit (<code>PomodoroTimer.qml</code>) sitzt fest am unteren Rand.</p>
+    <p>Anpassen kann man nur drei Schalter in <b>Einstellungen → Kontextleiste</b> (<code>[context]</code> mit <code>calendar</code>, <code>tasks</code>, <code>pomodoro</code>) und die Erweiterungskarten im Reiter Aktionen (<code>[context.extensions]</code>).</p>
+    <h3>Was dabei stört</h3>
+    <ul class="plain">
+      <li>Bei einer Markdown-Notiz steht oben „Noch keine Anmerkungen in …pdf“. Der Block ist leer und nimmt trotzdem Platz weg.</li>
+      <li>Bei einer PDF will man Anmerkungen und Gliederung sehen, bei einer Notiz Verknüpfungen und Tags, bei einem Skript nur Aktionen. Die Leiste kennt diesen Unterschied nicht.</li>
+      <li>Die Reihenfolge ist fest. Wer vor allem den Kalender nutzt, kann „Heute“ nicht nach oben holen, und wer ihn nie nutzt, muss in die Einstellungen.</li>
+      <li>Nichts lässt sich einklappen. Ein großer Graph schiebt die Aktionen aus dem Bild.</li>
+      <li>Bei schmaler Leiste scrollen die Reiter seitwärts, und „Aktionen“ ist dann oft nicht zu sehen.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Leitlinien</h2>
+  </div>
+  <div class="cols">
+    <div class="term"><b>Anpassen, wo man arbeitet</b><span>Jeder Baustein hat ein Menü in seiner Kopfzeile. Für größere Umbauten gibt es einen Bearbeitungsmodus direkt in der Leiste. Die Einstellungen zeigen nur noch die Übersicht.</span></div>
+    <div class="term"><b>Gute Standards</b><span>Wer nie etwas anpasst, bekommt sinnvolle Profile für PDF, Markdown und Code. Anpassen ist ein Angebot.</span></div>
+    <div class="term"><b>Folgt der Datei</b><span>Die Leiste wechselt das Profil mit dem aktiven Tab, ohne dass man umschalten muss.</span></div>
+    <div class="term"><b>Lesbar in der Config</b><span>Alles steht als Liste von Namen in <code>config.toml</code>. Alte Schlüssel werden übernommen.</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Begriffe</h2>
+    <p>Drei neue Begriffe tragen das ganze Konzept. In der Oberfläche stehen sie genau so.</p>
+  </div>
+  <div class="cols">
+    <div class="term"><b>Baustein</b><span>Ein Teil der Leiste mit Kopfzeile: Anmerkungen, Heute, Graph, eine Erweiterungskarte usw. Jeder Baustein hat einen festen Namen (<code>annotations</code>, <code>today</code>, <code>ext:bnki</code>).</span></div>
+    <div class="term"><b>Bereich</b><span>Wo ein Baustein steht: in der <b>Übersicht</b>, als <b>eigener Reiter</b> oder <b>unten angeheftet</b> (sichtbar auf jedem Reiter, wie heute die Lernzeit).</span></div>
+    <div class="term"><b>Profil</b><span>Eine Zusammenstellung von Bausteinen und Reitern für einen Dateityp: Allgemein, PDF, Markdown, Code, Kalender. Was ein Profil nicht festlegt, kommt aus „Allgemein“.</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>1 · Die Leiste mit Bausteinen</h2>
+    <p>Jeder Teil der Übersicht bekommt eine einheitliche Kopfzeile: Pfeil zum Einklappen, Symbol, Name, eine Zahl und beim Überfahren ein <b>⋯</b>-Menü. Der Zustand „eingeklappt“ bleibt pro Profil gespeichert. Leere Bausteine klappen von selbst zu und zeigen nur ihre Kopfzeile mit „leer“.</p>
+    <p>Rechts in der Reiterzeile sitzt ein neuer Knopf <b>Leiste anpassen</b>. Er öffnet den Bearbeitungsmodus.</p>
+  </div>
+
+  <figure>
+    <div class="stage"><div class="stage-inner">
+      <div class="bar clickable" id="live-bar">
+        <div class="tabs">
+          <div class="tab on">Übersicht</div><div class="tab">Verknüpfungen</div><div class="tab">Aktionen</div>
+          <div class="spacer"></div>
+          <div class="ibtn" title="Leiste anpassen"><svg class="i"><use href="#i-sliders"/></svg></div>
+        </div>
+        <div class="scroll">
+          <div class="blk">
+            <div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-mark"/></svg><span class="t">Anmerkungen</span><span class="count">12</span><span class="ibtn more hot"><svg class="i"><use href="#i-more"/></svg></span></div>
+            <div class="blk-b">
+              <div class="ann"><q>Mit verknüpften Zitaten fanden die Teilnehmenden 38 Prozent mehr Belegstellen wieder.</q><small><span>Markierung</span><span>S. 1</span></small></div>
+              <div class="ann note"><q>Stichprobe klein (n = 24) – in Kapitel 4 erwähnen.</q><small><span>Kommentar</span><span>S. 1</span></small></div>
+              <span class="link-more">Alle 12 Anmerkungen</span>
+            </div>
+          </div>
+          <div class="blk closed">
+            <div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-list"/></svg><span class="t">Gliederung</span><span class="hint">3 Abschnitte</span><span class="ibtn more"><svg class="i"><use href="#i-more"/></svg></span></div>
+            <div class="blk-b"><div class="out"><div class="cur">1 Einleitung</div><div>2 Methode</div><div>3 Ergebnisse</div></div></div>
+          </div>
+          <div class="blk">
+            <div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-cal"/></svg><span class="t">Heute</span><span class="hint">Do, 30.10.</span><span class="ibtn more"><svg class="i"><use href="#i-more"/></svg></span></div>
+            <div class="blk-b">
+              <div class="ev"><i style="background:var(--a-ok)"></i><div><b>Schreibblock Kapitel 3</b><span>14:00–16:00</span></div></div>
+              <div class="ev"><i style="background:var(--a-err)"></i><div><b>Abgabe Exposé</b><span>Frist heute</span></div></div>
+            </div>
+          </div>
+          <div class="blk closed">
+            <div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-graph"/></svg><span class="t">Graph</span><span class="hint">4 Dateien</span><span class="ibtn more"><svg class="i"><use href="#i-more"/></svg></span></div>
+            <div class="blk-b graph"><svg viewBox="0 0 290 118"><line class="edge" x1="145" y1="60" x2="145" y2="18"/><line class="edge" x1="145" y1="60" x2="70" y2="92"/><line class="edge" x1="145" y1="60" x2="222" y2="92"/><circle class="n" cx="145" cy="18" r="7"/><circle class="n cur" cx="145" cy="60" r="10"/><circle class="n" cx="70" cy="92" r="7"/><circle class="n pdf" cx="222" cy="92" r="7"/><text x="158" y="22">Kapitel 2</text><text x="40" y="112">ideen.md</text><text x="190" y="112">mueller-2024.pdf</text></svg></div>
+          </div>
+          <div class="blk">
+            <div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-zap"/></svg><span class="t">Aktionen</span><span class="ibtn more"><svg class="i"><use href="#i-more"/></svg></span></div>
+            <div class="blk-b">
+              <div class="act"><svg class="i"><use href="#i-check"/></svg>Checkliste als Aufgaben</div>
+              <div class="act"><svg class="i"><use href="#i-cal"/></svg>Als Aufgabe einplanen</div>
+            </div>
+          </div>
+        </div>
+        <div class="pomo">
+          <svg class="ring" viewBox="0 0 40 40"><circle class="bg" cx="20" cy="20" r="16"/><circle class="fg" cx="20" cy="20" r="16"/></svg>
+          <div><b>18:42</b><span>Lernen · Runde 2 von 4</span></div>
+          <div class="ctl"><span class="ibtn"><svg class="i"><use href="#i-play"/></svg></span><span class="ibtn"><svg class="i"><use href="#i-more"/></svg></span></div>
+        </div>
+      </div>
+
+      <div class="pop menu" role="menu" aria-label="Menü des Bausteins Anmerkungen">
+        <div class="mhead">Anmerkungen</div>
+        <div class="mi"><svg class="i ico"><use href="#i-fold"/></svg>Einklappen<span class="k">Klick auf Titel</span></div>
+        <div class="mi"><svg class="i ico"><use href="#i-up"/></svg>Nach oben<span class="k">Alt+↑</span></div>
+        <div class="mi"><svg class="i ico"><use href="#i-down"/></svg>Nach unten<span class="k">Alt+↓</span></div>
+        <div class="msep"></div>
+        <div class="mi hot"><svg class="i ico"><use href="#i-tab"/></svg>Als eigenen Reiter zeigen</div>
+        <div class="mi"><svg class="i ico"><use href="#i-pin"/></svg>Unten anheften</div>
+        <div class="msep"></div>
+        <div class="mhead">Gilt für</div>
+        <div class="mi"><span class="radio on"></span>Nur PDFs</div>
+        <div class="mi"><span class="radio"></span>Alle Dateitypen</div>
+        <div class="msep"></div>
+        <div class="mi danger"><svg class="i ico"><use href="#i-eyeoff"/></svg>Ausblenden</div>
+        <div class="mi"><svg class="i ico"><use href="#i-sliders"/></svg>Leiste anpassen …</div>
+      </div>
+
+      <div class="callouts">
+        <div><span class="pin">1</span><span>Reiter „Graph“ fehlt hier: Im PDF-Profil ist er nur ein Baustein der Übersicht, eingeklappt. Weniger Reiter, kein Seitwärtsscrollen.</span></div>
+        <div><span class="pin">2</span><span>Klick auf eine Kopfzeile klappt ein und aus. Probieren: Die Kopfzeilen links sind anklickbar.</span></div>
+        <div><span class="pin">3</span><span><b>Gliederung</b> ist ein neuer Baustein: Lesezeichen der PDF bzw. Überschriften der Notiz, der aktuelle Abschnitt ist markiert.</span></div>
+        <div><span class="pin">4</span><span>„Gilt für“ entscheidet, ob eine Änderung nur im aktuellen Profil (PDF) oder in „Allgemein“ landet.</span></div>
+      </div>
+    </div></div>
+    <figcaption><span class="fig-n">Abb. 1</span><b>PDF offen, Profil „PDF“.</b> Links die Leiste im Normalzustand, rechts das ⋯-Menü des Bausteins Anmerkungen.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>2 · Bearbeitungsmodus</h2>
+    <p>„Leiste anpassen“ schaltet die Leiste selbst in einen Bearbeitungsmodus. Die Inhalte der Bausteine verschwinden, übrig bleiben kompakte Zeilen mit Griff und Auge. So sieht man die ganze Zusammenstellung auf einen Blick, auch bei vielen Bausteinen.</p>
+    <ul class="plain">
+      <li>Oben steht, welches Profil man bearbeitet. Es ist das Profil der aktiven Datei, lässt sich aber umstellen.</li>
+      <li>Die Reiter erscheinen als Chips. „Übersicht“ bleibt immer erster Reiter, alle anderen lassen sich ziehen, entfernen und hinzufügen.</li>
+      <li>Bausteine zieht man zwischen <b>Übersicht</b> und <b>Unten angeheftet</b> hin und her. Das Auge blendet aus, ohne den Platz in der Liste zu verlieren.</li>
+      <li>„Baustein hinzufügen“ öffnet die Galerie mit allen verfügbaren Bausteinen, auch denen von Erweiterungen.</li>
+      <li>Änderungen gelten sofort. „Zurücksetzen“ stellt das Standardprofil wieder her, „Fertig“ oder <span class="mono">Esc</span> beendet den Modus.</li>
+    </ul>
+  </div>
+
+  <figure>
+    <div class="stage"><div class="stage-inner">
+      <div class="bar">
+        <div class="editbar"><svg class="i"><use href="#i-sliders"/></svg><b>Leiste anpassen</b><span class="select"><svg class="i s"><use href="#i-pdf"/></svg>PDF<svg class="i s"><use href="#i-chev"/></svg></span></div>
+        <div class="zone">
+          <div class="zone-l">Reiter <em>ziehen zum Ordnen</em></div>
+          <div class="tabchips">
+            <span class="tchip fixed">Übersicht</span>
+            <span class="tchip"><svg class="i s grip" style="color:var(--a-faint)"><use href="#i-grip"/></svg>Verknüpfungen<svg class="i s" style="color:var(--a-faint)"><use href="#i-x"/></svg></span>
+            <span class="tchip"><svg class="i s" style="color:var(--a-faint)"><use href="#i-grip"/></svg>Aktionen<svg class="i s" style="color:var(--a-faint)"><use href="#i-x"/></svg></span>
+            <span class="tchip add"><svg class="i s"><use href="#i-plus"/></svg>Reiter</span>
+          </div>
+        </div>
+        <div class="zone">
+          <div class="zone-l">Übersicht <em>6 Bausteine</em></div>
+          <div class="erow"><svg class="i grip"><use href="#i-grip"/></svg><svg class="i" style="color:var(--a-muted)"><use href="#i-mark"/></svg><span class="t">Anmerkungen</span><span class="ibtn"><svg class="i"><use href="#i-eye"/></svg></span></div>
+          <div class="erow"><svg class="i grip"><use href="#i-grip"/></svg><svg class="i" style="color:var(--a-muted)"><use href="#i-list"/></svg><span class="t">Gliederung</span><span class="ibtn"><svg class="i"><use href="#i-eye"/></svg></span></div>
+          <div class="erow drag"><svg class="i grip"><use href="#i-grip"/></svg><svg class="i" style="color:var(--a-muted)"><use href="#i-cal"/></svg><span class="t">Heute</span><span class="ibtn"><svg class="i"><use href="#i-eye"/></svg></span></div>
+          <div class="drop"></div>
+          <div class="erow"><svg class="i grip"><use href="#i-grip"/></svg><svg class="i" style="color:var(--a-muted)"><use href="#i-graph"/></svg><span class="t">Graph</span><span class="ibtn"><svg class="i"><use href="#i-eye"/></svg></span></div>
+          <div class="erow"><svg class="i grip"><use href="#i-grip"/></svg><svg class="i" style="color:var(--a-muted)"><use href="#i-zap"/></svg><span class="t">Aktionen</span><span class="ibtn"><svg class="i"><use href="#i-eye"/></svg></span></div>
+          <div class="erow off"><svg class="i grip"><use href="#i-grip"/></svg><svg class="i" style="color:var(--a-muted)"><use href="#i-check"/></svg><span class="t">Aufgaben</span><span class="ibtn"><svg class="i"><use href="#i-eyeoff"/></svg></span></div>
+          <div class="addbtn on"><svg class="i"><use href="#i-plus"/></svg>Baustein hinzufügen</div>
+        </div>
+        <div class="zone">
+          <div class="zone-l">Unten angeheftet <em>auf jedem Reiter</em></div>
+          <div class="erow"><svg class="i grip"><use href="#i-grip"/></svg><svg class="i" style="color:var(--a-muted)"><use href="#i-focus"/></svg><span class="t">Lernzeit</span><span class="ibtn"><svg class="i"><use href="#i-eye"/></svg></span></div>
+        </div>
+        <div class="efoot"><span class="btn flat"><svg class="i s" style="margin-right:6px"><use href="#i-reset"/></svg>Zurücksetzen</span><span class="btn primary">Fertig</span></div>
+      </div>
+
+      <div class="pop gallery" role="dialog" aria-label="Baustein hinzufügen">
+        <div class="gal-search"><svg class="i"><use href="#i-search"/></svg>Bausteine suchen …</div>
+        <div class="gal-sec">
+          <div class="mhead">Diese Datei</div>
+          <div class="gal-item"><span class="bi"><svg class="i"><use href="#i-link"/></svg></span><b>Verknüpfungen</b><span class="st">als Reiter</span><small>Links und Backlinks mit Filtern</small></div>
+          <div class="gal-item hot"><span class="bi"><svg class="i"><use href="#i-hash"/></svg></span><b>Tags <span class="tag-new">neu</span></b><span class="st add">Hinzufügen</span><small>#Tags der Notiz, Klick sucht im Projekt</small></div>
+          <div class="gal-item"><span class="bi"><svg class="i"><use href="#i-info"/></svg></span><b>Dateiinfo <span class="tag-new">neu</span></b><span class="st add">Hinzufügen</span><small>Größe, Seiten, geändert, Pfad</small></div>
+        </div>
+        <div class="gal-sec">
+          <div class="mhead">Planung</div>
+          <div class="gal-item"><span class="bi"><svg class="i"><use href="#i-clock"/></svg></span><b>Diese Woche <span class="tag-new">neu</span></b><span class="st add">Hinzufügen</span><small>Fristen und Blöcke der nächsten 7 Tage</small></div>
+          <div class="gal-item"><span class="bi"><svg class="i"><use href="#i-check"/></svg></span><b>Aufgaben</b><span class="st">ausgeblendet</span><small>Offene Aufgaben abhaken</small></div>
+        </div>
+        <div class="gal-sec">
+          <div class="mhead">Erweiterungen</div>
+          <div class="gal-item"><span class="bi ext">B</span><b>bnki</b><span class="st add">Hinzufügen</span><small>Karteikarten aus Notizen lernen</small></div>
+          <div class="gal-item"><span class="bi ext">J</span><b>Jupyter</b><span class="st add">Hinzufügen</span><small>Notebook öffnen, Kernel starten</small></div>
+        </div>
+      </div>
+    </div></div>
+    <figcaption><span class="fig-n">Abb. 2</span><b>Bearbeitungsmodus, Profil „PDF“.</b> „Heute“ wird gerade unter „Gliederung“ gezogen, „Aufgaben“ ist ausgeblendet. Rechts die Galerie nach Klick auf „Baustein hinzufügen“.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>3 · Profile je Dateityp</h2>
+    <p>Die Leiste wählt das Profil nach der Art des aktiven Tabs. Es gibt fünf feste Profile; eigene Profile gibt es bewusst nicht, damit die Zuordnung eindeutig bleibt.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Profil</th><th>Gilt für</th><th>Reiter (Standard)</th><th>Übersicht (Standard)</th></tr></thead>
+      <tbody>
+        <tr><td>Allgemein</td><td>alles ohne eigenes Profil: Ordner, Bilder, Terminal</td><td>Übersicht, Verknüpfungen, Graph, Aktionen</td><td>Heute, Aufgaben, Graph, Aktionen</td></tr>
+        <tr><td>PDF</td><td>.pdf, .atlasnote</td><td>Übersicht, Verknüpfungen, Aktionen</td><td>Anmerkungen, Gliederung, Heute, Graph (zu), Aktionen</td></tr>
+        <tr><td>Markdown</td><td>.md</td><td>Übersicht, Graph, Aktionen</td><td>Verknüpfungen, Tags, Gliederung, Heute</td></tr>
+        <tr><td>Code</td><td>Quelltext, Skripte, .ipynb</td><td>Übersicht, Aktionen</td><td>Aktionen, Erweiterungen, Dateiinfo</td></tr>
+        <tr><td>Kalender</td><td>Kalender-Tab</td><td>Übersicht</td><td>Ausgewählter Termin, Diese Woche, Aufgaben</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>Ein Profil speichert nur, worin es sich von „Allgemein“ unterscheidet. Wer in „Allgemein“ die Lernzeit ausblendet, sieht sie in keinem Profil mehr, es sei denn ein Profil hat sie ausdrücklich eingeschaltet. In der Leiste zeigt ein schmaler Streifen unter den Reitern kurz an, welches Profil gerade gilt, wenn es beim Tabwechsel umspringt.</p>
+  </div>
+
+  <figure>
+    <div class="stage"><div class="stage-inner">
+      <div class="prof-col">
+        <div class="prof-head"><svg class="i s"><use href="#i-pdf"/></svg>PDF</div>
+        <div class="bar mini">
+          <div class="tabs"><div class="tab on">Übersicht</div><div class="tab">Verkn.</div><div class="tab">Aktionen</div></div>
+          <div class="ctxline"><svg class="i s"><use href="#i-pdf"/></svg><b>mueller-2024-wissensarbeit.pdf</b></div>
+          <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-mark"/></svg><span class="t">Anmerkungen</span><span class="count">12</span></div>
+            <div class="blk-b"><div class="ann"><q>38 Prozent mehr Belegstellen</q><small><span>Markierung</span><span>S. 1</span></small></div></div></div>
+          <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-list"/></svg><span class="t">Gliederung</span></div>
+            <div class="blk-b"><div class="out"><div>1 Einleitung</div><div>2 Methode</div><div class="cur">3 Ergebnisse</div></div></div></div>
+          <div class="blk closed"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-graph"/></svg><span class="t">Graph</span><span class="hint">4</span></div></div>
+          <div class="blk closed"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-cal"/></svg><span class="t">Heute</span><span class="hint">2 Termine</span></div></div>
+        </div>
+      </div>
+      <div class="prof-col">
+        <div class="prof-head"><svg class="i s"><use href="#i-file"/></svg>Markdown</div>
+        <div class="bar mini">
+          <div class="tabs"><div class="tab on">Übersicht</div><div class="tab">Graph</div><div class="tab">Aktionen</div></div>
+          <div class="ctxline"><svg class="i s"><use href="#i-file"/></svg><b>03-ergebnisse.md</b></div>
+          <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-link"/></svg><span class="t">Verknüpfungen</span><span class="count">5</span></div>
+            <div class="blk-b"><div class="out"><div>→ Kapitel 2 – Methode</div><div>→ mueller-2024, S. 1</div><div class="l2">← ideen.md</div></div></div></div>
+          <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-hash"/></svg><span class="t">Tags</span></div>
+            <div class="blk-b"><div class="chips"><span class="chip">#kapitel</span><span class="chip purple">#auswertung</span></div></div></div>
+          <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-list"/></svg><span class="t">Gliederung</span></div>
+            <div class="blk-b"><div class="out"><div class="cur">Kapitel 3 – Ergebnisse</div><div class="l2">Suchzeit</div><div class="l2">Offene Punkte</div></div></div></div>
+          <div class="blk closed"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-mark"/></svg><span class="t" style="color:var(--a-faint)">Anmerkungen</span><span class="hint">leer</span></div></div>
+        </div>
+      </div>
+      <div class="prof-col">
+        <div class="prof-head"><svg class="i s"><use href="#i-code"/></svg>Code</div>
+        <div class="bar mini">
+          <div class="tabs"><div class="tab on">Übersicht</div><div class="tab">Aktionen</div></div>
+          <div class="ctxline"><svg class="i s"><use href="#i-code"/></svg><b>analyse/auswertung.py</b></div>
+          <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-zap"/></svg><span class="t">Aktionen</span></div>
+            <div class="blk-b"><div class="act"><svg class="i"><use href="#i-play"/></svg>Ausführen<span class="k">F5</span></div><div class="act"><svg class="i"><use href="#i-code"/></svg>Im Editor öffnen</div></div></div>
+          <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><span class="pin" style="width:16px;height:16px;line-height:16px;font-size:10px;border-radius:4px;background:var(--a-raised);color:var(--a-strong)">J</span><span class="t">Jupyter</span></div>
+            <div class="blk-b"><div class="act">Kernel starten</div></div></div>
+          <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-info"/></svg><span class="t">Dateiinfo</span></div>
+            <div class="blk-b"><dl class="kv"><dt>Größe</dt><dd>4,1 KB · 132 Zeilen</dd><dt>Geändert</dt><dd>heute, 11:20</dd><dt>Rechte</dt><dd>rwxr-xr-x</dd></dl></div></div>
+        </div>
+      </div>
+    </div></div>
+    <figcaption><span class="fig-n">Abb. 3</span><b>Dieselbe Leiste, drei Profile.</b> Beim Tabwechsel springt die Zusammenstellung um. Bei Markdown ist „Anmerkungen“ leer und deshalb nur eine eingeklappte Kopfzeile (falls nicht ganz ausgeblendet).</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>4 · Schmale Leiste</h2>
+    <p>Statt seitwärts zu scrollen, zeigen die Reiter bei wenig Platz nur noch Symbole mit Tooltip. Der gewählte Reiter behält seinen Text. Die Einstellung „Reiterbeschriftung“ kennt <b>Automatisch</b> (Standard), <b>Text</b> (heutiges Verhalten) und <b>Symbole</b>.</p>
+  </div>
+  <figure>
+    <div class="stage"><div class="stage-inner">
+      <div class="bar narrow">
+        <div class="tabs">
+          <div class="tab on"><svg class="i"><use href="#i-list"/></svg>Übersicht</div>
+          <div class="tab" title="Verknüpfungen"><svg class="i"><use href="#i-link"/></svg></div>
+          <div class="tab" title="Graph"><svg class="i"><use href="#i-graph"/></svg></div>
+          <div class="tab" title="Aktionen"><svg class="i"><use href="#i-zap"/></svg></div>
+          <div class="spacer"></div>
+          <div class="ibtn"><svg class="i"><use href="#i-sliders"/></svg></div>
+        </div>
+        <div class="blk"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-cal"/></svg><span class="t">Heute</span></div>
+          <div class="blk-b"><div class="ev"><i style="background:var(--a-ok)"></i><div><b>Schreibblock Kapitel 3</b><span>14:00–16:00</span></div></div></div></div>
+        <div class="blk closed"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-check"/></svg><span class="t">Aufgaben</span><span class="count">3</span></div></div>
+        <div class="blk closed"><div class="blk-h"><svg class="i s chev"><use href="#i-chev"/></svg><svg class="i ico"><use href="#i-zap"/></svg><span class="t">Aktionen</span></div></div>
+      </div>
+      <div class="callouts" style="width:300px">
+        <div><span class="pin">1</span><span>Bei 236 px passen alle vier Reiter, ohne Scrollleiste. Heute verschwindet „Aktionen“ ab etwa 300 px aus dem Bild.</span></div>
+        <div><span class="pin">2</span><span>Die Symbole sind die der Bausteine, damit Reiter und Kopfzeilen dieselbe Sprache sprechen.</span></div>
+      </div>
+    </div></div>
+    <figcaption><span class="fig-n">Abb. 4</span><b>Leiste bei 236 px Breite, Profil „Allgemein“.</b></figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>5 · Einstellungen → Kontextleiste</h2>
+    <p>Die Einstellungen werden zur Übersicht aller Profile. Jede Zeile zeigt eine Miniatur der Reiter und die ersten Bausteine; „Anpassen …“ öffnet die Leiste im Bearbeitungsmodus mit diesem Profil. Die einzelnen Modul-Schalter von heute entfallen, weil Ein- und Ausblenden jetzt in der Leiste geschieht. Die Längen der Lernzeit bleiben hier.</p>
+  </div>
+  <figure>
+    <div class="stage"><div class="stage-inner">
+      <div class="settings">
+        <div class="s-label">Kontextleiste · Profile</div>
+        <div class="s-card">
+          <div class="s-row"><svg class="i ico"><use href="#i-folder"/></svg><b>Allgemein</b><span class="r"><span class="minibar"><i class="a"></i><i></i><i></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Heute · Aufgaben · Graph · Aktionen · unten: Lernzeit</small></div>
+          <div class="s-row"><svg class="i ico"><use href="#i-pdf"/></svg><b>PDF</b><span class="r"><span class="minibar"><i class="a"></i><i></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Anmerkungen · Gliederung · Heute · Graph · Aktionen <span style="color:var(--a-accent)">· geändert</span></small></div>
+          <div class="s-row"><svg class="i ico"><use href="#i-file"/></svg><b>Markdown</b><span class="r"><span class="minibar"><i class="a"></i><i></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Verknüpfungen · Tags · Gliederung · Heute</small></div>
+          <div class="s-row"><svg class="i ico"><use href="#i-code"/></svg><b>Code</b><span class="r"><span class="minibar"><i class="a"></i><i></i></span><span class="sbtn">Anpassen …</span></span><small>Aktionen · Jupyter · Dateiinfo</small></div>
+          <div class="s-row"><svg class="i ico"><use href="#i-cal"/></svg><b>Kalender</b><span class="r"><span class="minibar"><i class="a"></i></span><span class="sbtn">Anpassen …</span></span><small>Ausgewählter Termin · Diese Woche · Aufgaben</small></div>
+        </div>
+        <div class="s-label">Verhalten</div>
+        <div class="s-card">
+          <div class="s-row"><svg class="i ico"><use href="#i-fold"/></svg><b>Leere Bausteine</b><span class="r"><span class="seg"><span>Zeigen</span><span class="on">Einklappen</span><span>Ausblenden</span></span></span><small>z. B. „Anmerkungen“ bei einer PDF ohne Anmerkungen</small></div>
+          <div class="s-row"><svg class="i ico"><use href="#i-tab"/></svg><b>Reiterbeschriftung</b><span class="r"><span class="seg"><span class="on">Automatisch</span><span>Text</span><span>Symbole</span></span></span><small>Automatisch: Symbole, wenn die Leiste zu schmal ist</small></div>
+          <div class="s-row"><svg class="i ico"><use href="#i-sliders"/></svg><b>Profile nach Dateityp</b><span class="r"><span class="switch on"></span></span><small>Aus: überall gilt „Allgemein“</small></div>
+          <div class="s-row"><svg class="i ico"><use href="#i-focus"/></svg><b>Lernzeit</b><span class="r"><span class="spin">25</span><span class="spin">5</span><span class="spin">15</span></span><small>Minuten lernen, Pause, lange Pause nach vier Runden</small></div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end"><span class="sbtn">Alle Profile zurücksetzen</span></div>
+      </div>
+    </div></div>
+    <figcaption><span class="fig-n">Abb. 5</span><b>Neuer Abschnitt in den Einstellungen.</b> Erweiterungen erscheinen nicht mehr als eigene Schalter, sondern als Bausteine in der Galerie.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Bausteine</h2>
+    <p>Vorhandene Teile werden zu Bausteinen; vier kommen neu dazu. Jeder Baustein kann in der Übersicht, als Reiter oder unten angeheftet stehen, sofern die Spalte das nicht ausschließt.</p>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Baustein</th><th>Herkunft</th><th>Als Reiter</th><th>Unten</th></tr></thead>
+      <tbody>
+        <tr><td><code>annotations</code></td><td>Anmerkungen</td><td>Übersicht von <code>Inspector.qml</code></td><td>ja</td><td>nein</td></tr>
+        <tr><td><code>links</code></td><td>Verknüpfungen</td><td>Reiter <code>ContextPanel</code></td><td>ja</td><td>nein</td></tr>
+        <tr><td><code>graph</code></td><td>Graph</td><td>Übersicht und Reiter</td><td>ja</td><td>nein</td></tr>
+        <tr><td><code>actions</code></td><td>Aktionen</td><td>Übersicht und Reiter</td><td>ja</td><td>nein</td></tr>
+        <tr><td><code>today</code></td><td>Heute</td><td><code>ContextModules.qml</code></td><td>nein</td><td>ja</td></tr>
+        <tr><td><code>tasks</code></td><td>Aufgaben</td><td><code>ContextModules.qml</code></td><td>nein</td><td>ja</td></tr>
+        <tr><td><code>pomodoro</code></td><td>Lernzeit</td><td><code>PomodoroTimer.qml</code></td><td>nein</td><td>ja (Standard)</td></tr>
+        <tr><td><code>ext:&lt;id&gt;</code></td><td>Karte einer Erweiterung</td><td><code>ExtensionCards.qml</code></td><td>nein</td><td>nein</td></tr>
+        <tr><td><code>outline</code></td><td>Gliederung <span class="tag-new">neu</span></td><td>PDF-Lesezeichen, Markdown-Überschriften</td><td>ja</td><td>nein</td></tr>
+        <tr><td><code>tags</code></td><td>Tags <span class="tag-new">neu</span></td><td>Tag-Index der Notizen</td><td>nein</td><td>nein</td></tr>
+        <tr><td><code>fileinfo</code></td><td>Dateiinfo <span class="tag-new">neu</span></td><td>wie im Eigenschaften-Dialog</td><td>nein</td><td>nein</td></tr>
+        <tr><td><code>week</code></td><td>Diese Woche <span class="tag-new">neu</span></td><td>Kalendermodell, 7 Tage</td><td>nein</td><td>nein</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose"><p>Der Reiter „Übersicht“ ist kein Baustein; er ist der Behälter und immer da. Ist er leer, weil alles in Reitern steht, zeigt die Leiste direkt den ersten Reiter.</p></div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Speicherung in <code>config.toml</code></h2>
+    <p>Die Profile stehen unter <code>[context.profiles]</code>. Profile außer <code>default</code> enthalten nur Abweichungen; fehlt ein Schlüssel, gilt der Wert aus <code>default</code>. Die Einstellungen der Lernzeit bleiben, wo sie sind.</p>
+  </div>
+<pre><span class="k">[context]</span>
+pomodoro_work = <span class="s">25</span>                <span class="c"># bleibt wie bisher</span>
+pomodoro_break = <span class="s">5</span>
+pomodoro_long_break = <span class="s">15</span>
+empty = <span class="s">"collapse"</span>               <span class="c"># show | collapse | hide</span>
+tab_labels = <span class="s">"auto"</span>              <span class="c"># auto | text | icons</span>
+by_kind = <span class="s">true</span>                   <span class="c"># Profile nach Dateityp</span>
+
+<span class="k">[context.profiles.default]</span>
+tabs = [<span class="s">"links"</span>, <span class="s">"graph"</span>, <span class="s">"actions"</span>]           <span class="c"># nach „Übersicht“</span>
+overview = [<span class="s">"today"</span>, <span class="s">"tasks"</span>, <span class="s">"graph"</span>, <span class="s">"actions"</span>]
+pinned = [<span class="s">"pomodoro"</span>]
+hidden = []
+collapsed = []
+
+<span class="k">[context.profiles.pdf]</span>
+tabs = [<span class="s">"links"</span>, <span class="s">"actions"</span>]
+overview = [<span class="s">"annotations"</span>, <span class="s">"outline"</span>, <span class="s">"today"</span>, <span class="s">"graph"</span>, <span class="s">"actions"</span>]
+collapsed = [<span class="s">"graph"</span>]
+
+<span class="k">[context.profiles.code]</span>
+overview = [<span class="s">"actions"</span>, <span class="s">"ext:jupyter"</span>, <span class="s">"fileinfo"</span>]</pre>
+  <div class="prose">
+    <h3>Übernahme alter Einstellungen</h3>
+    <ul class="plain">
+      <li><code>calendar = false</code>, <code>tasks = false</code>, <code>pomodoro = false</code> werden zu Einträgen in <code>hidden</code> von <code>default</code>. Die alten Schlüssel werden danach nicht mehr geschrieben, aber weiter gelesen, solange es keine Profile gibt.</li>
+      <li><code>[context.extensions]</code> mit <code>bnki = true</code> wird zu <code>"ext:bnki"</code> am Ende von <code>overview</code> im Profil „Allgemein“. Erweiterungen mit <code>context: true</code> im Manifest erscheinen wie bisher von selbst, bis man sie ausblendet.</li>
+      <li>Fehlt <code>[context.profiles]</code> ganz, gelten die eingebauten Standardprofile aus der Tabelle oben.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Bedienung im Detail</h2>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Handlung</th><th>Wie</th><th>Wirkung</th></tr></thead>
+      <tbody>
+        <tr><td>Einklappen</td><td>Klick auf die Kopfzeile, ⋯ → Einklappen</td><td>Gespeichert pro Profil in <code>collapsed</code></td></tr>
+        <tr><td>Verschieben</td><td>Ziehen im Bearbeitungsmodus, <span class="mono">Alt+↑/↓</span> auf einer Kopfzeile</td><td>Reihenfolge in <code>overview</code></td></tr>
+        <tr><td>Als Reiter</td><td>⋯ → Als eigenen Reiter zeigen</td><td>Wandert von <code>overview</code> nach <code>tabs</code>; zurück per ⋯ im Reiter</td></tr>
+        <tr><td>Ausblenden</td><td>⋯ → Ausblenden, Auge im Bearbeitungsmodus</td><td>Eintrag in <code>hidden</code>; Meldung „Ausgeblendet · Rückgängig“</td></tr>
+        <tr><td>Hinzufügen</td><td>Bearbeitungsmodus → Baustein hinzufügen</td><td>Ans Ende der Übersicht</td></tr>
+        <tr><td>Bearbeiten öffnen</td><td>Knopf in der Reiterzeile, Arbeitsleiste „Kontextleiste anpassen“</td><td>Profil der aktiven Datei</td></tr>
+        <tr><td>Zurücksetzen</td><td>Im Bearbeitungsmodus oder in den Einstellungen</td><td>Löscht nur dieses Profil aus <code>config.toml</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose"><p>Alle Kopfzeilen sind mit der Tastatur erreichbar: <span class="mono">Tab</span> springt von Kopfzeile zu Kopfzeile, <span class="mono">Leertaste</span> klappt ein und aus, <span class="mono">Umschalt+F10</span> öffnet das ⋯-Menü.</p></div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Umsetzung in Schritten</h2>
+    <p>Jeder Schritt ist für sich nützlich und kann allein in eine Version gehen.</p>
+  </div>
+  <div class="phases">
+    <div class="phase"><span class="when">Schritt 1</span><h3>Bausteine &amp; Einklappen</h3>
+      <ul><li>Einheitliche Kopfzeile mit Einklappen und ⋯-Menü</li><li>Reihenfolge und Ausblenden in der Übersicht, nur Profil „Allgemein“</li><li>Übernahme der alten <code>[context]</code>-Schlüssel</li></ul>
+      <div class="files">Inspector.qml · ContextModules.qml · ExtensionCards.qml · neues ContextBlock.qml · AppController</div></div>
+    <div class="phase"><span class="when">Schritt 2</span><h3>Bearbeitungsmodus</h3>
+      <ul><li>Bearbeitungsmodus mit Ziehen und Galerie</li><li>Reiter anpassen, Bausteine als Reiter</li><li>Bereich „Unten angeheftet“</li></ul>
+      <div class="files">Inspector.qml · PomodoroTimer.qml · neues ContextEditor.qml</div></div>
+    <div class="phase"><span class="when">Schritt 3</span><h3>Profile</h3>
+      <ul><li>Profile PDF, Markdown, Code, Kalender</li><li>Profilwahl nach aktivem Tab</li><li>Neuer Abschnitt in den Einstellungen</li></ul>
+      <div class="files">Inspector.qml · SettingsDialog.qml · atlas-core (config)</div></div>
+    <div class="phase"><span class="when">Schritt 4</span><h3>Neue Bausteine &amp; schmale Leiste</h3>
+      <ul><li>Gliederung, Tags, Dateiinfo, Diese Woche</li><li>Reiter als Symbole bei wenig Platz</li></ul>
+      <div class="files">PdfViewer.qml · MarkdownView.qml · PropertiesDialog.qml</div></div>
+  </div>
+  <div class="prose" style="margin-top:16px"><p>In <code>SelfTest.qml</code> gibt es heute Prüfungen zu „Module der Kontextleiste eingeschaltet“ und „Kontextleiste schmal: Reiter scrollbar“. Beide müssen mit Schritt 1 bzw. 4 angepasst werden.</p></div>
+</section>
+
+<section>
+  <div class="prose">
+    <h2>Offene Fragen</h2>
+    <div class="q">
+      <div><b>Pro Projekt oder pro Nutzer?</b> Das Konzept speichert in der globalen <code>config.toml</code>. Denkbar wäre zusätzlich <code>.atlas/context.toml</code> pro Projektordner, etwa für ein Informatik-Projekt mit anderen Bausteinen als die Bachelorarbeit.</div>
+      <div><b>Breite pro Profil?</b> Bei PDFs braucht die Leiste oft mehr Platz als bei Code. Die Breite könnte im Profil mitgespeichert werden.</div>
+      <div><b>Leiste automatisch ausblenden?</b> Ein Profil ohne Bausteine (z. B. für Bilder) könnte die Leiste ganz einklappen.</div>
+      <div><b>Erweiterungen mit eigenen Bausteinen?</b> Heute liefern Erweiterungen nur Karten mit Knöpfen. Ein echter Baustein mit eigener Ansicht bräuchte eine neue Stelle im Manifest und eine höhere <code>atlas_api</code>.</div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+  // Kopfzeilen in Abb. 1 klappen ihren Baustein ein und aus.
+  document.querySelectorAll('#live-bar .blk-h').forEach(function (h) {
+    h.setAttribute('tabindex', '0');
+    h.setAttribute('role', 'button');
+    function toggle(e) {
+      if (e.target.closest('.more')) return;
+      h.parentElement.classList.toggle('closed');
+      h.setAttribute('aria-expanded', !h.parentElement.classList.contains('closed'));
+    }
+    h.addEventListener('click', toggle);
+    h.addEventListener('keydown', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(e); } });
+    h.setAttribute('aria-expanded', !h.parentElement.classList.contains('closed'));
+  });
+</script>
