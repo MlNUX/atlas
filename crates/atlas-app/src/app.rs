@@ -2627,7 +2627,8 @@ impl qobject::AppController {
 
     pub fn note_changed(self: Pin<&mut Self>, path: &QString) {
         let path = path_of(path);
-        if self.root.as_ref().is_some_and(|r| path.starts_with(r)) && self.with_notes(|n| n.update(&path)).is_some() {
+        if self.root.as_ref().is_some_and(|r| path.starts_with(r)) && self.with_notes(|n| n.update(&path)) == Some(true)
+        {
             self.bump_notes();
         }
     }

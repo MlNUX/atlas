@@ -17,6 +17,8 @@ QtObject {
     property real since: 0
     /// Frames still logged after the switch.
     property int frames: 0
+    /// A file is being opened (its tab switch is part of it).
+    property bool opening: false
 
     function now() { return on ? Date.now() : 0 }
     /// A file is opened or a tab switched to.

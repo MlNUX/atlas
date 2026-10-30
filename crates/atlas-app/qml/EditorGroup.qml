@@ -528,7 +528,7 @@ Rectangle {
     // keyboard, which keeps it there.
     onCurrentChanged: {
         // A tab clicked (opening a file started the timing already).
-        if (Timing.on && Date.now() - Timing.since > 50 && group.currentTab) Timing.start("Tab: " + group.currentTab.path)
+        if (Timing.on && !Timing.opening && group.currentTab) Timing.start("Tab: " + group.currentTab.path)
         const take = focusWasHere()
         for (let i = 0; i < tabs.length; ++i) tabs[i].visible = (i === current)
         Timing.mark("Tab umgeschaltet")

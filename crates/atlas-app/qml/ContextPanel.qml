@@ -46,7 +46,7 @@ Rectangle {
         const t = Timing.now()
         // (`scope`, not `projectScope`: this also runs from onScopeChanged.)
         if (scope === "project" && tab === 0) { backlinkList = JSON.parse(app.projectQuotes()); return }
-        if (!path) { backlinkList = []; relatedList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
+        if (!path) { backlinkList = []; relatedList = []; graphJson = ""; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
         backlinkList = JSON.parse(app.backlinks(path))
         relatedList = JSON.parse(app.relatedFiles(path))
         Timing.took("Kontext: Rückverweise und Verknüpfungen", t)
@@ -61,9 +61,12 @@ Rectangle {
         onTriggered: {
             if (!panel.path || !panel.visible || panel.tab !== 1) return
             const t = Timing.now()
-            const graph = JSON.parse(panel.app.contextGraph(panel.path, 0))
+            const json = panel.app.contextGraph(panel.path, 0)
+            if (json === panel.graphJson) return
+            const graph = JSON.parse(json)
             Timing.took("Graph: contextGraph (Rust), " + graph.nodes.length + " Dateien", t)
             const t2 = Timing.now()
+            panel.graphJson = json
             panel.graph = graph
             Timing.took("Graph: Layout und Elemente", t2)
         }
@@ -251,7 +254,26 @@ Rectangle {
     }
     readonly property var positions: world.map(p => ({ x: panX + p.x * zoom, y: panY + p.y * zoom }))
     onPositionsChanged: edgeCanvas.requestPaint()
-    function relayout() { world = layout(); fit() }
+    /// The graph as Rust gave it (key of the layout cache).
+    property string graphJson: ""
+    /// Layouts of graphs seen lately, by graphJson: switching back to a file
+    /// does not lay out its graph again (deterministic anyway).
+    property var layoutCache: ({})
+    property var layoutKeys: []
+    function relayout() {
+        const key = graphJson
+        let pos = key ? layoutCache[key] : undefined
+        if (!pos) {
+            pos = layout()
+            if (key) {
+                layoutCache[key] = pos
+                layoutKeys.push(key)
+                if (layoutKeys.length > 16) delete layoutCache[layoutKeys.shift()]
+            }
+        }
+        world = pos
+        fit()
+    }
     onGraphChanged: relayout()
 
     // ---------------------------------------------------------------- view
@@ -695,11 +717,14 @@ Rectangle {
 
                     Repeater {
                         // Alone, the file itself would sit on the hint below.
-                        model: panel.graph.nodes.length > 1 ? panel.graph.nodes : []
+                        // A count, not the list: with as many files as before
+                        // (the same project) the nodes stay and only take the
+                        // new data, instead of all being built again.
+                        model: panel.graph.nodes.length > 1 ? panel.graph.nodes.length : 0
                         delegate: Item {
                             id: node
-                            required property var modelData
                             required property int index
+                            readonly property var modelData: panel.graph.nodes[index] || ({ label: "", relative: "", path: "", kind: "", depth: 0 })
                             readonly property var p: panel.positions[index] || { x: 0, y: 0 }
                             readonly property bool far: modelData.depth === panel.unconnected
                             // Smaller when zoomed out, so dense parts stay apart.
