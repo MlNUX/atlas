@@ -141,6 +141,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   einmal neu freigegeben werden.
 
 ### Geändert
+- **Markdown öffnet schneller:** Nach der ersten Notiz wartet eine
+  Vorschau fertig geladen im Hintergrund; die nächste Notiz übernimmt sie
+  und ist sofort zu sehen, statt erst einen Browser-Prozess zu starten.
+- **Touchpad in Markdown und `.atlasnote`:** Editor, Vorschau und
+  Notizbuch scrollen doppelt so weit wie die Finger und ohne Verzögerung,
+  gleiten nach dem Wischen weiter (auch in der Markdown-Vorschau) und
+  bleiben dabei nicht an halben Pixeln hängen.
 - **Weniger Arbeitsspeicher:**
   - Geschlossene PDFs werden freigegeben: Schließt der letzte Tab einer
     PDF, schließen alle PDF-Threads das Dokument; jeder hält ohnehin nur

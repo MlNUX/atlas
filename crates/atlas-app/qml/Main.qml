@@ -35,6 +35,15 @@ ApplicationWindow {
 
     AppController { id: app }
 
+    // Holds the Markdown preview loaded ahead (PreviewPool), hidden.
+    Item {
+        id: previewSpare
+        visible: false
+        width: window.width / 2
+        height: window.height
+        Component.onCompleted: PreviewPool.host = previewSpare
+    }
+
     // The design: `[appearance] theme` – dark, light or as the desktop.
     Binding {
         target: Theme

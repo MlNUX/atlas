@@ -48,7 +48,7 @@ Rectangle {
         return true
     }
     /// The preview (WebEngineView), null while there is none.
-    readonly property var web: webLoader.item
+    readonly property var web: webLoader.item ? webLoader.item.webView : null
     Timer { id: discardTimer; interval: root.discardAfter; onTriggered: root.discardPreview() }
     property int previewLine: 1
     /// When the editor last moved because the preview was scrolled (no echo).
@@ -139,7 +139,7 @@ Rectangle {
     readonly property alias imageWindowItem: imageWindow
     ImageWindow { id: imageWindow }
 
-    readonly property var previewItem: webLoader.item
+    readonly property var previewItem: root.web
     readonly property var previewRepaint: webLoader.item ? webLoader.item.repaint : null
     readonly property alias contextPanelItem: contextPanel
 
@@ -374,60 +374,71 @@ Rectangle {
 
             // Created only once the preview is shown (a tab in edit mode, or
             // one not looked at since a session restore, starts no browser).
+            // The view comes from PreviewPool: after the first note, one waits
+            // loaded, so switching to another note shows it at once.
             Loader {
                 id: webLoader
                 SplitView.fillWidth: true
                 visible: root.mode !== "edit"
                 active: root.previewWanted
                 sourceComponent: Component {
-                    WebEngineView {
-                        id: webView
+                    Item {
+                        id: webHost
                         readonly property alias repaint: webRepaint
-                        url: "atlas://app/web/preview.html"
-                        backgroundColor: Theme.editor
-                        settings.localContentCanAccessFileUrls: true
-                        settings.localContentCanAccessRemoteUrls: false
-                        settings.javascriptCanOpenWindows: false
-                        settings.focusOnNavigationEnabled: false
-                        onLoadingChanged: (request) => {
-                            if (request.status !== WebEngineLoadingInfo.LoadSucceededStatus) return
+                        /// The WebEngineView with preview.html (from the pool).
+                        property var webView: null
+                        Component.onCompleted: {
+                            webView = PreviewPool.take(webHost)
+                            webView.anchors.fill = webHost
+                            // A spare was hidden: have Chromium paint it here.
+                            webRepaint.request()
+                            if (webView.ready) loaded()
+                        }
+                        Component.onDestruction: if (webView) webView.destroy()
+                        function loaded() {
                             root.pageReady = true
                             root.render()
                             if (root.previewLine > 1) webView.runJavaScript("atlas.scrollToLine(" + root.previewLine + ")")
                             root.applyHits()
                         }
-                        // Links inside the page never navigate it.
-                        onNavigationRequested: (request) => {
-                            if (request.url.toString() !== "atlas://app/web/preview.html") request.reject()
-                        }
-                        onNewWindowRequested: (request) => Qt.openUrlExternally(request.requestedUrl)
-                        onJavaScriptConsoleMessage: (level, text, lineNumber, sourceId) => {
-                            if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
-                            else if (text.startsWith("atlas:copy:")) {
-                                root.app.copyToClipboard(JSON.parse(text.slice(11)).text)
-                                root.message(qsTr("Code kopiert"))
+                        Connections {
+                            target: webHost.webView
+                            function onLoadingChanged(request) {
+                                if (request.status === WebEngineLoadingInfo.LoadSucceededStatus) webHost.loaded()
                             }
-                            else if (text.startsWith("atlas:run:")) root.runCode(JSON.parse(text.slice(10)).code)
-                            else if (text.startsWith("atlas:image:")) root.showImage(JSON.parse(text.slice(12)))
-                            else if (text.startsWith("atlas:task:")) {
-                                const t = JSON.parse(text.slice(11))
-                                if (!editor.toggleTask(t.line, t.checked)) root.render()
+                            // Links inside the page never navigate it.
+                            function onNavigationRequested(request) {
+                                if (request.url.toString() !== "atlas://app/web/preview.html") request.reject()
                             }
-                            else if (text.startsWith("atlas:scroll:")) {
-                                const s = JSON.parse(text.slice(13))
-                                pageScroll.track(s.y, s.height)
-                                if (s.own) return
-                                root.previewLine = s.line
-                                root.previewY = s.y
-                                // Split view: the editor follows the preview (#7).
-                                if (root.mode === "split" && s.exact) {
-                                    root.syncedFromPreview = Date.now()
-                                    editor.scrollToExactLine(s.exact, s.at || 0)
+                            function onNewWindowRequested(request) { Qt.openUrlExternally(request.requestedUrl) }
+                            function onJavaScriptConsoleMessage(level, text, lineNumber, sourceId) {
+                                if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
+                                else if (text.startsWith("atlas:copy:")) {
+                                    root.app.copyToClipboard(JSON.parse(text.slice(11)).text)
+                                    root.message(qsTr("Code kopiert"))
                                 }
-                            } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
+                                else if (text.startsWith("atlas:run:")) root.runCode(JSON.parse(text.slice(10)).code)
+                                else if (text.startsWith("atlas:image:")) root.showImage(JSON.parse(text.slice(12)))
+                                else if (text.startsWith("atlas:task:")) {
+                                    const t = JSON.parse(text.slice(11))
+                                    if (!editor.toggleTask(t.line, t.checked)) root.render()
+                                }
+                                else if (text.startsWith("atlas:scroll:")) {
+                                    const s = JSON.parse(text.slice(13))
+                                    pageScroll.track(s.y, s.height)
+                                    if (s.own) return
+                                    root.previewLine = s.line
+                                    root.previewY = s.y
+                                    // Split view: the editor follows the preview (#7).
+                                    if (root.mode === "split" && s.exact) {
+                                        root.syncedFromPreview = Date.now()
+                                        editor.scrollToExactLine(s.exact, s.at || 0)
+                                    }
+                                } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
+                            }
                         }
                         // Never stays black after a workspace switch (#2).
-                        WebRepaint { id: webRepaint }
+                        WebRepaint { id: webRepaint; view: webHost.webView; z: 1 }
 
                         // Touchpad and wheel scroll like in the editor (TouchpadFling,
                         // brisk): it moves `pageScroll`, which keeps track of the
@@ -439,8 +450,8 @@ Rectangle {
                         Flickable {
                             id: pageScroll
                             visible: false
-                            width: webView.width / webView.zoomFactor
-                            height: webView.height / webView.zoomFactor
+                            width: webHost.webView ? webHost.width / webHost.webView.zoomFactor : 0
+                            height: webHost.webView ? webHost.height / webHost.webView.zoomFactor : 0
                             contentWidth: width
                             /// The page moved by itself (keys, scroll bar, links,
                             /// following the editor) or changed its height: taken
@@ -460,7 +471,7 @@ Rectangle {
                             /// below half a pixel, so only whole pixels go to the page.
                             property real carry: 0
                             anchors.fill: parent
-                            z: 1
+                            z: 2
                             flickable: pageScroll
                             brisk: true
                             horizontal: false
@@ -469,13 +480,13 @@ Rectangle {
                             scroller: (dx, dy) => {
                                 const before = pageScroll.contentY
                                 const max = Math.max(0, pageScroll.contentHeight - pageScroll.height)
-                                pageScroll.contentY = Math.max(0, Math.min(max, before + dy / webView.zoomFactor))
+                                pageScroll.contentY = Math.max(0, Math.min(max, before + dy / webHost.webView.zoomFactor))
                                 pageFling.carry += pageScroll.contentY - before
                                 pageFling.lastStep = Date.now()
                                 const step = Math.round(pageFling.carry)
                                 if (!step) return
                                 pageFling.carry -= step
-                                webView.runJavaScript("window.scrollBy(0, " + step + ")")
+                                webHost.webView.runJavaScript("window.scrollBy(0, " + step + ")")
                             }
                         }
                     }
