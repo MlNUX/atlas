@@ -44,7 +44,15 @@ Rectangle {
         if (!path) { backlinkList = []; relatedList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
         backlinkList = JSON.parse(app.backlinks(path))
         relatedList = JSON.parse(app.relatedFiles(path))
-        if (visible && tab === 1) graph = JSON.parse(app.contextGraph(path, 0))
+        if (visible && tab === 1) graphTimer.restart()
+    }
+    // The graph (up to 500 files, laid out in JavaScript) comes a moment
+    // after the rest: opening a file switches the tab at once instead of
+    // waiting for it, and clicking through files lays it out only once.
+    Timer {
+        id: graphTimer
+        interval: 120
+        onTriggered: if (panel.path && panel.visible && panel.tab === 1) panel.graph = JSON.parse(panel.app.contextGraph(panel.path, 0))
     }
     onPathChanged: refresh()
     onTabChanged: refresh()
