@@ -150,6 +150,7 @@ Item {
             : view.kind === "missing" ? missingComponent
             : view.path ? unsupportedComponent : emptyComponent
         onLoaded: {
+            Timing.mark("Ansicht erzeugt (" + view.kind + ")")
             // Links into PDFs carry a page (`#page=N`) as line.
             if (view.kind === "pdf" && view.line > 0) view.pendingState = Object.assign({}, view.pendingState, { page: view.line - 1 })
             // The quick look shows whole PDF pages.

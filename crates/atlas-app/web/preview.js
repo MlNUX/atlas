@@ -359,6 +359,8 @@ window.atlas = (function () {
             // drag the editor along in the split view).
             ownScroll = y;
             window.scrollTo(0, y);
+            // For the timing log (ATLAS_TIMING): the content is on screen.
+            requestAnimationFrame(() => post("rendered", {}));
         },
         scrollToLine(line) {
             let target = null;

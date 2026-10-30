@@ -35,6 +35,14 @@ ApplicationWindow {
 
     AppController { id: app }
 
+    // ATLAS_TIMING=1: how long opening and switching files takes (Timing.qml,
+    // switched on first thing in Component.onCompleted below).
+    Connections {
+        target: window
+        enabled: Timing.on
+        function onFrameSwapped() { Timing.frame() }
+    }
+
     // Holds the Markdown preview loaded ahead (PreviewPool), hidden.
     Item {
         id: previewSpare
@@ -515,6 +523,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        Timing.on = app.timing
         reloadActionKeys()
         if (app.projectRoot) restoreSession()
         else if (app.openFiles.length > 0) openCliFiles()

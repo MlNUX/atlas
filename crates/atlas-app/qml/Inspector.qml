@@ -56,11 +56,13 @@ Rectangle {
     /// User actions for the document, then for the project: {id, name,
     /// description, source, paths}.
     readonly property var actionList: {
+        const t = Timing.now()
         const out = []
         const seen = {}
         for (const paths of document ? [[document], []] : [[]])
             for (const a of actions.actionsFor(paths))
                 if (!seen[a.id] && a.menu) { seen[a.id] = true; out.push(Object.assign({ paths: paths }, a)) }
+        Timing.took("Kontextleiste: Aktionen", t)
         return out
     }
 
@@ -76,6 +78,7 @@ Rectangle {
 
     /// Built-in actions for the document next to the user's own.
     readonly property var builtins: {
+        const t = Timing.now()
         const out = []
         const kind = document ? app.fileKind(document) : ""
         if (kind === "pdf" && pdfViewer) {
@@ -113,6 +116,7 @@ Rectangle {
         if (document)
             out.push({ icon: "calendar", name: qsTr("Als Aufgabe einplanen"), enabled: true, tip: qsTr("Aufgabe im Kalender anlegen"),
                        run: () => actions.planAsTask(document) })
+        Timing.took("Kontextleiste: eingebaute Aktionen", t)
         return out
     }
 

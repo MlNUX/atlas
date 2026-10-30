@@ -79,7 +79,8 @@ fn main() {
     let module = QmlModule::new("Atlas")
         .qml_files(QML_FILES.iter().map(QmlFile::from))
         .qml_file(QmlFile::from("qml/Theme.qml").singleton(true))
-        .qml_file(QmlFile::from("qml/PreviewPool.qml").singleton(true));
+        .qml_file(QmlFile::from("qml/PreviewPool.qml").singleton(true))
+        .qml_file(QmlFile::from("qml/Timing.qml").singleton(true));
     let builder = CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")
         .qt_module("QuickControls2")

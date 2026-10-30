@@ -43,11 +43,13 @@ Rectangle {
     property bool lazy: false
     function refresh() {
         if (lazy && !visible) return
+        const t = Timing.now()
         // (`scope`, not `projectScope`: this also runs from onScopeChanged.)
         if (scope === "project" && tab === 0) { backlinkList = JSON.parse(app.projectQuotes()); return }
         if (!path) { backlinkList = []; relatedList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
         backlinkList = JSON.parse(app.backlinks(path))
         relatedList = JSON.parse(app.relatedFiles(path))
+        Timing.took("Kontext: Rückverweise und Verknüpfungen", t)
         if (visible && tab === 1) graphTimer.restart()
     }
     // The graph (up to 500 files, laid out in JavaScript) comes a moment
@@ -56,7 +58,15 @@ Rectangle {
     Timer {
         id: graphTimer
         interval: 120
-        onTriggered: if (panel.path && panel.visible && panel.tab === 1) panel.graph = JSON.parse(panel.app.contextGraph(panel.path, 0))
+        onTriggered: {
+            if (!panel.path || !panel.visible || panel.tab !== 1) return
+            const t = Timing.now()
+            const graph = JSON.parse(panel.app.contextGraph(panel.path, 0))
+            Timing.took("Graph: contextGraph (Rust), " + graph.nodes.length + " Dateien", t)
+            const t2 = Timing.now()
+            panel.graph = graph
+            Timing.took("Graph: Layout und Elemente", t2)
+        }
     }
     onPathChanged: refresh()
     onTabChanged: refresh()

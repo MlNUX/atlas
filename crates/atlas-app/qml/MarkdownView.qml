@@ -198,7 +198,9 @@ Rectangle {
 
     function render() {
         if (!pageReady) return
+        const t = Timing.now()
         const result = JSON.parse(root.app.renderMarkdown(editor.text, root.source))
+        Timing.took("renderMarkdown (Rust)", t)
         root.info = result
         web.runJavaScript("atlas.setLight(" + Theme.light + "); atlas.set(" + JSON.stringify(result.html) + ")")
         // New content: line up with the editor again.
@@ -392,6 +394,7 @@ Rectangle {
                         property var webView: null
                         Component.onCompleted: {
                             webView = PreviewPool.take(webHost)
+                            Timing.mark(webView.ready ? "Vorschau aus dem Vorrat (geladen)" : "Vorschau neu erzeugt (lädt)")
                             webView.anchors.fill = webHost
                             // A spare was hidden: have Chromium paint it here.
                             webRepaint.request()
@@ -401,6 +404,7 @@ Rectangle {
                         }
                         Component.onDestruction: if (webView) webView.destroy()
                         function loaded() {
+                            Timing.mark("Vorschauseite bereit")
                             root.pageLoaded = true
                             root.render()
                             if (root.previewLine > 1) webView.runJavaScript("atlas.scrollToLine(" + root.previewLine + ")")
@@ -417,7 +421,8 @@ Rectangle {
                             }
                             function onNewWindowRequested(request) { Qt.openUrlExternally(request.requestedUrl) }
                             function onJavaScriptConsoleMessage(level, text, lineNumber, sourceId) {
-                                if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
+                                if (text.startsWith("atlas:rendered:")) Timing.mark("Vorschau hat den Inhalt gezeichnet")
+                                else if (text.startsWith("atlas:link:")) root.followLink(JSON.parse(text.slice(11)))
                                 else if (text.startsWith("atlas:copy:")) {
                                     root.app.copyToClipboard(JSON.parse(text.slice(11)).text)
                                     root.message(qsTr("Code kopiert"))

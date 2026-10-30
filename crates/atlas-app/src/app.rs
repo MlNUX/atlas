@@ -80,6 +80,8 @@ pub mod qobject {
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
+        /// `ATLAS_TIMING` is set: log how long opening files takes (Timing.qml).
+        #[qproperty(bool, timing, READ, CONSTANT)]
         #[qproperty(i32, screenshot_delay_ms, cxx_name = "screenshotDelayMs", READ, CONSTANT)]
         #[qproperty(QString, screenshot_dialog, cxx_name = "screenshotDialog", READ, CONSTANT)]
         #[qproperty(QString, initial_search, cxx_name = "initialSearch", READ, CONSTANT)]
@@ -962,6 +964,7 @@ pub struct AppControllerRust {
     screenshot_path: QString,
     quit_after_ms: i32,
     self_test: bool,
+    timing: bool,
     screenshot_delay_ms: i32,
     screenshot_dialog: QString,
     initial_search: QString,
@@ -1034,6 +1037,7 @@ impl Default for AppControllerRust {
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
             self_test: cli.self_test,
+            timing: std::env::var_os("ATLAS_TIMING").is_some(),
             screenshot_delay_ms: cli.screenshot_delay_ms.unwrap_or(2500) as i32,
             screenshot_dialog: qs(cli.screenshot_dialog.clone().unwrap_or_default()),
             initial_search: qs(cli.search.as_deref().unwrap_or_default()),
