@@ -37,6 +37,9 @@ Rectangle {
     property var actions: null
     /// Suggest project files after `[[` (Markdown).
     property bool wikiCompletion: false
+    /// Faster, more direct touchpad scrolling (TouchpadFling.brisk), as in
+    /// the .atlasnote view.
+    property bool briskScrolling: false
 
     /// Shows file suggestions while the cursor is inside an unfinished
     /// `[[…` (no `|`, `#` or `]]` typed yet).
@@ -850,6 +853,7 @@ Rectangle {
                 id: touchpadFling
                 anchors.fill: flick
                 flickable: flick
+                brisk: root.briskScrolling
                 active: root.app.touchpadFling
                 app: root.app
             }

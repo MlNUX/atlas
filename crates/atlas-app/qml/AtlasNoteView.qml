@@ -179,15 +179,8 @@ Rectangle {
                 flickable: list
                 wheelStep: 200
                 // Notebook pages are tall: the content moves 2× the finger movement
-                // (at once, not with the next frame), gentler swipes glide on too,
-                // and the glide (2× the swipe, through the scale) runs a little
-                // longer than elsewhere.
-                touchpadScale: 2.0
-                followAtOnce: true
-                flingSpeed: 0.15
-                boost: 1.0
-                friction: 0.0016
-                maxSpeed: 14
+                // at once, gentler swipes glide on too and the glide runs longer.
+                brisk: true
                 active: !root.app || root.app.touchpadFling
                 app: root.app
             }

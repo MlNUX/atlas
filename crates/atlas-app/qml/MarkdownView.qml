@@ -362,6 +362,7 @@ Rectangle {
                 source: root.source
                 wrap: true
                 wikiCompletion: true
+                briskScrolling: true
                 actions: root.actions
                 onEdited: renderTimer.restart()
                 onSynced: { root.render(); root.app.noteChanged(root.source) }

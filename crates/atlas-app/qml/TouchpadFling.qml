@@ -33,11 +33,14 @@ Item {
     property bool handleWheel: true
     /// Pixels per mouse wheel notch.
     property real wheelStep: 100
+    /// Faster, more direct touchpad scrolling (.atlasnote and Markdown):
+    /// the defaults below change with it.
+    property bool brisk: false
     /// Content pixels per touchpad pixel.
-    property real touchpadScale: 1.0
+    property real touchpadScale: brisk ? 2.0 : 1.0
     /// Moves the content as each touchpad step arrives instead of with the
     /// next frame (one frame less behind the fingers).
-    property bool followAtOnce: false
+    property bool followAtOnce: brisk
     /// Moves the content by (dx, dy) pixels (down/right positive); the
     /// default keeps the Flickable within its bounds.
     property var scroller: null
@@ -50,14 +53,14 @@ Item {
     property real boost: 1.0
     /// Share of the speed lost per millisecond (Firefox: apz.fling_friction);
     /// lower glides longer.
-    property real friction: 0.002
+    property real friction: brisk ? 0.0016 : 0.002
     /// Slowest swipe (px/ms) that glides on; slower ones stop where the
     /// fingers left off.
-    property real flingSpeed: 0.3
+    property real flingSpeed: brisk ? 0.15 : 0.3
     /// Below this speed (px/ms) the glide ends (apz.fling_stopped_threshold).
     readonly property real stopSpeed: 0.01
     /// Fastest glide (px/ms).
-    property real maxSpeed: 8
+    property real maxSpeed: brisk ? 14 : 8
     /// Speed of the glide in px/ms (positive: content moves down/right).
     property real glideX: 0
     property real glideY: 0
