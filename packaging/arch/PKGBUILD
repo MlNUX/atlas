@@ -29,6 +29,10 @@ optdepends=(
   'hunspell-de: Rechtschreibprüfung Deutsch'
   'hunspell-en_us: Rechtschreibprüfung Englisch'
 )
+# Kein LTO: makepkg baut den C++-Teil (cxx-qt, Qt) mit GCC-LTO
+# (-flto=auto), Rust linkt aber mit lld, das GCCs LTO-Objekte nicht lesen
+# kann – die Qt-Funktionen fehlen dann beim Linken (undefined symbol).
+options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')   # vor dem Hochladen: updpkgsums
 _srcname="atlas-$pkgver"
