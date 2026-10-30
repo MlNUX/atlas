@@ -7,7 +7,7 @@
 
 # Maintainer: Minux (https://github.com/MlNUX)
 pkgname=atlas-workspace
-pkgver=1.1.3
+pkgver=1.1.4
 pkgrel=1
 pkgdesc="File-centric desktop workspace with PDF, Markdown and terminal"
 arch=('x86_64' 'aarch64')
