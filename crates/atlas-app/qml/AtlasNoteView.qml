@@ -93,6 +93,9 @@ Rectangle {
             bottomMargin: 16
             model: root.info.pages
             boundsBehavior: Flickable.StopAtBounds
+            // Pages 1.5 view heights above and below are built and rendered ahead,
+            // so they do not show up blank while scrolling.
+            cacheBuffer: Math.round(height * 1.5)
             // Zoomed in wider than the view: scroll sideways too.
             flickableDirection: Flickable.AutoFlickIfNeeded
             contentWidth: Math.max(width, root.pageWidth + 48)
@@ -175,14 +178,16 @@ Rectangle {
                 anchors.fill: parent
                 flickable: list
                 wheelStep: 200
-                // Notebook pages are tall: the content moves 1.6× the finger
-                // movement, gentler swipes glide on too, and the glide (1.6× the
-                // swipe, through the scale) runs a little longer than elsewhere.
-                touchpadScale: 1.6
+                // Notebook pages are tall: the content moves 2× the finger movement
+                // (at once, not with the next frame), gentler swipes glide on too,
+                // and the glide (2× the swipe, through the scale) runs a little
+                // longer than elsewhere.
+                touchpadScale: 2.0
+                followAtOnce: true
                 flingSpeed: 0.15
                 boost: 1.0
                 friction: 0.0016
-                maxSpeed: 11
+                maxSpeed: 14
                 active: !root.app || root.app.touchpadFling
                 app: root.app
             }

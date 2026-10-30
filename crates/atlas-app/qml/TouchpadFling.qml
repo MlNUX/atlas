@@ -35,6 +35,9 @@ Item {
     property real wheelStep: 100
     /// Content pixels per touchpad pixel.
     property real touchpadScale: 1.0
+    /// Moves the content as each touchpad step arrives instead of with the
+    /// next frame (one frame less behind the fingers).
+    property bool followAtOnce: false
     /// Moves the content by (dx, dy) pixels (down/right positive); the
     /// default keeps the Flickable within its bounds.
     property var scroller: null
@@ -218,6 +221,7 @@ Item {
             const d = touchpadDelta(event)
             wheelX = wheelY = 0
             sample(d.x, d.y)
+            if (followAtOnce) { flush(); move(-d.x, -d.y); return }
             pendingX += d.x
             pendingY += d.y
         } else {
