@@ -20,7 +20,10 @@ Rectangle {
     property string mode: "preview"
     property bool showBacklinks: false
     property var info: ({ tags: [], headings: [], broken: 0 })
-    property bool pageReady: false
+    /// preview.html is loaded in the preview.
+    property bool pageLoaded: false
+    /// The preview can take content (loaded, and the view is there).
+    readonly property bool pageReady: pageLoaded && web !== null
 
     // ---- memory of the preview (Chromium): created when first shown,
     // destroyed after a while out of sight (with its browser process),
@@ -43,7 +46,7 @@ Rectangle {
     /// Destroys a hidden preview (it is created again when shown).
     function discardPreview() {
         if (previewShown || !previewWanted) return false
-        pageReady = false
+        pageLoaded = false
         previewWanted = false
         return true
     }
@@ -392,11 +395,13 @@ Rectangle {
                             webView.anchors.fill = webHost
                             // A spare was hidden: have Chromium paint it here.
                             webRepaint.request()
-                            if (webView.ready) loaded()
+                            // Loaded already (the pool's spare): once the Loader
+                            // has set its item, so `root.web` is there.
+                            if (webView.ready) Qt.callLater(loaded)
                         }
                         Component.onDestruction: if (webView) webView.destroy()
                         function loaded() {
-                            root.pageReady = true
+                            root.pageLoaded = true
                             root.render()
                             if (root.previewLine > 1) webView.runJavaScript("atlas.scrollToLine(" + root.previewLine + ")")
                             root.applyHits()
