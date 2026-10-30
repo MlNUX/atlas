@@ -166,7 +166,7 @@ ApplicationWindow {
         app: app
         calendar: fileActions.calendar
         onCalendarEntryRequested: (uid, start) => window.openCalendar({ selected: uid, date: start ? start.slice(0, 10) : "" })
-        actions: window.paletteActions()
+        // Filled when it opens (onAboutToShow), not on every tab change.
         onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
         onSearchRequested: (text) => { searchDialog.setQuery(text) }
         onLineRequested: (line) => { if (editor.activeTab) editor.activeTab.reveal(line) }

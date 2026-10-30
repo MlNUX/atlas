@@ -277,6 +277,7 @@ Rectangle {
             // ---- links
             ContextPanel {
                 id: linksPanel
+                lazy: true
                 app: inspector.app
                 path: inspector.document
                 tab: 0
@@ -287,6 +288,7 @@ Rectangle {
 
             // ---- graph
             ContextPanel {
+                lazy: true
                 app: inspector.app
                 path: inspector.document
                 tab: 1

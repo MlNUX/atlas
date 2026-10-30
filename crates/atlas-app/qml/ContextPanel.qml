@@ -38,7 +38,11 @@ Rectangle {
 
     color: Theme.sidebar
 
+    /// Only filled while visible (a hidden tab of the context bar): opening
+    /// a file does not look up what nobody sees; showing it fills it.
+    property bool lazy: false
     function refresh() {
+        if (lazy && !visible) return
         // (`scope`, not `projectScope`: this also runs from onScopeChanged.)
         if (scope === "project" && tab === 0) { backlinkList = JSON.parse(app.projectQuotes()); return }
         if (!path) { backlinkList = []; relatedList = []; graph = ({ nodes: [], edges: [], truncated: 0 }); return }
