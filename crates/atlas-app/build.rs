@@ -14,6 +14,7 @@ const QML_FILES: &[&str] = &[
     "qml/CalendarWeek.qml",
     "qml/CommandPalette.qml",
     "qml/ContextModules.qml",
+    "qml/ExtensionCards.qml",
     "qml/ContextPanel.qml",
     "qml/DocumentView.qml",
     "qml/EditorArea.qml",

@@ -218,10 +218,9 @@ Rectangle {
                     ContextModules {
                         id: contextModules
                         Layout.fillWidth: true
-                        visible: showCalendar || showTasks || extensionCards.length > 0
+                        visible: showCalendar || showTasks
                         app: inspector.app
                         actions: inspector.actions
-                        onKeyActionRequested: (binding) => inspector.keyActionRequested(binding)
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border; visible: contextModules.visible }
                     Label { Layout.leftMargin: 14; text: qsTr("Anmerkungen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
@@ -321,6 +320,15 @@ Rectangle {
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
                         text: qsTr("Noch keine eigenen Aktionen für diese Datei. Lege welche für das Projekt an oder installiere Erweiterungen.")
+                    }
+                    // Cards of extensions („In der Kontextleiste anzeigen“ in
+                    // the settings).
+                    SectionLabel { text: qsTr("Erweiterungen"); Layout.topMargin: 6; visible: extensionCards.visible }
+                    ExtensionCards {
+                        id: extensionCards
+                        Layout.fillWidth: true
+                        app: inspector.app
+                        onKeyActionRequested: (binding) => inspector.keyActionRequested(binding)
                     }
                     // (Wraps in a narrow bar instead of widening it.)
                     Flow {

@@ -112,9 +112,10 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   die Datei. Neu in der Brücke: `renderMarkdown` (HTML wie in der
   Vorschau) und `atlas.runCommand` (Befehl der eigenen Erweiterung).
 - **Erweiterungen in der Kontextleiste:** Jede aktive Erweiterung mit
-  Ansichten oder Befehlen kann als Karte in der Kontextleiste erscheinen –
-  ein Knopf je Ansicht und Befehl. Schalter unter Einstellungen →
-  Kontextleiste oder × auf der Karte (`[context.extensions]`); im Manifest
+  Ansichten oder Befehlen kann als Karte im Reiter „Aktionen“ der
+  Kontextleiste erscheinen – mit Anfangsbuchstabe, Titel und Beschreibung
+  und einer Zeile je Ansicht und Befehl samt Tastenkürzel. Schalter unter
+  Einstellungen → Kontextleiste oder × auf der Karte (`[context.extensions]`); im Manifest
   zeigt `context: true` die Karte standardmäßig. **bnki-Karten** ist so
   eingestellt (nach „Erweiterung aktualisieren: bnki-Karten“).
 - **Handbuch für Erweiterungen** (`docs/extensions-guide.md`): Laufzeitvertrag

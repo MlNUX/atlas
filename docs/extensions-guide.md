@@ -45,7 +45,7 @@ Erweiterung mitbringt oder das auf dem System installiert ist) oder als
 | **Exporter** (`exporters`) | Kontextmenü „Exportieren als …“, Arbeitsleiste | eine Datei in ein anderes Format schreiben |
 | **Ansicht** (`views`) | eigener Tab, „Anzeigen mit …“, Tastenkürzel | eigene Oberfläche: Editor, Werkzeug, Dashboard |
 | **Einstellungen** (`settings`) | Einstellungen von Atlas → Erweiterungen | Werte, die der Nutzer setzt; an Programme und Ansichten übergeben |
-| **Karte in der Kontextleiste** (`context`) | rechte Kontextleiste, Übersicht | Knöpfe für die Ansichten und Befehle der Erweiterung, ein Klick entfernt |
+| **Karte in der Kontextleiste** (`context`) | rechte Kontextleiste, Reiter „Aktionen“ | eine Zeile je Ansicht und Befehl der Erweiterung mit Tastenkürzel, ein Klick entfernt |
 
 **Nicht möglich** (Stand API 2):
 
