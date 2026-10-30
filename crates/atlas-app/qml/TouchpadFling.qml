@@ -48,6 +48,9 @@ Item {
     /// Share of the speed lost per millisecond (Firefox: apz.fling_friction);
     /// lower glides longer.
     property real friction: 0.002
+    /// Slowest swipe (px/ms) that glides on; slower ones stop where the
+    /// fingers left off.
+    property real flingSpeed: 0.3
     /// Below this speed (px/ms) the glide ends (apz.fling_stopped_threshold).
     readonly property real stopSpeed: 0.01
     /// Fastest glide (px/ms).
@@ -156,7 +159,7 @@ Item {
         for (const p of s) { dx += p.dx; dy += p.dy }
         // px/ms; slow swipes stop where the fingers left off.
         const vx = dx / span * fling.boost, vy = dy / span * fling.boost
-        if (Math.abs(vx) < 0.3 && Math.abs(vy) < 0.3) return
+        if (Math.abs(vx) < fling.flingSpeed && Math.abs(vy) < fling.flingSpeed) return
         fling.glide(vx, vy)
     }
 
