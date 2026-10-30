@@ -447,13 +447,18 @@ Rectangle {
                             /// over while no swipe or glide is going on.
                             function track(y, pageHeight) {
                                 contentHeight = Math.max(height, pageHeight || 0)
-                                if (!pageFling.gliding && Date.now() - pageFling.lastStep > 250) contentY = y
+                                if (pageFling.gliding || Date.now() - pageFling.lastStep <= 250) return
+                                contentY = y
+                                pageFling.carry = 0
                             }
                         }
                         TouchpadFling {
                             id: pageFling
                             /// When the last step was handed to the page.
                             property real lastStep: 0
+                            /// Movement not handed on yet: Chromium drops scrollBy steps
+                            /// below half a pixel, so only whole pixels go to the page.
+                            property real carry: 0
                             anchors.fill: parent
                             z: 1
                             flickable: pageScroll
@@ -465,9 +470,12 @@ Rectangle {
                                 const before = pageScroll.contentY
                                 const max = Math.max(0, pageScroll.contentHeight - pageScroll.height)
                                 pageScroll.contentY = Math.max(0, Math.min(max, before + dy / webView.zoomFactor))
-                                const d = pageScroll.contentY - before
-                                lastStep = Date.now()
-                                if (d) webView.runJavaScript("window.scrollBy(0, " + d + ")")
+                                pageFling.carry += pageScroll.contentY - before
+                                pageFling.lastStep = Date.now()
+                                const step = Math.round(pageFling.carry)
+                                if (!step) return
+                                pageFling.carry -= step
+                                webView.runJavaScript("window.scrollBy(0, " + step + ")")
                             }
                         }
                     }
