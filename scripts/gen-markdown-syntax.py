@@ -12,10 +12,14 @@ The result is a hidden definition "Atlas Markdown" that Atlas embeds at
 `:/org.kde.syntax-highlighting/syntax-addons/`, where KSyntaxHighlighting
 picks it up; the editor uses it for Markdown files.
 
-Usage (the source of the syntax-highlighting framework, e.g. from
-`nix build nixpkgs#kdePackages.syntax-highlighting.src`):
+Usage: the `data/syntax` folder of the current syntax-highlighting source
+(e.g. from `nix build nixpkgs#kdePackages.syntax-highlighting.src`), and that
+of the oldest version Atlas supports – the one the Markdown definition needs
+(its `kateversion`, 6.22 for Markdown version 33). Languages missing there
+are left out: an older framework would warn about every one of them
+("Unable to resolve include rule").
 
-    scripts/gen-markdown-syntax.py path/to/syntax-highlighting/data/syntax \
+    scripts/gen-markdown-syntax.py NEW/data/syntax OLDEST/data/syntax \
         > crates/atlas-app/syntax-addons/atlas-markdown.xml
 """
 
@@ -328,7 +332,7 @@ def definitions(syntax_dir: Path) -> dict[str, str]:
     """Name → identifier for the context names, of every definition."""
     out = {}
     for path in syntax_dir.glob("*.xml"):
-        head = path.read_text(encoding="utf-8")[:6000]
+        head = path.read_text(encoding="utf-8")
         m = re.search(r"<language\b[^>]*\bname=\"([^\"]+)\"", head, re.S)
         if m:
             out[m.group(1).replace("&apos;", "'").replace("&amp;", "&")] = path.stem
@@ -340,13 +344,16 @@ def xml_attr(text: str) -> str:
 
 
 def main() -> None:
-    syntax_dir = Path(sys.argv[1])
+    syntax_dir, oldest_dir = Path(sys.argv[1]), Path(sys.argv[2])
     source = (syntax_dir / "markdown.xml").read_text(encoding="utf-8")
     known = definitions(syntax_dir)
+    oldest = definitions(oldest_dir)
 
     # Languages upstream already includes, and the info strings it matches
     # (its rules come first; an alias here that it matches is never reached).
     upstream = set(re.findall(r'<IncludeRules context="##([^"]+)" includeAttrib="true"/>', source))
+    if missing := upstream - set(oldest):
+        sys.exit(f"Markdown includes languages the oldest version lacks: {sorted(missing)}")
 
     rules, contexts, seen = [], [], set()
     for name, aliases in EXTRA.items():
@@ -354,6 +361,9 @@ def main() -> None:
             continue
         if name not in known:
             sys.exit(f"unknown definition: {name}")
+        if name not in oldest:
+            print(f"left out (not in the oldest version): {name}", file=sys.stderr)
+            continue
         aliases = [a for a in aliases if a not in seen]
         for a in aliases:
             if not ALIAS_CHARS.match(a):

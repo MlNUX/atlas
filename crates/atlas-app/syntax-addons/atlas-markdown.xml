@@ -431,7 +431,6 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-meson-code" String="&fcode;\s*(?:meson)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-ninja-code" String="&fcode;\s*(?:ninja)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-qmake-code" String="&fcode;\s*(?:qmake)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-just-code" String="&fcode;\s*(?:just|justfile)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-starlark-code" String="&fcode;\s*(?:starlark|bazel|bzl)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-fish-code" String="&fcode;\s*(?:fish)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-tcsh-code" String="&fcode;\s*(?:tcsh|csh)&info;" insensitive="true" beginRegion="code-block"/>
@@ -452,7 +451,6 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-maxima-code" String="&fcode;\s*(?:maxima)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-scilab-code" String="&fcode;\s*(?:scilab)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-stata-code" String="&fcode;\s*(?:stata)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-sas-code" String="&fcode;\s*(?:sas)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-stan-code" String="&fcode;\s*(?:stan)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-gnuplot-code" String="&fcode;\s*(?:gnuplot|gp)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-dot-code" String="&fcode;\s*(?:dot|graphviz|gv)&info;" insensitive="true" beginRegion="code-block"/>
@@ -486,8 +484,6 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-sql-oracle-code" String="&fcode;\s*(?:plsql|oracle)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-hjson-code" String="&fcode;\s*(?:hjson)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-jsonnet-code" String="&fcode;\s*(?:jsonnet|libsonnet)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-kdl-code" String="&fcode;\s*(?:kdl)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-dotenv-code" String="&fcode;\s*(?:dotenv|env)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-java-properties-code" String="&fcode;\s*(?:properties|jproperties)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-apache-configuration-code" String="&fcode;\s*(?:apache|apacheconf|htaccess)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-nginx-configuration-code" String="&fcode;\s*(?:nginx|nginxconf)&info;" insensitive="true" beginRegion="code-block"/>
@@ -508,8 +504,6 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-logcat-code" String="&fcode;\s*(?:logcat)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-csv-code" String="&fcode;\s*(?:csv)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-tsv-code" String="&fcode;\s*(?:tsv)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-bnf-code" String="&fcode;\s*(?:bnf|ebnf|peg)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-abnf-code" String="&fcode;\s*(?:abnf)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-antlr-code" String="&fcode;\s*(?:antlr|g4)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-gnu-m4-code" String="&fcode;\s*(?:m4)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-gnu-linker-script-code" String="&fcode;\s*(?:ld|linkerscript)&info;" insensitive="true" beginRegion="code-block"/>
@@ -537,7 +531,6 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-unrealscript-code" String="&fcode;\s*(?:unrealscript|uc)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-godot-code" String="&fcode;\s*(?:gdscript|godot)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-renpy-code" String="&fcode;\s*(?:renpy)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-slint-code" String="&fcode;\s*(?:slint)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-smali-code" String="&fcode;\s*(?:smali)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-common-intermediate-language-cil-code" String="&fcode;\s*(?:cil|msil)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-openscad-code" String="&fcode;\s*(?:openscad|scad)&info;" insensitive="true" beginRegion="code-block"/>
@@ -569,7 +562,6 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-velocity-code" String="&fcode;\s*(?:velocity|vm)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-mako-code" String="&fcode;\s*(?:mako)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-ftl-code" String="&fcode;\s*(?:ftl|freemarker)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-gemtext-code" String="&fcode;\s*(?:gemtext|gmi)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-jira-code" String="&fcode;\s*(?:jira)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-fluent-code" String="&fcode;\s*(?:fluent)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-d2-code" String="&fcode;\s*(?:d2)&info;" insensitive="true" beginRegion="code-block"/>
@@ -599,7 +591,6 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-xharbour-code" String="&fcode;\s*(?:harbour|xharbour)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-cashscript-code" String="&fcode;\s*(?:cashscript)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-earthfile-code" String="&fcode;\s*(?:earthfile)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-gn-code" String="&fcode;\s*(?:gn)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-jam-code" String="&fcode;\s*(?:jam)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-doxyfile-code" String="&fcode;\s*(?:doxyfile)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-qdoc-configuration-code" String="&fcode;\s*(?:qdocconf)&info;" insensitive="true" beginRegion="code-block"/>
@@ -607,11 +598,9 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-wesnoth-markup-language-code" String="&fcode;\s*(?:wml\-wesnoth)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-m3u-code" String="&fcode;\s*(?:m3u|m3u8)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-cue-sheet-code" String="&fcode;\s*(?:cue)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-lrc-lyrics-code" String="&fcode;\s*(?:lrc)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-pgn-code" String="&fcode;\s*(?:pgn)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-music-publisher-code" String="&fcode;\s*(?:mup)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-abc-code" String="&fcode;\s*(?:abc)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-iata-ssim-code" String="&fcode;\s*(?:ssim)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-intel-hex-code" String="&fcode;\s*(?:ihex|intelhex)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-fastq-code" String="&fcode;\s*(?:fastq)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-snort-suricata-code" String="&fcode;\s*(?:snort|suricata)&info;" insensitive="true" beginRegion="code-block"/>
@@ -654,7 +643,6 @@
         <RegExpr attribute="Fenced Code" context="#pop!x-glosstex-code" String="&fcode;\s*(?:glosstex)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-javadoc-code" String="&fcode;\s*(?:javadoc)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-vrml-code" String="&fcode;\s*(?:vrml|wrl)&info;" insensitive="true" beginRegion="code-block"/>
-        <RegExpr attribute="Fenced Code" context="#pop!x-step-code" String="&fcode;\s*(?:step|stp)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-stl-code" String="&fcode;\s*(?:stl)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-ply-code" String="&fcode;\s*(?:ply)&info;" insensitive="true" beginRegion="code-block"/>
         <RegExpr attribute="Fenced Code" context="#pop!x-renderman-rib-code" String="&fcode;\s*(?:rib)&info;" insensitive="true" beginRegion="code-block"/>
@@ -847,10 +835,6 @@
         <IncludeRules context="code"/>
         <IncludeRules context="##QMake" includeAttrib="true"/>
       </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-just-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##Just" includeAttrib="true"/>
-      </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-starlark-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##Starlark" includeAttrib="true"/>
@@ -930,10 +914,6 @@
       <context attribute="Normal Text" lineEndContext="#stay" name="x-stata-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##Stata" includeAttrib="true"/>
-      </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-sas-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="Normal##SAS" includeAttrib="true"/>
       </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-stan-code">
         <IncludeRules context="code"/>
@@ -1067,14 +1047,6 @@
         <IncludeRules context="code"/>
         <IncludeRules context="##Jsonnet" includeAttrib="true"/>
       </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-kdl-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##KDL" includeAttrib="true"/>
-      </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-dotenv-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##DotEnv" includeAttrib="true"/>
-      </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-java-properties-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##Java Properties" includeAttrib="true"/>
@@ -1154,14 +1126,6 @@
       <context attribute="Normal Text" lineEndContext="#stay" name="x-tsv-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##TSV" includeAttrib="true"/>
-      </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-bnf-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##BNF" includeAttrib="true"/>
-      </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-abnf-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##ABNF" includeAttrib="true"/>
       </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-antlr-code">
         <IncludeRules context="code"/>
@@ -1270,10 +1234,6 @@
       <context attribute="Normal Text" lineEndContext="#stay" name="x-renpy-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##RenPy" includeAttrib="true"/>
-      </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-slint-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##Slint" includeAttrib="true"/>
       </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-smali-code">
         <IncludeRules context="code"/>
@@ -1399,10 +1359,6 @@
         <IncludeRules context="code"/>
         <IncludeRules context="##FTL" includeAttrib="true"/>
       </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-gemtext-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##Gemtext" includeAttrib="true"/>
-      </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-jira-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##Jira" includeAttrib="true"/>
@@ -1519,10 +1475,6 @@
         <IncludeRules context="code"/>
         <IncludeRules context="##Earthfile" includeAttrib="true"/>
       </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-gn-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##GN" includeAttrib="true"/>
-      </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-jam-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##Jam" includeAttrib="true"/>
@@ -1551,10 +1503,6 @@
         <IncludeRules context="code"/>
         <IncludeRules context="##CUE Sheet" includeAttrib="true"/>
       </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-lrc-lyrics-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##LRC Lyrics" includeAttrib="true"/>
-      </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-pgn-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##PGN" includeAttrib="true"/>
@@ -1566,10 +1514,6 @@
       <context attribute="Normal Text" lineEndContext="#stay" name="x-abc-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##ABC" includeAttrib="true"/>
-      </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-iata-ssim-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##IATA SSIM" includeAttrib="true"/>
       </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-intel-hex-code">
         <IncludeRules context="code"/>
@@ -1738,10 +1682,6 @@
       <context attribute="Normal Text" lineEndContext="#stay" name="x-vrml-code">
         <IncludeRules context="code"/>
         <IncludeRules context="##VRML" includeAttrib="true"/>
-      </context>
-      <context attribute="Normal Text" lineEndContext="#stay" name="x-step-code">
-        <IncludeRules context="code"/>
-        <IncludeRules context="##STEP" includeAttrib="true"/>
       </context>
       <context attribute="Normal Text" lineEndContext="#stay" name="x-stl-code">
         <IncludeRules context="code"/>
