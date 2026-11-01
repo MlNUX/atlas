@@ -129,6 +129,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   PDF-Hintergründen; Zoom mit Strg+Mausrad. Nur lesend: das Archiv wird
   einmal in `~/.cache/atlas/atlasnote` entpackt und die Seiten werden dort
   gerendert; die Datei selbst bleibt unverändert.
+- **Code-Highlighting in Markdown-Codeblöcken im Editor** wie in einer IDE,
+  jetzt für rund 300 Sprachen statt etwa 40 (u. a. LaTeX, Lua, Kotlin,
+  Swift, Julia, OCaml, F#, Prolog, Nix, Diff, Dockerfile, Makefile,
+  PowerShell, Assembler, VHDL/Verilog). Auch mit Angaben nach der Sprache
+  (` ```python title="a.py" `). Atlas bringt dafür eine erweiterte
+  Markdown-Definition für KSyntaxHighlighting mit
+  (`scripts/gen-markdown-syntax.py`).
 
 ### Sicherheit
 - **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht

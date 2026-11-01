@@ -89,6 +89,7 @@ fn main() {
         .qt_module("WebEngineQuick")
         .qrc_resources(web_resources())
         .qrc_resources(style_resources())
+        .qrc_resources(syntax_resources())
         .files(RUST_BRIDGES.iter().copied())
         .cpp_file("cpp/helpers.cpp")
         .cpp_file("cpp/touchpad_hold.cpp");
@@ -141,6 +142,16 @@ fn style_resources() -> QResources {
     files.sort();
     println!("cargo::rerun-if-changed=qml/AtlasStyle");
     QResources::new().resource(QResource::new().prefix("/qt").files(files))
+}
+
+/// Extra syntax definitions for the editor (Markdown with coloured code
+/// blocks, see `scripts/gen-markdown-syntax.py`). KSyntaxHighlighting loads
+/// every definition at `:/org.kde.syntax-highlighting/syntax-addons/`.
+fn syntax_resources() -> QResources {
+    println!("cargo::rerun-if-changed=syntax-addons");
+    QResources::new().resource(
+        QResource::new().prefix("/org.kde.syntax-highlighting").file("syntax-addons/atlas-markdown.xml"),
+    )
 }
 
 /// The Markdown preview page and its bundled libraries, served from

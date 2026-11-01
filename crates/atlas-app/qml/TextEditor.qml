@@ -32,6 +32,15 @@ Rectangle {
     readonly property int topLine: wrap ? lineAtY(flick.contentY) : Math.floor(flick.contentY / lineHeight) + 1
     readonly property real lineHeight: area.lineCount > 0 ? area.contentHeight / area.lineCount : 16
     readonly property bool large: area.length > 2 * 1024 * 1024
+    /// Syntax definition for the highlighting. Markdown uses Atlas' own
+    /// variant (bundled, see scripts/gen-markdown-syntax.py), which colours
+    /// code blocks in some 300 languages instead of about 40.
+    readonly property string syntax: {
+        const name = Repository.definitionForFileName(root.source).name
+        if (name === "Markdown" && Repository.definitionForName("Atlas Markdown").name === "Atlas Markdown")
+            return "Atlas Markdown"
+        return name
+    }
 
     /// FileActions (for "open in editor"); optional.
     property var actions: null
@@ -865,7 +874,7 @@ Rectangle {
 
             SyntaxHighlighter {
                 textEdit: area
-                definition: root.large ? "None" : Repository.definitionForFileName(root.source).name
+                definition: root.large ? "None" : root.syntax
                 theme: Repository.theme(Theme.light ? "Breeze Light" : "Breeze Dark")
             }
 

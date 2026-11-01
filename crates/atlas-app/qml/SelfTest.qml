@@ -143,6 +143,8 @@ Item {
             () => {
                 const md = editor.activeTab.viewerItem
                 check("Markdown-Ansicht", !!md && !!md.editorItem)
+                check("Markdown-Hervorhebung mit Codeblöcken (Atlas Markdown)", !!md && md.editorItem.syntax === "Atlas Markdown",
+                      md && md.editorItem.syntax)
                 md.mode = "split"
                 md.editorItem.insertText("\nAutosave-Test [Plan](plan.md#ziele)\n", true)
                 check("Bearbeitung erkannt", md.editorItem.modified)
