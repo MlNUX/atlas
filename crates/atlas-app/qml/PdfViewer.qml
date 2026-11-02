@@ -668,6 +668,18 @@ Rectangle {
         if (hits.length) showHit((currentHit + step + hits.length) % hits.length)
     }
 
+    // Sharp pages: a page is laid out in whole device pixels, exactly the size
+    // of its rendered image, and placed on whole device pixels (see the
+    // delegate). Otherwise the image is resampled once more on the way to the
+    // screen – visibly soft at fractional scaling (125 %, 150 %) and small zoom.
+    readonly property real dpr: Screen.devicePixelRatio
+    /// Width of page `index` at `scale` in device pixels.
+    function pagePixelsWide(index, scale) { return Math.max(1, Math.round(doc.pageWidth(index) * scale * dpr)) }
+    /// Its height, computed like the renderer does (pdf::scaled_height).
+    function pagePixelsHigh(index, scale) {
+        return Math.max(1, Math.round(doc.pageHeight(index) / doc.pageWidth(index) * pagePixelsWide(index, scale)))
+    }
+
     readonly property real fitScale: doc.maxPageWidth > 0 ? Math.max(0.1, (pages.width - 32) / doc.maxPageWidth) : 1
     // "Whole page" fits the page shown when it was chosen (following the
     // current page would loop: the scale moves the pages, which changes it).
@@ -1424,22 +1436,56 @@ Rectangle {
                         required property int index
                         readonly property alias paperItem: paper
                         width: pages.contentWidth
-                        height: doc.pageHeight(index) * root.zoomScale
+                        height: root.pagePixelsHigh(index, root.zoomScale) / root.dpr
+
+                        // Shift of the page image onto whole device pixels of
+                        // the window (the list, the panels and the scroll
+                        // position put the paper anywhere in between).
+                        property real snapX: 0
+                        property real snapY: 0
+                        function snap() {
+                            const p = paper.mapToItem(null, 0, 0)
+                            snapX = Math.round(p.x * root.dpr) / root.dpr - p.x
+                            snapY = Math.round(p.y * root.dpr) / root.dpr - p.y
+                        }
+                        Component.onCompleted: snap()
+                        onXChanged: snap()
+                        onYChanged: snap()
+                        onHeightChanged: snap()
+                        Connections {
+                            target: pages
+                            function onContentXChanged() { pageDelegate.snap() }
+                            function onContentYChanged() { pageDelegate.snap() }
+                            function onWidthChanged() { pageDelegate.snap() }
+                            function onHeightChanged() { pageDelegate.snap() }
+                            function onXChanged() { pageDelegate.snap() }
+                            function onYChanged() { pageDelegate.snap() }
+                        }
+                        Connections {
+                            target: root
+                            function onDprChanged() { pageDelegate.snap() }
+                            function onXChanged() { pageDelegate.snap() }
+                            function onYChanged() { pageDelegate.snap() }
+                        }
 
                         Rectangle {
                             id: paper
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: doc.pageWidth(pageDelegate.index) * root.zoomScale
+                            x: Math.round((parent.width - width) / 2 * root.dpr) / root.dpr
+                            width: root.pagePixelsWide(pageDelegate.index, root.zoomScale) / root.dpr
                             height: parent.height
                             color: root.paperColor
+                            onXChanged: pageDelegate.snap()
 
                             PdfPage {
                                 id: page
-                                anchors.fill: parent
+                                x: pageDelegate.snapX
+                                y: pageDelegate.snapY
+                                width: parent.width
+                                height: parent.height
                                 source: doc.source
                                 page: pageDelegate.index
                                 inverted: root.dark
-                                renderWidth: Math.round(doc.pageWidth(pageDelegate.index) * root.renderScale * Screen.devicePixelRatio)
+                                renderWidth: root.pagePixelsWide(pageDelegate.index, root.renderScale)
                                 onRenderMsChanged: root.lastRenderMs = renderMs
                             }
 
