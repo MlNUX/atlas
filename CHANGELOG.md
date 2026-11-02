@@ -136,6 +136,14 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   (` ```python title="a.py" `). Atlas bringt dafür eine erweiterte
   Markdown-Definition für KSyntaxHighlighting mit
   (`scripts/gen-markdown-syntax.py`).
+- **Markdown-Tabellen im Editor ausgerichtet**: Spalten stehen im Text
+  untereinander, die Ausrichtung der Trennzeile (`:---:`, `---:`) wird
+  übernommen. Tab / Umschalt+Tab springen von Zelle zu Zelle (Tab in der
+  letzten Zelle fügt eine Zeile an), Enter am Zeilenende fügt eine Zeile
+  ein, Enter in einer leeren letzten Zeile beendet die Tabelle. Verlässt
+  die Schreibmarke eine Tabelle, wird sie ausgerichtet; „Tabellen
+  ausrichten“ in der Arbeitsleiste macht die ganze Notiz. Eingefügte
+  Tabellen kommen gleich ausgerichtet. Codeblöcke bleiben unberührt.
 
 ### Sicherheit
 - **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht

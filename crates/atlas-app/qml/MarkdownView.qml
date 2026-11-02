@@ -113,8 +113,8 @@ Rectangle {
     function tableMarkdown(rows, cols) {
         const cells = (f) => "| " + Array.from({ length: cols }, (_, i) => f(i)).join(" | ") + " |"
         const lines = [cells(i => qsTr("Spalte %1").arg(i + 1)), cells(() => "---")]
-        for (let r = 0; r < rows; ++r) lines.push(cells(() => "   "))
-        return lines.join("\n")
+        for (let r = 0; r < rows; ++r) lines.push(cells(() => ""))
+        return editor.alignTable(lines.join("\n"))
     }
     function insertTable(rows, cols) { editorForInsert().insertBlock(tableMarkdown(Math.max(1, rows), Math.max(1, cols))) }
     function askTable() { tableDialog.open() }

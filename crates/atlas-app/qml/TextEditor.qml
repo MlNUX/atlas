@@ -273,6 +273,268 @@ Rectangle {
         return true
     }
 
+    // ---- Markdown tables, with aligned columns in the text: Tab / Shift+Tab
+    // go from cell to cell, Enter at the end of a row adds one, leaving a
+    // table aligns it; alignTables() does the whole note. Never in code blocks.
+
+    /// The delimiter row under the header: `| --- | :-: | --: |`.
+    readonly property var tableDelimiter: /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
+    /// Cells of a table row (trimmed; `\|` stays inside a cell).
+    function tableCells(line) {
+        let s = line.trim()
+        if (s.startsWith("|")) s = s.slice(1)
+        if (s.endsWith("|") && !s.endsWith("\\|")) s = s.slice(0, -1)
+        const cells = []
+        let cell = ""
+        for (let i = 0; i < s.length; ++i) {
+            if (s[i] === "\\" && i + 1 < s.length) { cell += s[i] + s[i + 1]; ++i }
+            else if (s[i] === "|") { cells.push(cell.trim()); cell = "" }
+            else cell += s[i]
+        }
+        cells.push(cell.trim())
+        return cells
+    }
+    /// Columns `s` takes in a monospace font (wide CJK and emoji count two,
+    /// combining marks none).
+    function textColumns(s) {
+        let w = 0
+        for (const ch of s) {
+            const c = ch.codePointAt(0)
+            if ((c >= 0x300 && c <= 0x36f) || c === 0x200d || (c >= 0xfe00 && c <= 0xfe0f)) continue
+            const wide = (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3)
+                || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60)
+                || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) || (c >= 0x20000 && c <= 0x3fffd)
+            w += wide ? 2 : 1
+        }
+        return w
+    }
+    /// The table rows `lines` (header, delimiter, body) with aligned
+    /// columns: {lines, offsets} – offsets[row][col] is where a cell's text
+    /// starts in its line. Alignment from the delimiter row is kept and
+    /// applied (`:-:` centred, `--:` right).
+    function formatTable(lines) {
+        const indent = /^\s*/.exec(lines[0])[0]
+        const rows = lines.map(l => root.tableCells(l))
+        const cols = Math.max(...rows.map(r => r.length))
+        const align = [], width = []
+        for (let c = 0; c < cols; ++c) {
+            const d = rows[1][c] || ""
+            align.push(d.length > 1 && d.startsWith(":") && d.endsWith(":") ? "c" : d.endsWith(":") ? "r" : d.startsWith(":") ? "l" : "")
+            let w = 3
+            rows.forEach((r, i) => { if (i !== 1) w = Math.max(w, root.textColumns(r[c] || "")) })
+            width.push(w)
+        }
+        const out = [], offsets = []
+        rows.forEach((r, i) => {
+            let line = indent + "|"
+            const offs = []
+            for (let c = 0; c < cols; ++c) {
+                const w = width[c], a = align[c]
+                if (i === 1) {
+                    const cell = a === "c" ? ":" + "-".repeat(w - 2) + ":" : a === "r" ? "-".repeat(w - 1) + ":"
+                        : a === "l" ? ":" + "-".repeat(w - 1) : "-".repeat(w)
+                    line += " "
+                    offs.push(line.length)
+                    line += cell + " |"
+                } else {
+                    const t = r[c] || ""
+                    const pad = w - root.textColumns(t)
+                    const left = a === "r" ? pad : a === "c" ? Math.floor(pad / 2) : 0
+                    line += " " + " ".repeat(left)
+                    offs.push(line.length)
+                    line += t + " ".repeat(pad - left) + " |"
+                }
+            }
+            out.push(line)
+            offsets.push(offs)
+        })
+        return { lines: out, offsets: offsets }
+    }
+    /// A table given as text, aligned (for inserting).
+    function alignTable(markdown) { return formatTable(markdown.split("\n")).lines.join("\n") }
+
+    /// Inside a fenced code block at `pos`?
+    function inCodeFence(pos) {
+        const fences = area.text.slice(0, pos).match(/^\s*(```|~~~)/gm)
+        return !!fences && fences.length % 2 === 1
+    }
+    /// The table with the line at `pos`: {start, end, lines, starts}, or null.
+    function tableAt(pos) {
+        if (!root.wikiCompletion) return null
+        const text = area.text
+        const lineStart = (p) => text.lastIndexOf("\n", p - 1) + 1
+        const lineEnd = (p) => { const e = text.indexOf("\n", p); return e < 0 ? text.length : e }
+        const isRow = (l) => l.trim() !== "" && l.indexOf("|") >= 0
+        let s = lineStart(pos)
+        if (!isRow(text.slice(s, lineEnd(s)))) return null
+        // The block of consecutive lines with a pipe around `pos`.
+        while (s > 0) {
+            const prev = lineStart(s - 1)
+            if (!isRow(text.slice(prev, s - 1))) break
+            s = prev
+        }
+        const lines = [], starts = []
+        for (let p = s; ; ) {
+            const e = lineEnd(p)
+            const l = text.slice(p, e)
+            if (!isRow(l)) break
+            lines.push(l)
+            starts.push(p)
+            if (e >= text.length) break
+            p = e + 1
+        }
+        // The table starts at the header above the first delimiter row.
+        const k = lines.findIndex((l, i) => i > 0 && root.tableDelimiter.test(l))
+        if (k < 1) return null
+        const first = k - 1
+        if (pos < starts[first] || root.inCodeFence(starts[first])) return null
+        const last = lines.length - 1
+        return { start: starts[first], end: starts[last] + lines[last].length,
+                 lines: lines.slice(first), starts: starts.slice(first) }
+    }
+    /// Row and cell of `pos` in table `t`, and the offset into the cell text.
+    function tableCellAt(t, pos) {
+        let row = t.starts.length - 1
+        while (row > 0 && t.starts[row] > pos) --row
+        const line = t.lines[row], col = pos - t.starts[row]
+        const lead = /^\s*\|?/.exec(line)[0].length
+        let cell = 0, cellStart = lead
+        for (let i = lead; i < col && i < line.length; ++i) {
+            if (line[i] === "\\") { ++i; continue }
+            if (line[i] === "|") { ++cell; cellStart = i + 1 }
+        }
+        return { row: row, cell: cell, offset: line.slice(cellStart, col).replace(/^\s+/, "").length }
+    }
+    /// Replaces table `t` by `lines` (only the part that changed: a small
+    /// edit for undo); returns the new start of each row.
+    function replaceTable(t, lines) {
+        const old = area.text.slice(t.start, t.end), now = lines.join("\n")
+        if (old !== now) {
+            let p = 0
+            while (p < old.length && p < now.length && old[p] === now[p]) ++p
+            let q = 0
+            while (q < old.length - p && q < now.length - p && old[old.length - 1 - q] === now[now.length - 1 - q]) ++q
+            area.remove(t.start + p, t.start + old.length - q)
+            area.insert(t.start + p, now.slice(p, now.length - q))
+        }
+        const starts = []
+        let at = t.start
+        for (const l of lines) { starts.push(at); at += l.length + 1 }
+        return starts
+    }
+    /// Puts the cursor into a cell, its text selected (typing replaces it).
+    function selectCell(f, starts, row, cell) {
+        const begin = starts[row] + f.offsets[row][cell]
+        const line = f.lines[row]
+        let end = begin
+        while (end - starts[row] < line.length && !(line[end - starts[row]] === "|" && line[end - starts[row] - 1] !== "\\")) ++end
+        const text = area.text.slice(begin, end).replace(/\s+$/, "")
+        area.select(begin, begin + text.length)
+    }
+    /// Tab / Shift+Tab in a table: align it and go to the next / previous
+    /// cell (Tab in the last cell adds a row). False outside a table.
+    function tableTab(back) {
+        if (root.readOnly) return false
+        const pos = area.cursorPosition
+        const t = tableAt(pos)
+        if (!t) return false
+        const at = tableCellAt(t, pos)
+        let lines = t.lines
+        const cols = Math.max(...lines.map(l => root.tableCells(l).length))
+        let row = at.row, cell = Math.min(at.cell, cols - 1) + (back ? -1 : 1)
+        if (cell >= cols) { ++row; cell = 0 }
+        if (cell < 0) { --row; cell = cols - 1 }
+        if (row === 1) row += back ? -1 : 1
+        if (row < 0) { row = 0; cell = 0 }
+        if (row >= lines.length) lines = lines.concat(["|" + " |".repeat(cols)])
+        const f = formatTable(lines)
+        selectCell(f, replaceTable(t, f.lines), row, cell)
+        return true
+    }
+    /// Enter at the end of a table row: align the table and add an empty row
+    /// below (below the delimiter for the header). In an empty last row:
+    /// the row goes and the table ends, as with lists. False otherwise.
+    function tableEnter() {
+        if (root.readOnly || area.selectionStart !== area.selectionEnd) return false
+        const pos = area.cursorPosition
+        const t = tableAt(pos)
+        if (!t) return false
+        const at = tableCellAt(t, pos)
+        if (pos !== t.starts[at.row] + t.lines[at.row].length) return false
+        const last = t.lines.length - 1
+        if (at.row === last && at.row > 1 && root.tableCells(t.lines[last]).every(c => c === "")) {
+            const f = formatTable(t.lines.slice(0, last))
+            const starts = replaceTable({ start: t.start, end: t.end }, f.lines.concat([""]))
+            area.cursorPosition = starts[last]
+            return true
+        }
+        const cols = Math.max(...t.lines.map(l => root.tableCells(l).length))
+        const row = Math.max(2, at.row + 1)
+        const lines = t.lines.slice(0, row).concat(["|" + " |".repeat(cols)], t.lines.slice(row))
+        const f = formatTable(lines)
+        selectCell(f, replaceTable(t, f.lines), row, 0)
+        return true
+    }
+    /// Aligns the table at `pos`, keeping the cursor in its cell.
+    function alignTableAt(pos) {
+        const t = tableAt(pos)
+        if (!t) return
+        const f = formatTable(t.lines)
+        if (f.lines.join("\n") === area.text.slice(t.start, t.end)) return
+        const cursor = area.cursorPosition
+        const inside = cursor >= t.start && cursor <= t.end
+        const at = inside ? tableCellAt(t, cursor) : null
+        const delta = f.lines.join("\n").length - (t.end - t.start)
+        const starts = replaceTable(t, f.lines)
+        if (at) {
+            const cellText = root.tableCells(f.lines[at.row])[Math.min(at.cell, f.offsets[at.row].length - 1)] || ""
+            area.cursorPosition = starts[at.row] + f.offsets[at.row][Math.min(at.cell, f.offsets[at.row].length - 1)]
+                + Math.min(at.offset, cellText.length)
+        } else if (cursor > t.end) area.cursorPosition = cursor + delta
+        else area.cursorPosition = cursor
+    }
+    /// Aligns every table of the note (from the bottom, so positions above
+    /// stay valid). Returns how many changed.
+    function alignTables() {
+        if (root.readOnly || !root.wikiCompletion) return 0
+        const found = []
+        const text = area.text
+        let p = 0
+        while (p < text.length) {
+            const e = text.indexOf("\n", p)
+            const end = e < 0 ? text.length : e
+            const t = root.tableDelimiter.test(text.slice(p, end)) && p > 0 ? tableAt(p) : null
+            if (t && (found.length === 0 || found[found.length - 1].start !== t.start)) found.push(t)
+            p = (t ? t.end : end) + 1
+        }
+        let changed = 0
+        for (let i = found.length - 1; i >= 0; --i) {
+            const before = area.text
+            alignTableAt(found[i].start)
+            if (area.text !== before) ++changed
+        }
+        return changed
+    }
+    // Leaving a table aligns it (a moment later: not while selecting).
+    property int lastTablePos: -1
+    function cursorMoved() {
+        if (!root.wikiCompletion || root.readOnly || root.large) return
+        tableLeaveTimer.restart()
+    }
+    Timer {
+        id: tableLeaveTimer
+        interval: 300
+        onTriggered: {
+            const pos = area.cursorPosition
+            const was = root.lastTablePos
+            const now = area.selectionStart === area.selectionEnd ? root.tableAt(pos) : null
+            root.lastTablePos = now ? pos : -1
+            if (was < 0 || area.selectionStart !== area.selectionEnd || was > area.length) return
+            const t = root.tableAt(was)
+            if (t && !(pos >= t.start && pos <= t.end)) root.alignTableAt(was)
+        }
+    }
+
     // ---- spellcheck (notes, German and English): the misspelled words are
     // underlined in the visible part; a right click offers suggestions.
     readonly property bool spellOn: root.wikiCompletion && !root.large && !!root.app && root.app.spellcheck
@@ -709,7 +971,7 @@ Rectangle {
                         // Old underlines would sit in the wrong place until checked again.
                         if (root.spellOn) { root.spellRanges = []; root.spellMarks = []; spellTimer.restart() }
                     }
-                    onCursorPositionChanged: if (root.wikiCompletion) completionTimer.restart()
+                    onCursorPositionChanged: if (root.wikiCompletion) { completionTimer.restart(); root.cursorMoved() }
                     Keys.onPressed: (event) => {
                         const ctrl = event.modifiers & Qt.ControlModifier
                         if (completion.visible) {
@@ -719,6 +981,18 @@ Rectangle {
                                 root.acceptCompletion(); event.accepted = true; return
                             }
                             if (event.key === Qt.Key_Escape) { completion.close(); event.accepted = true; return }
+                        }
+                        // Markdown tables: Tab / Shift+Tab go from cell to cell, Enter
+                        // at the end of a row adds one (all aligning the table).
+                        if (root.wikiCompletion && !ctrl && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
+                                && root.tableTab(event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier))) {
+                            event.accepted = true
+                            return
+                        }
+                        if (root.wikiCompletion && !ctrl && !(event.modifiers & Qt.ShiftModifier)
+                                && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && root.tableEnter()) {
+                            event.accepted = true
+                            return
                         }
                         // Markdown lists: Enter continues them (Shift+Enter: a plain line break).
                         if (root.wikiCompletion && !ctrl && !(event.modifiers & Qt.ShiftModifier)

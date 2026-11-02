@@ -400,7 +400,36 @@ Item {
                 const mdv = editor.activeTab.viewerItem
                 ed.applyState({ cursor: ed.text.length })
                 mdv.insertTable(2, 2)
-                check("Tabelle einfügen", ed.text.indexOf("| Spalte 1 | Spalte 2 |\n| --- | --- |\n|     |     |\n|     |     |") > 0, JSON.stringify(ed.text.slice(-80)))
+                check("Tabelle einfügen (ausgerichtet)", ed.text.indexOf("| Spalte 1 | Spalte 2 |\n| -------- | -------- |\n|          |          |\n|          |          |") > 0, JSON.stringify(ed.text.slice(-120)))
+                // Tables: Tab aligns and goes from cell to cell, Enter adds a row,
+                // Enter in an empty last row ends the table.
+                const tab = (shift) => app.sendKey(window, shift ? Qt.Key_Backtab : Qt.Key_Tab, shift ? Qt.ShiftModifier : 0)
+                ed.insertText("\n\n| a | b |\n|:-:|--:|\n| langer Text | 1 |", true)
+                const tableAt = ed.text.lastIndexOf("| a | b |")
+                ed.applyState({ cursor: tableAt + 2 })
+                tab(false)
+                const aligned = "|      a      |   b |\n| :---------: | --: |\n| langer Text |   1 |"
+                check("Tabelle: Tab richtet die Spalten aus (mit Ausrichtung)", ed.text.endsWith(aligned), JSON.stringify(ed.text.slice(-70)))
+                check("Tabelle: Tab markiert die nächste Zelle", ed.selectedText === "b", JSON.stringify(ed.selectedText))
+                tab(false)
+                check("Tabelle: Tab springt über die Trennzeile", ed.selectedText === "langer Text", JSON.stringify(ed.selectedText))
+                tab(true)
+                check("Tabelle: Umschalt+Tab geht zurück", ed.selectedText === "b", JSON.stringify(ed.selectedText))
+                tab(false); tab(false); tab(false)
+                check("Tabelle: Tab in der letzten Zelle fügt eine Zeile an", ed.text.endsWith(aligned + "\n|             |     |"), JSON.stringify(ed.text.slice(-50)))
+                ed.insertText("x", false)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Tabelle: Enter am Zeilenende fügt eine Zeile an",
+                      ed.text.endsWith("|      x      |     |\n|             |     |"), JSON.stringify(ed.text.slice(-50)))
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Tabelle: Enter in leerer letzter Zeile beendet die Tabelle",
+                      ed.text.endsWith("|      x      |     |\n") && !ed.text.endsWith("|     |\n|             |     |\n"), JSON.stringify(ed.text.slice(-50)))
+                ed.insertText("\n| c | d |\n|---|---|\n| e | ffff |\n\n```\n| x | y |\n|---|---|\n```\n", true)
+                check("Tabellen ausrichten: ganze Notiz", ed.alignTables() === 1
+                      && ed.text.indexOf("| c   | d    |\n| --- | ---- |\n| e   | ffff |") > 0
+                      && ed.text.indexOf("```\n| x | y |\n|---|---|\n```") > 0, JSON.stringify(ed.text.slice(-120)))
                 ed.applyState({ cursor: ed.text.length })
                 mdv.insertDiagram(0)
                 check("Diagramm-Vorlage einfügen", ed.text.indexOf("```mermaid\nflowchart TD") > 0)

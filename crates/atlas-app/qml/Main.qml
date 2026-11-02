@@ -238,6 +238,10 @@ ApplicationWindow {
             if (md && md.askTable) {
                 list.push({ name: qsTr("Bild einfügen …"), hint: app.fileName(current), run: () => md.askImage() })
                 list.push({ name: qsTr("Tabelle einfügen …"), hint: app.fileName(current), run: () => md.askTable() })
+                list.push({ name: qsTr("Tabellen ausrichten"), hint: app.fileName(current), run: () => {
+                    const n = md.editorItem.alignTables()
+                    md.message(n ? qsTr("%n Tabelle(n) ausgerichtet", "", n) : qsTr("Alle Tabellen sind schon ausgerichtet"))
+                } })
                 list.push({ name: qsTr("Ordnerbaum einfügen …"), hint: app.fileName(current), run: () => md.askFolderTree() })
                 md.diagramTemplates.forEach((t, i) =>
                     list.push({ name: qsTr("Diagramm einfügen: %1").arg(t.name), hint: "Mermaid", run: () => md.insertDiagram(i) }))
