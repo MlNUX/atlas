@@ -184,6 +184,16 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   - Der Notizindex überspringt Build- und Abhängigkeitsordner
     (`node_modules`, `target`, …) auch ohne `.gitignore`.
 
+### Behoben
+- **PDF beim Rauszoomen verschwommen**: Die Seite lag oft auf halben Pixeln
+  oder war einen Bruchteil größer als ihr gerendertes Bild und wurde dadurch
+  ein zweites Mal geglättet. Jetzt pixelgenau (bei 100 % Skalierung
+  gemessen identisch mit Poppler; bei 125/150 % noch nicht ganz).
+- **Markdown-Vorschau im geteilten Modus mit Pixelfehlern** (z. B. „i“ als
+  „:“): Bei halber Breite lag die Vorschau auf halben Pixeln, je nach
+  Grafiktreiber wurden Spalten doppelt gezeigt oder ausgelassen. Sie liegt
+  jetzt immer auf ganzen Pixeln.
+
 ## [1.1.2] – 2026-10-27
 
 ### Neu

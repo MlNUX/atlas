@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import QtQuick.Window
 import QtWebEngine
 import Atlas
 
@@ -395,7 +396,12 @@ Rectangle {
                         Component.onCompleted: {
                             webView = PreviewPool.take(webHost)
                             Timing.mark(webView.ready ? "Vorschau aus dem Vorrat (geladen)" : "Vorschau neu erzeugt (lädt)")
-                            webView.anchors.fill = webHost
+                            // On whole pixels (not anchors.fill): see snap().
+                            webView.x = Qt.binding(() => webHost.snapX)
+                            webView.y = Qt.binding(() => webHost.snapY)
+                            webView.width = Qt.binding(() => Math.max(0, Math.floor(webHost.width - webHost.snapX)))
+                            webView.height = Qt.binding(() => Math.max(0, Math.floor(webHost.height - webHost.snapY)))
+                            snap()
                             // A spare was hidden: have Chromium paint it here.
                             webRepaint.request()
                             // Loaded already (the pool's spare): once the Loader
@@ -403,6 +409,30 @@ Rectangle {
                             if (webView.ready) Qt.callLater(loaded)
                         }
                         Component.onDestruction: if (webView) webView.destroy()
+                        // The preview on whole device pixels with a whole-pixel
+                        // size: in a split it gets half widths (x = 996.5), and
+                        // Chromium's frame then lands between pixels – with
+                        // some drivers columns are doubled or dropped ("i"
+                        // turns into ":"). snapX/Y move it onto the next pixel.
+                        property real snapX: 0
+                        property real snapY: 0
+                        function snap() {
+                            const d = Screen.devicePixelRatio
+                            const p = webHost.mapToItem(null, 0, 0)
+                            const fx = Math.ceil(p.x * d) / d - p.x, fy = Math.ceil(p.y * d) / d - p.y
+                            snapX = fx < 1e-6 ? 0 : fx
+                            snapY = fy < 1e-6 ? 0 : fy
+                        }
+                        onXChanged: snap()
+                        onYChanged: snap()
+                        onWidthChanged: snap()
+                        onHeightChanged: snap()
+                        Connections {
+                            target: webHost.Window.window
+                            ignoreUnknownSignals: true
+                            function onWidthChanged() { Qt.callLater(webHost.snap) }
+                            function onHeightChanged() { Qt.callLater(webHost.snap) }
+                        }
                         function loaded() {
                             Timing.mark("Vorschauseite bereit")
                             root.pageLoaded = true
