@@ -135,7 +135,9 @@ QtObject {
         const exts = extensions || []
         const hidden = l.hidden
         const known = (id) => !!catalog[id] || (id.startsWith("ext:") && exts.some(e => "ext:" + e.name === id))
-        const tabs = l.tabs.filter(id => known(id) && catalog[id] && catalog[id].tab && hidden.indexOf(id) < 0)
+        // `hidden` is about the overview and the bottom: a tab goes only by
+        // removing it from `tabs` (graph is a tab and in the overview).
+        const tabs = l.tabs.filter(id => known(id) && catalog[id] && catalog[id].tab)
         const pinned = l.pinned.filter(id => known(id) && catalog[id] && catalog[id].pin && hidden.indexOf(id) < 0 && tabs.indexOf(id) < 0)
         // A block may be a tab and in the overview (graph and actions are,
         // as before profiles), but not in the overview and at the bottom.

@@ -2062,6 +2062,16 @@ Item {
                       inspector.overviewIds.join())
                 inspector.undoHiding()
                 check("Ausblenden rückgängig", inspector.overviewIds.indexOf("annotations") >= 0, inspector.overviewIds.join())
+                // Graph is a tab and in the overview: hiding it there keeps the tab.
+                inspector.hideBlock("graph")
+                check("Graph in der Übersicht ausblenden: Reiter bleibt", inspector.overviewIds.indexOf("graph") < 0
+                      && inspector.tabIds.indexOf("graph") >= 0, inspector.tabIds.join() + " / " + inspector.overviewIds.join())
+                inspector.undoHiding()
+                inspector.hideTab("graph")
+                check("Reiter ausblenden: Baustein bleibt in der Übersicht", inspector.tabIds.indexOf("graph") < 0
+                      && inspector.overviewIds.indexOf("graph") >= 0, inspector.tabIds.join() + " / " + inspector.overviewIds.join())
+                inspector.undoHiding()
+                check("Reiter ausblenden rückgängig", inspector.tabIds.indexOf("graph") >= 0, inspector.tabIds.join())
                 inspector.blockToTab("annotations")
                 check("Baustein als eigener Reiter", inspector.tabIds.indexOf("annotations") > 0 && inspector.overviewIds.indexOf("annotations") < 0,
                       inspector.tabIds.join())

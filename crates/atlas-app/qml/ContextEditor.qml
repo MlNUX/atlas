@@ -187,7 +187,6 @@ FocusScope {
                             required property int index
                             label: ed.info(modelData).name
                             icon: ed.info(modelData).icon
-                            dimmed: ed.isHidden(modelData)
                             canLeft: index > 0
                             canRight: index < ed.lists.tabs.length - 1
                             onMoveLeft: ed.moveTab(modelData, -1)

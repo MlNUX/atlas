@@ -214,6 +214,14 @@ Rectangle {
         undoHide = { target: target, lists: before, name: (ContextProfiles.info(id, extensionList) || { name: id }).name }
         undoTimer.restart()
     }
+    /// Removes tab `id` (the block keeps its place in the overview, if any).
+    function hideTab(id) {
+        const before = ContextProfiles.lists(config, editTarget)
+        const target = editTarget
+        change(l => { const i = l.tabs.indexOf(id); if (i >= 0) l.tabs.splice(i, 1) })
+        undoHide = { target: target, lists: before, name: qsTr("Reiter %1").arg(tabTitle(id)) }
+        undoTimer.restart()
+    }
     function undoHiding() {
         if (!undoHide) return
         ContextProfiles.save(app, config, undoHide.target, undoHide.lists)
@@ -627,7 +635,7 @@ Rectangle {
         id: tabMenu
         property string blockId: ""
         MenuItem { text: qsTr("In die Übersicht"); onTriggered: inspector.blockTo(tabMenu.blockId, "overview") }
-        MenuItem { text: qsTr("Ausblenden"); onTriggered: inspector.hideBlock(tabMenu.blockId) }
+        MenuItem { text: qsTr("Reiter ausblenden"); onTriggered: inspector.hideTab(tabMenu.blockId) }
         MenuSeparator {}
         MenuItem { text: qsTr("Leiste anpassen …"); onTriggered: inspector.customize() }
     }

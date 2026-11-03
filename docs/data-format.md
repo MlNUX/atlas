@@ -281,7 +281,7 @@ by_kind = true                                   # Profile nach Dateityp; false:
 tabs = ["links", "graph", "actions"]             # Reiter nach „Übersicht“
 overview = ["today", "tasks", "annotations", "graph", "actions"]
 pinned = ["pomodoro"]                            # unten angeheftet, auf jedem Reiter
-hidden = []
+hidden = []                                      # ausgeblendet in Übersicht und unten (ein Reiter: aus tabs entfernen)
 collapsed = []
 
 [context.profiles.pdf]                           # pdf, markdown, code, calendar: nur Abweichungen von default
