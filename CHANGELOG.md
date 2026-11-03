@@ -136,6 +136,28 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   (` ```python title="a.py" `). Atlas bringt dafür eine erweiterte
   Markdown-Definition für KSyntaxHighlighting mit
   (`scripts/gen-markdown-syntax.py`).
+- **Anpassbare Kontextleiste** (Konzept: docs/concept/kontextleiste.html):
+  - Die Leiste besteht aus **Bausteinen** mit einheitlicher Kopfzeile:
+    Klick klappt ein und aus, das ⋯-Menü verschiebt (auch Alt+↑/↓),
+    zeigt einen Baustein als eigenen Reiter, heftet ihn unten an oder
+    blendet ihn aus (mit „Rückgängig“). Leere Bausteine klappen von selbst
+    zu (einstellbar: zeigen, einklappen, ausblenden).
+  - **„Leiste anpassen“** (Knopf in der Reiterzeile, Arbeitsleiste) schaltet
+    die Leiste in einen Bearbeitungsmodus: Reiter als Chips, Bausteine zum
+    Ziehen zwischen Übersicht und „Unten angeheftet“, Auge zum Ausblenden,
+    Galerie mit allen Bausteinen, Zurücksetzen.
+  - **Profile je Dateityp** (PDF, Markdown, Code, Kalender): Die Leiste
+    wechselt mit dem aktiven Tab. Solange ein Profil nicht eingestellt ist,
+    gilt „Allgemein“; „Gilt für“ im ⋯-Menü legt es an. Gespeichert in
+    `[context.profiles]` der eigenen config.toml, nur Abweichungen.
+  - **Neue Bausteine**: Gliederung (PDF-Lesezeichen mit aktuellem Abschnitt,
+    Überschriften der Notiz), Tags der Notiz, Dateiinfo, Diese Woche.
+    Erweiterungskarten sind jetzt Bausteine der Übersicht.
+  - Bei schmaler Leiste zeigen die Reiter Symbole statt seitwärts zu
+    scrollen (einstellbar: automatisch, Text, Symbole).
+  - Einstellungen → Kontextleiste zeigt die Profile mit „Anpassen …“ und das
+    Verhalten. Alte Einstellungen (`calendar = false` …) gelten weiter,
+    bis ein Profil gespeichert wird; dabei werden sie übernommen.
 - **Markdown-Tabellen im Editor ausgerichtet**: Spalten stehen im Text
   untereinander, die Ausrichtung der Trennzeile (`:---:`, `---:`) wird
   übernommen. Tab / Umschalt+Tab springen von Zelle zu Zelle (Tab in der

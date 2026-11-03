@@ -244,6 +244,46 @@ pub struct ContextConfig {
     /// bar; not listed: what the extension asks for (`context:`).
     #[serde(default)]
     pub extensions: std::collections::BTreeMap<String, bool>,
+    /// Empty blocks: "show", "collapse" (only their header) or "hide".
+    #[serde(default = "empty_blocks")]
+    pub empty: String,
+    /// Tab labels: "auto" (icons when narrow), "text" or "icons".
+    #[serde(default = "tab_labels")]
+    pub tab_labels: String,
+    /// Profiles by kind of file; off: "default" everywhere.
+    #[serde(default = "enabled")]
+    pub by_kind: bool,
+    /// Layouts of the bar (`default`, `pdf`, `markdown`, `code`, `calendar`).
+    /// Without any, the built-in layout applies (and the old switches above);
+    /// a profile other than `default` holds only what differs from it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub profiles: std::collections::BTreeMap<String, ContextProfile>,
+}
+
+/// One layout of the context bar: lists of block names (`annotations`,
+/// `today`, `ext:bnki` …). A missing list means: as in `default`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextProfile {
+    /// Tabs after „Übersicht“.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tabs: Option<Vec<String>>,
+    /// Blocks of the overview, in order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overview: Option<Vec<String>>,
+    /// Blocks pinned to the bottom edge (on every tab).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collapsed: Option<Vec<String>>,
+}
+
+fn empty_blocks() -> String {
+    "collapse".into()
+}
+fn tab_labels() -> String {
+    "auto".into()
 }
 
 fn pomodoro_work() -> u32 {
@@ -266,6 +306,10 @@ impl Default for ContextConfig {
             pomodoro_break: pomodoro_short(),
             pomodoro_long_break: pomodoro_long(),
             extensions: Default::default(),
+            empty: empty_blocks(),
+            tab_labels: tab_labels(),
+            by_kind: true,
+            profiles: Default::default(),
         }
     }
 }
@@ -530,6 +574,30 @@ pub fn editor_launch(config: &EditorConfig, file: &Path, line: u32, column: u32)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn context_profiles_keep_only_what_is_set() {
+        // Old files: no profiles, the old switches still apply.
+        let old: Config = toml::from_str("[context]\ncalendar = false\n").unwrap();
+        assert!(!old.context.calendar && old.context.profiles.is_empty());
+        assert_eq!((old.context.empty.as_str(), old.context.tab_labels.as_str(), old.context.by_kind), ("collapse", "auto", true));
+
+        let mut context = ContextConfig::default();
+        context.profiles.insert(
+            "pdf".into(),
+            ContextProfile { overview: Some(vec!["annotations".into(), "ext:bnki".into()]), ..Default::default() },
+        );
+        let text = toml::to_string_pretty(&toml::Table::from_iter([(
+            "context".to_owned(),
+            toml::Value::try_from(&context).unwrap(),
+        )]))
+        .unwrap();
+        assert!(text.contains("[context.profiles.pdf]"), "{text}");
+        assert!(text.contains("overview = [") && !text.contains("tabs"), "only the set list: {text}");
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.context, context);
+        assert_eq!(back.context.profiles["pdf"].tabs, None);
+    }
 
     #[test]
     fn splits_like_a_shell() {

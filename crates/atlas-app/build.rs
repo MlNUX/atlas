@@ -13,6 +13,8 @@ const QML_FILES: &[&str] = &[
     "qml/CalendarView.qml",
     "qml/CalendarWeek.qml",
     "qml/CommandPalette.qml",
+    "qml/ContextBlock.qml",
+    "qml/ContextEditor.qml",
     "qml/ContextModules.qml",
     "qml/ExtensionCards.qml",
     "qml/ContextPanel.qml",
@@ -80,7 +82,8 @@ fn main() {
         .qml_files(QML_FILES.iter().map(QmlFile::from))
         .qml_file(QmlFile::from("qml/Theme.qml").singleton(true))
         .qml_file(QmlFile::from("qml/PreviewPool.qml").singleton(true))
-        .qml_file(QmlFile::from("qml/Timing.qml").singleton(true));
+        .qml_file(QmlFile::from("qml/Timing.qml").singleton(true))
+        .qml_file(QmlFile::from("qml/ContextProfiles.qml").singleton(true));
     let builder = CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")
         .qt_module("QuickControls2")

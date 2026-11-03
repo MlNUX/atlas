@@ -316,6 +316,22 @@ pub mod qobject {
         #[cxx_name = "setContextModule"]
         fn set_context_module(self: Pin<&mut AppController>, key: &QString, value: i32);
 
+        /// Stores a profile of the context bar (JSON {tabs, overview, pinned,
+        /// hidden, collapsed}, each optional); "" removes it.
+        #[qinvokable]
+        #[cxx_name = "setContextProfile"]
+        fn set_context_profile(self: Pin<&mut AppController>, name: &QString, json: &QString);
+
+        /// Sets `empty`, `tab_labels` or `by_kind` ("true"/"false") of `[context]`.
+        #[qinvokable]
+        #[cxx_name = "setContextOption"]
+        fn set_context_option(self: Pin<&mut AppController>, key: &QString, value: &QString);
+
+        /// Tags of one note (from the note index), as written.
+        #[qinvokable]
+        #[cxx_name = "tagsOfNote"]
+        fn tags_of_note(self: &AppController, path: &QString) -> QStringList;
+
         /// Reads the places again (also done when the file managers' files
         /// change).
         #[qinvokable]
@@ -1527,6 +1543,58 @@ impl qobject::AppController {
         }
         self.as_mut().rust_mut().context_modules = context_json(&config);
         self.as_mut().context_modules_changed();
+    }
+
+    pub fn set_context_profile(mut self: Pin<&mut Self>, name: &QString, json: &QString) {
+        let mut config = Config::load().context;
+        let name = name.to_string();
+        let json = json.to_string();
+        if json.trim().is_empty() || json.trim() == "null" {
+            config.profiles.remove(&name);
+        } else {
+            match serde_json::from_str::<atlas_core::config::ContextProfile>(&json) {
+                Ok(profile) => {
+                    config.profiles.insert(name, profile);
+                }
+                Err(err) => {
+                    log::warn!("invalid context profile {name}: {err}");
+                    return;
+                }
+            }
+        }
+        self.as_mut().store_context(config);
+    }
+
+    pub fn set_context_option(mut self: Pin<&mut Self>, key: &QString, value: &QString) {
+        let mut config = Config::load().context;
+        let value = value.to_string();
+        match key.to_string().as_str() {
+            "empty" if ["show", "collapse", "hide"].contains(&value.as_str()) => config.empty = value,
+            "tab_labels" if ["auto", "text", "icons"].contains(&value.as_str()) => config.tab_labels = value,
+            "by_kind" => config.by_kind = value == "true",
+            other => {
+                log::warn!("unknown context option {other}={value}");
+                return;
+            }
+        }
+        self.as_mut().store_context(config);
+    }
+
+    fn store_context(mut self: Pin<&mut Self>, config: atlas_core::config::ContextConfig) {
+        if let Err(err) = Config::save_context(&config) {
+            log::warn!("cannot save [context]: {err:#}");
+        }
+        self.as_mut().rust_mut().context_modules = context_json(&config);
+        self.as_mut().context_modules_changed();
+    }
+
+    pub fn tags_of_note(&self, path: &QString) -> QStringList {
+        let path = path_of(path);
+        let mut out = QStringList::default();
+        for tag in self.with_notes(|n| n.note(&path).map(|note| note.tags.clone())).flatten().unwrap_or_default() {
+            out.append(qs(tag));
+        }
+        out
     }
 
     /// Dolphin or a GTK file manager changed its places: read them again.

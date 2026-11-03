@@ -27,6 +27,8 @@ Rectangle {
     /// false: no toolbar (the quick look brings its own controls).
     property bool chrome: true
     readonly property int pageCount: doc.pageCount
+    /// Bookmarks of the PDF (JSON [{title, depth, page}]).
+    readonly property string outlineJson: doc.outlineJson
     readonly property alias fling: pagesFling
     /// Size of page `index` in millimetres ({ w, h }), from PDF points.
     function pageSizeMm(index) {

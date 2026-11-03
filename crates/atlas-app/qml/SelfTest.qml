@@ -2034,15 +2034,113 @@ Item {
                 window.inspectorWidth = 270
             },
             () => {
+                // Narrow: the tabs not shown become icons instead of scrolling.
                 const bar = inspector.tabBar
-                check("Kontextleiste schmal: Reiter scrollbar", bar.contentWidth > bar.width, bar.contentWidth + " / " + bar.width)
-                inspector.tab = 3
+                check("Kontextleiste schmal: Reiter als Symbole, kein Seitwärtsscrollen", bar.contentWidth <= bar.width,
+                      bar.contentWidth + " / " + bar.width)
+                window.inspectorWidth = 400
             },
             () => {
                 const bar = inspector.tabBar
-                check("Aktiver Reiter ins Bild gerückt", bar.contentX > 0 && bar.contentX + bar.width >= bar.contentWidth - 1, bar.contentX)
-                inspector.tab = 0
-                window.inspectorWidth = 400
+                check("Kontextleiste breit: Reiter ausgeschrieben", bar.contentWidth > 300, bar.contentWidth)
+                // ---- Blocks and profiles (docs/concept/kontextleiste.html).
+                const L = () => inspector.layout
+                check("Kontextleiste: Standard wie bisher (ohne Profile)",
+                      L().name === "default" && L().overview.slice(0, 5).join() === "today,tasks,annotations,graph,actions"
+                      && L().tabs.join() === "links,graph,actions" && L().pinned.join() === "pomodoro", JSON.stringify(L()))
+                inspector.toggleCollapsed("graph")
+                const cfg = () => JSON.parse(app.contextModules)
+                check("Baustein einklappen: gespeichert in „Allgemein“", cfg().profiles.default.collapsed.indexOf("graph") >= 0
+                      && inspector.isCollapsed("graph"), JSON.stringify(cfg().profiles))
+                inspector.toggleCollapsed("graph")
+                check("Baustein ausklappen", !inspector.isCollapsed("graph"))
+                inspector.moveBlock("tasks", "overview", -1)
+                check("Baustein nach oben (Alt+↑)", L().overview.slice(0, 2).join() === "tasks,today", L().overview.join())
+                inspector.moveBlock("tasks", "overview", 1)
+                inspector.hideBlock("annotations")
+                check("Baustein ausblenden, mit Rückgängig", inspector.overviewIds.indexOf("annotations") < 0 && !!inspector.undoHide,
+                      inspector.overviewIds.join())
+                inspector.undoHiding()
+                check("Ausblenden rückgängig", inspector.overviewIds.indexOf("annotations") >= 0, inspector.overviewIds.join())
+                inspector.blockToTab("annotations")
+                check("Baustein als eigener Reiter", inspector.tabIds.indexOf("annotations") > 0 && inspector.overviewIds.indexOf("annotations") < 0,
+                      inspector.tabIds.join())
+            },
+            () => {
+                check("Als Reiter angezeigt", inspector.tabId === "annotations", inspector.tabId)
+                inspector.blockTo("annotations", "overview")
+                inspector.blockTo("tasks", "pinned")
+                check("Baustein unten anheften", inspector.pinnedIds.join() === "pomodoro,tasks" && inspector.overviewIds.indexOf("tasks") < 0,
+                      inspector.pinnedIds.join())
+                inspector.blockTo("tasks", "overview")
+                // Profiles by file type: a note.
+                editor.open(path("notes/plan-neu.md"), 0, "tab")
+            },
+            () => {
+                // Profiles: a note uses „Allgemein“ until „Markdown“ is set.
+                check("Markdown ohne eigenes Profil: Allgemein", inspector.kind === "markdown" && inspector.profileName === "default")
+                inspector.chooseScope(true)
+                check("„Gilt für: nur Markdown“ legt das Profil an", inspector.profileName === "markdown" && inspector.editTarget === "markdown",
+                      inspector.profileName)
+                inspector.hideBlock("today")
+                const c = JSON.parse(app.contextModules)
+                check("Änderung nur im Markdown-Profil, als Abweichung gespeichert",
+                      inspector.overviewIds.indexOf("today") < 0
+                      && ContextProfiles.layout(c, "default", []).overview.indexOf("today") >= 0
+                      && c.profiles.markdown.hidden.indexOf("today") >= 0 && c.profiles.markdown.tabs === undefined,
+                      JSON.stringify(c.profiles.markdown))
+                // New blocks: outline and tags of the note.
+                check("Gliederung der Notiz", inspector.outline.map(o => o.title).join().startsWith("Plan,Ziele"), JSON.stringify(inspector.outline))
+                editor.open(path("notes/idee.md"), 0, "tab")
+            },
+            () => {
+                check("Tags der Notiz", inspector.noteTags.length === 2 && inspector.noteTags.indexOf("rust") >= 0, JSON.stringify(inspector.noteTags))
+                check("Dateiinfo", !!inspector.fileInfo && inspector.fileInfo.size > 0, JSON.stringify(inspector.fileInfo))
+                editor.open(path("src/main.rs"), 0, "tab")
+            },
+            () => {
+                check("Code: kein eigenes Profil, also Allgemein", inspector.kind === "code" && inspector.profileName === "default", inspector.kind)
+                // Empty blocks (code has no outline): only the header, or hidden.
+                check("Leerer Baustein klappt zu", inspector.isEmpty("outline") && inspector.isCollapsed("outline"))
+                app.setContextOption("empty", "hide")
+                check("Leere Bausteine ausblenden", inspector.shownIn(["outline", "graph"]).join() === "graph")
+                app.setContextOption("empty", "collapse")
+                // Editing mode: add a block, take a suggestion over, reset.
+                inspector.customize()
+                const ed = inspector.editorPanel
+                check("Bearbeitungsmodus öffnet mit dem Profil der Datei", ed.active && ed.profile === "default", ed.profile)
+                ed.profile = "code"
+                check("Profil noch nicht eingestellt: Vorschlag", !ed.profileSet && ed.lists.overview.join() === "actions,fileinfo", ed.lists.overview.join())
+                ed.adopt()
+                check("Vorschlag übernommen: Code-Profil gilt", inspector.profileName === "code"
+                      && inspector.overviewIds.slice(0, 2).join() === "actions,fileinfo", inspector.overviewIds.join())
+                ed.addBlock("week")
+                check("Baustein hinzufügen (Galerie)", inspector.overviewIds.indexOf("week") >= 0 && inspector.modules.showWeek, inspector.overviewIds.join())
+                ed.place("week", "overview", 0)
+                check("Baustein ziehen: an den Anfang", inspector.overviewIds[0] === "week", inspector.overviewIds.join())
+                ed.place("today", "pinned", 0)
+                check("Ziehen nach „Unten angeheftet“", inspector.pinnedIds[0] === "today", inspector.pinnedIds.join())
+                ed.setHidden("fileinfo", true)
+                check("Auge blendet aus, Platz bleibt", inspector.overviewIds.indexOf("fileinfo") < 0 && ed.overviewRows.indexOf("fileinfo") >= 0)
+                ed.removeTab("actions")
+                check("Reiter entfernen: zurück in die Übersicht", inspector.tabIds.indexOf("actions") < 0, inspector.tabIds.join())
+                ed.reset()
+                check("Zurücksetzen: Profil gelöscht, es gilt Allgemein", inspector.profileName === "default"
+                      && JSON.parse(app.contextModules).profiles.code === undefined)
+                ed.finish()
+                check("Fertig beendet den Bearbeitungsmodus", !ed.active)
+                // Profiles off: „Allgemein“ everywhere.
+                app.setContextOption("by_kind", "false")
+                editor.open(path("notes/plan-neu.md"), 0, "tab")
+            },
+            () => {
+                check("Profile nach Dateityp aus: überall Allgemein", inspector.profileName === "default", inspector.profileName)
+                app.setContextOption("by_kind", "true")
+                check("Profile nach Dateityp an: Markdown-Profil", inspector.profileName === "markdown", inspector.profileName)
+                // Back to the shipped bar for the remaining tests.
+                for (const name of Object.keys(JSON.parse(app.contextModules).profiles || {})) app.setContextProfile(name, "")
+                check("Alle Profile zurückgesetzt: Leiste wie ausgeliefert", inspector.profileName === "default"
+                      && inspector.layout.overview.slice(0, 5).join() === "today,tasks,annotations,graph,actions", inspector.layout.overview.join())
             },
             () => {
                 // Built-in action „Ausführen“ for scripts.

@@ -17,8 +17,12 @@ ColumnLayout {
     /// installed extensions change.
     readonly property var extensions: {
         app.contextModules; app.untrustedExtensions
-        try { return JSON.parse(app.contextExtensions()).filter(e => e.shown && e.entries.length > 0) } catch (e) { return [] }
+        try { return JSON.parse(app.contextExtensions()).filter(e => (only ? e.name === only : e.shown) && e.entries.length > 0) } catch (e) { return [] }
     }
+    /// Only this extension (a block of the context bar), without the card's
+    /// own header and frame.
+    property string only: ""
+    readonly property bool bare: only !== ""
     /// A view or command of an extension: {id, name} (see Main.runKeyAction).
     signal keyActionRequested(var binding)
     visible: extensions.length > 0
@@ -30,12 +34,12 @@ ColumnLayout {
             id: card
             required property var modelData
             Layout.fillWidth: true
-            Layout.leftMargin: 10
-            Layout.rightMargin: 10
+            Layout.leftMargin: cards.bare ? 0 : 10
+            Layout.rightMargin: cards.bare ? 0 : 10
             implicitHeight: column.implicitHeight
             radius: Theme.radius
-            color: Theme.header
-            border.color: cardHover.hovered ? Theme.borderStrong : Theme.border
+            color: cards.bare ? "transparent" : Theme.header
+            border.color: cards.bare ? "transparent" : cardHover.hovered ? Theme.borderStrong : Theme.border
             HoverHandler { id: cardHover }
 
             Column {
@@ -44,8 +48,9 @@ ColumnLayout {
 
                 // ---- header: initial, title, description, hide button
                 Item {
+                    visible: !cards.bare
                     width: parent.width
-                    height: Math.max(52, headerText.implicitHeight + 20)
+                    height: cards.bare ? 0 : Math.max(52, headerText.implicitHeight + 20)
                     Rectangle {
                         id: badge
                         x: 12
@@ -104,7 +109,7 @@ ColumnLayout {
                         onClicked: cards.app.setContextModule("ext:" + card.modelData.name, 0)
                     }
                 }
-                Rectangle { x: 12; width: parent.width - 24; height: 1; color: Theme.border }
+                Rectangle { visible: !cards.bare; x: 12; width: parent.width - 24; height: 1; color: Theme.border }
 
                 // ---- views and commands
                 Item { width: 1; height: 4 }

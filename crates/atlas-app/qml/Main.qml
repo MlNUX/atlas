@@ -216,6 +216,8 @@ ApplicationWindow {
             { name: qsTr("Einstellungen …"), hint: qsTr("Orte, Editor, Kalender"), run: () => settingsDialog.open() },
             { name: Theme.light ? qsTr("Dunkles Farbschema") : qsTr("Helles Farbschema"), hint: qsTr("Darstellung"), run: () => app.theme = Theme.light ? "dark" : "light" },
             { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
+            { name: qsTr("Kontextleiste anpassen …"), hint: qsTr("Profil „%1“").arg(ContextProfiles.title(inspector.profileName)),
+              run: () => { window.inspectorVisible = true; inspector.customize() } },
         ]
         if (calendar.connected) {
             list.push({ name: qsTr("Kalender synchronisieren"), hint: calendar.syncStatus,
@@ -368,6 +370,7 @@ ApplicationWindow {
         app: app
         actions: fileActions
         onExtensionsRequested: extensionsDialog.open()
+        onCustomizeContext: (profile) => { settingsDialog.close(); window.inspectorVisible = true; inspector.customize(profile) }
     }
 
     FolderChooser {
@@ -578,7 +581,7 @@ ApplicationWindow {
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "settings": () => settingsDialog.open(),
                 "graph": () => inspector.graphWindow.show(file),
-                "actions": () => { window.inspectorWidth = 300; inspector.tab = 3 },
+                "actions": () => { window.inspectorWidth = 300; inspector.showTab("actions") },
                 "md-edit": () => { if (editor.activeTab && editor.activeTab.viewerItem) editor.activeTab.viewerItem.mode = "split" },
                 "md-sync": () => {
                     const v = editor.activeTab && editor.activeTab.viewerItem
@@ -591,7 +594,7 @@ ApplicationWindow {
                 "pomodoro": () => { inspector.pomodoro.startPause(); inspector.pomodoro.endsAt = Date.now() + (17 * 60 + 42) * 1000; inspector.pomodoro.rounds = 2 },
                 "relate": () => app.requestRelate(file),
                 "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
-                "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },
+                "quotes": () => { window.inspectorVisible = true; inspector.showTab("links"); inspector.linksPanel.scope = "project" },
                 "new-session": () => sessionMenu.askNew(),
                 "quick-look": () => fileActions.quickLook(file),
                 "calendar-settings": () => fileActions.calendarSync.openSettings(),
@@ -1080,6 +1083,7 @@ ApplicationWindow {
             actions: fileActions
             onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
             onKeyActionRequested: (binding) => window.runKeyAction(binding)
+            onTagSearchRequested: (tag) => commandPalette.show("#" + tag)
         }
     }
 

@@ -6,25 +6,30 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Atlas
 
-// Right context bar for the active document: annotations of the PDF in
-// use, links (backlinks with filters), the project graph and user actions.
-// The first tab is an overview with all three as cards.
+// Right context bar for the active document, made of blocks (annotations,
+// links, graph, actions, today, tasks, extension cards …) laid out by the
+// profile of the active tab's file type (ContextProfiles.qml, concept in
+// docs/concept/kontextleiste.html): tabs, the overview and blocks pinned to
+// the bottom edge. Blocks collapse, move and hide right here; „Leiste
+// anpassen“ opens the editing mode (ContextEditor.qml).
 Rectangle {
     id: inspector
     required property AppController app
     required property var editor
     required property var actions
-    /// 0 = Übersicht (modules, annotations, graph, actions), 1 = Verknüpfungen, 2 = Graph,
-    /// 3 = Aktionen.
+    /// Index of the shown tab in `tabIds` (0: usually „Übersicht“).
     property int tab: 0
     readonly property alias linksPanel: linksPanel
     readonly property alias tabBar: tabFlick
     readonly property alias modules: contextModules
     readonly property alias pomodoro: pomodoroTimer
+    readonly property alias editorPanel: contextEditor
 
     signal openRequested(string path, int line, string where, var state)
     /// A view or command from an extension card ({id, name}).
     signal keyActionRequested(var binding)
+    /// A tag of the note was clicked: search it in the project.
+    signal tagSearchRequested(string tag)
 
     color: Theme.panel
     radius: Theme.radius
@@ -120,6 +125,158 @@ Rectangle {
         return out
     }
 
+    // ------------------------------------------------------------ layout
+
+    readonly property var config: { try { return JSON.parse(app.contextModules || "{}") } catch (e) { return {} } }
+    /// Extensions with views or commands ({name, title, shown, entries}).
+    readonly property var extensionList: {
+        app.contextModules; app.untrustedExtensions
+        try { return JSON.parse(app.contextExtensions()).filter(e => e.entries.length > 0) } catch (e) { return [] }
+    }
+    /// File type of the active tab and the profile used for it.
+    readonly property string kind: ContextProfiles.kindOf(activeTab)
+    readonly property string profileName: ContextProfiles.profileFor(config, kind)
+    readonly property var layout: ContextProfiles.layout(config, profileName, extensionList)
+    /// Menus of the blocks change the file type's own profile, unless
+    /// „Gilt für: alle Dateitypen“ was chosen (until the type changes).
+    property bool scopeAll: false
+    onKindChanged: scopeAll = false
+    readonly property string editTarget: profileName !== "default" && !scopeAll ? profileName : "default"
+    readonly property bool canChooseScope: config.by_kind !== false && kind !== "default"
+
+    /// Tabs: „Übersicht“ (unless empty while there are other tabs), then
+    /// the profile's.
+    readonly property var tabIds: (layout.overview.length > 0 || layout.tabs.length === 0 ? ["overview"] : []).concat(layout.tabs)
+    readonly property string tabId: tabIds[Math.max(0, Math.min(tab, tabIds.length - 1))] || "overview"
+    /// The tab chosen by the user, kept when the profile changes.
+    property string wantedTab: "overview"
+    onTabChanged: if (tabIds[tab]) wantedTab = tabIds[tab]
+    onTabIdsChanged: tab = Math.max(0, tabIds.indexOf(wantedTab))
+    /// Shows tab `id` (e.g. "actions", "links"); the overview if the
+    /// profile has no such tab.
+    function showTab(id) { tab = Math.max(0, tabIds.indexOf(id)) }
+    function tabTitle(id) { return id === "overview" ? qsTr("Übersicht") : (ContextProfiles.info(id, extensionList) || { name: id }).name }
+    function tabIcon(id) { return id === "overview" ? "grid" : (ContextProfiles.info(id, extensionList) || { icon: "grid" }).icon }
+
+    /// Empty blocks: shown, only their header, or not at all.
+    readonly property string emptyMode: config.empty || "collapse"
+    function isEmpty(id) {
+        if (id === "annotations") return annotations.length === 0
+        if (id === "outline") return outline.length === 0
+        if (id === "tags") return noteTags.length === 0
+        if (id === "actions") return builtins.length === 0 && userActions.length === 0
+        if (id === "fileinfo") return !document
+        return false
+    }
+    /// Empty blocks opened by hand (until the file changes).
+    property var openedEmpty: ({})
+    onDocumentChanged: openedEmpty = ({})
+    function isCollapsed(id) {
+        if (layout.collapsed.indexOf(id) >= 0) return true
+        return emptyMode === "collapse" && isEmpty(id) && !openedEmpty[id]
+    }
+    function shownIn(ids) { return ids.filter(id => !(emptyMode === "hide" && isEmpty(id))) }
+    readonly property var overviewIds: shownIn(layout.overview)
+    readonly property var pinnedIds: shownIn(layout.pinned)
+
+    // ---- changes (to `editTarget`)
+    function change(fn) { ContextProfiles.edit(app, config, editTarget, fn) }
+    function toggleCollapsed(id) {
+        if (layout.collapsed.indexOf(id) < 0 && emptyMode === "collapse" && isEmpty(id)) {
+            const o = Object.assign({}, openedEmpty)
+            o[id] = !o[id]
+            openedEmpty = o
+            return
+        }
+        change(l => ContextProfiles.toggle(l.collapsed, id, l.collapsed.indexOf(id) < 0))
+    }
+    function moveBlock(id, area, delta) {
+        const shown = area === "pinned" ? layout.pinned : layout.overview
+        change(l => ContextProfiles.move(l, area, id, delta, shown))
+        Qt.callLater(focusHeader, id)
+    }
+    function blockToTab(id) {
+        change(l => { ContextProfiles.unplace(l, id); l.tabs.push(id) })
+        Qt.callLater(showTab, id)
+    }
+    function blockTo(id, area) {
+        change(l => {
+            ContextProfiles.unplace(l, id)
+            // A shown extension card not placed so far keeps its place.
+            l[area].push(id)
+        })
+    }
+    property var undoHide: null
+    function hideBlock(id) {
+        const before = ContextProfiles.lists(config, editTarget)
+        const target = editTarget
+        change(l => ContextProfiles.toggle(l.hidden, id, true))
+        undoHide = { target: target, lists: before, name: (ContextProfiles.info(id, extensionList) || { name: id }).name }
+        undoTimer.restart()
+    }
+    function undoHiding() {
+        if (!undoHide) return
+        ContextProfiles.save(app, config, undoHide.target, undoHide.lists)
+        undoHide = null
+    }
+    Timer { id: undoTimer; interval: 8000; onTriggered: inspector.undoHide = null }
+    function chooseScope(own) {
+        if (own) {
+            if (!ContextProfiles.isSet(config, kind)) ContextProfiles.save(app, config, kind, ContextProfiles.lists(config, "default"))
+            scopeAll = false
+        } else scopeAll = true
+    }
+    /// Opens the editing mode for the profile of the active file.
+    function customize(name) { contextEditor.start(name || profileName) }
+    function focusHeader(id) {
+        for (let i = 0; i < overviewRepeater.count; ++i) {
+            const b = overviewRepeater.itemAt(i)
+            if (b && b.blockId === id) { b.header.forceActiveFocus(); return }
+        }
+    }
+
+    // ---- data of the new blocks
+    /// Headings of the note or bookmarks of the PDF: [{title, depth, page, line}].
+    readonly property var outline: {
+        app.notesRevision
+        if (activeTab && activeTab.kind === "pdf" && pdfViewer) {
+            try { return JSON.parse(pdfViewer.outlineJson || "[]").map(o => ({ title: o.title, depth: o.depth, page: o.page, line: -1 })) } catch (e) { return [] }
+        }
+        if (document && actions.isMarkdown(document)) {
+            const out = []
+            let fence = false
+            const lines = app.readTextFile(document).split("\n")
+            for (let i = 0; i < lines.length; ++i) {
+                if (/^\s*(```|~~~)/.test(lines[i])) fence = !fence
+                const m = !fence && /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(lines[i])
+                if (m && m[2]) out.push({ title: m[2], depth: m[1].length - 1, page: -1, line: i + 1 })
+            }
+            const top = Math.min(...out.map(o => o.depth))
+            return out.map(o => Object.assign(o, { depth: o.depth - top }))
+        }
+        return []
+    }
+    /// The outline entry of the current PDF page (the last one at or before it).
+    readonly property int outlineCurrent: {
+        if (!pdfViewer || !activeTab || activeTab.kind !== "pdf") return -1
+        let at = -1
+        outline.forEach((o, i) => { if (o.page >= 0 && o.page <= pdfViewer.currentPage) at = i })
+        return at
+    }
+    function openOutline(o) {
+        if (o.page >= 0 && pdfViewer) pdfViewer.goToPage(o.page)
+        else if (o.line > 0) openRequested(document, o.line, "tab", {})
+    }
+    readonly property var noteTags: {
+        app.notesRevision
+        return document && actions.isMarkdown(document) ? app.tagsOfNote(document) : []
+    }
+    readonly property var fileInfo: {
+        app.notesRevision
+        if (!document || !actions.ops) return null
+        try { const i = JSON.parse(actions.ops.properties(document)); return i.error ? null : i } catch (e) { return null }
+    }
+
     // --------------------------------------------------------------- view
 
     ColumnLayout {
@@ -127,16 +284,22 @@ Rectangle {
         anchors.margins: 1
         spacing: 0
 
-        // Tabs with an accent underline, always written out; a narrow panel
-        // scrolls them sideways (thin scroll bar, mouse wheel).
+        // Tabs with an accent underline; when the bar is too narrow for the
+        // names (or as set), the tabs not shown show only their icon.
         Item {
+            id: tabArea
+            visible: !contextEditor.active
             Layout.fillWidth: true
             Layout.preferredHeight: 42 + (tabFlick.contentWidth > tabFlick.width ? 6 : 0)
+            FontMetrics { id: tabMetrics; font.pixelSize: Theme.fontSize }
+            readonly property real textWidth: inspector.tabIds.reduce((w, id) => w + tabMetrics.advanceWidth(inspector.tabTitle(id)) + 18, 0)
+            readonly property bool icons: inspector.config.tab_labels === "icons"
+                || (inspector.config.tab_labels !== "text" && textWidth > tabFlick.width)
             Flickable {
                 id: tabFlick
                 anchors.fill: parent
                 anchors.leftMargin: 10
-                anchors.rightMargin: 4
+                anchors.rightMargin: 34
                 contentWidth: tabRow.width
                 contentHeight: height
                 flickableDirection: Flickable.HorizontalFlick
@@ -169,18 +332,29 @@ Rectangle {
                     spacing: 2
                     Repeater {
                         id: tabRepeater
-                        model: [qsTr("Übersicht"), qsTr("Verknüpfungen"), qsTr("Graph"), qsTr("Aktionen")]
+                        model: inspector.tabIds
                         Item {
+                            id: tabItem
                             required property string modelData
                             required property int index
-                            width: tabLabel.implicitWidth + 16
+                            readonly property bool current: inspector.tab === index
+                            readonly property bool iconOnly: tabArea.icons && !current
+                            width: iconOnly ? 32 : tabLabel.implicitWidth + 16
                             height: 40
                             Text {
                                 id: tabLabel
+                                visible: !tabItem.iconOnly
                                 anchors.centerIn: parent
-                                text: parent.modelData
-                                color: inspector.tab === parent.index ? Theme.accent : tabHover.hovered ? Theme.textStrong : Theme.text
+                                text: inspector.tabTitle(tabItem.modelData)
+                                color: tabItem.current ? Theme.accent : tabHover.hovered ? Theme.textStrong : Theme.text
                                 font.pixelSize: Theme.fontSize
+                            }
+                            Icon {
+                                visible: tabItem.iconOnly
+                                anchors.centerIn: parent
+                                name: inspector.tabIcon(tabItem.modelData)
+                                size: 16
+                                color: tabHover.hovered ? Theme.textStrong : Theme.text
                             }
                             Rectangle {
                                 anchors.bottom: parent.bottom
@@ -188,13 +362,34 @@ Rectangle {
                                 height: 2
                                 radius: 1
                                 color: Theme.accent
-                                visible: inspector.tab === parent.index
+                                visible: tabItem.current
                             }
                             HoverHandler { id: tabHover }
-                            MouseArea { anchors.fill: parent; onClicked: inspector.tab = parent.index }
+                            ToolTip.visible: tabItem.iconOnly && tabHover.hovered
+                            ToolTip.delay: 400
+                            ToolTip.text: inspector.tabTitle(tabItem.modelData)
+                            MouseArea {
+                                anchors.fill: parent
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onClicked: (mouse) => {
+                                    if (mouse.button === Qt.RightButton && tabItem.modelData !== "overview") {
+                                        tabMenu.blockId = tabItem.modelData
+                                        tabMenu.popup()
+                                    } else inspector.tab = tabItem.index
+                                }
+                            }
                         }
                     }
                 }
+            }
+            IconButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 4
+                y: 8
+                iconName: "settings"
+                iconSize: 14
+                tip: qsTr("Leiste anpassen")
+                onClicked: inspector.customize()
             }
             Connections {
                 target: inspector
@@ -202,78 +397,57 @@ Rectangle {
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
         }
+        // Which profile applies, shown briefly when it changes.
+        Rectangle {
+            id: profileStrip
+            visible: !contextEditor.active && opacity > 0
+            opacity: 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? 22 : 0
+            color: Theme.accentSoft
+            Text {
+                anchors.centerIn: parent
+                text: qsTr("Profil: %1").arg(ContextProfiles.title(inspector.profileName))
+                color: Theme.accent
+                font.pixelSize: Theme.smallFontSize
+            }
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+            Timer { id: stripTimer; interval: 1600; onTriggered: profileStrip.opacity = 0 }
+            Connections {
+                target: inspector
+                function onProfileNameChanged() { profileStrip.opacity = 1; stripTimer.restart() }
+            }
+        }
 
         StackLayout {
+            visible: !contextEditor.active
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: inspector.tab
+            currentIndex: ({ overview: 0, links: 1, graph: 2, actions: 3 })[inspector.tabId] ?? 4
 
-            // ---- overview: annotations, graph, actions
+            // ---- overview: the blocks
             ScrollView {
                 id: overview
                 contentWidth: availableWidth
                 clip: true
                 ColumnLayout {
                     width: overview.availableWidth
-                    spacing: 10
+                    spacing: 8
                     Item { Layout.preferredHeight: 2 }
-                    // Today's entries and tasks (each can be switched off in
-                    // the settings).
-                    ContextModules {
-                        id: contextModules
-                        Layout.fillWidth: true
-                        visible: showCalendar || showTasks
-                        app: inspector.app
-                        actions: inspector.actions
-                    }
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border; visible: contextModules.visible }
-                    Label { Layout.leftMargin: 14; text: qsTr("Anmerkungen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
                     Repeater {
-                        model: inspector.annotations.slice(0, 6)
-                        AnnotationCard { }
+                        id: overviewRepeater
+                        model: inspector.overviewIds
+                        delegate: BlockView { area: "overview" }
                     }
                     Label {
+                        visible: inspector.overviewIds.length === 0
                         Layout.fillWidth: true
                         Layout.margins: 14
-                        visible: inspector.annotations.length === 0
                         wrapMode: Text.Wrap
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
-                        text: inspector.pdfPath
-                            ? qsTr("Noch keine Anmerkungen in %1. Text in der PDF markieren und kommentieren.").arg(inspector.app.fileName(inspector.pdfPath))
-                            : qsTr("Eine PDF öffnen, um ihre Markierungen und Kommentare hier zu sehen.")
+                        text: qsTr("Keine Bausteine in der Übersicht. „Leiste anpassen“ fügt welche hinzu.")
                     }
-                    Label {
-                        Layout.leftMargin: 14
-                        visible: inspector.annotations.length > 6
-                        text: qsTr("Alle %1 Anmerkungen in der Seitenleiste der PDF").arg(inspector.annotations.length)
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.smallFontSize
-                    }
-
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 8
-                        Label { Layout.fillWidth: true; text: qsTr("Graph"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
-                        IconButton { iconName: "maximize"; iconSize: 14; tip: qsTr("Groß anzeigen (eigenes Fenster)"); onClicked: graphDialog.show(inspector.document) }
-                    }
-                    ContextPanel {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 240
-                        app: inspector.app
-                        path: inspector.document
-                        tab: 1
-                        showTabs: false
-                        compact: true
-                        color: "transparent"
-                        onOpenRequested: (path, line, newPane, state) => inspector.openRequested(path, line, newPane ? "split" : "tab", state)
-                    }
-
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-                    Label { Layout.leftMargin: 14; text: qsTr("Aktionen"); color: Theme.textStrong; font.pixelSize: Theme.fontSize; font.bold: true }
-                    ActionList { items: inspector.builtins.concat(inspector.userActions.slice(0, 4)) }
                     Item { Layout.preferredHeight: 8 }
                 }
             }
@@ -327,15 +501,6 @@ Rectangle {
                         font.pixelSize: Theme.smallFontSize
                         text: qsTr("Noch keine eigenen Aktionen für diese Datei. Lege welche für das Projekt an oder installiere Erweiterungen.")
                     }
-                    // Cards of extensions („In der Kontextleiste anzeigen“ in
-                    // the settings).
-                    SectionLabel { text: qsTr("Erweiterungen"); Layout.topMargin: 6; visible: extensionCards.visible }
-                    ExtensionCards {
-                        id: extensionCards
-                        Layout.fillWidth: true
-                        app: inspector.app
-                        onKeyActionRequested: (binding) => inspector.keyActionRequested(binding)
-                    }
                     // (Wraps in a narrow bar instead of widening it.)
                     Flow {
                         Layout.fillWidth: true
@@ -347,16 +512,375 @@ Rectangle {
                     }
                 }
             }
+
+            // ---- another block as a tab (annotations, outline)
+            ScrollView {
+                id: blockTab
+                contentWidth: availableWidth
+                clip: true
+                Loader {
+                    width: blockTab.availableWidth
+                    sourceComponent: inspector.contentOf(inspector.tabId)
+                }
+            }
         }
 
-        // Pomodoro, fixed to the bottom edge on every tab.
-        PomodoroTimer {
-            id: pomodoroTimer
+        // The editing mode replaces tabs and overview.
+        ContextEditor {
+            id: contextEditor
+            visible: active
             Layout.fillWidth: true
-            Layout.margins: 10
-            visible: pomodoroTimer.settings.pomodoro !== false
+            Layout.fillHeight: true
             app: inspector.app
-            actions: inspector.actions
+            config: inspector.config
+            extensions: inspector.extensionList
+            currentProfile: inspector.profileName
+        }
+
+        // „Ausgeblendet · Rückgängig“
+        Rectangle {
+            visible: !!inspector.undoHide && !contextEditor.active
+            Layout.fillWidth: true
+            Layout.leftMargin: 10
+            Layout.rightMargin: 10
+            Layout.topMargin: 6
+            Layout.preferredHeight: 32
+            radius: 8
+            color: Theme.raised
+            border.color: Theme.border
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 4
+                Text {
+                    Layout.fillWidth: true
+                    text: inspector.undoHide ? qsTr("„%1“ ausgeblendet").arg(inspector.undoHide.name) : ""
+                    color: Theme.text
+                    font.pixelSize: Theme.smallFontSize
+                    elide: Text.ElideRight
+                }
+                Button { flat: true; text: qsTr("Rückgängig"); onClicked: inspector.undoHiding() }
+            }
+        }
+
+        // Pinned to the bottom edge, on every tab.
+        ColumnLayout {
+            visible: !contextEditor.active && inspector.pinnedIds.length > 0
+            Layout.fillWidth: true
+            Layout.topMargin: 6
+            spacing: 6
+            Repeater {
+                model: inspector.pinnedIds
+                delegate: Loader {
+                    id: pinnedLoader
+                    required property string modelData
+                    required property int index
+                    Layout.fillWidth: true
+                    Layout.leftMargin: modelData === "pomodoro" ? 10 : 0
+                    Layout.rightMargin: modelData === "pomodoro" ? 10 : 0
+                    Layout.bottomMargin: index === inspector.pinnedIds.length - 1 ? 10 : 0
+                    Layout.preferredHeight: item ? item.implicitHeight : 0
+                    sourceComponent: modelData === "pomodoro" ? pomodoroSlot : pinnedBlock
+                    Component {
+                        id: pinnedBlock
+                        BlockView { modelData: pinnedLoader.modelData; index: pinnedLoader.index; area: "pinned" }
+                    }
+                }
+            }
+        }
+    }
+
+    // Data of „Heute“, „Diese Woche“ and „Aufgaben“ (loaded only when placed).
+    ContextModules {
+        id: contextModules
+        app: inspector.app
+        actions: inspector.actions
+        showCalendar: inspector.overviewIds.concat(inspector.pinnedIds).indexOf("today") >= 0
+        showWeek: inspector.overviewIds.concat(inspector.pinnedIds).indexOf("week") >= 0
+        showTasks: inspector.overviewIds.concat(inspector.pinnedIds).indexOf("tasks") >= 0
+    }
+
+    // The one pomodoro timer: it keeps running while it moves between the
+    // bottom edge and the overview, or is hidden.
+    Item { id: pomodoroHome; visible: false }
+    PomodoroTimer {
+        id: pomodoroTimer
+        parent: pomodoroHome
+        app: inspector.app
+        actions: inspector.actions
+    }
+    Component {
+        id: pomodoroSlot
+        Item {
+            id: slot
+            implicitHeight: pomodoroTimer.implicitHeight
+            Component.onCompleted: {
+                pomodoroTimer.parent = slot
+                pomodoroTimer.x = 0
+                pomodoroTimer.width = Qt.binding(() => slot.width)
+            }
+            Component.onDestruction: if (pomodoroTimer.parent === slot) pomodoroTimer.parent = pomodoroHome
+        }
+    }
+
+    Menu {
+        id: tabMenu
+        property string blockId: ""
+        MenuItem { text: qsTr("In die Übersicht"); onTriggered: inspector.blockTo(tabMenu.blockId, "overview") }
+        MenuItem { text: qsTr("Ausblenden"); onTriggered: inspector.hideBlock(tabMenu.blockId) }
+        MenuSeparator {}
+        MenuItem { text: qsTr("Leiste anpassen …"); onTriggered: inspector.customize() }
+    }
+
+    /// Content of a block (the views each block shows below its header).
+    function contentOf(id) {
+        if (id.startsWith("ext:")) return extensionContent
+        return ({ annotations: annotationsContent, outline: outlineContent, links: linksContent, tags: tagsContent,
+                  fileinfo: fileinfoContent, graph: graphContent, actions: actionsContent, today: contextModules.todayView,
+                  week: contextModules.weekView, tasks: contextModules.tasksView, pomodoro: pomodoroSlot })[id] || null
+    }
+    /// Number or date next to a block's name.
+    function countOf(id) {
+        switch (id) {
+        case "annotations": return annotations.length ? String(annotations.length) : ""
+        case "outline": return outline.length ? String(outline.length) : ""
+        case "tasks": return contextModules.openTasks.length ? String(contextModules.openTasks.length) : ""
+        case "today": return contextModules.todayText
+        case "week": return contextModules.weekCount ? String(contextModules.weekCount) : ""
+        case "tags": return noteTags.length ? String(noteTags.length) : ""
+        default: return ""
+        }
+    }
+
+    /// A block placed in the overview or at the bottom.
+    component BlockView: ContextBlock {
+        id: view
+        required property string modelData
+        required property int index
+        blockId: modelData
+        info: ContextProfiles.info(modelData, inspector.extensionList) || { name: modelData, icon: "grid" }
+        content: inspector.contentOf(modelData)
+        count: inspector.countOf(modelData)
+        empty: inspector.isEmpty(modelData)
+        collapsed: inspector.isCollapsed(modelData)
+        readonly property var siblings: area === "pinned" ? inspector.layout.pinned : inspector.layout.overview
+        canMoveUp: siblings.indexOf(modelData) > 0
+        canMoveDown: siblings.indexOf(modelData) >= 0 && siblings.indexOf(modelData) < siblings.length - 1
+        profileTitle: ContextProfiles.title(inspector.kind)
+        ownProfile: inspector.editTarget === inspector.kind
+        canChooseScope: inspector.canChooseScope
+        onToggleCollapsed: inspector.toggleCollapsed(modelData)
+        onMoveBy: (delta) => inspector.moveBlock(modelData, area, delta)
+        onToTab: inspector.blockToTab(modelData)
+        onToPinned: inspector.blockTo(modelData, "pinned")
+        onToOverview: inspector.blockTo(modelData, "overview")
+        onHide: inspector.hideBlock(modelData)
+        onCustomize: inspector.customize()
+        onScopeChosen: (own) => inspector.chooseScope(own)
+        tools: [
+            IconButton {
+                visible: view.modelData === "graph"
+                width: visible ? implicitWidth : 0
+                iconName: "maximize"
+                iconSize: 13
+                tip: qsTr("Groß anzeigen (eigenes Fenster)")
+                onClicked: graphDialog.show(inspector.document)
+            }
+        ]
+    }
+
+    // ---- block contents
+
+    Component {
+        id: annotationsContent
+        ColumnLayout {
+            spacing: 6
+            Repeater {
+                model: inspector.annotations.slice(0, 6)
+                AnnotationCard { Layout.leftMargin: 8; Layout.rightMargin: 8 }
+            }
+            Label {
+                Layout.fillWidth: true
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                visible: inspector.annotations.length === 0
+                wrapMode: Text.Wrap
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+                text: inspector.pdfPath
+                    ? qsTr("Noch keine Anmerkungen in %1. Text in der PDF markieren und kommentieren.").arg(inspector.app.fileName(inspector.pdfPath))
+                    : qsTr("Eine PDF öffnen, um ihre Markierungen und Kommentare hier zu sehen.")
+            }
+            Label {
+                Layout.leftMargin: 12
+                visible: inspector.annotations.length > 6
+                text: qsTr("Alle %1 Anmerkungen in der Seitenleiste der PDF").arg(inspector.annotations.length)
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+            }
+        }
+    }
+    Component {
+        id: outlineContent
+        Column {
+            Repeater {
+                model: inspector.outline.slice(0, 60)
+                delegate: Rectangle {
+                    id: entry
+                    required property var modelData
+                    required property int index
+                    readonly property bool current: index === inspector.outlineCurrent
+                    width: parent ? parent.width : 0
+                    height: 26
+                    color: current ? Theme.selection : entryHover.hovered ? Theme.hover : "transparent"
+                    HoverHandler { id: entryHover }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: 14 + entry.modelData.depth * 12
+                        width: parent.width - x - 36
+                        text: entry.modelData.title
+                        textFormat: Text.PlainText
+                        color: entry.current ? Theme.textStrong : Theme.text
+                        font.pixelSize: Theme.smallFontSize + 1
+                        font.bold: entry.current
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: entry.modelData.page >= 0 ? entry.modelData.page + 1 : ""
+                        color: Theme.textFaint
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: inspector.openOutline(entry.modelData) }
+                }
+            }
+            Label {
+                visible: inspector.outline.length === 0
+                x: 12
+                width: parent ? parent.width - 24 : 0
+                wrapMode: Text.Wrap
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("Keine Gliederung: Lesezeichen einer PDF oder Überschriften einer Notiz erscheinen hier.")
+            }
+        }
+    }
+    Component {
+        id: linksContent
+        ContextPanel {
+            implicitHeight: 280
+            app: inspector.app
+            path: inspector.document
+            tab: 0
+            showTabs: false
+            compact: true
+            color: "transparent"
+            onOpenRequested: (path, line, newPane, state) => inspector.openRequested(path, line, newPane ? "split" : "tab", state)
+        }
+    }
+    Component {
+        id: tagsContent
+        Item {
+            implicitHeight: tagFlow.implicitHeight + 6
+            Flow {
+                id: tagFlow
+                x: 12
+                width: parent.width - 24
+                spacing: 6
+                Repeater {
+                    model: inspector.noteTags
+                    delegate: Rectangle {
+                        id: chip
+                        required property string modelData
+                        width: chipText.implicitWidth + 16
+                        height: 24
+                        radius: 12
+                        color: chipHover.hovered ? Theme.accentSoft : Theme.raised
+                        border.color: Theme.border
+                        HoverHandler { id: chipHover }
+                        Text { id: chipText; anchors.centerIn: parent; text: "#" + chip.modelData; color: Theme.link; font.pixelSize: Theme.smallFontSize }
+                        ToolTip.visible: chipHover.hovered
+                        ToolTip.delay: 600
+                        ToolTip.text: qsTr("Notizen mit #%1 suchen").arg(chip.modelData)
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: inspector.tagSearchRequested(chip.modelData) }
+                    }
+                }
+                Label {
+                    visible: inspector.noteTags.length === 0
+                    color: Theme.textFaint
+                    font.pixelSize: Theme.smallFontSize
+                    text: qsTr("Keine Tags. In einer Notiz: #tag im Text oder tags: im Kopf.")
+                }
+            }
+        }
+    }
+    Component {
+        id: fileinfoContent
+        GridLayout {
+            x: 12
+            width: parent ? parent.width - 24 : 0
+            columns: 2
+            columnSpacing: 10
+            rowSpacing: 3
+            readonly property var i: inspector.fileInfo || {}
+            readonly property var rows: !inspector.fileInfo ? [] : [
+                [qsTr("Größe"), i.sizeText + (inspector.pdfViewer && inspector.activeTab && inspector.activeTab.kind === "pdf"
+                                              ? " · " + qsTr("%n Seite(n)", "", inspector.pdfViewer.pageCount) : "")],
+                [qsTr("Geändert"), inspector.when(Math.round(i.modified / 1000))],
+                [qsTr("Rechte"), i.modeText || ""],
+                [qsTr("Pfad"), inspector.app.relativePath(i.path) || i.path]
+            ]
+            Repeater {
+                model: parent.rows.length * 2
+                delegate: Text {
+                    required property int index
+                    readonly property var row: parent.rows[Math.floor(index / 2)]
+                    Layout.fillWidth: index % 2 === 1
+                    text: row ? row[index % 2] : ""
+                    textFormat: Text.PlainText
+                    color: index % 2 ? Theme.text : Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                    elide: Text.ElideMiddle
+                }
+            }
+        }
+    }
+    Component {
+        id: graphContent
+        ContextPanel {
+            implicitHeight: 240
+            app: inspector.app
+            path: inspector.document
+            tab: 1
+            showTabs: false
+            compact: true
+            color: "transparent"
+            onOpenRequested: (path, line, newPane, state) => inspector.openRequested(path, line, newPane ? "split" : "tab", state)
+        }
+    }
+    Component {
+        id: actionsContent
+        ColumnLayout {
+            spacing: 4
+            ActionList { Layout.leftMargin: 4; Layout.rightMargin: 4; items: inspector.builtins.concat(inspector.userActions.slice(0, 4)) }
+            Label {
+                visible: inspector.builtins.length === 0 && inspector.userActions.length === 0
+                Layout.leftMargin: 12
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("Keine Aktionen für diese Datei.")
+            }
+        }
+    }
+    Component {
+        id: extensionContent
+        ExtensionCards {
+            // The block's id ("ext:<name>"), from the BlockView.
+            only: parent && parent.parent && parent.parent.blockId ? parent.parent.blockId.slice(4) : ""
+            app: inspector.app
+            onKeyActionRequested: (binding) => inspector.keyActionRequested(binding)
         }
     }
 
