@@ -179,8 +179,11 @@ Rectangle {
     readonly property var overviewIds: shownIn(layout.overview)
     readonly property var pinnedIds: shownIn(layout.pinned)
 
-    // ---- changes (to `editTarget`)
-    function change(fn) { ContextProfiles.edit(app, config, editTarget, fn) }
+    // ---- changes: to the file type's own profile, or to all profiles
+    function change(fn) {
+        if (editTarget === "default") ContextProfiles.editAll(app, config, fn)
+        else ContextProfiles.edit(app, config, editTarget, fn)
+    }
     function toggleCollapsed(id) {
         if (layout.collapsed.indexOf(id) < 0 && emptyMode === "collapse" && isEmpty(id)) {
             const o = Object.assign({}, openedEmpty)
@@ -191,7 +194,7 @@ Rectangle {
         change(l => ContextProfiles.toggle(l.collapsed, id, l.collapsed.indexOf(id) < 0))
     }
     function moveBlock(id, area, delta) {
-        const shown = area === "pinned" ? layout.pinned : layout.overview
+        const shown = area === "pinned" ? pinnedIds : overviewIds
         change(l => ContextProfiles.move(l, area, id, delta, shown))
         Qt.callLater(focusHeader, id)
     }
@@ -208,23 +211,21 @@ Rectangle {
     }
     property var undoHide: null
     function hideBlock(id) {
-        const before = ContextProfiles.lists(config, editTarget)
-        const target = editTarget
+        const snap = ContextProfiles.snapshot(config)
         change(l => ContextProfiles.toggle(l.hidden, id, true))
-        undoHide = { target: target, lists: before, name: (ContextProfiles.info(id, extensionList) || { name: id }).name }
+        undoHide = { snapshot: snap, name: (ContextProfiles.info(id, extensionList) || { name: id }).name }
         undoTimer.restart()
     }
     /// Removes tab `id` (the block keeps its place in the overview, if any).
     function hideTab(id) {
-        const before = ContextProfiles.lists(config, editTarget)
-        const target = editTarget
+        const snap = ContextProfiles.snapshot(config)
         change(l => { const i = l.tabs.indexOf(id); if (i >= 0) l.tabs.splice(i, 1) })
-        undoHide = { target: target, lists: before, name: qsTr("Reiter %1").arg(tabTitle(id)) }
+        undoHide = { snapshot: snap, name: qsTr("Reiter %1").arg(tabTitle(id)) }
         undoTimer.restart()
     }
     function undoHiding() {
         if (!undoHide) return
-        ContextProfiles.save(app, config, undoHide.target, undoHide.lists)
+        ContextProfiles.restore(app, config, undoHide.snapshot)
         undoHide = null
     }
     Timer { id: undoTimer; interval: 8000; onTriggered: inspector.undoHide = null }
@@ -671,7 +672,7 @@ Rectangle {
         count: inspector.countOf(modelData)
         empty: inspector.isEmpty(modelData)
         collapsed: inspector.isCollapsed(modelData)
-        readonly property var siblings: area === "pinned" ? inspector.layout.pinned : inspector.layout.overview
+        readonly property var siblings: area === "pinned" ? inspector.pinnedIds : inspector.overviewIds
         canMoveUp: siblings.indexOf(modelData) > 0
         canMoveDown: siblings.indexOf(modelData) >= 0 && siblings.indexOf(modelData) < siblings.length - 1
         profileTitle: ContextProfiles.title(inspector.kind)

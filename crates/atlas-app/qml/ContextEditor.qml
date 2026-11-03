@@ -19,6 +19,7 @@ FocusScope {
     /// Profile of the active file (where editing starts).
     property string currentProfile: "default"
 
+    readonly property alias gallery: gallery
     property bool active: false
     /// The profile being edited.
     property string profile: "default"
@@ -300,7 +301,7 @@ FocusScope {
                 clip: true
                 ColumnLayout {
                     width: galleryScroll.availableWidth
-                    spacing: 2
+                    spacing: 4
                     Repeater {
                         model: ContextProfiles.groups
                         delegate: ColumnLayout {
@@ -320,7 +321,8 @@ FocusScope {
                                     Layout.fillWidth: true
                                     Layout.leftMargin: 8
                                     Layout.rightMargin: 8
-                                    spacing: 8
+                                    Layout.preferredHeight: Math.max(44, implicitHeight + 12)
+                                    spacing: 10
                                     Icon { visible: !entry.modelData.letter; name: entry.modelData.icon; size: 16; color: Theme.accent }
                                     Text { visible: !!entry.modelData.letter; text: entry.modelData.letter || ""; color: Theme.accent; font.bold: true }
                                     ColumnLayout {

@@ -2099,6 +2099,19 @@ Item {
                       && ContextProfiles.layout(c, "default", []).overview.indexOf("today") >= 0
                       && c.profiles.markdown.hidden.indexOf("today") >= 0 && c.profiles.markdown.tabs === undefined,
                       JSON.stringify(c.profiles.markdown))
+                // „Gilt für: alle Dateitypen“: changes every profile; undo restores all.
+                inspector.chooseScope(false)
+                inspector.hideBlock("tasks")
+                const c2 = JSON.parse(app.contextModules)
+                check("„Alle Dateitypen“ ändert Allgemein und das Markdown-Profil",
+                      inspector.overviewIds.indexOf("tasks") < 0 && c2.profiles.default.hidden.indexOf("tasks") >= 0
+                      && c2.profiles.markdown.hidden.indexOf("tasks") >= 0, JSON.stringify(c2.profiles))
+                inspector.undoHiding()
+                const c3 = JSON.parse(app.contextModules)
+                check("Rückgängig stellt alle Profile wieder her", c3.profiles.default.hidden.indexOf("tasks") < 0
+                      && c3.profiles.markdown.hidden.indexOf("tasks") < 0 && c3.profiles.markdown.hidden.indexOf("today") >= 0,
+                      JSON.stringify(c3.profiles))
+                inspector.chooseScope(true)
                 // New blocks: outline and tags of the note.
                 check("Gliederung der Notiz", inspector.outline.map(o => o.title).join().startsWith("Plan,Ziele"), JSON.stringify(inspector.outline))
                 editor.open(path("notes/idee.md"), 0, "tab")

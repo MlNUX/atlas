@@ -169,6 +169,21 @@ QtObject {
         if (name !== "default" && !(config.profiles || {}).default) save(app, config, "default", base(config))
         save(app, JSON.parse(app.contextModules || "{}"), name, l)
     }
+    /// Changes `default` and every other profile that is set by the same
+    /// `change` („Gilt für: alle Dateitypen“): a profile with its own list
+    /// would otherwise hide the change.
+    function editAll(app, config, change) {
+        edit(app, config, "default", change)
+        for (const name of names)
+            if (name !== "default" && (JSON.parse(app.contextModules || "{}").profiles || {})[name])
+                edit(app, JSON.parse(app.contextModules || "{}"), name, change)
+    }
+    /// The stored profiles, to undo a change (see restore()).
+    function snapshot(config) { return JSON.parse(JSON.stringify(config.profiles || {})) }
+    function restore(app, config, snap) {
+        const all = Object.keys(config.profiles || {}).concat(Object.keys(snap))
+        for (const name of all) app.setContextProfile(name, snap[name] ? JSON.stringify(snap[name]) : "")
+    }
     /// Removes `id` from every area (not from hidden / collapsed).
     function unplace(l, id) {
         for (const k of ["tabs", "overview", "pinned"]) {
