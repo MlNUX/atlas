@@ -6,7 +6,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 bnki-Karten-Editor als Ansicht in Atlas. Jeder Stapel ist eine CSV-Datei
 im Projekt (Ordner aus der Einstellung „Ordner der Stapel“); Änderungen
 werden sofort gespeichert. Format und Vorschau wie in der bnki-App
-(CsvIo.kt, LatexText.kt).
+(CsvIo.kt, LatexText.kt). Bilder für Vorderseite, Rückseite und Tipp
+stehen als data:-URL in den Spalten frontImage;backImage;hintImage – die
+CSV bleibt eine einzige Datei; ältere App-Versionen lesen nur die ersten
+vier Spalten.
 -->
 <html lang="de">
 <head>
@@ -103,6 +106,14 @@ werden sofort gespeichert. Format und Vorschau wie in der bnki-App
   summary { cursor: pointer; color: var(--muted); font-size: 13px; }
   details code { background: var(--code-bg); padding: 0 4px; border-radius: 4px; }
   [hidden] { display: none !important; }
+
+  /* Bilder */
+  .field { border-radius: 8px; }
+  .field.drop { outline: 2px dashed var(--accent); outline-offset: 4px; }
+  .img-slot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .img-slot img { max-height: 64px; max-width: 160px; border-radius: 4px; border: 1px solid var(--border); background: #fff; }
+  .card-img { display: block; max-width: 100%; max-height: 320px; margin-top: 8px; border-radius: 6px; }
+  .card-item .card-img { max-height: 90px; max-width: 240px; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -144,12 +155,22 @@ werden sofort gespeichert. Format und Vorschau wie in der bnki-App
   <section>
     <h2 id="formTitle">Neue Karte</h2>
     <form id="cardForm" autocomplete="off">
+      <div class="field" data-field="front">
       <label for="front">Vorderseite (Frage)</label>
       <textarea id="front" rows="4"></textarea>
+      <div class="img-slot" id="frontImg"></div>
+      </div>
+      <div class="field" data-field="back">
       <label for="back">Rückseite (Antwort)</label>
       <textarea id="back" rows="4"></textarea>
+      <div class="img-slot" id="backImg"></div>
+      </div>
+      <div class="field" data-field="hint">
       <label for="hint">Tipp <span class="opt">(optional)</span></label>
       <textarea id="hint" rows="2"></textarea>
+      <div class="img-slot" id="hintImg"></div>
+      </div>
+      <input type="file" id="imageFile" accept="image/*" hidden>
       <label for="tags">Tags <span class="opt">(optional, kommagetrennt)</span></label>
       <input id="tags" type="text" placeholder="bio,zelle,prüfung">
       <div class="error" id="formError"></div>
@@ -171,6 +192,8 @@ werden sofort gespeichert. Format und Vorschau wie in der bnki-App
       <p>Inline-Formel: <code>$x^2$</code> · abgesetzt: <code>$$\frac{a}{b}$$</code></p>
       <p>Codeblock: eine Zeile mit <code>```kotlin</code>, darunter der Code, dann eine Zeile mit <code>```</code>.</p>
       <p>Einfache <code>`Backticks`</code> zeigt die App als normalen Text an.</p>
+      <p>Bilder: pro Feld eins – mit „Bild…“, mit Strg+V ins Textfeld oder per Ziehen auf das Feld.
+         Große Bilder werden auf höchstens 1600 Pixel verkleinert und stehen direkt in der CSV-Datei.</p>
       <p>Jeder Stapel ist eine CSV-Datei im Projekt und wird bei jeder Änderung gespeichert.
          Auf dem Handy: Stapel öffnen → CSV importieren. Die Karten werden in den geöffneten Stapel eingefügt.</p>
     </details>
@@ -190,7 +213,8 @@ werden sofort gespeichert. Format und Vorschau wie in der bnki-App
 
 // ---------- CSV (identisch zu CsvIo.kt) ----------
 const SEP = ";";
-const HEADER = ["front", "back", "hint", "tags"].join(SEP);
+const TEXT_COLS = ["front", "back", "hint", "tags"];
+const IMAGE_COLS = ["frontImage", "backImage", "hintImage"];
 
 function escapeField(f) {
   if (f.includes(SEP) || f.includes('"') || f.includes("\n") || f.includes("\r")) {
@@ -199,10 +223,12 @@ function escapeField(f) {
   return f;
 }
 
+// Die Bildspalten kommen nur dazu, wenn eine Karte ein Bild hat.
 function toCsv(cards) {
-  let out = HEADER + "\n";
+  const cols = cards.some(c => IMAGE_COLS.some(f => c[f])) ? TEXT_COLS.concat(IMAGE_COLS) : TEXT_COLS;
+  let out = cols.join(SEP) + "\n";
   for (const c of cards) {
-    out += [c.front, c.back, c.hint, c.tags].map(escapeField).join(SEP) + "\n";
+    out += cols.map(f => escapeField(c[f] || "")).join(SEP) + "\n";
   }
   return out;
 }
@@ -227,7 +253,16 @@ function parseCsv(text) {
   const start = rows.length && (rows[0][0] || "").toLowerCase() === "front" ? 1 : 0;
   return rows.slice(start)
     .filter(r => !r.every(f => !f.trim()))
-    .map(r => ({ front: r[0] || "", back: r[1] || "", hint: r[2] || "", tags: r[3] || "" }));
+    .map(r => ({
+      front: r[0] || "", back: r[1] || "", hint: r[2] || "", tags: r[3] || "",
+      frontImage: imageOrEmpty(r[4]), backImage: imageOrEmpty(r[5]), hintImage: imageOrEmpty(r[6]),
+    }));
+}
+
+// Nur eingebettete Bilder (data:image/…), keine Adressen nach draußen.
+function imageOrEmpty(v) {
+  v = (v || "").trim();
+  return /^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+\/=\s]+$/i.test(v) ? v.replace(/\s+/g, "") : "";
 }
 
 // ---------- Vorschau (spiegelt LatexText.kt) ----------
@@ -280,6 +315,112 @@ function renderPlain(el, text) {
   el.appendChild(span);
 }
 
+function appendImage(el, src) {
+  if (!src) return;
+  const img = document.createElement("img");
+  img.className = "card-img"; img.src = src; img.alt = "";
+  el.appendChild(img);
+}
+
+// ---------- Bilder ----------
+// Ein Bild wird als data:-URL gespeichert. Zu große werden verkleinert;
+// genommen wird die kleinste Fassung (Original, PNG oder – ohne
+// Transparenz – JPEG).
+const MAX_SIDE = 1600;
+const KEEP_TYPES = /^image\/(png|jpeg|webp|gif)$/;
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error("Das Bild lässt sich nicht lesen."));
+    r.readAsDataURL(file);
+  });
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Das ist kein Bild, das sich anzeigen lässt."));
+    img.src = src;
+  });
+}
+
+async function imageToDataUrl(file) {
+  const original = await readAsDataUrl(file);
+  const img = await loadImage(original);
+  const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
+  if (!w0 || !h0) throw new Error("Das Bild ist leer.");
+  const scale = Math.min(1, MAX_SIDE / Math.max(w0, h0));
+  const w = Math.max(1, Math.round(w0 * scale)), h = Math.max(1, Math.round(h0 * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+  const options = [canvas.toDataURL("image/png")];
+  if (!hasAlpha(ctx, w, h)) options.push(canvas.toDataURL("image/jpeg", 0.85));
+  if (scale === 1 && KEEP_TYPES.test(file.type)) options.push(original);
+  return options.filter(o => o.startsWith("data:image/")).sort((a, b) => a.length - b.length)[0];
+}
+
+function hasAlpha(ctx, w, h) {
+  const data = ctx.getImageData(0, 0, w, h).data;
+  for (let i = 3; i < data.length; i += 4) if (data[i] < 255) return true;
+  return false;
+}
+
+function imageFile(list) {
+  for (const item of list || []) {
+    const file = item instanceof File ? item : (item.kind === "file" ? item.getAsFile() : null);
+    if (file && file.type.startsWith("image/")) return file;
+  }
+  return null;
+}
+
+async function setImage(field, file) {
+  try {
+    setStatus("Bild wird eingefügt …");
+    formImages[field] = await imageToDataUrl(file);
+    setStatus(`Bild eingefügt (${sizeText(formImages[field])})`);
+  } catch (e) {
+    setStatus(e.message, true);
+  }
+  renderImageSlot(field);
+  updatePreview();
+}
+
+// Ungefähre Größe in der CSV-Datei.
+function sizeText(dataUrl) {
+  const kb = Math.round(dataUrl.length / 1024);
+  return kb >= 1024 ? (kb / 1024).toFixed(1).replace(".", ",") + " MB" : kb + " KB";
+}
+
+function renderImageSlot(field) {
+  const slot = $(field + "Img");
+  slot.replaceChildren();
+  const src = formImages[field];
+  if (src) {
+    const img = document.createElement("img");
+    img.src = src; img.alt = "";
+    const size = document.createElement("span");
+    size.className = "hint"; size.textContent = sizeText(src);
+    slot.append(img, button("Anderes Bild…", () => pickImage(field)),
+      button("Bild entfernen", () => { formImages[field] = ""; renderImageSlot(field); updatePreview(); }, "danger"), size);
+  } else {
+    const hint = document.createElement("span");
+    hint.className = "hint"; hint.textContent = "oder Strg+V im Textfeld · Bild aufs Feld ziehen";
+    slot.append(button("Bild…", () => pickImage(field)), hint);
+  }
+}
+
+let pickField = null;
+function pickImage(field) {
+  pickField = field;
+  $("imageFile").value = "";
+  $("imageFile").click();
+}
+
 // ---------- Stapel = CSV-Dateien im Projekt ----------
 // decks: [{ name, path, cards (null bis geladen), text (zuletzt gelesen/geschrieben) }]
 let folder = "bnki";
@@ -288,6 +429,8 @@ let current = -1;
 let editingIndex = null;
 let saveTimer = null;
 let saving = Promise.resolve();
+// Bilder des Formulars (data:-URLs), leer = keins.
+const formImages = { front: "", back: "", hint: "" };
 
 const $ = id => document.getElementById(id);
 const fields = ["front", "back", "hint", "tags"];
@@ -353,15 +496,18 @@ function readForm() {
     back: $("back").value.trim(),
     hint: $("hint").value.trim(),
     tags: $("tags").value.split(",").map(s => s.trim()).filter(Boolean).join(","),
+    frontImage: formImages.front,
+    backImage: formImages.back,
+    hintImage: formImages.hint,
   };
 }
 
 function updatePreview() {
   const c = readForm();
-  renderInto($("pvFront"), c.front);
-  renderInto($("pvBack"), c.back);
-  renderInto($("pvHint"), c.hint);
-  $("pvHintBox").hidden = !c.hint;
+  renderInto($("pvFront"), c.front); appendImage($("pvFront"), c.frontImage);
+  renderInto($("pvBack"), c.back); appendImage($("pvBack"), c.backImage);
+  renderInto($("pvHint"), c.hint); appendImage($("pvHint"), c.hintImage);
+  $("pvHintBox").hidden = !c.hint && !c.hintImage;
   renderTags($("pvTags"), c.tags);
 }
 
@@ -404,9 +550,9 @@ function renderList() {
     const item = document.createElement("div");
     item.className = "card-item" + (i === editingIndex ? " editing" : "");
     const front = document.createElement("div");
-    front.className = "q rendered"; renderInto(front, c.front);
+    front.className = "q rendered"; renderInto(front, c.front); appendImage(front, c.frontImage);
     const back = document.createElement("div");
-    back.className = "a rendered"; renderInto(back, c.back);
+    back.className = "a rendered"; renderInto(back, c.back); appendImage(back, c.backImage);
     const tags = document.createElement("div");
     tags.className = "tags"; renderTags(tags, c.tags);
     const actions = document.createElement("div");
@@ -450,6 +596,7 @@ function startEdit(i) {
   editingIndex = i;
   const c = deck().cards[i];
   fields.forEach(f => $(f).value = c[f]);
+  for (const f of Object.keys(formImages)) { formImages[f] = c[f + "Image"] || ""; renderImageSlot(f); }
   $("formTitle").textContent = `Karte ${i + 1} bearbeiten`;
   $("saveBtn").textContent = "Änderungen speichern";
   $("cancelBtn").hidden = false;
@@ -463,6 +610,7 @@ function resetForm(keepTags) {
   const tags = $("tags").value;
   $("cardForm").reset();
   if (keepTags) $("tags").value = tags;
+  for (const f of Object.keys(formImages)) { formImages[f] = ""; renderImageSlot(f); }
   editingIndex = null;
   $("formTitle").textContent = "Neue Karte";
   $("saveBtn").textContent = "Karte hinzufügen";
@@ -519,8 +667,8 @@ async function renameDeck(name) {
 $("cardForm").addEventListener("submit", e => {
   e.preventDefault();
   const c = readForm();
-  if (!c.front || !c.back) {
-    $("formError").textContent = "Vorder- und Rückseite sind Pflicht – sonst überspringt die App die Karte beim Import.";
+  if ((!c.front && !c.frontImage) || (!c.back && !c.backImage)) {
+    $("formError").textContent = "Vorder- und Rückseite brauchen Text oder ein Bild – sonst überspringt die App die Karte beim Import.";
     return;
   }
   const wasEditing = editingIndex !== null;
@@ -535,6 +683,39 @@ $("cardForm").addEventListener("keydown", e => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("cardForm").requestSubmit(); }
 });
 fields.forEach(f => $(f).addEventListener("input", updatePreview));
+
+// Bilder: Strg+V im Textfeld, Ziehen aufs Feld, „Bild…“.
+for (const box of document.querySelectorAll(".field[data-field]")) {
+  const f = box.dataset.field;
+  $(f).addEventListener("paste", e => {
+    const file = imageFile(e.clipboardData && e.clipboardData.items);
+    if (!file) return;           // Text wird normal eingefügt
+    e.preventDefault();
+    setImage(f, file);
+  });
+  const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+  box.addEventListener("dragover", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+    box.classList.add("drop");
+  });
+  box.addEventListener("dragleave", e => { if (!box.contains(e.relatedTarget)) box.classList.remove("drop"); });
+  box.addEventListener("drop", e => {
+    box.classList.remove("drop");
+    if (!hasFiles(e)) return;
+    e.preventDefault(); e.stopPropagation();
+    const file = imageFile(e.dataTransfer.files);
+    if (file) setImage(f, file);
+    else setStatus("Nur Bilddateien lassen sich einfügen.", true);
+  });
+}
+// Daneben fallengelassene Dateien öffnen nicht die Datei statt der Seite.
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => e.preventDefault());
+$("imageFile").addEventListener("change", e => {
+  const file = imageFile(e.target.files);
+  if (file && pickField) setImage(pickField, file);
+});
 $("search").addEventListener("input", renderList);
 $("deckSelect").addEventListener("change", e => selectDeck(Number(e.target.value)));
 
@@ -583,6 +764,7 @@ window.addEventListener("focus", async () => {
 });
 
 // ---------- Start ----------
+for (const f of Object.keys(formImages)) renderImageSlot(f);
 atlas.ready.then(async ctx => {
   folder = (ctx.settings.ordner || "bnki").replace(/\/+$/, "") || "bnki";
   // Geöffnet auf einer CSV-Datei: dieser Stapel, auch außerhalb des Ordners.
