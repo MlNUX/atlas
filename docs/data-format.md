@@ -287,7 +287,12 @@ collapsed = []
 [context.profiles.pdf]                           # pdf, markdown, code, calendar: nur Abweichungen von default
 tabs = ["links", "actions"]
 overview = ["annotations", "outline", "today", "graph", "actions"]
-# Bausteine: annotations, outline, links, tags, fileinfo, graph, actions, today, week, tasks, pomodoro, ext:<name>
+# Bausteine: annotations, outline, links, tags, fileinfo, graph, actions, builtin-actions, user-actions,
+#            today, week, tasks, pomodoro, ext:<name>
+
+[context.profiles.markdown.pages."page:lq3x"]  # eigener Reiter („page:…“ in tabs); eingebaute Reiter:
+title = "Lesen"                                  # links, graph, actions = builtin-actions + user-actions
+blocks = ["outline", "tags", "ext:bnki"]
 
 [pdf]
 dark = true                                      # Dunkelmodus: Farben umgekehrt (Mond in der PDF-Leiste)

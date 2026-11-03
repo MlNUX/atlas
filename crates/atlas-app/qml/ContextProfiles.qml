@@ -8,7 +8,10 @@ import QtQuick
 // which blocks there are, and which profile lays them out for a file.
 //
 // A profile has lists of block names: `tabs` (after „Übersicht“),
-// `overview`, `pinned` (bottom edge, on every tab), `hidden`, `collapsed`.
+// `overview`, `pinned` (bottom edge, on every tab), `hidden`, `collapsed`,
+// and `pages`: each tab is a page of blocks like the overview – built in
+// („Verknüpfungen“, „Graph“, „Aktionen“), a single block shown as a tab, or
+// a page of one's own (`page:…`) with a title.
 // They live in `[context.profiles.<name>]` of config.toml. „Allgemein“
 // (`default`) applies to everything without a profile of its own and fills
 // what another profile leaves out. Without any profile the built-in layout
@@ -32,7 +35,11 @@ QtObject {
         graph: { name: qsTr("Graph"), icon: "graph", tab: true, pin: false, group: "file",
                  detail: qsTr("Verbundene Dateien rund um diese") },
         actions: { name: qsTr("Aktionen"), icon: "play", tab: true, pin: false, group: "file",
-                   detail: qsTr("Eingebaute und eigene Aktionen für die Datei") },
+                   detail: qsTr("Eingebaute und eigene Aktionen für die Datei, kurz") },
+        "builtin-actions": { name: qsTr("Für diese Datei"), icon: "play", tab: false, pin: false, group: "file",
+                             detail: qsTr("Eingebaute Aktionen: zitieren, exportieren, ausführen …") },
+        "user-actions": { name: qsTr("Eigene Aktionen"), icon: "terminal", tab: false, pin: false, group: "file",
+                          detail: qsTr("Aktionen des Projekts und eigene Befehle") },
         today: { name: qsTr("Heute"), icon: "calendar", tab: false, pin: true, group: "plan",
                  detail: qsTr("Termine, Blöcke und Fristen von heute") },
         week: { name: qsTr("Diese Woche"), icon: "calendar", tab: false, pin: false, group: "plan",
@@ -52,6 +59,15 @@ QtObject {
         hidden: [],
         collapsed: []
     })
+    /// The built-in tabs as pages: one big block (shown at full height) or,
+    /// for „Aktionen“, two blocks.
+    readonly property var builtinPages: ({
+        links: { title: qsTr("Verknüpfungen"), blocks: ["links"] },
+        graph: { title: qsTr("Graph"), blocks: ["graph"] },
+        actions: { title: qsTr("Aktionen"), blocks: ["builtin-actions", "user-actions"] }
+    })
+    /// Blocks shown at full height when they are alone on a page.
+    readonly property var fullBlocks: ["links", "graph"]
     /// Profiles, in the order of the settings. Others than `default` exist
     /// only once set; until then „Allgemein“ applies.
     readonly property var names: ["default", "pdf", "markdown", "code", "calendar"]
@@ -88,7 +104,56 @@ QtObject {
     function copy(p) {
         const out = {}
         for (const k of keys) out[k] = (p[k] || []).slice()
+        out.pages = JSON.parse(JSON.stringify(p.pages || {}))
         return out
+    }
+    /// The page of tab `id` in lists `l`: {title, blocks}, or null.
+    function pageOf(l, id) {
+        const own = (l.pages || {})[id]
+        if (own) return { title: own.title || (builtinPages[id] ? builtinPages[id].title : catalog[id] ? catalog[id].name : id),
+                          blocks: own.blocks || [] }
+        if (builtinPages[id]) return builtinPages[id]
+        if (catalog[id] && catalog[id].tab) return { title: catalog[id].name, blocks: [id] }
+        return null
+    }
+    /// The list of an area: "tabs", "overview", "pinned", or a page (its
+    /// blocks; a built-in page becomes stored on the first change).
+    function areaList(l, area) {
+        if (keys.indexOf(area) >= 0) return l[area]
+        if (!l.pages) l.pages = {}
+        if (!l.pages[area]) {
+            const p = pageOf(l, area) || { title: area, blocks: [] }
+            l.pages[area] = { title: p.title, blocks: p.blocks.slice() }
+        }
+        return l.pages[area].blocks
+    }
+    function isPage(area) { return keys.indexOf(area) < 0 }
+    /// Adds a new tab of one's own; returns its name.
+    function newPage(l, title) {
+        const id = "page:" + Date.now().toString(36)
+        if (!l.pages) l.pages = {}
+        l.pages[id] = { title: title, blocks: [] }
+        l.tabs.push(id)
+        return id
+    }
+    function renamePage(l, id, title) {
+        areaList(l, id)
+        l.pages[id].title = title
+    }
+    /// Removes tab `id`; a page of one's own goes with it.
+    function removeTab(l, id) {
+        const i = l.tabs.indexOf(id)
+        if (i >= 0) l.tabs.splice(i, 1)
+        if (id.startsWith("page:") && l.pages) delete l.pages[id]
+    }
+    /// Moves block `id` from area `from` to the end of area `to`.
+    function moveTo(l, id, from, to) {
+        const a = areaList(l, from)
+        const i = a.indexOf(id)
+        if (i >= 0) a.splice(i, 1)
+        const b = areaList(l, to)
+        if (b.indexOf(id) < 0) b.push(id)
+        if (to === "overview" || to === "pinned") toggle(l.hidden, id, false)
     }
     function same(a, b) { return a.length === b.length && a.every((x, i) => x === b[i]) }
 
@@ -99,6 +164,7 @@ QtObject {
         if (stored) {
             const out = copy(builtin)
             for (const k of keys) if (stored[k]) out[k] = stored[k].slice()
+            if (stored.pages) out.pages = JSON.parse(JSON.stringify(stored.pages))
             return out
         }
         const out = copy(builtin)
@@ -124,6 +190,7 @@ QtObject {
         const over = stored || suggestions[name] || {}
         const out = copy(d)
         for (const k of keys) if (over[k]) out[k] = over[k].slice()
+        if (over.pages) out.pages = JSON.parse(JSON.stringify(over.pages))
         return out
     }
 
@@ -137,7 +204,16 @@ QtObject {
         const known = (id) => !!catalog[id] || (id.startsWith("ext:") && exts.some(e => "ext:" + e.name === id))
         // `hidden` is about the overview and the bottom: a tab goes only by
         // removing it from `tabs` (graph is a tab and in the overview).
-        const tabs = l.tabs.filter(id => known(id) && catalog[id] && catalog[id].tab)
+        const tabs = l.tabs.filter(id => pageOf(l, id) !== null)
+        const pages = {}
+        for (const id of tabs) {
+            const p = pageOf(l, id)
+            // (`hidden` is about the overview and the bottom; on a tab a block
+            // goes by taking it off.)
+            pages[id] = { title: p.title, blocks: p.blocks.filter(b => known(b)) }
+            // A single big block fills the tab (as „Verknüpfungen“ and „Graph“ always did).
+            pages[id].full = p.blocks.length === 1 && fullBlocks.indexOf(p.blocks[0]) >= 0
+        }
         const pinned = l.pinned.filter(id => known(id) && catalog[id] && catalog[id].pin && hidden.indexOf(id) < 0 && tabs.indexOf(id) < 0)
         // A block may be a tab and in the overview (graph and actions are,
         // as before profiles), but not in the overview and at the bottom.
@@ -145,19 +221,23 @@ QtObject {
         for (const id of l.overview)
             if (known(id) && hidden.indexOf(id) < 0 && pinned.indexOf(id) < 0 && overview.indexOf(id) < 0) overview.push(id)
         const mentioned = (id) => keys.some(k => k !== "collapsed" && l[k].indexOf(id) >= 0)
+            || tabs.some(t => pageOf(l, t).blocks.indexOf(id) >= 0)
         for (const e of exts)
             if (e.shown && !mentioned("ext:" + e.name)) overview.push("ext:" + e.name)
-        return { name: name, tabs: tabs, overview: overview, pinned: pinned, collapsed: l.collapsed, hidden: l.hidden }
+        return { name: name, tabs: tabs, pages: pages, overview: overview, pinned: pinned, collapsed: l.collapsed, hidden: l.hidden }
     }
 
     /// Stores profile `name` with the lists `full`: `default` completely,
     /// another one only with what differs from `default`.
     function save(app, config, name, full) {
         let out = {}
-        if (name === "default") out = copy(full)
-        else {
+        if (name === "default") {
+            out = copy(full)
+            if (Object.keys(out.pages).length === 0) delete out.pages
+        } else {
             const d = base(config)
             for (const k of keys) if (!same(full[k] || [], d[k])) out[k] = (full[k] || []).slice()
+            if (JSON.stringify(full.pages || {}) !== JSON.stringify(d.pages || {})) out.pages = JSON.parse(JSON.stringify(full.pages || {}))
         }
         app.setContextProfile(name, JSON.stringify(out))
     }
@@ -199,7 +279,7 @@ QtObject {
     /// Moves `id` within its area by `delta`, skipping blocks not shown
     /// (`visible`: the ids the bar shows there, in order).
     function move(l, area, id, delta, visible) {
-        const list = l[area]
+        const list = areaList(l, area)
         const shown = visible || list
         const at = shown.indexOf(id)
         const to = at + delta
@@ -212,7 +292,7 @@ QtObject {
             order.splice(at, 1)
             order.splice(to, 0, id)
             const rest = list.filter(x => order.indexOf(x) < 0)
-            l[area] = order.concat(rest)
+            list.splice(0, list.length, ...order.concat(rest))
             return true
         }
         const a = list.indexOf(id), b = list.indexOf(other)

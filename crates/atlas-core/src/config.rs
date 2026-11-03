@@ -277,6 +277,19 @@ pub struct ContextProfile {
     pub hidden: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collapsed: Option<Vec<String>>,
+    /// Pages of the tabs (by tab name): title and blocks. Tabs not listed
+    /// here are built in (`links`, `graph`, `actions`) or a single block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pages: Option<std::collections::BTreeMap<String, ContextPage>>,
+}
+
+/// A tab of the context bar made of blocks, like the overview.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextPage {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub blocks: Vec<String>,
 }
 
 fn empty_blocks() -> String {
@@ -597,6 +610,20 @@ mod tests {
         let back: Config = toml::from_str(&text).unwrap();
         assert_eq!(back.context, context);
         assert_eq!(back.context.profiles["pdf"].tabs, None);
+
+        // Pages of tabs (from QML as JSON), stored as TOML tables.
+        let json = r#"{"tabs":["actions","page:x"],"pages":{"page:x":{"title":"Lesen","blocks":["outline","ext:bnki"]}}}"#;
+        let profile: ContextProfile = serde_json::from_str(json).unwrap();
+        context.profiles.insert("markdown".into(), profile);
+        let text = toml::to_string_pretty(&toml::Table::from_iter([(
+            "context".to_owned(),
+            toml::Value::try_from(&context).unwrap(),
+        )]))
+        .unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
+        let pages = back.context.profiles["markdown"].pages.as_ref().unwrap();
+        assert_eq!(pages["page:x"].title, "Lesen");
+        assert_eq!(pages["page:x"].blocks, ["outline", "ext:bnki"]);
     }
 
     #[test]

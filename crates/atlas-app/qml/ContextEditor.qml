@@ -26,8 +26,15 @@ FocusScope {
     readonly property bool profileSet: ContextProfiles.isSet(config, profile)
     readonly property var lists: ContextProfiles.lists(config, profile)
 
-    function start(name) {
+    /// The page being edited: "overview" or a tab.
+    property string page: "overview"
+    onLayoutTabsChanged: if (page !== "overview" && lists.tabs.indexOf(page) < 0) page = "overview"
+    readonly property var layoutTabs: lists.tabs
+    function pageTitle(id) { return id === "overview" ? qsTr("Übersicht") : (ContextProfiles.pageOf(lists, id) || { title: id }).title }
+
+    function start(name, page) {
         profile = name || currentProfile
+        ed.page = page || "overview"
         active = true
         forceActiveFocus()
     }
@@ -39,15 +46,20 @@ FocusScope {
     /// their place), for the overview plus extension cards not placed yet.
     function rowsOf(area) {
         const l = lists
+        if (ContextProfiles.isPage(area)) return ((ContextProfiles.pageOf(l, area) || { blocks: [] }).blocks).filter(known)
         const ids = l[area].filter(known)
         if (area === "overview") {
-            const placed = (id) => ["tabs", "overview", "pinned", "hidden"].some(k => l[k].indexOf(id) >= 0)
+            const inPage = (id) => l.tabs.some(t => ((ContextProfiles.pageOf(l, t) || { blocks: [] }).blocks).indexOf(id) >= 0)
+            const placed = (id) => ["tabs", "overview", "pinned", "hidden"].some(k => l[k].indexOf(id) >= 0) || inPage(id)
             for (const e of extensions) if (e.shown && !placed("ext:" + e.name)) ids.push("ext:" + e.name)
         }
         return ids
     }
     readonly property var overviewRows: rowsOf("overview")
     readonly property var pinnedRows: rowsOf("pinned")
+    readonly property var pageRows: page === "overview" ? [] : rowsOf(page)
+    /// Whether `id` is shown where „Hinzufügen“ puts it (the page edited).
+    function inTarget(id) { return page === "overview" ? overviewRows.indexOf(id) >= 0 && !isHidden(id) : pageRows.indexOf(id) >= 0 }
     function isHidden(id) { return lists.hidden.indexOf(id) >= 0 }
     /// Where `id` stands: "tabs", "overview", "pinned" or "".
     function areaOf(id) {
@@ -60,20 +72,51 @@ FocusScope {
     /// Puts `id` into `area` at `index` (the shown rows count, so extension
     /// cards not stored yet are stored with their place).
     function place(id, area, index, show) {
-        const rows = (area === "overview" ? overviewRows : area === "pinned" ? pinnedRows : lists.tabs).slice()
+        const rows = (area === "overview" ? overviewRows : area === "pinned" ? pinnedRows : area === "tabs" ? lists.tabs : rowsOf(area)).slice()
         const from = rows.indexOf(id)
         if (from >= 0) { rows.splice(from, 1); if (from < index) --index }
         rows.splice(Math.max(0, Math.min(index, rows.length)), 0, id)
         change(l => {
-            ContextProfiles.unplace(l, id)
+            if (ContextProfiles.isPage(area)) {
+                const list = ContextProfiles.areaList(l, area)
+                list.splice(0, list.length, ...rows)
+                return
+            }
+            // Overview and bottom exclude each other; a tab may stand in the
+            // overview too (graph, actions), so tabs stay as they are.
+            const drop = (k, x) => { const i = l[k].indexOf(x); if (i >= 0) l[k].splice(i, 1) }
+            if (area !== "tabs") for (const k of ["overview", "pinned"]) drop(k, id)
             if (show) ContextProfiles.toggle(l.hidden, id, false)
-            for (const x of rows) if (x !== id) ContextProfiles.unplace(l, x)
+            const other = area === "overview" ? "pinned" : area === "pinned" ? "overview" : ""
+            if (other) for (const x of rows) drop(other, x)
             l[area] = rows.concat(l[area].filter(x => rows.indexOf(x) < 0))
         })
     }
-    function addBlock(id) { place(id, "overview", overviewRows.length, true) }
+    function addBlock(id) {
+        if (page === "overview") place(id, "overview", overviewRows.length, true)
+        else place(id, page, pageRows.length)
+    }
+    function removeFromPage(id, page) {
+        change(l => { const list = ContextProfiles.areaList(l, page); const i = list.indexOf(id); if (i >= 0) list.splice(i, 1) })
+    }
     function moveTab(id, delta) { change(l => ContextProfiles.move(l, "tabs", id, delta)) }
-    function removeTab(id) { change(l => { ContextProfiles.unplace(l, id); l.overview.push(id) }) }
+    /// Removes a tab: a single block shown as a tab goes back to the
+    /// overview, a page of blocks just goes.
+    function removeTab(id) {
+        const p = ContextProfiles.pageOf(lists, id)
+        const single = !!p && p.blocks.length === 1 && p.blocks[0] === id
+        change(l => {
+            if (single) { ContextProfiles.unplace(l, id); l.overview.push(id) }
+            else ContextProfiles.removeTab(l, id)
+        })
+    }
+    function newPage() {
+        let id = ""
+        change(l => { id = ContextProfiles.newPage(l, qsTr("Neuer Reiter")) })
+        page = id
+        Qt.callLater(() => { if (pageTitleField.visible) { pageTitleField.forceActiveFocus(); pageTitleField.selectAll() } })
+    }
+    function renamePage(title) { if (title.trim()) change(l => ContextProfiles.renamePage(l, page, title.trim())) }
     function reset() {
         app.setContextProfile(profile, "")
         if (profile === "default") {
@@ -100,13 +143,18 @@ FocusScope {
                 const prev = i > 0 ? repeater.itemAt(i - 1) : null
                 const top = item ? item.mapToItem(rowsColumn, 0, 0).y
                     : prev ? prev.mapToItem(rowsColumn, 0, prev.height).y
-                    : (area === "pinned" ? pinnedHeader.mapToItem(rowsColumn, 0, pinnedHeader.height).y : overviewHeader.mapToItem(rowsColumn, 0, overviewHeader.height).y)
+                    : (area === "pinned" ? pinnedHeader.mapToItem(rowsColumn, 0, pinnedHeader.height).y
+                       : area === "overview" ? overviewHeader.mapToItem(rowsColumn, 0, overviewHeader.height).y
+                       : pageHeader.mapToItem(rowsColumn, 0, pageHeader.height).y)
                 const d = Math.abs(y - top)
                 if (!best || d < best.d) best = { area: area, index: i, d: d }
             }
         }
-        consider("overview", overviewRepeater, overviewRows.length)
-        if ((ContextProfiles.catalog[dragId] || {}).pin) consider("pinned", pinnedRepeater, pinnedRows.length)
+        if (page !== "overview") consider(page, pageRepeater, pageRows.length)
+        else {
+            consider("overview", overviewRepeater, overviewRows.length)
+            if ((ContextProfiles.catalog[dragId] || {}).pin) consider("pinned", pinnedRepeater, pinnedRows.length)
+        }
         dropArea = best ? best.area : ""
         dropIndex = best ? best.index : -1
     }
@@ -174,20 +222,21 @@ FocusScope {
                 spacing: 4
 
                 // ---- tabs as chips
-                SectionText { text: qsTr("Reiter"); Layout.topMargin: 8 }
+                SectionText { text: qsTr("Reiter · Klick wählt, was unten bearbeitet wird"); Layout.topMargin: 8 }
                 Flow {
                     Layout.fillWidth: true
                     Layout.leftMargin: 10
                     Layout.rightMargin: 10
                     spacing: 6
-                    Chip { label: qsTr("Übersicht"); fixed: true }
+                    Chip { label: qsTr("Übersicht"); fixed: true; selected: ed.page === "overview"; onPicked: ed.page = "overview" }
                     Repeater {
-                        model: ed.lists.tabs.filter(id => ed.known(id))
+                        model: ed.lists.tabs.filter(id => ContextProfiles.pageOf(ed.lists, id) !== null)
                         delegate: Chip {
                             required property string modelData
                             required property int index
-                            label: ed.info(modelData).name
-                            icon: ed.info(modelData).icon
+                            label: ed.pageTitle(modelData)
+                            selected: ed.page === modelData
+                            onPicked: ed.page = modelData
                             canLeft: index > 0
                             canRight: index < ed.lists.tabs.length - 1
                             onMoveLeft: ed.moveTab(modelData, -1)
@@ -201,6 +250,8 @@ FocusScope {
                         onClicked: tabMenu.popup()
                         Menu {
                             id: tabMenu
+                            MenuItem { text: qsTr("Neuer Reiter (eigene Seite)"); onTriggered: ed.newPage() }
+                            MenuSeparator {}
                             Repeater {
                                 model: Object.keys(ContextProfiles.catalog).filter(id => ContextProfiles.catalog[id].tab && ed.lists.tabs.indexOf(id) < 0)
                                 MenuItem {
@@ -213,19 +264,62 @@ FocusScope {
                     }
                 }
 
+                // ---- a tab's page
+                SectionText {
+                    id: pageHeader
+                    visible: ed.page !== "overview"
+                    Layout.topMargin: 10
+                    text: qsTr("Reiter „%1“ · %n Baustein(e)", "", ed.pageRows.length).arg(ed.pageTitle(ed.page))
+                }
+                RowLayout {
+                    visible: ed.page !== "overview"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    Label { text: qsTr("Name"); color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
+                    TextField {
+                        id: pageTitleField
+                        Layout.fillWidth: true
+                        text: ed.pageTitle(ed.page)
+                        onEditingFinished: if (text.trim() && text.trim() !== ed.pageTitle(ed.page)) ed.renamePage(text)
+                    }
+                }
+                Repeater {
+                    id: pageRepeater
+                    model: ed.pageRows
+                    delegate: BlockRow { area: ed.page }
+                }
+                DropLine { visible: ed.page !== "overview" && ed.dropArea === ed.page && ed.dropIndex === ed.pageRows.length }
+                Label {
+                    visible: ed.page !== "overview" && ed.pageRows.length === 0
+                    Layout.leftMargin: 14
+                    color: Theme.textFaint
+                    font.pixelSize: Theme.smallFontSize
+                    text: qsTr("Noch leer: „+ Baustein hinzufügen“")
+                }
+                Button {
+                    visible: ed.page !== "overview"
+                    Layout.leftMargin: 6
+                    flat: true
+                    text: qsTr("+ Baustein hinzufügen")
+                    onClicked: gallery.open()
+                }
+
                 // ---- overview
                 SectionText {
                     id: overviewHeader
+                    visible: ed.page === "overview"
                     Layout.topMargin: 10
                     text: qsTr("Übersicht · %n Baustein(e)", "", ed.overviewRows.filter(id => !ed.isHidden(id)).length)
                 }
                 Repeater {
                     id: overviewRepeater
-                    model: ed.overviewRows
+                    model: ed.page === "overview" ? ed.overviewRows : []
                     delegate: BlockRow { area: "overview" }
                 }
                 DropLine { visible: ed.dropArea === "overview" && ed.dropIndex === ed.overviewRows.length }
                 Button {
+                    visible: ed.page === "overview"
                     Layout.leftMargin: 6
                     flat: true
                     text: qsTr("+ Baustein hinzufügen")
@@ -235,17 +329,18 @@ FocusScope {
                 // ---- pinned
                 SectionText {
                     id: pinnedHeader
+                    visible: ed.page === "overview"
                     Layout.topMargin: 10
                     text: qsTr("Unten angeheftet · auf jedem Reiter")
                 }
                 Repeater {
                     id: pinnedRepeater
-                    model: ed.pinnedRows
+                    model: ed.page === "overview" ? ed.pinnedRows : []
                     delegate: BlockRow { area: "pinned" }
                 }
                 DropLine { visible: ed.dropArea === "pinned" && ed.dropIndex === ed.pinnedRows.length }
                 Label {
-                    visible: ed.pinnedRows.length === 0
+                    visible: ed.page === "overview" && ed.pinnedRows.length === 0
                     Layout.leftMargin: 14
                     color: Theme.textFaint
                     font.pixelSize: Theme.smallFontSize
@@ -317,7 +412,8 @@ FocusScope {
                                 delegate: RowLayout {
                                     id: entry
                                     required property var modelData
-                                    readonly property string where: ed.isHidden(modelData.id) ? "hidden" : ed.areaOf(modelData.id)
+                                    readonly property bool here: ed.inTarget(modelData.id)
+                                    readonly property string where: here ? "here" : ed.isHidden(modelData.id) ? "hidden" : ed.areaOf(modelData.id)
                                     Layout.fillWidth: true
                                     Layout.leftMargin: 8
                                     Layout.rightMargin: 8
@@ -339,16 +435,17 @@ FocusScope {
                                     }
                                     Text {
                                         visible: entry.where !== ""
-                                        text: ({ tabs: qsTr("als Reiter"), overview: qsTr("in der Übersicht"), pinned: qsTr("unten"),
+                                        text: ({ here: ed.page === "overview" ? qsTr("in der Übersicht") : qsTr("auf diesem Reiter"),
+                                                 tabs: qsTr("als Reiter"), overview: qsTr("in der Übersicht"), pinned: qsTr("unten"),
                                                  hidden: qsTr("ausgeblendet") })[entry.where] || ""
                                         color: Theme.textFaint
                                         font.pixelSize: Theme.smallFontSize
                                     }
                                     Button {
-                                        visible: entry.where === "" || entry.where === "hidden"
+                                        visible: !entry.here
                                         flat: true
-                                        text: entry.where === "hidden" ? qsTr("Zeigen") : qsTr("Hinzufügen")
-                                        onClicked: entry.where === "hidden" && ed.areaOf(entry.modelData.id) !== ""
+                                        text: ed.page === "overview" && entry.where === "hidden" ? qsTr("Zeigen") : qsTr("Hinzufügen")
+                                        onClicked: ed.page === "overview" && entry.where === "hidden" && ed.overviewRows.indexOf(entry.modelData.id) >= 0
                                                    ? ed.setHidden(entry.modelData.id, false) : ed.addBlock(entry.modelData.id)
                                     }
                                 }
@@ -390,16 +487,19 @@ FocusScope {
         property bool dimmed: false
         property bool canLeft: false
         property bool canRight: false
+        property bool selected: false
+        signal picked()
         signal moveLeft()
         signal moveRight()
         signal remove()
         width: chipRow.implicitWidth + 16
         height: 28
         radius: 14
-        color: fixed ? Theme.accentSoft : Theme.raised
-        border.color: Theme.border
+        color: selected ? Theme.accentSoft : chipHover.hovered ? Theme.hover : Theme.raised
+        border.color: selected ? Theme.accent : Theme.border
         opacity: dimmed ? 0.5 : 1
         HoverHandler { id: chipHover }
+        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: chip.picked() }
         Row {
             id: chipRow
             anchors.centerIn: parent
@@ -408,11 +508,11 @@ FocusScope {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: chip.label
-                color: chip.fixed ? Theme.accent : Theme.textStrong
+                color: chip.selected ? Theme.accent : Theme.textStrong
                 font.pixelSize: Theme.smallFontSize + 1
             }
             IconButton { visible: !chip.fixed && chipHover.hovered && chip.canRight; iconName: "chevron-right"; iconSize: 11; width: 18; height: 18; tip: qsTr("Nach rechts"); onClicked: chip.moveRight() }
-            IconButton { visible: !chip.fixed; iconName: "close"; iconSize: 10; width: 18; height: 18; tip: qsTr("Kein Reiter mehr (in die Übersicht)"); onClicked: chip.remove() }
+            IconButton { visible: !chip.fixed; iconName: "close"; iconSize: 10; width: 18; height: 18; tip: qsTr("Reiter entfernen"); onClicked: chip.remove() }
         }
     }
     /// A block as a compact row: grip, icon, name, eye.
@@ -421,7 +521,8 @@ FocusScope {
         required property string modelData
         required property int index
         property string area
-        readonly property bool hidden: ed.isHidden(modelData)
+        readonly property bool inPage: area !== "overview" && area !== "pinned"
+        readonly property bool hidden: !inPage && ed.isHidden(modelData)
         Layout.fillWidth: true
         spacing: 0
         DropLine { visible: ed.dropArea === row.area && ed.dropIndex === row.index && ed.dragId !== row.modelData }
@@ -440,12 +541,13 @@ FocusScope {
                 anchors.fill: parent
                 activeFocusOnTab: true
                 Keys.onPressed: (event) => {
-                    const list = row.area === "pinned" ? ed.pinnedRows : ed.overviewRows
+                    const list = ed.rowsOf(row.area)
                     if ((event.modifiers & Qt.AltModifier) && (event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
                         const to = row.index + (event.key === Qt.Key_Up ? -1 : 2)
                         if (to >= 0 && to <= list.length) ed.place(row.modelData, row.area, to)
                         event.accepted = true
-                    } else if (event.key === Qt.Key_Space) { ed.setHidden(row.modelData, !row.hidden); event.accepted = true }
+                    } else if (event.key === Qt.Key_Space && !row.inPage) { ed.setHidden(row.modelData, !row.hidden); event.accepted = true }
+                    else if (event.key === Qt.Key_Delete && row.inPage) { ed.removeFromPage(row.modelData, row.area); event.accepted = true }
                 }
             }
             RowLayout {
@@ -485,10 +587,18 @@ FocusScope {
                     elide: Text.ElideRight
                 }
                 IconButton {
+                    visible: !row.inPage
                     iconName: row.hidden ? "hidden" : "eye"
                     iconSize: 14
                     tip: row.hidden ? qsTr("Zeigen") : qsTr("Ausblenden (behält den Platz)")
                     onClicked: ed.setHidden(row.modelData, !row.hidden)
+                }
+                IconButton {
+                    visible: row.inPage
+                    iconName: "close"
+                    iconSize: 12
+                    tip: qsTr("Aus dem Reiter entfernen")
+                    onClicked: ed.removeFromPage(row.modelData, row.area)
                 }
             }
         }

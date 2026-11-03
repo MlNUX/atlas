@@ -2072,6 +2072,25 @@ Item {
                       && inspector.overviewIds.indexOf("graph") >= 0, inspector.tabIds.join() + " / " + inspector.overviewIds.join())
                 inspector.undoHiding()
                 check("Reiter ausblenden rückgängig", inspector.tabIds.indexOf("graph") >= 0, inspector.tabIds.join())
+                // Tabs are pages of blocks: „Aktionen“ = built-in + own actions.
+                check("Reiter Aktionen aus Bausteinen", inspector.layout.pages.actions.blocks.join() === "builtin-actions,user-actions",
+                      JSON.stringify(inspector.layout.pages.actions))
+                inspector.moveBlockTo("tasks", "overview", "actions")
+                check("Baustein in einen Reiter verschieben", inspector.layout.pages.actions.blocks.indexOf("tasks") >= 0
+                      && inspector.overviewIds.indexOf("tasks") < 0, JSON.stringify(inspector.layout.pages.actions))
+                inspector.moveBlockTo("tasks", "actions", "overview")
+                check("… und zurück in die Übersicht", inspector.layout.pages.actions.blocks.indexOf("tasks") < 0
+                      && inspector.overviewIds.indexOf("tasks") >= 0, inspector.overviewIds.join())
+                inspector.addPage("Lesen", "", "")
+                const own = inspector.tabIds.find(t => t.startsWith("page:"))
+                check("Eigener Reiter angelegt", !!own && inspector.tabTitle(own) === "Lesen", inspector.tabIds.join())
+                inspector.renamePage(own, "Lektüre")
+                inspector.moveBlockTo("outline", "overview", own)
+                check("Eigener Reiter: umbenannt, mit Baustein", inspector.tabTitle(own) === "Lektüre"
+                      && inspector.layout.pages[own].blocks.join() === "outline", JSON.stringify(inspector.layout.pages[own]))
+                inspector.hideTab(own)
+                check("Eigener Reiter entfernt (samt Seite)", inspector.tabIds.indexOf(own) < 0
+                      && !(JSON.parse(app.contextModules).profiles.default.pages || {})[own], inspector.tabIds.join())
                 inspector.blockToTab("annotations")
                 check("Baustein als eigener Reiter", inspector.tabIds.indexOf("annotations") > 0 && inspector.overviewIds.indexOf("annotations") < 0,
                       inspector.tabIds.join())
@@ -2145,8 +2164,24 @@ Item {
                 check("Ziehen nach „Unten angeheftet“", inspector.pinnedIds[0] === "today", inspector.pinnedIds.join())
                 ed.setHidden("fileinfo", true)
                 check("Auge blendet aus, Platz bleibt", inspector.overviewIds.indexOf("fileinfo") < 0 && ed.overviewRows.indexOf("fileinfo") >= 0)
+                // A tab's page in the editing mode.
+                ed.page = "actions"
+                ed.addBlock("tasks")
+                check("Bearbeitungsmodus: Baustein auf den Reiter „Aktionen“", inspector.layout.pages.actions.blocks.indexOf("tasks") >= 0
+                      && ed.pageRows.indexOf("tasks") >= 0, JSON.stringify(inspector.layout.pages.actions))
+                ed.place("tasks", "actions", 0)
+                check("Bearbeitungsmodus: auf dem Reiter ordnen", inspector.layout.pages.actions.blocks[0] === "tasks",
+                      JSON.stringify(inspector.layout.pages.actions))
+                ed.removeFromPage("tasks", "actions")
+                check("Bearbeitungsmodus: vom Reiter entfernen", inspector.layout.pages.actions.blocks.indexOf("tasks") < 0)
+                ed.newPage()
+                check("Bearbeitungsmodus: neuer Reiter gewählt", ed.page.startsWith("page:") && inspector.tabIds.indexOf(ed.page) >= 0, ed.page)
+                ed.renamePage("Notizen")
+                check("Bearbeitungsmodus: Reiter benannt", inspector.tabTitle(ed.page) === "Notizen", inspector.tabTitle(ed.page))
+                ed.removeTab(ed.page)
+                check("Bearbeitungsmodus: Reiter entfernt, Übersicht gewählt", ed.page === "overview")
                 ed.removeTab("actions")
-                check("Reiter entfernen: zurück in die Übersicht", inspector.tabIds.indexOf("actions") < 0, inspector.tabIds.join())
+                check("Reiter entfernen", inspector.tabIds.indexOf("actions") < 0, inspector.tabIds.join())
                 ed.reset()
                 check("Zurücksetzen: Profil gelöscht, es gilt Allgemein", inspector.profileName === "default"
                       && JSON.parse(app.contextModules).profiles.code === undefined)

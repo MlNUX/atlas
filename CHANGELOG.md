@@ -155,6 +155,13 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
     Erweiterungskarten sind jetzt Bausteine der Übersicht.
   - Bei schmaler Leiste zeigen die Reiter Symbole statt seitwärts zu
     scrollen (einstellbar: automatisch, Text, Symbole).
+  - **Jeder Reiter ist eine Seite aus Bausteinen**, wie die Übersicht:
+    „Aktionen“ besteht aus „Für diese Datei“ und „Eigene Aktionen“; jeder
+    Baustein lässt sich über „Verschieben nach …“ in einen anderen Reiter
+    legen. **Eigene Reiter** anlegen und benennen (Rechtsklick auf einen
+    Reiter, „Verschieben nach → Neuer Reiter …“ oder im
+    Bearbeitungsmodus, wo ein Klick auf einen Reiter-Chip dessen Seite
+    zum Bearbeiten wählt).
   - Einstellungen → Kontextleiste zeigt die Profile mit „Anpassen …“ und das
     Verhalten. Alte Einstellungen (`calendar = false` …) gelten weiter,
     bis ein Profil gespeichert wird; dabei werden sie übernommen.

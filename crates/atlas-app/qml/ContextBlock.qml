@@ -22,8 +22,11 @@ Rectangle {
     property string count: ""
     property bool empty: false
     property bool collapsed: false
-    /// Where it stands: "overview" or "pinned".
+    /// Where it stands: "overview", "pinned" or a tab (page).
     property string area: "overview"
+    readonly property bool inPage: area !== "overview" && area !== "pinned"
+    /// Areas it can move to: [{id, title}] (overview and tabs).
+    property var targets: []
     property bool canMoveUp: false
     property bool canMoveDown: false
     /// Small buttons in the header (left of ⋯).
@@ -43,6 +46,8 @@ Rectangle {
     signal customize()
     /// true: only the file type's profile, false: „Allgemein“.
     signal scopeChosen(bool own)
+    /// Move to area `target` ("" = a new tab).
+    signal moveTo(string target)
 
     readonly property bool open: !collapsed
     readonly property alias header: header
@@ -138,15 +143,31 @@ Rectangle {
         MenuItem { text: qsTr("Nach oben (Alt+↑)"); enabled: block.canMoveUp; onTriggered: block.moveBy(-1) }
         MenuItem { text: qsTr("Nach unten (Alt+↓)"); enabled: block.canMoveDown; onTriggered: block.moveBy(1) }
         MenuSeparator {}
+        Menu {
+            id: moveMenu
+            title: qsTr("Verschieben nach")
+            Instantiator {
+                model: block.targets
+                delegate: MenuItem {
+                    required property var modelData
+                    text: modelData.title
+                    onTriggered: block.moveTo(modelData.id)
+                }
+                onObjectAdded: (index, object) => moveMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => moveMenu.removeItem(object)
+            }
+            MenuSeparator {}
+            MenuItem { text: qsTr("Neuer Reiter …"); onTriggered: block.moveTo("") }
+        }
         MenuItem {
             text: qsTr("Als eigenen Reiter zeigen")
-            visible: !!(ContextProfiles.catalog[block.blockId] || {}).tab
+            visible: !block.inPage && !!(ContextProfiles.catalog[block.blockId] || {}).tab
             height: visible ? implicitHeight : 0
             onTriggered: block.toTab()
         }
         MenuItem {
             text: block.area === "pinned" ? qsTr("In die Übersicht") : qsTr("Unten anheften")
-            visible: block.area === "pinned" || !!(ContextProfiles.catalog[block.blockId] || {}).pin
+            visible: block.area === "pinned" || (!block.inPage && !!(ContextProfiles.catalog[block.blockId] || {}).pin)
             height: visible ? implicitHeight : 0
             onTriggered: block.area === "pinned" ? block.toOverview() : block.toPinned()
         }
@@ -168,7 +189,7 @@ Rectangle {
             onTriggered: block.scopeChosen(false)
         }
         MenuSeparator {}
-        MenuItem { text: qsTr("Ausblenden"); onTriggered: block.hide() }
+        MenuItem { text: block.inPage ? qsTr("Aus dem Reiter entfernen") : qsTr("Ausblenden"); onTriggered: block.hide() }
         MenuItem { text: qsTr("Leiste anpassen …"); onTriggered: block.customize() }
     }
 }

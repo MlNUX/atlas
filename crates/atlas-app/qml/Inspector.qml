@@ -155,8 +155,19 @@ Rectangle {
     /// Shows tab `id` (e.g. "actions", "links"); the overview if the
     /// profile has no such tab.
     function showTab(id) { tab = Math.max(0, tabIds.indexOf(id)) }
-    function tabTitle(id) { return id === "overview" ? qsTr("Übersicht") : (ContextProfiles.info(id, extensionList) || { name: id }).name }
-    function tabIcon(id) { return id === "overview" ? "grid" : (ContextProfiles.info(id, extensionList) || { icon: "grid" }).icon }
+    function tabTitle(id) { return id === "overview" ? qsTr("Übersicht") : (layout.pages[id] || { title: id }).title }
+    function tabIcon(id) {
+        if (id === "overview") return "grid"
+        if (ContextProfiles.catalog[id]) return ContextProfiles.catalog[id].icon
+        const first = ((layout.pages[id] || {}).blocks || [])[0]
+        return first ? (ContextProfiles.info(first, extensionList) || { icon: "list" }).icon : "list"
+    }
+    /// Blocks of the shown page (a tab other than the overview).
+    readonly property var page: tabId === "overview" ? null : layout.pages[tabId] || null
+    readonly property var pageIds: page ? shownIn(page.blocks) : []
+    /// Where a block can be moved to: the overview and every tab.
+    readonly property var moveTargets: [{ id: "overview", title: qsTr("Übersicht") }]
+        .concat(tabIds.filter(t => t !== "overview").map(t => ({ id: t, title: tabTitle(t) })))
 
     /// Empty blocks: shown, only their header, or not at all.
     readonly property string emptyMode: config.empty || "collapse"
@@ -165,6 +176,7 @@ Rectangle {
         if (id === "outline") return outline.length === 0
         if (id === "tags") return noteTags.length === 0
         if (id === "actions") return builtins.length === 0 && userActions.length === 0
+        if (id === "builtin-actions") return builtins.length === 0
         if (id === "fileinfo") return !document
         return false
     }
@@ -194,7 +206,7 @@ Rectangle {
         change(l => ContextProfiles.toggle(l.collapsed, id, l.collapsed.indexOf(id) < 0))
     }
     function moveBlock(id, area, delta) {
-        const shown = area === "pinned" ? pinnedIds : overviewIds
+        const shown = area === "pinned" ? pinnedIds : area === "overview" ? overviewIds : pageIds
         change(l => ContextProfiles.move(l, area, id, delta, shown))
         Qt.callLater(focusHeader, id)
     }
@@ -209,6 +221,27 @@ Rectangle {
             l[area].push(id)
         })
     }
+    /// Moves a block from area `from` (overview, pinned or a tab) to `to`.
+    function moveBlockTo(id, from, to) {
+        change(l => ContextProfiles.moveTo(l, id, from, to))
+    }
+    /// Takes a block off a tab (with undo); its page stays.
+    function removeFromPage(id, page) {
+        const snap = ContextProfiles.snapshot(config)
+        change(l => { const list = ContextProfiles.areaList(l, page); const i = list.indexOf(id); if (i >= 0) list.splice(i, 1) })
+        undoHide = { snapshot: snap, name: (ContextProfiles.info(id, extensionList) || { name: id }).name }
+        undoTimer.restart()
+    }
+    /// A new tab of one's own (named by the user), shown at once.
+    function addPage(title, firstBlock, from) {
+        let id = ""
+        change(l => {
+            id = ContextProfiles.newPage(l, title)
+            if (firstBlock) ContextProfiles.moveTo(l, firstBlock, from, id)
+        })
+        Qt.callLater(showTab, id)
+    }
+    function renamePage(id, title) { change(l => ContextProfiles.renamePage(l, id, title)) }
     property var undoHide: null
     function hideBlock(id) {
         const snap = ContextProfiles.snapshot(config)
@@ -219,8 +252,9 @@ Rectangle {
     /// Removes tab `id` (the block keeps its place in the overview, if any).
     function hideTab(id) {
         const snap = ContextProfiles.snapshot(config)
-        change(l => { const i = l.tabs.indexOf(id); if (i >= 0) l.tabs.splice(i, 1) })
-        undoHide = { snapshot: snap, name: qsTr("Reiter %1").arg(tabTitle(id)) }
+        const title = tabTitle(id)
+        change(l => ContextProfiles.removeTab(l, id))
+        undoHide = { snapshot: snap, name: qsTr("Reiter %1").arg(title) }
         undoTimer.restart()
     }
     function undoHiding() {
@@ -432,7 +466,10 @@ Rectangle {
             visible: !contextEditor.active
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: ({ overview: 0, links: 1, graph: 2, actions: 3 })[inspector.tabId] ?? 4
+            // A page with a single big block (links, graph) shows it at full
+            // height; any other page its blocks like the overview.
+            currentIndex: inspector.tabId === "overview" ? 0
+                : inspector.page && inspector.page.full ? (inspector.page.blocks[0] === "links" ? 1 : 2) : 3
 
             // ---- overview: the blocks
             ScrollView {
@@ -484,52 +521,29 @@ Rectangle {
                 onOpenRequested: (path, line, newPane, state) => inspector.openRequested(path, line, newPane ? "split" : "tab", state)
             }
 
-            // ---- actions
+            // ---- a page of blocks (Aktionen, tabs of one's own, a block as a tab)
             ScrollView {
-                id: actionsView
+                id: pageView
                 contentWidth: availableWidth
                 clip: true
                 ColumnLayout {
-                    width: actionsView.availableWidth
+                    width: pageView.availableWidth
                     spacing: 8
-                    Item { Layout.preferredHeight: 4 }
-                    SectionLabel {
-                        visible: inspector.builtins.length > 0
-                        text: inspector.document ? qsTr("Für %1").arg(inspector.app.fileName(inspector.document)) : ""
+                    Item { Layout.preferredHeight: 2 }
+                    Repeater {
+                        model: inspector.pageIds
+                        delegate: BlockView { area: inspector.tabId }
                     }
-                    ActionList { items: inspector.builtins }
-                    SectionLabel { text: qsTr("Eigene Aktionen"); Layout.topMargin: 6 }
-                    ActionList { items: inspector.userActions }
                     Label {
-                        visible: inspector.userActions.length === 0
+                        visible: inspector.pageIds.length === 0
                         Layout.fillWidth: true
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
+                        Layout.margins: 14
                         wrapMode: Text.Wrap
                         color: Theme.textFaint
                         font.pixelSize: Theme.smallFontSize
-                        text: qsTr("Noch keine eigenen Aktionen für diese Datei. Lege welche für das Projekt an oder installiere Erweiterungen.")
+                        text: qsTr("Dieser Reiter ist leer. „Leiste anpassen“ fügt Bausteine hinzu, oder „Verschieben nach …“ im ⋯-Menü eines Bausteins.")
                     }
-                    // (Wraps in a narrow bar instead of widening it.)
-                    Flow {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 6
-                        Layout.rightMargin: 6
-                        spacing: 2
-                        Button { flat: true; text: qsTr("Projektaktionen bearbeiten …"); onClicked: inspector.actions.editActions(false) }
-                        Button { flat: true; text: qsTr("Erweiterungen …"); onClicked: inspector.actions.extensionsRequested() }
-                    }
-                }
-            }
-
-            // ---- another block as a tab (annotations, outline)
-            ScrollView {
-                id: blockTab
-                contentWidth: availableWidth
-                clip: true
-                Loader {
-                    width: blockTab.availableWidth
-                    sourceComponent: inspector.contentOf(inspector.tabId)
+                    Item { Layout.preferredHeight: 8 }
                 }
             }
         }
@@ -635,17 +649,78 @@ Rectangle {
     Menu {
         id: tabMenu
         property string blockId: ""
-        MenuItem { text: qsTr("In die Übersicht"); onTriggered: inspector.blockTo(tabMenu.blockId, "overview") }
+        readonly property var page: inspector.layout.pages[blockId] || { blocks: [] }
+        readonly property bool single: page.blocks.length === 1 && page.blocks[0] === blockId
+        MenuItem { text: qsTr("Umbenennen …"); onTriggered: pageDialog.ask(tabMenu.blockId) }
+        MenuItem {
+            text: qsTr("In die Übersicht")
+            visible: tabMenu.single
+            height: visible ? implicitHeight : 0
+            onTriggered: inspector.blockTo(tabMenu.blockId, "overview")
+        }
         MenuItem { text: qsTr("Reiter ausblenden"); onTriggered: inspector.hideTab(tabMenu.blockId) }
         MenuSeparator {}
+        MenuItem { text: qsTr("Neuer Reiter …"); onTriggered: pageDialog.ask("") }
         MenuItem { text: qsTr("Leiste anpassen …"); onTriggered: inspector.customize() }
     }
+
+    /// Name of a new tab, or a new name for one: with `block`/`from`, the
+    /// block moves to the new tab.
+    Popup {
+        id: pageDialog
+        property string pageId: ""
+        property string block: ""
+        property string from: ""
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 320
+        modal: true
+        focus: true
+        function ask(id, block, from) {
+            pageId = id
+            pageDialog.block = block || ""
+            pageDialog.from = from || ""
+            nameField.text = id ? inspector.tabTitle(id) : ""
+            open()
+            nameField.forceActiveFocus()
+            nameField.selectAll()
+        }
+        function accept() {
+            const title = nameField.text.trim()
+            if (!title) return
+            if (pageId) inspector.renamePage(pageId, title)
+            else inspector.addPage(title, block, from)
+            close()
+        }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+            Label {
+                text: pageDialog.pageId ? qsTr("Reiter umbenennen") : qsTr("Neuer Reiter")
+                color: Theme.textStrong
+                font.bold: true
+            }
+            TextField {
+                id: nameField
+                Layout.fillWidth: true
+                placeholderText: qsTr("Name, z. B. Lesen")
+                onAccepted: pageDialog.accept()
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Button { flat: true; text: qsTr("Abbrechen"); onClicked: pageDialog.close() }
+                Button { highlighted: true; text: pageDialog.pageId ? qsTr("Umbenennen") : qsTr("Anlegen"); enabled: nameField.text.trim() !== ""; onClicked: pageDialog.accept() }
+            }
+        }
+    }
+    readonly property alias pageDialog: pageDialog
 
     /// Content of a block (the views each block shows below its header).
     function contentOf(id) {
         if (id.startsWith("ext:")) return extensionContent
         return ({ annotations: annotationsContent, outline: outlineContent, links: linksContent, tags: tagsContent,
-                  fileinfo: fileinfoContent, graph: graphContent, actions: actionsContent, today: contextModules.todayView,
+                  fileinfo: fileinfoContent, graph: graphContent, actions: actionsContent,
+                  "builtin-actions": builtinActionsContent, "user-actions": userActionsContent, today: contextModules.todayView,
                   week: contextModules.weekView, tasks: contextModules.tasksView, pomodoro: pomodoroSlot })[id] || null
     }
     /// Number or date next to a block's name.
@@ -672,7 +747,7 @@ Rectangle {
         count: inspector.countOf(modelData)
         empty: inspector.isEmpty(modelData)
         collapsed: inspector.isCollapsed(modelData)
-        readonly property var siblings: area === "pinned" ? inspector.pinnedIds : inspector.overviewIds
+        readonly property var siblings: area === "pinned" ? inspector.pinnedIds : area === "overview" ? inspector.overviewIds : inspector.pageIds
         canMoveUp: siblings.indexOf(modelData) > 0
         canMoveDown: siblings.indexOf(modelData) >= 0 && siblings.indexOf(modelData) < siblings.length - 1
         profileTitle: ContextProfiles.title(inspector.kind)
@@ -683,7 +758,11 @@ Rectangle {
         onToTab: inspector.blockToTab(modelData)
         onToPinned: inspector.blockTo(modelData, "pinned")
         onToOverview: inspector.blockTo(modelData, "overview")
-        onHide: inspector.hideBlock(modelData)
+        onHide: area === "overview" || area === "pinned" ? inspector.hideBlock(modelData) : inspector.removeFromPage(modelData, area)
+        // Not where it is already (graph is on the „Graph“ tab).
+        targets: inspector.moveTargets.filter(t => t.id !== area
+            && (t.id === "overview" ? inspector.layout.overview : (inspector.layout.pages[t.id] || { blocks: [] }).blocks).indexOf(modelData) < 0)
+        onMoveTo: (target) => target === "" ? inspector.pageDialog.ask("", modelData, area) : inspector.moveBlockTo(modelData, area, target)
         onCustomize: inspector.customize()
         onScopeChosen: (own) => inspector.chooseScope(own)
         tools: [
@@ -879,6 +958,56 @@ Rectangle {
             compact: true
             color: "transparent"
             onOpenRequested: (path, line, newPane, state) => inspector.openRequested(path, line, newPane ? "split" : "tab", state)
+        }
+    }
+    Component {
+        id: builtinActionsContent
+        ColumnLayout {
+            spacing: 4
+            Label {
+                visible: !!inspector.document
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                Layout.fillWidth: true
+                text: inspector.document ? qsTr("Für %1").arg(inspector.app.fileName(inspector.document)) : ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideMiddle
+            }
+            ActionList { Layout.leftMargin: 4; Layout.rightMargin: 4; items: inspector.builtins }
+            Label {
+                visible: inspector.builtins.length === 0
+                Layout.leftMargin: 12
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("Keine eingebauten Aktionen für diese Datei.")
+            }
+        }
+    }
+    Component {
+        id: userActionsContent
+        ColumnLayout {
+            spacing: 4
+            ActionList { Layout.leftMargin: 4; Layout.rightMargin: 4; items: inspector.userActions }
+            Label {
+                visible: inspector.userActions.length === 0
+                Layout.fillWidth: true
+                Layout.leftMargin: 12
+                Layout.rightMargin: 12
+                wrapMode: Text.Wrap
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+                text: qsTr("Noch keine eigenen Aktionen für diese Datei. Lege welche für das Projekt an oder installiere Erweiterungen.")
+            }
+            // (Wraps in a narrow bar instead of widening it.)
+            Flow {
+                Layout.fillWidth: true
+                Layout.leftMargin: 4
+                Layout.rightMargin: 4
+                spacing: 2
+                Button { flat: true; text: qsTr("Projektaktionen bearbeiten …"); onClicked: inspector.actions.editActions(false) }
+                Button { flat: true; text: qsTr("Erweiterungen …"); onClicked: inspector.actions.extensionsRequested() }
+            }
         }
     }
     Component {
