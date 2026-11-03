@@ -685,6 +685,14 @@ Rectangle {
                 iconSize: 13
                 tip: qsTr("Groß anzeigen (eigenes Fenster)")
                 onClicked: graphDialog.show(inspector.document)
+            },
+            IconButton {
+                visible: view.modelData === "today" || view.modelData === "week"
+                width: visible ? implicitWidth : 0
+                iconName: "chevron-right"
+                iconSize: 13
+                tip: qsTr("Kalender öffnen")
+                onClicked: inspector.actions.calendarRequested({})
             }
         ]
     }
@@ -818,9 +826,12 @@ Rectangle {
     }
     Component {
         id: fileinfoContent
+        Item {
+            implicitHeight: infoGrid.implicitHeight + 4
         GridLayout {
+            id: infoGrid
             x: 12
-            width: parent ? parent.width - 24 : 0
+            width: parent.width - 24
             columns: 2
             columnSpacing: 10
             rowSpacing: 3
@@ -845,6 +856,7 @@ Rectangle {
                     elide: Text.ElideMiddle
                 }
             }
+        }
         }
     }
     Component {

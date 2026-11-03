@@ -112,117 +112,121 @@ Item {
     readonly property int weekCount: week.reduce((n, d) => n + d.entries.length, 0)
 
     readonly property Component todayView: Component {
-        ColumnLayout {
-            x: 12
-            width: parent ? parent.width - 24 : 0
-            spacing: 2
-            RowLayout {
-                Layout.fillWidth: true
-                Text { Layout.fillWidth: true; text: modules.todayText; color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
-                IconButton { iconName: "chevron-right"; iconSize: 14; tip: qsTr("Kalender öffnen"); onClicked: modules.actions.calendarRequested({}) }
-            }
-            Repeater {
-                model: modules.today.slice(0, modules.limit)
-                delegate: EntryRow { }
-            }
-            Text {
-                visible: modules.today.length === 0
-                Layout.fillWidth: true
-                wrapMode: Text.Wrap
-                text: qsTr("Heute keine Termine.")
-                color: Theme.textFaint
-                font.pixelSize: Theme.smallFontSize
-            }
-            Text {
-                visible: modules.today.length > modules.limit
-                text: qsTr("und %n weitere", "", modules.today.length - modules.limit)
-                color: Theme.textMuted
-                font.pixelSize: Theme.smallFontSize
-            }
-        }
-    }
-
-    readonly property Component weekView: Component {
-        ColumnLayout {
-            x: 12
-            width: parent ? parent.width - 24 : 0
-            spacing: 2
-            Repeater {
-                model: modules.week
-                delegate: ColumnLayout {
-                    id: dayColumn
-                    required property var modelData
+        Item {
+            implicitHeight: todayViewColumn.implicitHeight
+            ColumnLayout {
+                id: todayViewColumn
+                x: 12
+                width: parent.width - 24
+                spacing: 2
+                Repeater {
+                    model: modules.today.slice(0, modules.limit)
+                    delegate: EntryRow { }
+                }
+                Text {
+                    visible: modules.today.length === 0
                     Layout.fillWidth: true
-                    spacing: 0
-                    Text { Layout.topMargin: 4; text: dayColumn.modelData.label; color: Theme.textMuted; font.pixelSize: Theme.smallFontSize; font.bold: true }
-                    Repeater { model: dayColumn.modelData.entries; delegate: EntryRow { showDate: false } }
+                    wrapMode: Text.Wrap
+                    text: qsTr("Heute keine Termine.")
+                    color: Theme.textFaint
+                    font.pixelSize: Theme.smallFontSize
+                }
+                Text {
+                    visible: modules.today.length > modules.limit
+                    text: qsTr("und %n weitere", "", modules.today.length - modules.limit)
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
                 }
             }
-            Text {
-                visible: modules.week.length === 0
-                Layout.fillWidth: true
-                wrapMode: Text.Wrap
-                text: qsTr("In den nächsten sieben Tagen nichts geplant.")
-                color: Theme.textFaint
-                font.pixelSize: Theme.smallFontSize
+        }
+    }
+    readonly property Component weekView: Component {
+        Item {
+            implicitHeight: weekViewColumn.implicitHeight
+            ColumnLayout {
+                id: weekViewColumn
+                x: 12
+                width: parent.width - 24
+                spacing: 2
+                Repeater {
+                    model: modules.week
+                    delegate: ColumnLayout {
+                        id: dayColumn
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Text { Layout.topMargin: 4; text: dayColumn.modelData.label; color: Theme.textMuted; font.pixelSize: Theme.smallFontSize; font.bold: true }
+                        Repeater { model: dayColumn.modelData.entries; delegate: EntryRow { showDate: false } }
+                    }
+                }
+                Text {
+                    visible: modules.week.length === 0
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: qsTr("In den nächsten sieben Tagen nichts geplant.")
+                    color: Theme.textFaint
+                    font.pixelSize: Theme.smallFontSize
+                }
             }
         }
     }
-
     readonly property Component tasksView: Component {
-        ColumnLayout {
-            x: 12
-            width: parent ? parent.width - 24 : 0
-            spacing: 2
-            Repeater {
-                model: modules.openTasks.slice(0, 6)
-                delegate: RowLayout {
-                    id: task
-                    required property var modelData
-                    Layout.fillWidth: true
-                    spacing: 4
-                    CheckBox {
-                        padding: 2
-                        ToolTip.visible: hovered
-                        ToolTip.text: qsTr("Erledigt")
-                        onToggled: if (checked) modules.model.setStatus(task.modelData.uid, "done")
-                    }
-                    Text {
+        Item {
+            implicitHeight: tasksViewColumn.implicitHeight
+            ColumnLayout {
+                id: tasksViewColumn
+                x: 12
+                width: parent.width - 24
+                spacing: 2
+                Repeater {
+                    model: modules.openTasks.slice(0, 6)
+                    delegate: RowLayout {
+                        id: task
+                        required property var modelData
                         Layout.fillWidth: true
-                        text: task.modelData.title
-                        textFormat: Text.PlainText
-                        color: Theme.text
-                        font.pixelSize: Theme.fontSize
-                        elide: Text.ElideRight
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: modules.actions.calendarRequested({ mode: "week", selected: task.modelData.uid })
+                        spacing: 4
+                        CheckBox {
+                            padding: 2
+                            ToolTip.visible: hovered
+                            ToolTip.text: qsTr("Erledigt")
+                            onToggled: if (checked) modules.model.setStatus(task.modelData.uid, "done")
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: task.modelData.title
+                            textFormat: Text.PlainText
+                            color: Theme.text
+                            font.pixelSize: Theme.fontSize
+                            elide: Text.ElideRight
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: modules.actions.calendarRequested({ mode: "week", selected: task.modelData.uid })
+                            }
                         }
                     }
                 }
-            }
-            Text {
-                visible: modules.openTasks.length > 6
-                text: qsTr("und %n weitere im Kalender", "", modules.openTasks.length - 6)
-                color: Theme.textMuted
-                font.pixelSize: Theme.smallFontSize
-            }
-            TextField {
-                Layout.fillWidth: true
-                Layout.topMargin: 4
-                implicitHeight: 28
-                font.pixelSize: Theme.smallFontSize
-                placeholderText: qsTr("Neue Aufgabe (Enter)")
-                onAccepted: {
-                    if (!text.trim() || !modules.model) return
-                    modules.model.save(JSON.stringify({ kind: "task", title: text.trim() }))
-                    text = ""
+                Text {
+                    visible: modules.openTasks.length > 6
+                    text: qsTr("und %n weitere im Kalender", "", modules.openTasks.length - 6)
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                }
+                TextField {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    implicitHeight: 28
+                    font.pixelSize: Theme.smallFontSize
+                    placeholderText: qsTr("Neue Aufgabe (Enter)")
+                    onAccepted: {
+                        if (!text.trim() || !modules.model) return
+                        modules.model.save(JSON.stringify({ kind: "task", title: text.trim() }))
+                        text = ""
+                    }
                 }
             }
         }
     }
-
     /// An entry of the calendar: colour bar, title, time (or date).
     component EntryRow: Rectangle {
         id: entry
