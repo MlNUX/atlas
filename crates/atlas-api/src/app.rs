@@ -71,7 +71,7 @@ impl Atlas {
 
     /// The settings (shared by all windows).
     pub fn settings(&self) -> Arc<crate::settings::Settings> {
-        todo_task!("P2.8")
+        Arc::new(crate::settings::Settings::new(self.sink.clone()))
     }
 
     /// Sidebar places (fixed ones first, then file manager bookmarks if on).

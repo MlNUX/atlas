@@ -249,12 +249,12 @@ impl Project {
     }
 
     pub fn editor(&self) -> Arc<crate::editor::Editor> {
-        todo_task!("P2.8")
+        Arc::new(crate::editor::Editor::new(self.shared.clone()))
     }
 
     /// Context bar profiles of this project (falls back to the user's).
     pub fn context(&self) -> Arc<crate::settings::Context> {
-        todo_task!("P2.8")
+        Arc::new(crate::settings::Context::new())
     }
 }
 

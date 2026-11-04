@@ -132,3 +132,13 @@ Fehler: 15 657 Zeilen, rund 440 öffentliche Typen und Methoden.
 | P2.4 | `SearchQuery`: `case_sensitive: bool`, `build_dirs`, kein `text`/`pdf` mehr (über `kinds`) | wie das Suchfenster unter Linux; Optionen → Query jetzt im Kern (`search::Options`) |
 | P2.4 | `Search::context` liefert `Vec<ContextLine>` | Zeilennummern je Zeile (PDF: Zeile auf der Seite) |
 | P2.4 | `AnnotationHit` mit `relative`, `kind`, `title` | wie die Anmerkungssuche unter Linux; Logik jetzt im Kern (`annotations::search`) |
+| P2.8 | `Editor::render_markdown` liefert `RenderedMarkdown` (HTML, Titel, Tags, Überschriften, kaputte Links) | wie die Vorschau unter Linux (Gliederung, Hinweis auf kaputte Links) |
+| P2.8 | `Editor::external_launch` → `ExternalLaunch` (System/losgelöst/Terminal) statt den Editor selbst zu starten | Prozesse startet die Oberfläche (NSWorkspace, `Process`, SwiftTerm) |
+| P2.8 | `AppSettings` ohne `spell_languages`/`other`/Editor-Befehl; Ordner-Sortierung ist eine (global), `ContextOptions` neu | so speichert es `config.toml`; Editor-Befehl über `Editor::set_external_editor` |
+| P2.8 | `Spelling::available`, `add` gibt `Result` | ohne Wörterbücher prüft der Kern nichts (macOS: siehe unten) |
+
+**Rechtschreibung unter macOS (Entscheidung nach E16):** Der Kern nutzt Hunspell-Wörterbücher
+(`atlas_spell::dictionary_dirs`). Auf dem Mac gibt es die nur über Homebrew oder
+mitgelieferte Dateien. P3.3 nimmt deshalb `NSSpellChecker`, solange
+`Spelling::available()` `false` ist; das eigene Wörterbuch (`dictionary.txt`) bleibt
+gemeinsam.
