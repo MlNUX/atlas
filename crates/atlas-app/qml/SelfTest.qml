@@ -1260,16 +1260,16 @@ Item {
                 check("Unbekanntes Farbschema wird dunkel", app.theme === "dark" && !Theme.light, app.theme)
                 // The ILIAS address: settable, checked, applied.
                 const field = settingsDialog.iliasAddressField
-                const before = JSON.parse(app.iliasConfig).base_url
+                const before = JSON.parse(IliasBackend.config).base_url
                 field.text = "nicht da"
                 const invalid = !field.valid
                 field.text = "ilias.uni-beispiel.de"
                 settingsDialog.applyIliasAddress()
-                const after = JSON.parse(app.iliasConfig).base_url
+                const after = JSON.parse(IliasBackend.config).base_url
                 check("Einstellungen: ILIAS-Adresse einstellbar (ohne https:// ergänzt, Ungültiges abgelehnt)",
                       invalid && after === "https://ilias.uni-beispiel.de/" && fileActions.ilias.host === "ilias.uni-beispiel.de"
                       && fileActions.ilias.index.courses.length === 0 && field.text === after, after + " · " + field.text)
-                app.setIliasConfig("base_url", before)
+                IliasBackend.setConfig("base_url", before)
                 const cals = settingsDialog.defaultCalendarChoices
                 check("Einstellungen: Kalender für neue Termine wählbar", cals.length >= 1 && cals.some(c => c.isDefault),
                       JSON.stringify(cals.map(c => c.name + (c.isDefault ? "★" : ""))))
@@ -1905,7 +1905,7 @@ Item {
                 settingsDialog.rememberIliasLogin("uxtest", "geheim")
             },
             () => {
-                const saved = () => JSON.parse(app.iliasConfig).login_saved === true
+                const saved = () => JSON.parse(IliasBackend.config).login_saved === true
                 if (waitFor(saved)) return
                 const cred = app.readTextFile(app.stateDir() + "/secrets/ilias.cred")
                 check("ILIAS: Anmeldung nur verschlüsselt gespeichert", saved() && cred.length > 0 && cred.indexOf("geheim") < 0
@@ -1932,7 +1932,7 @@ Item {
                       course ? names(course.children) : "kein Kurs")
                 const sess = course && course.children.find(n => n.kind === "sess")
                 check("ILIAS: Sitzung am Symbol erkannt, mit Datei", !!sess && names(sess.children) === "Skript", JSON.stringify(sess))
-                const ilog = app.readTextFile(app.iliasDebugLog())
+                const ilog = app.readTextFile(IliasBackend.debugLog())
                 check("ILIAS: Protokoll mit Anmeldung, Seiten und Kursen, ohne Cookie-Werte",
                       ilog.indexOf("Anmeldefenster: angemeldet") >= 0 && ilog.indexOf("Favoriten: Höhere Mathematik I (crs100)") >= 0 && ilog.indexOf("crs300") < 0
                       && ilog.indexOf("Cookies: sid") >= 0 && ilog.indexOf("sid=1") < 0, ilog.slice(-600))
@@ -2032,7 +2032,7 @@ Item {
                 const il = fileActions.ilias
                 if (waitFor(() => !il.loginVisible && il.state === "idle" && il.status.indexOf("eingelesen") >= 0)) return
                 check("ILIAS: nach dem Abmelden ohne Zutun wieder angemeldet (gespeicherte Anmeldung)",
-                      !il.loginVisible && il.state === "idle" && il.filledOn === il.host && JSON.parse(app.iliasConfig).login_host === il.host,
+                      !il.loginVisible && il.state === "idle" && il.filledOn === il.host && JSON.parse(IliasBackend.config).login_host === il.host,
                       il.state + " " + il.status + " · " + il.filledOn)
             },
             () => {

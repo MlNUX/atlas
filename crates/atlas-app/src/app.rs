@@ -77,8 +77,6 @@ pub mod qobject {
         /// Last chosen order of folder views as JSON {key, ascending}
         /// (`[files]`), the start for new views.
         #[qproperty(QString, folder_sort, cxx_name = "folderSort", READ, NOTIFY)]
-        /// `[ilias]` as JSON {base_url, download_dir, show_in_places}.
-        #[qproperty(QString, ilias_config, cxx_name = "iliasConfig", READ, NOTIFY)]
         #[qproperty(QString, screenshot_path, cxx_name = "screenshotPath", READ, CONSTANT)]
         #[qproperty(i32, quit_after_ms, cxx_name = "quitAfterMs", READ, CONSTANT)]
         #[qproperty(bool, self_test, cxx_name = "selfTest", READ, CONSTANT)]
@@ -161,109 +159,6 @@ pub mod qobject {
         #[cxx_name = "spellLanguages"]
         fn spell_languages(self: &AppController) -> QString;
 
-        /// Changes `[ilias]`: `base_url`, `download_dir` or
-        /// `show_in_places` ("true"/"false").
-        #[qinvokable]
-        #[cxx_name = "setIliasConfig"]
-        fn set_ilias_config(self: Pin<&mut AppController>, key: &QString, value: &QString);
-
-        /// ILIAS state file "index" or "downloads" ("" if there is none).
-        #[qinvokable]
-        #[cxx_name = "iliasLoad"]
-        fn ilias_load(self: &AppController, name: &QString) -> QString;
-
-        /// The web profile (QML WebEngineProfile) whose login session
-        /// reading and downloading use.
-        #[qinvokable]
-        #[cxx_name = "iliasUseProfile"]
-        unsafe fn ilias_use_profile(self: &AppController, profile: *mut QObject) -> bool;
-
-        /// Reads the dashboard's courses with everything in them, in the
-        /// background; then `iliasScanned` (the tree is in "index").
-        #[qinvokable]
-        #[cxx_name = "iliasScan"]
-        fn ilias_scan(self: &AppController);
-
-        /// Reading goes on: what is read now.
-        #[qsignal]
-        #[cxx_name = "iliasProgress"]
-        fn ilias_progress(self: Pin<&mut AppController>, text: QString);
-
-        /// Reading ended: `status` "ok" (with the number of courses),
-        /// "login" (log in again) or "error" (with the message).
-        #[qsignal]
-        #[cxx_name = "iliasScanned"]
-        fn ilias_scanned(self: Pin<&mut AppController>, status: QString, message: QString);
-
-        /// Downloads file `url` (ILIAS address; `download`: the address
-        /// sending the file) straight into folder `dir`, named as the server
-        /// says or else `title` (numbered if another file has that name; a
-        /// new version replaces its earlier download there); remembers it
-        /// with `info` in "downloads". Then `iliasDownloaded`.
-        #[qinvokable]
-        #[cxx_name = "iliasDownload"]
-        fn ilias_download(
-            self: &AppController,
-            url: &QString,
-            download: &QString,
-            title: &QString,
-            info: &QString,
-            dir: &QString,
-        );
-
-        #[qsignal]
-        #[cxx_name = "iliasDownloadProgress"]
-        fn ilias_download_progress(self: Pin<&mut AppController>, url: QString, received: f64, total: f64);
-
-        /// A download ended: `status` "ok" (with `path`), "login" or
-        /// "error" (with the message).
-        #[qsignal]
-        #[cxx_name = "iliasDownloaded"]
-        fn ilias_downloaded(
-            self: Pin<&mut AppController>,
-            url: QString,
-            path: QString,
-            status: QString,
-            message: QString,
-        );
-
-        /// Adds a line to the ILIAS log (`debug.log` in the ILIAS state
-        /// folder; e.g. what the login window saw).
-        #[qinvokable]
-        #[cxx_name = "iliasTrace"]
-        fn ilias_trace(self: &AppController, line: &QString);
-
-        /// The ILIAS log file.
-        #[qinvokable]
-        #[cxx_name = "iliasDebugLog"]
-        fn ilias_debug_log(self: &AppController) -> QString;
-
-        /// Remembers the university login for ILIAS: the user name in
-        /// `[ilias]`, the password only encrypted with systemd-creds
-        /// (otherwise nothing). Then `iliasLoginStored`.
-        #[qinvokable]
-        #[cxx_name = "iliasRememberLogin"]
-        fn ilias_remember_login(self: &AppController, user: &QString, password: &QString);
-
-        #[qsignal]
-        #[cxx_name = "iliasLoginStored"]
-        fn ilias_login_stored(self: Pin<&mut AppController>, ok: bool, message: QString);
-
-        /// Forgets the remembered login (password and allowed login page).
-        #[qinvokable]
-        #[cxx_name = "iliasForgetLogin"]
-        fn ilias_forget_login(self: Pin<&mut AppController>);
-
-        /// Decrypts the remembered login, in the background; then
-        /// `iliasLoginReady` (empty password if none or on failure).
-        #[qinvokable]
-        #[cxx_name = "iliasFetchLogin"]
-        fn ilias_fetch_login(self: &AppController);
-
-        #[qsignal]
-        #[cxx_name = "iliasLoginReady"]
-        fn ilias_login_ready(self: Pin<&mut AppController>, user: QString, password: QString, error: QString);
-
         /// Recognizes the formula in `area` (JSON `[x0, y0, x1, y1]`,
         /// points) of `page` (0-based) of PDF `path` as LaTeX (built-in
         /// pix2tex model, downloaded on first use), in the background; then
@@ -296,16 +191,6 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "configDir"]
         fn config_dir(self: &AppController) -> QString;
-
-        /// Re-reads `[ilias]` into `iliasConfig`.
-        #[qinvokable]
-        #[cxx_name = "reloadIliasConfig"]
-        fn reload_ilias_config(self: Pin<&mut AppController>);
-
-        /// Signs out: forgets the web session (all its cookies).
-        #[qinvokable]
-        #[cxx_name = "iliasLogout"]
-        fn ilias_logout(self: &AppController);
 
         /// Remembers the order chosen in a folder view for new views.
         #[qinvokable]
@@ -976,7 +861,6 @@ pub struct AppControllerRust {
     touchpad_fling: bool,
     spellcheck: bool,
     folder_sort: QString,
-    ilias_config: QString,
     /// Watches the file managers' places files.
     places_watcher: Option<atlas_core::watcher::DirWatcher>,
     screenshot_path: QString,
@@ -1050,7 +934,6 @@ impl Default for AppControllerRust {
             touchpad_fling: Config::load().files.touchpad_fling,
             spellcheck: Config::load().editor.spellcheck.unwrap_or(true),
             folder_sort: folder_sort_json(&Config::load().files),
-            ilias_config: ilias_json(&Config::load().ilias),
             places_watcher: None,
             screenshot_path: qs(cli.screenshot.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()),
             quit_after_ms: cli.quit_after_ms.unwrap_or(0) as i32,
@@ -1272,189 +1155,6 @@ impl qobject::AppController {
         qs(with_speller(|c| c.languages().join(", ")).unwrap_or_default())
     }
 
-    pub fn set_ilias_config(mut self: Pin<&mut Self>, key: &QString, value: &QString) {
-        let mut config = Config::load().ilias;
-        let value = value.to_string();
-        match key.to_string().as_str() {
-            "base_url" => {
-                let url = value.trim();
-                config.base_url = if url.ends_with('/') { url.to_owned() } else { format!("{url}/") };
-            }
-            "download_dir" => config.download_dir = value,
-            "show_in_places" => config.show_in_places = value == "true",
-            "login_host" => config.login_host = value.trim().to_lowercase(),
-            other => {
-                log::warn!("unknown ILIAS setting {other}");
-                return;
-            }
-        }
-        if let Err(err) = Config::save_ilias(&config) {
-            log::warn!("cannot save [ilias]: {err:#}");
-        }
-        self.as_mut().rust_mut().ilias_config = ilias_json(&config);
-        self.as_mut().ilias_config_changed();
-    }
-
-    pub fn ilias_load(&self, name: &QString) -> QString {
-        qs(atlas_core::ilias::load(&name.to_string()))
-    }
-
-    pub unsafe fn ilias_use_profile(&self, profile: *mut cxx_qt::QObject) -> bool {
-        // SAFETY: `profile` comes from QML and outlives this call.
-        unsafe { crate::qt_helpers::watch_web_cookies(profile) }
-    }
-
-    pub fn ilias_scan(&self) {
-        use atlas_core::ilias::{self, IliasError};
-        let base = Config::load().ilias.base_url;
-        let live = crate::qt_helpers::web_cookie_header(&qs(&base)).to_string();
-        let profile = PathBuf::from(crate::qt_helpers::web_profile_path().to_string());
-        let agent = crate::qt_helpers::web_user_agent().to_string();
-        ilias::trace_start("Einlesen");
-        ilias::trace(&format!("Web-Profil (seit dem Start gemeldet): {}", crate::qt_helpers::web_cookie_summary()));
-        let thread = self.qt_thread();
-        std::thread::spawn(move || {
-            let progress = |p: ilias::Progress| {
-                let text = if p.pages == 0 {
-                    format!("Lese {} …", p.text)
-                } else {
-                    format!("Lese … {} Seiten ({})", p.pages, p.text)
-                };
-                let _ = thread.queue(move |app| app.ilias_progress(qs(text)));
-            };
-            let cookies = ilias::Url::parse(&base).map(|u| ilias::session_cookies(&profile, &u, &live)).unwrap_or(live);
-            let result = ilias::Client::new(&base, &cookies, &agent)
-                .and_then(|client| ilias::scan(&client, &progress))
-                .and_then(|courses| {
-                    let scanned = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_millis() as u64)
-                        .unwrap_or(0);
-                    let index = serde_json::json!({ "base_url": base, "scanned": scanned, "courses": courses });
-                    ilias::save("index", &index.to_string()).map_err(|e| IliasError::Other(format!("{e:#}")))?;
-                    Ok(courses.len())
-                });
-            let (status, message) = match result {
-                Ok(n) => ("ok", n.to_string()),
-                Err(IliasError::Login) => ("login", String::new()),
-                Err(IliasError::Other(e)) => ("error", e),
-            };
-            let _ = thread.queue(move |app| app.ilias_scanned(qs(status), qs(message)));
-        });
-    }
-
-    pub fn ilias_download(&self, url: &QString, download: &QString, title: &QString, info: &QString, dir: &QString) {
-        use atlas_core::ilias::{self, IliasError};
-        let config = Config::load().ilias;
-        let address = if download.is_empty() { url.to_string() } else { download.to_string() };
-        let live = crate::qt_helpers::web_cookie_header(&qs(&address)).to_string();
-        let profile = PathBuf::from(crate::qt_helpers::web_profile_path().to_string());
-        let agent = crate::qt_helpers::web_user_agent().to_string();
-        let (url, title, info, dir) = (url.to_string(), title.to_string(), info.to_string(), dir.to_string());
-        let thread = self.qt_thread();
-        std::thread::spawn(move || {
-            let last = std::sync::Mutex::new(std::time::Instant::now());
-            let progress = |received: u64, total: Option<u64>| {
-                let mut last = last.lock().unwrap();
-                if last.elapsed() < std::time::Duration::from_millis(100) {
-                    return;
-                }
-                *last = std::time::Instant::now();
-                let url = qs(&url);
-                let total = total.unwrap_or(0) as f64;
-                let _ = thread.queue(move |app| app.ilias_download_progress(url, received as f64, total));
-            };
-            let result = (|| {
-                let other = |e: anyhow::Error| IliasError::Other(format!("{e:#}"));
-                let dir = ilias::target_dir(Path::new(&dir), &[]).map_err(other)?;
-                let cookies =
-                    ilias::Url::parse(&address).map(|u| ilias::session_cookies(&profile, &u, &live)).unwrap_or(live);
-                let client = ilias::Client::new(&config.base_url, &cookies, &agent)?;
-                let previous = ilias::previous_download(&url);
-                let path = ilias::download(&client, &address, &dir, &title, previous.as_deref(), &progress)?;
-                ilias::record_download(&url, &path, &info).map_err(other)?;
-                Ok(path)
-            })();
-            let (path, status, message) = match result {
-                Ok(path) => (path.to_string_lossy().into_owned(), "ok", String::new()),
-                Err(IliasError::Login) => (String::new(), "login", String::new()),
-                Err(IliasError::Other(e)) => (String::new(), "error", e),
-            };
-            let _ = thread.queue(move |app| app.ilias_downloaded(qs(url), qs(path), qs(status), qs(message)));
-        });
-    }
-
-    pub fn ilias_trace(&self, line: &QString) {
-        atlas_core::ilias::trace(&line.to_string());
-    }
-
-    pub fn ilias_debug_log(&self) -> QString {
-        let path = atlas_core::ilias::debug_log();
-        if !path.exists() {
-            atlas_core::ilias::trace("(noch nichts protokolliert)");
-        }
-        qs(path.to_string_lossy())
-    }
-
-    pub fn ilias_remember_login(&self, user: &QString, password: &QString) {
-        let (user, password) = (user.to_string().trim().to_owned(), password.to_string());
-        let thread = self.qt_thread();
-        std::thread::spawn(move || {
-            let result = (|| -> anyhow::Result<()> {
-                if user.is_empty() {
-                    anyhow::bail!("Benutzername fehlt");
-                }
-                ilias_secret().store_encrypted(&password)?;
-                let mut config = Config::load().ilias;
-                config.user = user;
-                Config::save_ilias(&config)
-            })();
-            let (ok, message) = match result {
-                Ok(()) => (true, "Anmeldung verschlüsselt gespeichert (systemd-creds)".to_owned()),
-                Err(err) => (false, format!("{err:#}")),
-            };
-            atlas_core::ilias::trace(&format!("Anmeldedaten merken: {message}"));
-            let _ = thread.queue(move |mut app| {
-                app.as_mut().reload_ilias_config();
-                app.ilias_login_stored(ok, qs(message));
-            });
-        });
-    }
-
-    pub fn ilias_forget_login(mut self: Pin<&mut Self>) {
-        if let Err(err) = ilias_secret().forget() {
-            log::warn!("cannot forget the ILIAS login: {err:#}");
-        }
-        let mut config = Config::load().ilias;
-        config.login_host.clear();
-        if let Err(err) = Config::save_ilias(&config) {
-            log::warn!("cannot save [ilias]: {err:#}");
-        }
-        atlas_core::ilias::trace("Anmeldedaten vergessen");
-        self.as_mut().reload_ilias_config();
-    }
-
-    pub fn ilias_fetch_login(&self) {
-        let thread = self.qt_thread();
-        std::thread::spawn(move || {
-            let user = Config::load().ilias.user;
-            let (password, error) = match ilias_secret().load() {
-                Ok(Some((p, atlas_core::secret::Kind::Encrypted))) => (p, String::new()),
-                Ok(Some(_)) => (String::new(), "nicht verschlüsselt gespeichert".to_owned()),
-                Ok(None) => (String::new(), String::new()),
-                Err(err) => (String::new(), format!("{err:#}")),
-            };
-            atlas_core::ilias::trace(&if !error.is_empty() {
-                format!("Anmeldedaten nicht lesbar: {error}")
-            } else if password.is_empty() {
-                "Anmeldedaten: kein gespeichertes Passwort".to_owned()
-            } else {
-                format!("Anmeldedaten entschlüsselt (Benutzer „{user}“)")
-            });
-            let _ = thread.queue(move |app| app.ilias_login_ready(qs(user), qs(password), qs(error)));
-        });
-    }
-
     pub fn latex_from_pdf(&self, request: i32, path: &QString, page: i32, area: &QString) {
         let thread = self.qt_thread();
         let Ok([x0, y0, x1, y1]) = serde_json::from_str::<[f64; 4]>(&area.to_string()) else {
@@ -1494,16 +1194,6 @@ impl qobject::AppController {
 
     pub fn config_dir(&self) -> QString {
         qs(atlas_core::config::config_dir().to_string_lossy())
-    }
-
-    pub fn reload_ilias_config(mut self: Pin<&mut Self>) {
-        self.as_mut().rust_mut().ilias_config = ilias_json(&Config::load().ilias);
-        self.as_mut().ilias_config_changed();
-    }
-
-    pub fn ilias_logout(&self) {
-        atlas_core::ilias::trace("Abmelden: alle Cookies des Web-Profils gelöscht");
-        crate::qt_helpers::clear_web_cookies();
     }
 
     pub fn remember_folder_sort(mut self: Pin<&mut Self>, key: &QString, ascending: bool) {
@@ -3563,21 +3253,6 @@ fn url_escape(segment: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
-}
-
-/// `[ilias]` for QML.
-/// The remembered university login for ILIAS (encrypted only).
-fn ilias_secret() -> atlas_core::secret::SecretStore {
-    atlas_core::secret::SecretStore::default_for("ilias")
-}
-
-fn ilias_json(c: &atlas_core::config::IliasConfig) -> QString {
-    let saved = ilias_secret().kind() == Some(atlas_core::secret::Kind::Encrypted);
-    let json = serde_json::json!({
-        "base_url": c.base_url, "download_dir": c.download_dir, "show_in_places": c.show_in_places,
-        "user": c.user, "login_host": c.login_host, "login_saved": saved && !c.user.is_empty(),
-    });
-    QString::from(json.to_string().as_str())
 }
 
 /// Order of new folder views for QML.

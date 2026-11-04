@@ -354,7 +354,7 @@ Rectangle {
         pickHint: qsTr("Atlas lädt die Datei direkt in diesen Ordner, ohne die Ordner aus ILIAS; ist der Name vergeben, bekommt sie eine Nummer.")
         onChosen: (path) => {
             if (root.askingFor) root.service.resume(path)
-            else root.app.setIliasConfig("download_dir", path)
+            else IliasBackend.setConfig("download_dir", path)
             root.askingFor = null
         }
     }

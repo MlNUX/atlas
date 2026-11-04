@@ -983,7 +983,7 @@ ApplicationWindow {
                         PlacesList {
                             id: placesList
                             // ILIAS as the last place (if switched on).
-                            readonly property bool ilias: { try { return JSON.parse(app.iliasConfig).show_in_places !== false } catch (e) { return true } }
+                            readonly property bool ilias: { try { return JSON.parse(IliasBackend.config).show_in_places !== false } catch (e) { return true } }
                             Layout.fillWidth: true
                             names: ilias ? app.placeNames.concat(["ILIAS"]) : app.placeNames
                             paths: ilias ? app.placePaths.concat(["ilias:"]) : app.placePaths

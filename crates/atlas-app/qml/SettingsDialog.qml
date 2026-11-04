@@ -267,7 +267,7 @@ Dialog {
                     Layout.fillWidth: true
                     id: iliasCard
                     implicitHeight: iliasColumn.implicitHeight + 24
-                    readonly property var ilias: { try { return JSON.parse(dialog.app.iliasConfig) } catch (e) { return {} } }
+                    readonly property var ilias: { try { return JSON.parse(IliasBackend.config) } catch (e) { return {} } }
                     property string loginMessage: ""
                     property bool loginFailed: false
                     property bool storing: false
@@ -276,12 +276,12 @@ Dialog {
                         storing = true
                         loginMessage = qsTr("Verschlüssele …")
                         loginFailed = false
-                        dialog.app.iliasRememberLogin(iliasUser.text.trim(), iliasPassword.text)
+                        IliasBackend.rememberLogin(iliasUser.text.trim(), iliasPassword.text)
                         iliasPassword.text = ""
                     }
                     Connections {
-                        target: dialog.app
-                        function onIliasLoginStored(ok, message) {
+                        target: IliasBackend
+                        function onLoginStored(ok, message) {
                             iliasCard.storing = false
                             iliasCard.loginFailed = !ok
                             iliasCard.loginMessage = message
@@ -289,7 +289,7 @@ Dialog {
                     }
                     function applyAddress() {
                         if (!iliasAddress.valid || !iliasAddress.changed) return
-                        dialog.app.setIliasConfig("base_url", iliasAddress.address)
+                        IliasBackend.setConfig("base_url", iliasAddress.address)
                         iliasAddress.text = Qt.binding(() => iliasCard.ilias.base_url || "")
                     }
                     ColumnLayout {
@@ -318,7 +318,7 @@ Dialog {
                             Toggle {
                                 Layout.alignment: Qt.AlignVCenter
                                 checked: iliasCard.ilias.show_in_places !== false
-                                onToggled: dialog.app.setIliasConfig("show_in_places", checked ? "false" : "true")
+                                onToggled: IliasBackend.setConfig("show_in_places", checked ? "false" : "true")
                             }
                         }
                         // The ILIAS of one's university: its start page.
@@ -379,7 +379,7 @@ Dialog {
                                 visible: iliasCard.ilias.login_saved === true
                                 text: qsTr("Vergessen")
                                 flat: true
-                                onClicked: { dialog.app.iliasForgetLogin(); iliasCard.loginMessage = qsTr("Anmeldung vergessen") }
+                                onClicked: { IliasBackend.forgetLogin(); iliasCard.loginMessage = qsTr("Anmeldung vergessen") }
                             }
                             TextField {
                                 id: iliasUser
@@ -870,7 +870,7 @@ Dialog {
         pickTitle: qsTr("Vorgeschlagener Download-Ordner")
         pickHint: qsTr("Jeder Download fragt nach seinem Ordner; dieser wird zuerst angeboten.")
         pickButton: qsTr("Hier speichern")
-        onChosen: (path) => dialog.app.setIliasConfig("download_dir", path)
+        onChosen: (path) => IliasBackend.setConfig("download_dir", path)
     }
 
     /// A setting: icon, title, a line of explanation, the control on the right.

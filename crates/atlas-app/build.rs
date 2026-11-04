@@ -70,6 +70,7 @@ const RUST_BRIDGES: &[&str] = &[
     "src/calendar_model.rs",
     "src/file_ops.rs",
     "src/folder_model.rs",
+    "src/ilias_backend.rs",
     "src/pdf_items.rs",
     "src/qt_helpers.rs",
     "src/search_model.rs",

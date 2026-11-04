@@ -9,6 +9,7 @@ mod calendar_model;
 mod cli;
 mod file_ops;
 mod folder_model;
+mod ilias_backend;
 mod pdf_items;
 mod qt_helpers;
 mod search_model;
