@@ -4,10 +4,10 @@
 //! Project search results (ripgrep and the text of PDFs) as a
 //! `QAbstractListModel`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 
-use atlas_core::search::{self, Match, Query, SearchHandle};
+use atlas_core::search::{self, Match, SearchHandle};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QByteArray, QHash, QHashPair_i32_QByteArray, QModelIndex, QString, QVariant, QVector};
 use serde_json::{Value, json};
@@ -136,50 +136,21 @@ pub struct SearchModelRust {
     generation: u64,
 }
 
-#[derive(Default)]
-struct Options {
-    regex: bool,
-    case_sensitive: bool,
-    whole_word: bool,
-    globs: String,
-    build_dirs: bool,
-    kinds: Vec<String>,
-}
-
-impl Options {
-    fn parse(json: &str) -> Self {
-        let v: Value = serde_json::from_str(json).unwrap_or_default();
-        let flag = |key: &str| v.get(key).and_then(Value::as_bool).unwrap_or(false);
-        Self {
-            regex: flag("regex"),
-            case_sensitive: flag("caseSensitive"),
-            whole_word: flag("wholeWord"),
-            globs: v.get("globs").and_then(Value::as_str).unwrap_or_default().to_owned(),
-            build_dirs: flag("buildDirs"),
-            kinds: v
-                .get("kinds")
-                .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_owned).collect())
-                .unwrap_or_default(),
-        }
-    }
-
-    fn query(&self, pattern: String) -> Query {
-        let mut query = Query {
-            regex: self.regex,
-            case_sensitive: Some(self.case_sensitive),
-            whole_word: self.whole_word,
-            globs: (!self.build_dirs)
-                .then(atlas_core::finder::build_dir_globs)
-                .unwrap_or_default()
-                .into_iter()
-                .chain(self.globs.split(',').map(str::trim).filter(|g| !g.is_empty()).map(str::to_owned))
-                .collect(),
-            ..Query::new(pattern)
-        };
-        let kinds: Vec<&str> = self.kinds.iter().map(String::as_str).collect();
-        search::restrict_to_kinds(&mut query, &kinds);
-        query
+/// The JSON options of `search()` as core options.
+fn parse_options(json: &str) -> search::Options {
+    let v: Value = serde_json::from_str(json).unwrap_or_default();
+    let flag = |key: &str| v.get(key).and_then(Value::as_bool).unwrap_or(false);
+    search::Options {
+        regex: flag("regex"),
+        case_sensitive: flag("caseSensitive"),
+        whole_word: flag("wholeWord"),
+        globs: v.get("globs").and_then(Value::as_str).unwrap_or_default().split(',').map(str::to_owned).collect(),
+        build_dirs: flag("buildDirs"),
+        kinds: v
+            .get("kinds")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+            .unwrap_or_default(),
     }
 }
 
@@ -205,8 +176,7 @@ impl qobject::SearchModel {
         if pattern.is_empty() || root.is_empty() {
             return;
         }
-        let options = Options::parse(&options.to_string());
-        let query = options.query(pattern);
+        let query = parse_options(&options.to_string()).query(pattern);
         let generation = self.generation;
         let batch_thread = self.qt_thread();
         let done_thread = self.qt_thread();
@@ -339,7 +309,8 @@ impl qobject::SearchModel {
 
     pub fn context(&self, path: &QString, line: i32, radius: i32, pdf: bool) -> QString {
         let path = PathBuf::from(path.to_string());
-        let lines = if pdf { pdf_context(&path, line) } else { text_context(&path, line, radius) };
+        let (line, radius) = (line.max(1) as usize, radius.max(0) as usize);
+        let lines = if pdf { search::pdf_context(&path, line) } else { search::text_context(&path, line, radius) };
         let lines: Vec<Value> = lines.into_iter().map(|(line, text)| json!({ "line": line, "text": text })).collect();
         QString::from(Value::Array(lines).to_string().as_str())
     }
@@ -399,37 +370,4 @@ impl qobject::SearchModel {
 /// UTF-16 length of the first `byte` bytes of `text`.
 fn utf16_len(text: &str, byte: usize) -> usize {
     text.get(..byte.min(text.len())).map_or(0, |s| s.encode_utf16().count())
-}
-
-/// Longest line in the preview (minified files have huge ones).
-const CONTEXT_LINE_CHARS: usize = 600;
-
-fn text_context(path: &Path, line: i32, radius: i32) -> Vec<(usize, String)> {
-    use std::io::{BufRead, BufReader};
-    let Ok(file) = std::fs::File::open(path) else { return Vec::new() };
-    let line = line.max(1) as usize;
-    let first = line.saturating_sub(radius.max(0) as usize).max(1);
-    let last = line + radius.max(0) as usize;
-    BufReader::new(file)
-        .split(b'\n')
-        .map_while(Result::ok)
-        .enumerate()
-        .skip(first - 1)
-        .take(last + 1 - first)
-        .map(|(i, bytes)| {
-            let text: String =
-                String::from_utf8_lossy(&bytes).trim_end_matches('\r').chars().take(CONTEXT_LINE_CHARS).collect();
-            (i + 1, text)
-        })
-        .collect()
-}
-
-fn pdf_context(path: &Path, page: i32) -> Vec<(usize, String)> {
-    let Some(text) = search::pdf_page_text(path, page.max(1) as usize) else { return Vec::new() };
-    text.lines()
-        .map(str::trim_end)
-        .filter(|l| !l.is_empty())
-        .enumerate()
-        .map(|(i, l)| (i + 1, l.chars().take(CONTEXT_LINE_CHARS).collect()))
-        .collect()
 }
