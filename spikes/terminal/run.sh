@@ -60,7 +60,7 @@ fi
 
 say "Summary"
 {
-  echo "# P0.5 Spike Terminal ($(sw_vers -productVersion), $(xcodebuild -version | head -n 1))"
+  echo "# P0.5 Spike Terminal ($(sw_vers -productVersion), $(xcodebuild -version | sed -n 1p))"
   echo
   if (( rc == 0 )); then echo "**Tests: grün**"; else echo "**Tests: rot**"; fi
   echo

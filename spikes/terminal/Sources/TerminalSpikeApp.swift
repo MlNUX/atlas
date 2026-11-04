@@ -48,7 +48,6 @@ struct SwiftTermPane: NSViewRepresentable {
     func makeNSView(context: Context) -> LocalProcessTerminalView {
         let view = LocalProcessTerminalView(frame: CGRect(x: 0, y: 0, width: 700, height: 800))
         view.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-        view.getTerminal().setCursorStyle(.steadyBlock)
         var env = Terminal.getEnvironmentVariables(termName: "xterm-256color")
         env.append("COLORTERM=truecolor")
         view.startProcess(executable: command[0], args: Array(command.dropFirst()), environment: env)
