@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "atlas-ffi"
+description = "UniFFI export of atlas-api for the macOS app (static library + Swift bindings)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "atlas_ffi"
+# staticlib: the XCFramework; cdylib: only for uniffi-bindgen (library mode).
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["cli"]
+
+[features]
+cli = ["uniffi/cli"]
+
+[dependencies]
+atlas-api = { path = "../atlas-api", features = ["ffi"] }
+uniffi = "0.32"

@@ -129,3 +129,18 @@ Fehler: 15 657 Zeilen, rund 440 öffentliche Typen und Methoden.
 | P2.2 | neu: `Project::resolve_document`, `Atlas::rename_project_session`, `Files::disk_space` | Funktionen der Qt-Brücke, die gefehlt haben |
 | P2.2 | `KnownProject` mit der aktiven Sitzung statt einer Liste | wie das Sitzungsmenü unter Linux |
 | P2.2 | `FileEntry::kind` ist der lesbare Typ; die Viewer-Art kommt aus `Files::file_kind` | `file_kind` steckte in der Qt-Brücke und liegt jetzt im Kern (`listing::viewer_kind`) |
+| P2.4 | `SearchQuery`: `case_sensitive: bool`, `build_dirs`, kein `text`/`pdf` mehr (über `kinds`) | wie das Suchfenster unter Linux; Optionen → Query jetzt im Kern (`search::Options`) |
+| P2.4 | `Search::context` liefert `Vec<ContextLine>` | Zeilennummern je Zeile (PDF: Zeile auf der Seite) |
+| P2.4 | `AnnotationHit` mit `relative`, `kind`, `title` | wie die Anmerkungssuche unter Linux; Logik jetzt im Kern (`annotations::search`) |
+| P2.8 | `Editor::render_markdown` liefert `RenderedMarkdown` (HTML, Titel, Tags, Überschriften, kaputte Links) | wie die Vorschau unter Linux (Gliederung, Hinweis auf kaputte Links) |
+| P2.8 | `Editor::external_launch` → `ExternalLaunch` (System/losgelöst/Terminal) statt den Editor selbst zu starten | Prozesse startet die Oberfläche (NSWorkspace, `Process`, SwiftTerm) |
+| P2.8 | `AppSettings` ohne `spell_languages`/`other`/Editor-Befehl; Ordner-Sortierung ist eine (global), `ContextOptions` neu | so speichert es `config.toml`; Editor-Befehl über `Editor::set_external_editor` |
+| P2.8 | `Spelling::available`, `add` gibt `Result` | ohne Wörterbücher prüft der Kern nichts (macOS: siehe unten) |
+
+**Rechtschreibung unter macOS (Entscheidung nach E16):** Der Kern nutzt Hunspell-Wörterbücher
+(`atlas_spell::dictionary_dirs`). Auf dem Mac gibt es die nur über Homebrew oder
+mitgelieferte Dateien. P3.3 nimmt deshalb `NSSpellChecker`, solange
+`Spelling::available()` `false` ist; das eigene Wörterbuch (`dictionary.txt`) bleibt
+gemeinsam.
+| P2.10 | `Ilias::set_session(cookies, user_agent)` statt `set_cookies`; `Cookie` nur `name`/`value`/`domain` | der Kern sendet die Cookies passend zum Host (wie Linux mit dem Web-Profil); WKWebView liefert sie über `WKHTTPCookieStore` |
+| P2.10 | `scan` → `IliasIndex` (mit Zeitpunkt), `last_index` → `Option<IliasIndex>`, `download(…, download: Option<String>, …)`, neu `logout` | wie der gespeicherte Index unter Linux (`index.json`) |
