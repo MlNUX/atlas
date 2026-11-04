@@ -64,7 +64,7 @@ static DISPOSITION_PLAIN: LazyLock<Regex> = LazyLock::new(|| regex(r#"(?i)filena
 /// File name from a `Content-Disposition` header (RFC 6266/5987).
 pub fn disposition_name(header: &str) -> Option<String> {
     if let Some(c) = DISPOSITION_STAR.captures(header) {
-        return Some(crate::text::percent_decode(c[1].trim()));
+        return Some(atlas_core::text::percent_decode(c[1].trim()));
     }
     let c = DISPOSITION_PLAIN.captures(header)?;
     Some(c.get(1).or(c.get(2))?.as_str().trim().to_owned())

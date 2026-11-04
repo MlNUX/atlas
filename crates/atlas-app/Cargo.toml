@@ -17,6 +17,9 @@ path = "src/main.rs"
 alacritty_terminal = "0.26"
 anyhow = "1"
 atlas-core = { path = "../atlas-core" }
+atlas-ilias = { path = "../atlas-ilias" }
+atlas-spell = { path = "../atlas-spell" }
+atlas-terminal = { path = "../atlas-terminal" }
 chrono = "0.4"
 chrono-tz = "0.10"
 cxx = "1"

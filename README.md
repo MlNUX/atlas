@@ -145,14 +145,16 @@ Alle Kürzel: [docs/shortcuts.md](docs/shortcuts.md).
 ```sh
 nix develop                           # alle Werkzeuge
 cargo run -p atlas-app -- ~/Projekt   # starten
-cargo test -p atlas-core              # Kern-Tests
+cargo test -p atlas-core -p atlas-terminal -p atlas-spell -p atlas-ilias   # Kern-Tests
 scripts/smoke-test.sh                 # Oberflächentest (offscreen)
 nix flake check                       # Paket, Tests, Formatierung
 ```
 
 `crates/atlas-core` ist der Rust-Kern ohne Qt (Dateien, Suche, PDF,
-Anmerkungen, Notizen, Kalender, ILIAS), `crates/atlas-app` die
-Qt-6/QML-Oberfläche über [cxx-qt](https://github.com/KDAB/cxx-qt).
+Anmerkungen, Notizen, Kalender), daneben ebenfalls ohne Qt
+`crates/atlas-terminal` (Terminal-Emulation), `crates/atlas-spell`
+(Rechtschreibung) und `crates/atlas-ilias` (ILIAS); `crates/atlas-app` ist
+die Qt-6/QML-Oberfläche über [cxx-qt](https://github.com/KDAB/cxx-qt).
 Konzept und Entwicklungsberichte: [docs/README.md](docs/README.md),
 Änderungen: [CHANGELOG.md](CHANGELOG.md).
 

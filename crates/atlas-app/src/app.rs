@@ -1010,7 +1010,7 @@ impl qobject::AppController {
     }
 
     pub fn set_terminal_light(&self, on: bool) {
-        atlas_core::terminal::colors::set_light(on);
+        atlas_terminal::colors::set_light(on);
     }
 
     pub fn set_natural_sort(mut self: Pin<&mut Self>, on: bool) {

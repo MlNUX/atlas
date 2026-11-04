@@ -135,6 +135,9 @@ dependencies = [
  "alacritty_terminal",
  "anyhow",
  "atlas-core",
+ "atlas-ilias",
+ "atlas-spell",
+ "atlas-terminal",
  "chrono",
  "chrono-tz",
  "cxx",
@@ -151,7 +154,6 @@ dependencies = [
 name = "atlas-core"
 version = "1.1.4"
 dependencies = [
- "alacritty_terminal",
  "anyhow",
  "blake3",
  "cairo-rs",
@@ -176,19 +178,56 @@ dependencies = [
  "regex",
  "roxmltree",
  "rusqlite",
- "scraper",
  "serde",
  "serde_json",
- "spellbook",
  "tempfile",
  "thiserror 2.0.21",
  "toml",
  "trash",
  "ureq",
- "url",
  "uuid",
  "yaml-rust2",
  "zip",
+]
+
+[[package]]
+name = "atlas-ilias"
+version = "1.1.4"
+dependencies = [
+ "anyhow",
+ "atlas-core",
+ "chrono",
+ "log",
+ "regex",
+ "rusqlite",
+ "scraper",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "ureq",
+ "url",
+]
+
+[[package]]
+name = "atlas-spell"
+version = "1.1.4"
+dependencies = [
+ "anyhow",
+ "log",
+ "pulldown-cmark",
+ "spellbook",
+ "tempfile",
+]
+
+[[package]]
+name = "atlas-terminal"
+version = "1.1.4"
+dependencies = [
+ "alacritty_terminal",
+ "anyhow",
+ "libc",
+ "tempfile",
 ]
 
 [[package]]

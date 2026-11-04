@@ -105,7 +105,7 @@ static TARGET_FILE: LazyLock<Regex> = LazyLock::new(|| regex(r"(?i)(target=file_
 /// other links with a
 /// `ref_id`, from the type icon of the list item.
 pub(super) fn classify(href: &str, icon: Option<&str>) -> Option<(String, String)> {
-    let decoded = crate::text::percent_decode(href);
+    let decoded = atlas_core::text::percent_decode(href);
     for re in LINK_PATTERNS.iter() {
         if let Some(c) = re.captures(&decoded) {
             return Some((c[1].to_lowercase(), c[2].to_owned()));

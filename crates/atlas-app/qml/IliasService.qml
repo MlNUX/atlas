@@ -13,7 +13,7 @@ import Atlas
 //
 // - The login happens in a web view with a persistent profile (cookies,
 //   also Shibboleth's session cookies); Atlas never sees the password.
-// - Reading and downloading run in Rust (atlas_core::ilias, through
+// - Reading and downloading run in Rust (atlas_ilias, through
 //   `IliasBackend.scan` / `IliasBackend.download`) with that profile's session
 //   cookies. The tree and the downloads are JSON files in the state
 //   directory (`IliasBackend.load`).

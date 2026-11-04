@@ -272,7 +272,7 @@ für Rust, externer Editor (losgelöst und im Terminal) erhält Datei und Zeile.
   Benutzerdatenbank (nicht das `$SHELL` einer `nix develop`-Umgebung);
   abweichend über `[terminal] shell = "…"` in `config.toml` oder
   `ATLAS_SHELL`. Ein Test startet alle drei interaktiv und führt einen Befehl
-  aus (`nix shell nixpkgs#zsh nixpkgs#fish -c cargo test -p atlas-core`).
+  aus (`nix shell nixpkgs#zsh nixpkgs#fish -c cargo test -p atlas-terminal`).
 - **Drag-and-drop** von Dateien/Ordnern (Explorer, Dateiliste, andere
   Programme) fügt die Pfade in die Eingabe ein – für Shells passend
   gequotet (`'Mein Ordner'`).

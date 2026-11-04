@@ -118,6 +118,12 @@
           cargoTestFlags = [
             "-p"
             "atlas-core"
+            "-p"
+            "atlas-terminal"
+            "-p"
+            "atlas-spell"
+            "-p"
+            "atlas-ilias"
           ];
 
           meta = {

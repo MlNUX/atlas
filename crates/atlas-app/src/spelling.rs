@@ -6,7 +6,7 @@
 
 use std::sync::{Mutex, OnceLock};
 
-use atlas_core::spell::{Checker, dictionary_dirs};
+use atlas_spell::{Checker, dictionary_dirs};
 use cxx_qt_lib::{QString, QStringList};
 
 use crate::util::qs;
@@ -68,7 +68,7 @@ impl qobject::Spelling {
         with_speller(|checker| {
             let bad = checker.misspelled(&text);
             let list: Vec<[usize; 2]> =
-                atlas_core::spell::utf16_ranges(&text, &bad).into_iter().map(|(s, l)| [s, l]).collect();
+                atlas_spell::utf16_ranges(&text, &bad).into_iter().map(|(s, l)| [s, l]).collect();
             serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())
         })
         .map_or_else(|| qs("null"), qs)

@@ -4,14 +4,14 @@
 //! ILIAS for QML (singleton `IliasBackend`): the `[ilias]` settings, the
 //! remembered login, reading the favourites and downloads – all in the
 //! background with the session of the login window's web profile
-//! (atlas_core::ilias does the work).
+//! (atlas_ilias does the work).
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
 use atlas_core::config::{Config, IliasConfig};
-use atlas_core::ilias::{self, IliasError};
 use atlas_core::secret::{Kind, SecretStore};
+use atlas_ilias::{self as ilias, IliasError};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
@@ -74,7 +74,14 @@ pub mod qobject {
         /// new version replaces its earlier download there); remembers it
         /// with `info` in "downloads". Then `downloaded`.
         #[qinvokable]
-        fn download(self: &IliasBackend, url: &QString, download: &QString, title: &QString, info: &QString, dir: &QString);
+        fn download(
+            self: &IliasBackend,
+            url: &QString,
+            download: &QString,
+            title: &QString,
+            info: &QString,
+            dir: &QString,
+        );
 
         #[qsignal]
         #[cxx_name = "downloadProgress"]

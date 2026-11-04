@@ -3,7 +3,7 @@
 
 //! `TerminalView`: an embedded terminal as a `QQuickPaintedItem`.
 //!
-//! Emulation and PTY live in `atlas_core::terminal`; this item only maps
+//! Emulation and PTY live in `atlas_terminal`; this item only maps
 //! QML input to escape sequences and paints [`Frame`] snapshots. Keyboard
 //! and mouse events are forwarded from QML (`Keys`, `MouseArea`,
 //! `WheelHandler`) through invokables.
@@ -13,8 +13,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use alacritty_terminal::vte::ansi::{CursorShape, Rgb};
-use atlas_core::terminal::input::{self, Mods, MouseAction, MouseButton};
-use atlas_core::terminal::{Frame, GridSize, Mode, Options, TermEvent, Terminal};
+use atlas_terminal::input::{self, Mods, MouseAction, MouseButton};
+use atlas_terminal::{Frame, GridSize, Mode, Options, TermEvent, Terminal};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QColor, QFont, QPoint, QRectF, QString, QStringList};
 
@@ -594,7 +594,7 @@ impl qobject::TerminalView {
         let mut painter = unsafe { Pin::new_unchecked(painter) };
         let (w, h) = (self.width(), self.height());
         let Some(term) = self.terminal.as_ref() else {
-            painter.fill_rect(&QRectF::new(0.0, 0.0, w, h), &color(atlas_core::terminal::colors::background()));
+            painter.fill_rect(&QRectF::new(0.0, 0.0, w, h), &color(atlas_terminal::colors::background()));
             return;
         };
         let frame = term.frame(self.focused);

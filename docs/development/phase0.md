@@ -15,7 +15,9 @@ Abnahmekriterien geprüft wurden.
 
 ```text
 crates/
-  atlas-core/   Rust, ohne Qt – Dateisystem, Watcher, Suche, PDF, Terminal, Zustand
+  atlas-core/   Rust, ohne Qt – Dateisystem, Watcher, Suche, PDF, Zustand
+  atlas-terminal/, atlas-spell/, atlas-ilias/
+                Rust, ohne Qt – Terminal-Emulation, Rechtschreibung, ILIAS
   atlas-app/    Qt 6/QML-Oberfläche; cxx-qt-Bridges als dünne Adapter auf atlas-core
     src/        QObjects und Item-Modelle (Rust, cxx-qt)
     cpp/        wenige C++-Helfer, die cxx-qt-lib nicht abdeckt (Fontmetrik, Zwischenablage, Fenster-Screenshot)

@@ -40,7 +40,7 @@ pub use trace::*;
 
 /// State files of the ILIAS view.
 pub fn state_dir() -> PathBuf {
-    crate::paths::state_root().join("ilias")
+    atlas_core::paths::state_root().join("ilias")
 }
 
 /// The JSON file `name` ("index" or "downloads"); other names are refused.
@@ -57,7 +57,7 @@ pub fn load(name: &str) -> String {
 pub fn save(name: &str, json: &str) -> Result<()> {
     let Some(path) = state_file(name) else { bail!("unbekannte ILIAS-Datei {name}") };
     serde_json::from_str::<serde_json::Value>(json)?;
-    crate::paths::write_atomic(&path, json.as_bytes())
+    atlas_core::paths::write_atomic(&path, json.as_bytes())
 }
 
 #[cfg(test)]
