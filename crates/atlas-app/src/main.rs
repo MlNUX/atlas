@@ -11,6 +11,7 @@ mod file_ops;
 mod folder_model;
 mod formula_ocr;
 mod ilias_backend;
+mod markdown_edit;
 mod pdf_items;
 mod qt_helpers;
 mod search_model;
