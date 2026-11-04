@@ -44,7 +44,9 @@ Plattformgebunden im Kern: PDF über poppler/cairo/glib (`crates/atlas-core/src/
 
 ## Entscheidungen
 
-Festgelegt (gilt für alle Agents, nicht neu verhandeln):
+Alle festgelegt (04.11.2026) – gilt für alle Agents, nicht neu verhandeln. Wer auf eine
+Frage stößt, die hier nicht beantwortet ist, entscheidet nach dem Geist dieser Liste,
+dokumentiert es im PR und macht weiter.
 
 | # | Frage | Entscheidung |
 |---|---|---|
@@ -52,24 +54,18 @@ Festgelegt (gilt für alle Agents, nicht neu verhandeln):
 | E2 | Architektur | nur arm64 (Apple Silicon), kein Intel/Universal |
 | E3 | Mindestversion | macOS 26; macOS 27 mittesten, sobald verfügbar |
 | E4 | Branches | Integrationszweig `port/macos-swiftui`, Aufgaben auf `port/macos/<ID>-<kurz>`; keine Betriebssystem-Branches |
-
-Noch offen (vor dem genannten Zeitpunkt vom Projektinhaber zu entscheiden; bis dahin gilt
-die Empfehlung):
-
-| # | Frage | Bis | Empfehlung |
-|---|---|---|---|
-| O1 | App-Name, Bundle-ID, Apple-Developer-Team | W0 | `Atlas`, `de.minux.atlas`; ohne Account nur unsignierte Test-Builds |
-| O2 | Umfang Version 1 | W0 | Projekte, Dateien, PDF + Anmerkungen, Markdown, Suche, Kontextleiste, Kalender ohne Sync, Terminal, Einstellungen; später Kalender-Sync, ILIAS, Erweiterungs-Ansichten, Formel-OCR, `.atlasnote` |
-| O3 | Wann nach `main` | W0 | ab W7 regelmäßig, Mac-App als „Vorschau“ |
-| O4 | Aussehen | W7 | natives macOS (Liquid Glass, Systemfarben, SF), Atlas-Akzentfarbe |
-| O5 | Fenster und Tabs | W7 | ein Fenster pro Projekt, darin Atlas-Tabs und -Splits wie unter Linux (Sitzungen austauschbar) |
-| O6 | Tastenkürzel bei Konflikten | W7 | macOS-Konvention vor Atlas-Gewohnheit |
-| O7 | Sprache | W7 | String Catalogs, Deutsch als Ausgangssprache |
-| O8 | Projekte zwischen Linux und Mac austauschbar | W3 | ja, gleiches `.atlas/`-Format (bindend für P1/P2) |
-| O9 | Ort der Einstellungen | W3 | `~/Library/Application Support/Atlas` |
-| O10 | Kalender | W5 | eigener Kalender wie unter Linux; EventKit später |
-| O11 | Verteilung | W12 | DMG auf GitHub-Releases + Sparkle; Homebrew-Cask später |
-| O12 | Spikes ohne klare Antwort | W2 | im Zweifel die Variante, die schneller fertig ist |
+| E5 | Name, Bundle-ID | `Atlas`, `de.minux.atlas`. Apple-Developer-Account kommt noch: bis dahin unsignierte Test-Builds (ad hoc signiert), Signatur/Notarisierung (P4.3) so vorbereiten, dass nur Team-ID und Zertifikate fehlen |
+| E6 | Umfang Version 1 | **volle Parität** mit der Linux-Version (alle Funktionen inkl. Kalender-Sync, ILIAS, Erweiterungen mit Ansichten, Formel-OCR, `.atlasnote`); keine kleinere Veröffentlichung vorher |
+| E7 | Weg nach `main` | ab W7 (App-Gerüst läuft) regelmäßig nach `main`, Mac-App als „Vorschau“ gekennzeichnet |
+| E8 | Aussehen | natives macOS (Liquid Glass, Systemfarben, San Francisco, Hell/Dunkel vom System), einzige Markenfarbe ist die Atlas-Akzentfarbe |
+| E9 | Fenster und Tabs | ein Fenster pro Projekt, darin Atlas-Tabs und -Splits wie unter Linux; Sitzungen zwischen Linux und Mac austauschbar |
+| E10 | Tastenkürzel | macOS-Konvention gewinnt; Atlas-Kürzel nur, wo frei, sonst Ersatzkürzel (Liste in `docs/shortcuts.md` um eine Mac-Spalte ergänzen) |
+| E11 | Sprache | String Catalogs, Deutsch als Ausgangssprache, übersetzbar angelegt |
+| E12 | Projekte Linux ↔ Mac | austauschbar, **bindend**: gleiches `.atlas/`-Format (Anmerkungen, Sitzungen, Index, Kontextleiste); Kern-Änderungen müssen es einhalten, Tests mit Projekten beider Seiten |
+| E13 | Ort der Einstellungen | `~/Library/Application Support/Atlas` (heute ergäbe `dirs::config_dir()` dort `…/atlas` klein; P1.2 legt den Mac-Pfad in der Plattform-Schicht fest) |
+| E14 | Kalender | eigener Atlas-Kalender mit CalDAV/Google-Sync wie Linux **und zusätzlich** der macOS-Kalender über EventKit (Termine anzeigen und anlegen, Zielkalender wählbar) – Aufgabe P3.13 |
+| E15 | Verteilung | DMG auf GitHub-Releases, Updates per Sparkle; Homebrew-Cask später |
+| E16 | Spikes ohne klare Antwort | die Variante, die schneller fertig ist; Agents entscheiden selbst, dokumentieren und informieren |
 
 ## Architektur
 
@@ -220,9 +216,10 @@ Danach **parallel nach Funktion** (eigene Swift-Ordner, eigene Ansichtsmodelle):
 | P3.10 | Aktionen und Erweiterungen | Liste, Ausführen, Hintergrundjobs, Erweiterungs-Ansichten (`WebView` + Brücke), Rechte-Dialog | `Features/Extensions/` | stark |
 | P3.11 | ILIAS | Anmeldung (`WebView`), Favoriten als Ordner, Downloads | `Features/Ilias/` | schnell |
 | P3.12 | Atlas-Notizen (`.atlasnote`), HTML-Ansicht, Bild-Fenster | | `Features/Viewers/` | schnell |
+| P3.13 | **macOS-Kalender (EventKit)** | Zugriff anfragen (Info.plist `NSCalendarsFullAccessUsageDescription`, Kalender-Entitlement), Termine und Erinnerungen der macOS-Kalender neben den Atlas-Einträgen anzeigen, beim Anlegen Zielkalender wählen (Atlas oder macOS), Änderungen über `EKEventStoreChanged` | `Features/Calendar/EventKit/` | stark |
 
 Abhängigkeiten: alle nach P3.0; P3.4 nach den Editor-Grundlagen aus P3.3; P3.6 nach P3.2/P3.3
-(Gliederung, Anmerkungen); sonst unabhängig.
+(Gliederung, Anmerkungen); P3.13 nach P3.7 (Kalenderansichten); sonst unabhängig.
 
 ### Phase 4 – Qualität und Auslieferung (≈ 2 Wochen, parallel ab Mitte Phase 3)
 
@@ -277,7 +274,7 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
 | W8 | **P3.2** PDF (`Features/PDF/`) | **P3.3** Markdown (`Features/Markdown/`) | Mac / Mac | |
 | W9 | **P3.8** Suche, **P3.11** ILIAS | **P3.4** Code-Editor (baut auf P3.3), **P3.1** Dateien | Mac / Mac | |
 | W10 | **P3.6** Kontextleiste (braucht P3.2/P3.3) | **P3.5** Terminal, **P3.7** Kalender | Mac / Mac | |
-| W11 | **P3.10** Aktionen und Erweiterungen | **P3.9** Einstellungen, **P3.12** weitere Ansichten | Mac / Mac | |
+| W11 | **P3.10** Aktionen und Erweiterungen, **P3.13** macOS-Kalender (EventKit) | **P3.9** Einstellungen, **P3.12** weitere Ansichten | Mac / Mac | |
 | W12 | **P4.3** Bundle, Signatur, Notarisierung, **P4.4** Sparkle | **P4.1** UI-Tests, **P4.5** Barrierefreiheit | Mac / Mac | |
 | W13 | **P4.6** macOS 27 (sobald Beta) | **P4.7** Doku, README, CHANGELOG-Text (LLM1 trägt ein) | Mac / Linux | Version fertig |
 
@@ -303,7 +300,7 @@ macht nur LLM1, einmal pro Zusammenführung.
   pflegt die Issue-Liste. Kann die Sitzung sein, die die anderen startet.
 - **Prüfer** (anderes Modell, z. B. Codex oder ein zweites Claude): liest API-Entwurf (P2.1)
   und die schwierigen PRs (P2.11, P3.0, P3.2, P3.3) gegen.
-- **Du:** Entscheidungen bei Spikes (P0.4, P0.5), Abnahme auf echtem Mac (Trackpad, Retina,
+- **Du:** Abnahme auf echtem Mac (Trackpad, Retina,
   Gefühl), Apple-Developer-Account für P4.3; bis Phase 3 möglichst einen Apple-Silicon-Mac
   (Mac mini oder Cloud-Mac) für schnelleres Arbeiten an der Oberfläche – sonst geht P3 nur
   über CI, langsamer.
@@ -328,7 +325,8 @@ Kontingent für macOS-Minuten beachten) und ab Phase 3 bevorzugt auf einem echte
 ## Grobe Gesamtdauer
 
 Mit 3–5 parallelen Agents und regelmäßiger Integration **etwa 3–4 Monate** bis zu einer
-Version, die die heutigen Funktionen abdeckt. Unsicher sind vor allem P3.2 (PDF-Werkzeuge),
+Version mit voller Parität (E6), zuzüglich etwa einer Woche für EventKit (E14). Mit nur zwei
+Modellen (LLM1/LLM2, Wellen W0–W13) eher am oberen Ende oder darüber. Unsicher sind vor allem P3.2 (PDF-Werkzeuge),
 P3.3 (Editor) und P4.3 (Signatur/Notarisierung beim ersten Mal).
 
 ## Risiken und Gegenmittel
