@@ -93,3 +93,14 @@ Fehler: 15 657 Zeilen, rund 440 öffentliche Typen und Methoden.
 - `Project` und `Atlas` halten bisher nur Platzhalterfelder. P2.2 legt das gemeinsame
   Projekt-Innenleben an (Index, Writer, Watcher, Sink), die anderen Bereiche bekommen
   es über `Project`.
+
+## Änderungen am Vertrag
+
+| Aufgabe | Änderung | Grund |
+|---|---|---|
+| P2.2 | `SessionSummary` hat `tabs`, `splits`, `kind`, `saved` statt `open_files`/`last_used` | so liefert es der Kern (`ProjectSession::summary`) |
+| P2.2 | `Project::save_session(layout, expanded, documents)` und `session_expanded()` statt `save_session_layout`/`expanded_dirs`/`set_expanded_dirs` | Layout, Ordner und Dokumente werden zusammen gespeichert (wie Linux) |
+| P2.2 | `create_session(name, layout, expanded)`: Kopie über das übergebene Layout | die Oberfläche kennt den aktuellen Stand, der Kern nur den gespeicherten |
+| P2.2 | neu: `Project::resolve_document`, `Atlas::rename_project_session`, `Files::disk_space` | Funktionen der Qt-Brücke, die gefehlt haben |
+| P2.2 | `KnownProject` mit der aktiven Sitzung statt einer Liste | wie das Sitzungsmenü unter Linux |
+| P2.2 | `FileEntry::kind` ist der lesbare Typ; die Viewer-Art kommt aus `Files::file_kind` | `file_kind` steckte in der Qt-Brücke und liegt jetzt im Kern (`listing::viewer_kind`) |

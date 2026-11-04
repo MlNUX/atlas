@@ -32,6 +32,7 @@ pub mod search;
 pub mod settings;
 pub mod terminal;
 
+mod inner;
 mod util;
 
 pub use error::{AtlasError, Result};

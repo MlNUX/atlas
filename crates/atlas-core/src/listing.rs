@@ -45,6 +45,52 @@ impl SortKey {
     }
 }
 
+/// Coarse file type used to pick a viewer: `calendar`, `ilias`, `terminal`
+/// (tabs that are no files), `trash`, `dir`, `missing`, `pdf`, `atlasnote`,
+/// `markdown`, `image`, `text` or `binary`.
+pub fn viewer_kind(path: &Path) -> &'static str {
+    if path.as_os_str().as_encoded_bytes().starts_with(b"calendar:") {
+        return "calendar";
+    }
+    if path.as_os_str().as_encoded_bytes().starts_with(b"ilias:") {
+        return "ilias";
+    }
+    // Terminal tabs: `terminal:<start directory>#<id>`.
+    if is_virtual_tab(path) {
+        return "terminal";
+    }
+    if crate::places::trash_files_dir().is_some_and(|t| t == path) {
+        return "trash";
+    }
+    if path.is_dir() {
+        return "dir";
+    }
+    if path.symlink_metadata().is_err() {
+        return "missing";
+    }
+    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "pdf" => "pdf",
+        // Notebooks from Atlas Tablet (ZIP); also when a sync tool appended ".zip".
+        "atlasnote" => "atlasnote",
+        "zip" if path.to_string_lossy().to_lowercase().ends_with(".atlasnote.zip") => "atlasnote",
+        "md" | "markdown" | "mdown" | "mkd" => "markdown",
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" => "image",
+        _ => {
+            // Treat as text unless the first KiB contains NUL bytes.
+            let mut buf = [0u8; 1024];
+            let n = std::fs::File::open(path).and_then(|mut f| std::io::Read::read(&mut f, &mut buf)).unwrap_or(0);
+            if buf[..n].contains(&0) { "binary" } else { "text" }
+        }
+    }
+}
+
+/// Tabs that are no files: `terminal:<dir>#<n>`, `calendar:` and `ilias:`.
+pub fn is_virtual_tab(path: &Path) -> bool {
+    let bytes = path.as_os_str().as_encoded_bytes();
+    bytes.starts_with(b"terminal:") || bytes.starts_with(b"calendar:") || bytes.starts_with(b"ilias:")
+}
+
 /// Human readable type of a file, e.g. "PDF-Dokument".
 pub fn kind_of(name: &str, is_dir: bool) -> String {
     if is_dir {

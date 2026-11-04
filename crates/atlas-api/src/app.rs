@@ -6,9 +6,12 @@
 
 use std::sync::Arc;
 
+use atlas_core::project::Project as CoreProject;
+
 use crate::events::EventSink;
 use crate::project::{Project, SessionSummary};
-use crate::{Result, todo_task};
+use crate::util::{path, string};
+use crate::{AtlasError, Result, todo_task};
 
 /// A place in the sidebar (home, desktop, …, trash, file manager bookmarks).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,16 +25,13 @@ pub struct Place {
     pub fixed: bool,
 }
 
-/// A project Atlas has opened before.
+/// A project Atlas has opened before, with its active session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct KnownProject {
     pub root: String,
     pub name: String,
-    pub exists: bool,
-    /// Unix seconds of the last use.
-    pub last_used: i64,
-    pub sessions: Vec<SessionSummary>,
+    pub session: Option<SessionSummary>,
 }
 
 /// A command running in the background (`terminal: background` actions).
@@ -76,26 +76,61 @@ impl Atlas {
 
     /// Sidebar places (fixed ones first, then file manager bookmarks if on).
     pub fn places(&self) -> Vec<Place> {
-        todo_task!("P2.2")
+        let file_manager = atlas_core::config::Config::load().places.file_manager;
+        let (places, fixed) = atlas_core::places::sidebar_places(atlas_core::places::fixed(), file_manager);
+        places
+            .into_iter()
+            .enumerate()
+            .map(|(i, p)| Place { name: p.name, icon: p.icon, path: string(&p.path), fixed: i < fixed })
+            .collect()
     }
 
-    /// Projects opened before, most recent first.
+    /// Projects opened before (existing folders only), most recent first.
     pub fn known_projects(&self) -> Vec<KnownProject> {
-        todo_task!("P2.2")
+        atlas_core::session::AppState::load()
+            .projects
+            .into_iter()
+            .filter(|root| root.is_dir())
+            .map(|root| {
+                let session = CoreProject::open_existing(&root).map(|p| {
+                    let id = p.active_session();
+                    crate::project::summary_of(&p, &id, true, p.session_name())
+                });
+                KnownProject {
+                    name: root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                    root: string(&root),
+                    session,
+                }
+            })
+            .collect()
     }
 
-    /// Removes a project from the list (its files and `.atlas/` stay).
+    /// Renames the active session of another project (not open here).
+    pub fn rename_project_session(&self, root: String, name: String) -> Result<()> {
+        let root = path(&root);
+        let project = CoreProject::open_existing(&root)
+            .ok_or_else(|| AtlasError::NotFound { message: format!("{} hat keine Session.", root.display()) })?;
+        Ok(project.rename(&name)?)
+    }
+
+    /// Removes a project from the list and clears its sessions (its files stay).
     pub fn forget_project(&self, root: String) -> Result<()> {
-        let _ = root;
-        todo_task!("P2.2")
+        let root = path(&root);
+        if let Some(project) = CoreProject::open_existing(&root) {
+            project.clear_sessions()?;
+        }
+        let mut state = atlas_core::session::AppState::load();
+        state.forget(&root);
+        state.save()?;
+        self.sink.on_event(crate::events::Event::SessionsChanged { project_root: string(&root) });
+        Ok(())
     }
 
     /// Opens the project at `root` (creating `.atlas/` if needed) for one
     /// window; `sink` receives that window's events. Opening the same root
     /// twice gives two independent handles.
     pub fn open_project(&self, root: String, sink: Arc<dyn EventSink>) -> Result<Arc<Project>> {
-        let _ = (root, sink, &self.sink);
-        todo_task!("P2.2")
+        Ok(Arc::new(Project::open(&path(&root), sink)?))
     }
 
     /// Background jobs of all projects.
@@ -127,8 +162,10 @@ impl Atlas {
 
     /// Converts a `file://` URL (drag and drop, clipboard) to a path.
     pub fn url_to_path(&self, url: String) -> Option<String> {
-        let _ = url;
-        todo_task!("P2.2")
+        let rest = url.strip_prefix("file://")?;
+        // `file://localhost/…` and `file:///…`
+        let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+        rest.starts_with('/').then(|| atlas_core::text::percent_decode(rest))
     }
 }
 
