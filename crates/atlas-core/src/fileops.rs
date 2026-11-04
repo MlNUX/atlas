@@ -259,6 +259,7 @@ pub struct TrashEntry {
 }
 
 /// All items in all trash folders, newest first.
+#[cfg(not(target_os = "macos"))]
 pub fn trash_list() -> Result<Vec<TrashEntry>> {
     let items = trash::os_limited::list().map_err(|e| anyhow!("Papierkorb nicht lesbar: {e}"))?;
     let mut entries: Vec<TrashEntry> = items
@@ -279,6 +280,7 @@ pub fn trash_list() -> Result<Vec<TrashEntry>> {
     Ok(entries)
 }
 
+#[cfg(not(target_os = "macos"))]
 fn trash_items(ids: &[String]) -> Result<Vec<trash::TrashItem>> {
     let items = trash::os_limited::list().map_err(|e| anyhow!("Papierkorb nicht lesbar: {e}"))?;
     Ok(items.into_iter().filter(|i| ids.iter().any(|id| i.id.to_string_lossy() == id.as_str())).collect())
@@ -286,6 +288,7 @@ fn trash_items(ids: &[String]) -> Result<Vec<trash::TrashItem>> {
 
 /// Restores items to their original location. A name clash at the original
 /// location is reported as error and leaves the item in the trash.
+#[cfg(not(target_os = "macos"))]
 pub fn trash_restore(ids: &[String]) -> Result<()> {
     let items = trash_items(ids)?;
     trash::os_limited::restore_all(items).map_err(|e| match e {
@@ -297,9 +300,64 @@ pub fn trash_restore(ids: &[String]) -> Result<()> {
 }
 
 /// Deletes items from the trash irrecoverably.
+#[cfg(not(target_os = "macos"))]
 pub fn trash_purge(ids: &[String]) -> Result<()> {
     let items = trash_items(ids)?;
     trash::os_limited::purge_all(items).map_err(|e| anyhow!("Endgültiges Löschen fehlgeschlagen: {e}"))
+}
+
+// macOS: the `trash` crate can only move items into the trash there. The
+// Finder keeps the original location ("Put Back") in a private format, so
+// the entries are the files in `~/.Trash`, without original location; the
+// trash folder needs Full Disk Access to be listed.
+
+/// All items in `~/.Trash`, newest first (`id`: path inside the trash).
+#[cfg(target_os = "macos")]
+pub fn trash_list() -> Result<Vec<TrashEntry>> {
+    use std::os::unix::fs::MetadataExt;
+    let dir = crate::platform::trash_files_dir().context("kein Papierkorb")?;
+    let read = std::fs::read_dir(&dir).map_err(|e| {
+        anyhow!(
+            "Papierkorb nicht lesbar ({e}) – Atlas braucht dafür „Festplattenvollzugriff“ in den Systemeinstellungen"
+        )
+    })?;
+    let mut entries: Vec<TrashEntry> = read
+        .flatten()
+        .filter(|e| e.file_name() != ".DS_Store")
+        .filter_map(|e| {
+            let meta = std::fs::symlink_metadata(e.path()).ok()?;
+            Some(TrashEntry {
+                id: e.path().to_string_lossy().into_owned(),
+                name: e.file_name().to_string_lossy().into_owned(),
+                original_path: e.path(),
+                // Moving into the trash changes the inode, not the contents.
+                deleted_unix: meta.ctime(),
+                is_dir: meta.is_dir(),
+                size: meta.is_file().then(|| meta.len()),
+            })
+        })
+        .collect();
+    entries.sort_by(|a, b| b.deleted_unix.cmp(&a.deleted_unix).then_with(|| a.name.cmp(&b.name)));
+    Ok(entries)
+}
+
+/// Not possible on macOS without the Finder (original location unknown).
+#[cfg(target_os = "macos")]
+pub fn trash_restore(_ids: &[String]) -> Result<()> {
+    bail!("Wiederherstellen geht unter macOS im Finder: Papierkorb öffnen, Objekt wählen, „Zurücklegen“.")
+}
+
+/// Deletes items from `~/.Trash` irrecoverably (only items inside it).
+#[cfg(target_os = "macos")]
+pub fn trash_purge(ids: &[String]) -> Result<()> {
+    let dir = crate::platform::trash_files_dir().context("kein Papierkorb")?;
+    for id in ids {
+        let path = Path::new(id);
+        anyhow::ensure!(path.parent() == Some(dir.as_path()), "„{id}“ liegt nicht im Papierkorb");
+        let meta = std::fs::symlink_metadata(path)?;
+        if meta.is_dir() { std::fs::remove_dir_all(path)? } else { std::fs::remove_file(path)? }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

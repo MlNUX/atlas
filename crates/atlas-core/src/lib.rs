@@ -27,6 +27,7 @@ pub mod paths;
 pub mod pdf;
 pub mod perms;
 pub mod places;
+pub mod platform;
 pub mod project;
 pub mod relations;
 pub mod search;

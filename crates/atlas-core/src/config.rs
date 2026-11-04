@@ -382,7 +382,7 @@ pub fn config_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("ATLAS_CONFIG_DIR") {
         return PathBuf::from(dir);
     }
-    dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("atlas")
+    crate::platform::config_dir()
 }
 
 pub fn config_file() -> PathBuf {
