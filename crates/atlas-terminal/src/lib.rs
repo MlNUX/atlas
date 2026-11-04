@@ -512,13 +512,13 @@ impl Frame {
 
 /// Working directory of process `pid`: `/proc/<pid>/cwd` on Linux.
 #[cfg(target_os = "linux")]
-fn process_cwd(pid: u32) -> Option<PathBuf> {
+pub fn process_cwd(pid: u32) -> Option<PathBuf> {
     std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
 }
 
 /// Working directory of process `pid`: `proc_pidinfo(PROC_PIDVNODEPATHINFO)` on macOS.
 #[cfg(target_os = "macos")]
-fn process_cwd(pid: u32) -> Option<PathBuf> {
+pub fn process_cwd(pid: u32) -> Option<PathBuf> {
     use std::ffi::CStr;
     use std::os::unix::ffi::OsStrExt;
     let mut info = std::mem::MaybeUninit::<libc::proc_vnodepathinfo>::zeroed();
@@ -541,7 +541,7 @@ fn process_cwd(pid: u32) -> Option<PathBuf> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn process_cwd(_pid: u32) -> Option<PathBuf> {
+pub fn process_cwd(_pid: u32) -> Option<PathBuf> {
     None
 }
 
