@@ -11,7 +11,7 @@ use atlas_core::project::Project as CoreProject;
 use crate::events::EventSink;
 use crate::project::{Project, SessionSummary};
 use crate::util::{path, string};
-use crate::{AtlasError, Result, todo_task};
+use crate::{AtlasError, Result};
 
 /// A place in the sidebar (home, desktop, …, trash, file manager bookmarks).
 #[derive(Debug, Clone, PartialEq, Eq)]
