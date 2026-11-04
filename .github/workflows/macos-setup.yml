@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Shared macOS setup for the Atlas macOS port (owned by the integrator, LLM1).
+# Every task workflow (.github/workflows/mac-<ID>.yml) calls this with the
+# command to run. All installations happen here (via apps/macos/scripts/bootstrap.sh),
+# never in the task workflows.
+#
+# The command gets:
+#   ATLAS_CI_OUT    directory for logs, screenshots, .xcresult (uploaded as artifact);
+#                   a summary.md in it is shown on the run's summary page
+#   ATLAS_RG_BIN    path to rg
+#   ORT_DYLIB_PATH  path to libonnxruntime.dylib
+#
+# Example:
+#   jobs:
+#     mac:
+#       uses: ./.github/workflows/macos-setup.yml
+#       with:
+#         run: apps/macos/scripts/ci-smoke/run.sh
+#         artifact-name: mac-P0.3
+name: macOS setup
+
+on:
+  workflow_call:
+    inputs:
+      run:
+        description: Shell command(s) to run after setup (bash, from the repo root)
+        type: string
+        required: true
+      artifact-name:
+        description: Name of the uploaded artifact with the contents of ATLAS_CI_OUT
+        type: string
+        required: true
+      runs-on:
+        description: Runner image (Apple Silicon only, E2)
+        type: string
+        default: macos-26
+      xcode:
+        description: Xcode major (or major.minor) version to select
+        type: string
+        default: "26"
+      cache-key:
+        description: Extra key for the Cargo cache (use the task ID)
+        type: string
+        default: ""
+      timeout-minutes:
+        type: number
+        default: 60
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    name: macOS (${{ inputs.runs-on }})
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ANALYTICS: "1"
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode ${{ inputs.xcode }}
+        env:
+          XCODE_WANTED: ${{ inputs.xcode }}
+        run: |
+          set -euo pipefail
+          ls -d /Applications/Xcode*.app
+          # newest installed release matching the wanted version (no betas/RCs)
+          app="$(ls -d /Applications/Xcode_"$XCODE_WANTED"*.app 2>/dev/null \
+            | grep -viE 'beta|release_candidate|_rc' | sort -V | tail -n 1 || true)"
+          [[ -n "$app" ]] || { echo "::error::no Xcode $XCODE_WANTED on this image"; exit 1; }
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-${{ inputs.cache-key }}
+
+      - name: Homebrew cache
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew/downloads
+          key: brew-${{ inputs.runs-on }}-${{ hashFiles('apps/macos/scripts/Brewfile') }}
+          restore-keys: brew-${{ inputs.runs-on }}-
+
+      - name: Bootstrap (Brewfile, Rust target)
+        run: apps/macos/scripts/bootstrap.sh
+
+      - name: Environment
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ci-out"
+          mkdir -p "$out"
+          echo "ATLAS_CI_OUT=$out" >>"$GITHUB_ENV"
+          {
+            sw_vers
+            uname -a
+            xcodebuild -version
+            swift --version
+            rustc --version
+            cargo --version
+            echo "ATLAS_RG_BIN=$ATLAS_RG_BIN"
+            echo "ORT_DYLIB_PATH=$ORT_DYLIB_PATH"
+          } 2>&1 | tee "$out/environment.txt"
+
+      - name: Run
+        id: run
+        env:
+          ATLAS_CI_RUN: ${{ inputs.run }}
+        run: |
+          set -o pipefail
+          bash -euo pipefail -c "$ATLAS_CI_RUN" 2>&1 | tee "$ATLAS_CI_OUT/run.log"
+
+      - name: Summary
+        if: always()
+        run: |
+          if [[ -f "$ATLAS_CI_OUT/summary.md" ]]; then
+            cat "$ATLAS_CI_OUT/summary.md" >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ env.ATLAS_CI_OUT }}
+          if-no-files-found: warn
+          retention-days: 14
