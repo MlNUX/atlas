@@ -5,7 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Atlas für macOS 26/27 mit SwiftUI – Plan für mehrere Agents
 
-Stand 04.11.2026 · Basis `release-1.1.4` · Branch `port/macos-swiftui`
+Stand 04.11.2026 · Basis `release-1.1.5` · Integrationszweig `port/macos-swiftui` (wird von
+`release-1.1.5` abgezweigt, sobald W0 beginnt)
 
 ## Ziel
 
@@ -33,13 +34,15 @@ und Sync, Aktionen, Erweiterungen, Anmerkungen, Konfiguration, Kontextleisten-Pr
 
 | Teil | Umfang | Bedeutung für den Port |
 |---|---|---|
-| `crates/atlas-core` | ~23 400 Zeilen Rust, **keine Qt-Abhängigkeit** | wird wiederverwendet |
-| `crates/atlas-app/src` | ~10 200 Zeilen, 255 Qt-Funktionen (`app.rs` allein 126) | Vorbild für die neue, neutrale API; nicht wiederverwendbar (cxx-qt) |
-| `crates/atlas-app/qml` | ~25 600 Zeilen, ~770 JS-Funktionen | wird in SwiftUI neu gebaut; Logik darin wandert vorher nach Rust |
+| `crates/atlas-core` | ~20 500 Zeilen Rust, **keine Qt-Abhängigkeit** | wird wiederverwendet |
+| `crates/atlas-terminal`, `atlas-spell`, `atlas-ilias` | ~1 100 / ~300 / ~1 600 Zeilen, **ohne Qt** (`atlas-ilias` nutzt `atlas-core`) | werden wiederverwendet |
+| `crates/atlas-app/src` | ~10 400 Zeilen, 255 Qt-Funktionen: `app.rs` + `app/` (nach Themen: `sessions`, `notes`, `relations`, `actions`, `extensions`, `settings`, `editing`), `calendar_model/`, `ilias_backend.rs`, `spelling.rs`, `formula_ocr.rs`, Modelle | Vorbild für die neue, neutrale API; nicht wiederverwendbar (cxx-qt) |
+| `crates/atlas-app/qml` | ~25 800 Zeilen, ~775 JS-Funktionen | wird in SwiftUI neu gebaut; Logik darin wandert vorher nach Rust |
 | `crates/atlas-app/web` | Vorschau-Seite mit KaTeX, Mermaid, highlight.js | 1:1 in `WKWebView` weiterverwendbar |
 
 Plattformgebunden im Kern: PDF über poppler/cairo/glib (`crates/atlas-core/src/pdf/`, Trait
-`Backend`), `prctl` und `/proc` (`background.rs`, `terminal/mod.rs`), Passwortspeicher über
+`Backend`), `prctl` (`atlas-core/src/background.rs`) und `/proc`
+(`crates/atlas-terminal/src/lib.rs`), Passwortspeicher über
 `systemd-creds` (`secret.rs`), Suche über das Programm `rg` (`search.rs`, `ATLAS_RG_BIN`).
 
 ## Entscheidungen
@@ -71,7 +74,9 @@ dokumentiert es im PR und macht weiter.
 
 ```
 crates/
-  atlas-core/        unverändert Kern; poppler wird optionales Feature "pdf-poppler"
+  atlas-core/        Kern; poppler wird optionales Feature "pdf-poppler"
+  atlas-terminal/    Terminal (alacritty_terminal), atlas-spell/ Rechtschreibung,
+  atlas-ilias/       ILIAS – alle ohne Qt, unverändert weiterverwendet
   atlas-api/   NEU   neutrale Fassade: Dienste mit einfachen Rust-Typen, Ereignisse als
                      Callback-Trait; keine Qt-, keine Swift-Typen. Später nutzt auch die
                      Qt-Brücke sie (atlas-app wird dünner).
@@ -150,13 +155,14 @@ Jede Aufgabe hält die Qt-Version unverändert lauffähig (Selbsttest grün).
 | ID | Aufgabe | Modell | Dateien | Fertig, wenn |
 |---|---|---|---|---|
 | P1.1 | poppler als optionales Feature `pdf-poppler` (Standard an); `Backend`-Trait öffentlich; Seitentext von außen einspeisbar (`pdf::set_page_texts(path, pages)`) für Suche/Index | stark | `crates/atlas-core/src/pdf/`, `search.rs`, `Cargo.toml` (Kern) | `cargo check --no-default-features` grün, Suche findet eingespeisten Text (Test) |
-| P1.2 | Plattform-Schicht `platform/{mod,linux,macos}.rs`: Prozess-Arbeitsverzeichnis, Elternende, Schlüsselbund (`security-framework`), Dateimanager-Orte (macOS: feste Liste + Finder-Favoriten, wenn lesbar) | stark | `crates/atlas-core/src/platform/`, `background.rs`, `terminal/mod.rs`, `secret.rs` | Linux-Tests grün; macOS-Teil übersetzt in der macOS-CI (`mac-P1.2.yml`) |
-| P1.3 | Kontextleisten-Profile von JS nach Rust: `context_profiles.rs` (Katalog, `layout`, `edit`, `move`, Seiten) mit Tests; QML ruft es über die Qt-Brücke auf | stark | `crates/atlas-core/src/context_profiles.rs`, `qml/ContextProfiles.qml`, `app.rs` (nur neue Funktionen) | alle Kontextleisten-Prüfungen im Selbsttest grün |
-| P1.4 | Editor-Logik nach Rust: Tabellen ausrichten, Listen fortsetzen, Zelle finden, Wiki-Vervollständigung (heute JS in `TextEditor.qml`) → `markdown_edit.rs` | stark | `crates/atlas-core/src/markdown_edit.rs`, `qml/TextEditor.qml` | Tabellen-/Listen-Prüfungen grün, Rust-Tests decken dieselben Fälle |
+| P1.2 | Plattform-Schicht `platform/{mod,linux,macos}.rs`: Prozess-Arbeitsverzeichnis, Elternende, Schlüsselbund (`security-framework`), Dateimanager-Orte (macOS: feste Liste + Finder-Favoriten, wenn lesbar) | stark | `crates/atlas-core/src/platform/`, `background.rs`, `secret.rs`; Arbeitsverzeichnis per `cfg` direkt in `crates/atlas-terminal/src/lib.rs` (das Crate hängt nicht von `atlas-core` ab) | Linux-Tests grün; macOS-Teil übersetzt in der macOS-CI (`mac-P1.2.yml`) |
+| P1.3 | Kontextleisten-Profile von JS nach Rust: `context_profiles.rs` (Katalog, `layout`, `edit`, `move`, Seiten) mit Tests; QML ruft es über die Qt-Brücke auf | stark | `crates/atlas-core/src/context_profiles.rs`, `qml/ContextProfiles.qml`, `crates/atlas-app/src/app/settings.rs` (nur neue Funktionen) | alle Kontextleisten-Prüfungen im Selbsttest grün |
+| P1.4 | Editor-Logik nach Rust: Tabellen ausrichten, Listen fortsetzen, Zelle finden, Wiki-Vervollständigung (heute JS in `TextEditor.qml`) → `markdown_edit.rs` | stark | `crates/atlas-core/src/markdown_edit.rs`, `qml/TextEditor.qml`, `crates/atlas-app/src/app/editing.rs` | Tabellen-/Listen-Prüfungen grün, Rust-Tests decken dieselben Fälle |
 | P1.5 | Syntaxhervorhebung im Kern mit `syntect`: Sprachen erkennen (Dateiendung, Codeblock-Info), Spannen liefern; Markdown mit eingebetteten Codeblöcken | schnell | `crates/atlas-core/src/highlight.rs` | Tests für Markdown, Rust, Python, MATLAB, LaTeX |
 
-Abhängigkeiten: keine untereinander (Dateien getrennt). P1.3/P1.4 ändern `app.rs` nur durch
-**neue** Funktionen am Dateiende; der Integrator führt zusammen.
+Abhängigkeiten: keine untereinander (Dateien getrennt). P1.3 ergänzt Funktionen in
+`app/settings.rs`, P1.4 in `app/editing.rs`; die Aufzählung der Qt-Funktionen in `app.rs`
+ändert nur der Integrator.
 
 ### Phase 2 – `atlas-api` und `atlas-ffi` (≈ 2–3 Wochen)
 
@@ -166,7 +172,7 @@ Rust-Signaturen in `crates/atlas-api/src/*.rs`. Grundsätze: Dienste als Objekte
 `Settings`, `Context`, `Ilias`, `LatexOcr`), einfache Datentypen (Records/Enums statt JSON),
 lange Arbeiten `async` oder mit Fortschritt-Callback, Ereignisse über einen
 `EventSink`-Trait (Datei geändert, Notizindex neu, Sync fertig …). Vorlage für den Umfang
-sind die 255 Funktionen der Qt-Brücke (`crates/atlas-app/src/*.rs`).
+sind die 255 Funktionen der Qt-Brücke (`crates/atlas-app/src/**/*.rs`).
 Fertig, wenn: Integrator und ein zweites Modell (Gegenlesen) den Entwurf abgenommen haben.
 
 Danach **parallel, je ein Agent pro Bereich** (Linux, meist schnell; Vorlage ist jeweils
@@ -174,15 +180,15 @@ die entsprechende Qt-Brücke):
 
 | ID | Bereich | Vorlage (heute) | Dateien |
 |---|---|---|---|
-| P2.2 | Projekt, Dateien, Sitzungen, Papierkorb, Ordnerbaum | `app.rs` (Sitzungen), `file_ops.rs`, `tree_model.rs`, `folder_model.rs`, `trash_model.rs` | `atlas-api/src/project.rs`, `files.rs` |
-| P2.3 | Notizen, Links, Tags, Graph, Zitate, Link-Reparatur | `app.rs` (notes…, contextGraph, projectQuotes) | `atlas-api/src/notes.rs` |
+| P2.2 | Projekt, Dateien, Sitzungen, Papierkorb, Ordnerbaum | `app/sessions.rs`, `file_ops.rs`, `tree_model.rs`, `folder_model.rs`, `trash_model.rs` | `atlas-api/src/project.rs`, `files.rs` |
+| P2.3 | Notizen, Links, Tags, Graph, Zitate, Link-Reparatur | `app/notes.rs`, `app/relations.rs` | `atlas-api/src/notes.rs` |
 | P2.4 | Suche (Dateien, Text, PDF) | `search_model.rs`, `quickOpen` | `atlas-api/src/search.rs` |
-| P2.5 | Kalender, Aufgaben, Sync (CalDAV, Google) | `calendar_model.rs` | `atlas-api/src/calendar.rs` |
-| P2.6 | PDF-Daten: Anmerkungen, Zitate, Seitentext-Einspeisung, Formel-OCR | `annotations_model.rs`, `pdf_items.rs`, `latex*` | `atlas-api/src/pdf.rs`, `ocr.rs` |
-| P2.7 | Aktionen, Hintergrundjobs, Erweiterungen | `app.rs` (actions…, extension…) | `atlas-api/src/actions.rs`, `extensions.rs` |
-| P2.8 | Einstellungen, Kontextleiste (aus P1.3), Rechtschreibung, Hervorhebung (P1.5), Editor-Logik (P1.4) | `app.rs` (config, spell…) | `atlas-api/src/settings.rs`, `editor.rs` |
-| P2.9 | Terminal (nur falls P0.5 „Kern-Raster“ wählt) | `terminal_item.rs` | `atlas-api/src/terminal.rs` |
-| P2.10 | ILIAS (Anmeldung über WebView in Swift, Rest im Kern) | `app.rs` (ilias…), `IliasService.qml` | `atlas-api/src/ilias.rs` |
+| P2.5 | Kalender, Aufgaben, Sync (CalDAV, Google) | `calendar_model.rs` + `calendar_model/` (`account`, `edit`, `remote`) | `atlas-api/src/calendar.rs` |
+| P2.6 | PDF-Daten: Anmerkungen, Zitate, Seitentext-Einspeisung, Formel-OCR | `annotations_model.rs`, `pdf_items.rs`, `formula_ocr.rs` | `atlas-api/src/pdf.rs`, `ocr.rs` |
+| P2.7 | Aktionen, Hintergrundjobs, Erweiterungen | `app/actions.rs`, `app/extensions.rs` | `atlas-api/src/actions.rs`, `extensions.rs` |
+| P2.8 | Einstellungen, Kontextleiste (aus P1.3), Rechtschreibung, Hervorhebung (P1.5), Editor-Logik (P1.4) | `app/settings.rs`, `app/editing.rs`, `spelling.rs` (+ Crate `atlas-spell`) | `atlas-api/src/settings.rs`, `editor.rs` |
+| P2.9 | Terminal (nur falls P0.5 „Kern-Raster“ wählt) | `terminal_item.rs` (+ Crate `atlas-terminal`) | `atlas-api/src/terminal.rs` |
+| P2.10 | ILIAS (Anmeldung über WebView in Swift, Rest im Kern) | `ilias_backend.rs` (+ Crate `atlas-ilias`), `IliasService.qml` | `atlas-api/src/ilias.rs` |
 
 Jede: Rust-Tests für die Fassade; keine Logik doppeln, nur `atlas-core` aufrufen.
 
@@ -242,7 +248,8 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
 ### Damit es keine Konflikte gibt
 
 - **LLM1 ist Integrator** und besitzt allein: Workspace-`Cargo.toml`, `crates/atlas-core/Cargo.toml`,
-  `crates/atlas-core/src/lib.rs`, `crates/atlas-api/src/lib.rs`, `.github/workflows/ci.yml`,
+  `crates/atlas-core/src/lib.rs`, `crates/atlas-api/src/lib.rs`, `crates/atlas-app/src/app.rs`
+  (Aufzählung der Qt-Funktionen), `.github/workflows/ci.yml`,
   `.github/workflows/macos-setup.yml`,
   `CHANGELOG.md`, Xcode-Projekt (`apps/macos/Atlas.xcodeproj`), `AGENTS.md` (nach P0.1).
   LLM2 schreibt benötigte Abhängigkeiten oder `pub mod`-Zeilen in die PR-Beschreibung,
@@ -266,7 +273,7 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
 | W0 | **P0.3** CI-Grundlage `macos-setup.yml` | **P0.1** `AGENTS.md`, `CLAUDE.md`, GitHub-Issues | Mac-CI / Linux | LLM1 führt zusammen |
 | W1 | **P0.2** Spike UniFFI (`spikes/uniffi/`) | **P0.4** Spike PDFKit (`spikes/pdfkit/`) | Mac / Mac | |
 | W2 | **P0.6** Kern ohne poppler (Bericht) | **P0.5** Spike Terminal (`spikes/terminal/`) | Mac / Mac | **Du entscheidest:** PDF-Weg, Terminal-Weg |
-| W3 | **P1.1** poppler optional, dann **P1.2** Plattform-Schicht (`pdf/`, `search.rs`, `platform/`, `background.rs`, `terminal/mod.rs`, `secret.rs`) | **P1.3** Kontextleisten-Profile nach Rust, dann **P1.4** Editor-Logik nach Rust (`context_profiles.rs`, `markdown_edit.rs`, `ContextProfiles.qml`, `TextEditor.qml`, neue Funktionen am Ende von `app.rs`) | Linux / Linux | |
+| W3 | **P1.1** poppler optional, dann **P1.2** Plattform-Schicht (`pdf/`, `search.rs`, `platform/`, `background.rs`, `atlas-terminal/src/lib.rs`, `secret.rs`) | **P1.3** Kontextleisten-Profile nach Rust, dann **P1.4** Editor-Logik nach Rust (`context_profiles.rs`, `markdown_edit.rs`, `ContextProfiles.qml`, `TextEditor.qml`, `app/settings.rs`, `app/editing.rs`) | Linux / Linux | |
 | W4 | **P2.1** API-Entwurf (`docs/porting/api.md`, alle `atlas-api`-Dateien als Signaturen) | **P1.5** Syntaxhervorhebung (`highlight.rs`), danach **Prüfer** für P2.1 | Linux / Linux | Entwurf erst nach LLM2-Abnahme zusammenführen |
 | W5 | **P2.2** Projekt/Dateien, **P2.4** Suche, **P2.8** Einstellungen/Editor, **P2.10** ILIAS, ggf. **P2.9** Terminal | **P2.3** Notizen, **P2.5** Kalender, **P2.6** PDF-Daten/OCR, **P2.7** Aktionen/Erweiterungen | Linux / Linux | je Bereich ein PR |
 | W6 | **P2.11** `atlas-ffi`, XCFramework, `AtlasKit` | Paritätstabelle `docs/porting/paritaet.md` + Testkatalog aus `SelfTest.qml` für P4.1 | Mac / Linux | |
