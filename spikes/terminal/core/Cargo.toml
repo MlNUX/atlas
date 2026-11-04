@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Terminal spike (P0.5), variant B: atlas-terminal behind a tiny C ABI so the
+# Swift app can draw its frames. Throwaway code; the real bridge is UniFFI (P2.9).
+[package]
+name = "atlas-term-spike"
+version = "0.0.1"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+atlas-terminal = { path = "../../../crates/atlas-terminal" }
+serde_json = "1"
+# Only for the Rgb type in frames (atlas-terminal does not re-export it).
+alacritty_terminal = "0.26"
+
+# Own workspace: the spike is not a member of the Atlas workspace.
+[workspace]
