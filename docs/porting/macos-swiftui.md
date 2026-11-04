@@ -92,13 +92,13 @@ packaging/macos/ NEU Info.plist, Entitlements, Icon, bundle.sh, notarize.sh, Spa
 | Bereich | Entscheidung | Warum |
 |---|---|---|
 | Rust ↔ Swift | **UniFFI** (Proc-Macro-Modus), XCFramework für arm64 (E2) | erprobt (Firefox iOS), erzeugt idiomatisches Swift, Callbacks und `async` |
-| PDF-Anzeige | **PDFKit** (`PDFView` per `NSViewRepresentable`) | native Darstellung, Auswahl, Suche, Zoom; poppler/cairo/glib müssen nicht ins App-Bundle |
+| PDF-Anzeige | **PDFKit** (`PDFView` per `NSViewRepresentable`) – bestätigt durch Spike P0.4: Markierungen deckungsgleich mit Linux, auch mit CropBox und `/Rotate` | native Darstellung, Auswahl, Suche, Zoom; poppler/cairo/glib müssen nicht ins App-Bundle |
 | PDF-Daten im Kern | Anmerkungen bleiben im Atlas-Format (`.atlas/annotations/*.json`, Punkte, Ursprung oben links) und werden in PDFKit-Annotationen umgerechnet (`y' = Seitenhöhe − y`); Seitentext für Suche/Index liefert Swift per Callback an den Kern | Daten bleiben zwischen Linux und Mac austauschbar |
 | PDF-Export mit Anmerkungen | PDFKit schreibt die Kopie | ersetzt den cairo-Weg auf dem Mac |
 | Markdown-Editor | `NSTextView` (TextKit 2) per `NSViewRepresentable`; Syntaxfarben, Listen-/Tabellenlogik, Wiki-Vervollständigung kommen **aus dem Kern** | der SwiftUI-`TextEditor` reicht für einen Code-Editor nicht |
 | Syntaxhervorhebung | neu im Kern mit **`syntect`** (reines Rust): `highlight(text, sprache) → Spannen` | KSyntaxHighlighting gibt es auf dem Mac nicht; Qt kann es später auch nutzen |
 | Markdown-Vorschau | Kern rendert HTML (wie heute), Anzeige in SwiftUI-`WebView` mit `crates/atlas-app/web/preview.*` | gleiche Vorschau wie unter Linux |
-| Terminal | Spike entscheidet: **SwiftTerm** (eigene PTY, ausgereift) oder Raster aus `alacritty_terminal` im Kern + eigener Swift-Renderer | SwiftTerm ist schneller fertig; Kern-Variante hält Verhalten gleich |
+| Terminal | **SwiftTerm** (`LocalProcessTerminalView`, eigene PTY) – entschieden in Spike P0.5 (`docs/porting/spike-terminal.md`); P2.9 entfällt | gleich schnell wie die Kern-Variante, bringt Tastatur/IME, Auswahl, Maus und Bedienungshilfen mit |
 | Suche | `rg` (arm64) ins App-Bundle legen, Pfad über `ATLAS_RG_BIN` | Kern bleibt unverändert |
 | Passwörter | Schlüsselbund über das Crate `security-framework` in `platform/macos.rs` | ersetzt `systemd-creds` |
 | Formel-OCR | `ort` mit mitgelieferter `libonnxruntime.dylib` (heute `load-dynamic`) | unverändert im Kern |
@@ -217,7 +217,7 @@ Danach **parallel nach Funktion** (eigene Swift-Ordner, eigene Ansichtsmodelle):
 | P3.2 | **PDF** | PDFKit-Ansicht, Werkzeuge (Markieren, Kommentar, Stift, Radierer), Seitenleiste (Miniaturen, Gliederung, Anmerkungen), Zitat in Notiz, Bereich als Bild, Präsentationsmodus, Dunkelmodus, Export | `Features/PDF/` | stark |
 | P3.3 | **Markdown** | Editor (`NSTextView`, Farben/Listen/Tabellen aus dem Kern), Vorschau (`WebView` + `preview.html`), Geteilt mit Scroll-Sync, Einfügen (Bild, Tabelle, Diagramm, Ordnerbaum), Wiki-Links, Rechtschreibung (Kern oder `NSSpellChecker`) | `Features/Markdown/` | stark |
 | P3.4 | Text-/Code-Editor, Symbole, Gehe zu Zeile, Suchen/Ersetzen | baut auf dem Editor aus P3.3 auf | `Features/Code/` | schnell |
-| P3.5 | Terminal | nach Entscheidung P0.5 | `Features/Terminal/` | stark |
+| P3.5 | Terminal | SwiftTerm (P0.5); Arbeitsverzeichnis über `proc_pidinfo` wie `atlas-terminal` (P1.2) | `Features/Terminal/` | stark |
 | P3.6 | Kontextleiste | Bausteine, Reiterseiten, Profile, Bearbeitungsmodus, Galerie (Logik aus `atlas-api`) | `Features/Context/` | schnell |
 | P3.7 | Kalender | Monat/Woche, Einträge, Aufgaben, Sync-Einstellungen, Konflikte | `Features/Calendar/` | schnell |
 | P3.8 | Suche | Fenster mit Typfiltern, Treffer markiert im Dokument | `Features/Search/` | schnell |
@@ -279,7 +279,7 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
 | W2 | **P0.6** Kern ohne poppler (Bericht) | **P0.5** Spike Terminal (`spikes/terminal/`) | Mac / Mac | PDF- und Terminal-Weg nach den Spikes festhalten (bei Unklarheit E16) |
 | W3 | **P1.1** poppler optional, dann **P1.2** Plattform-Schicht (`pdf/`, `search.rs`, `platform/`, `background.rs`, `atlas-terminal/src/lib.rs`, `secret.rs`) | **P1.3** Kontextleisten-Profile nach Rust, dann **P1.4** Editor-Logik nach Rust (`context_profiles.rs`, `markdown_edit.rs`, `ContextProfiles.qml`, `TextEditor.qml`, `app/settings.rs`, `app/editing.rs`) | Linux / Linux | |
 | W4 | **P2.1** API-Entwurf (`docs/porting/api.md`, alle `atlas-api`-Dateien als Signaturen) | **P1.5** Syntaxhervorhebung (`highlight.rs`), danach **Prüfer** für P2.1 | Linux / Linux | Entwurf erst nach LLM2-Abnahme zusammenführen |
-| W5 | **P2.2** Projekt/Dateien, **P2.4** Suche, **P2.8** Einstellungen/Editor, **P2.10** ILIAS, ggf. **P2.9** Terminal | **P2.3** Notizen, **P2.5** Kalender, **P2.6** PDF-Daten/OCR, **P2.7** Aktionen/Erweiterungen | Linux / Linux | je Bereich ein PR |
+| W5 | **P2.2** Projekt/Dateien, **P2.4** Suche, **P2.8** Einstellungen/Editor, **P2.10** ILIAS (P2.9 entfällt, SwiftTerm) | **P2.3** Notizen, **P2.5** Kalender, **P2.6** PDF-Daten/OCR, **P2.7** Aktionen/Erweiterungen | Linux / Linux | je Bereich ein PR |
 | W6 | **P2.11** `atlas-ffi`, XCFramework, `AtlasKit` | Paritätstabelle `docs/porting/paritaet.md` + Testkatalog aus `SelfTest.qml` für P4.1 | Mac / Linux | |
 | W7 | **P3.0** App-Gerüst mit allen Platzhaltern | **P4.2** dauerhafter Workflow `macos.yml` (eigene Datei) | Mac / Linux | ab hier füllt jeder nur seine Feature-Ordner |
 | W8 | **P3.2** PDF (`Features/PDF/`) | **P3.3** Markdown (`Features/Markdown/`) | Mac / Mac | |

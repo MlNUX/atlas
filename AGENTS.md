@@ -74,8 +74,13 @@ Branch, Dateien und Abnahme.
   `.github/workflows/macos-setup.yml` (`workflow_call`) aufruft.
 - Installationen nur im Einrichtungs-Workflow (gehört dem Integrator), nie von Hand im
   eigenen Workflow.
-- Ergebnisse (Logs, `screencapture`-Bilder, `.xcresult`) als Artefakte hochladen und über
-  die GitHub-Anbindung lesen.
+- Ergebnisse (Logs, `screencapture`-Bilder, `.xcresult`) landen in `$ATLAS_CI_OUT` und
+  werden als Artefakt hochgeladen; eine `summary.md` darin erscheint auf der Seite des Laufs.
+  Lassen sich Artefakte aus der eigenen Umgebung nicht laden: Bildschirmfotos (`*.png`)
+  stehen zusätzlich im Job-Log, `apps/macos/scripts/ci-screenshots.sh <log>` holt sie heraus
+  (Log mit `gh run view --job <id> --log`).
+- Ein Push startet den eigenen Workflow nur, wenn er Dateien unter `paths:` ändert (ein
+  reiner Merge aus dem Integrationszweig oft nicht).
 - Caches für Cargo und Homebrew nutzen; Läufe nur bei Änderungen in den eigenen Pfaden
   (`paths:`). macOS-Minuten sind knapp.
 - Große Rust-Builds (Kern, XCFramework) macht nur der Integrator, einmal pro
