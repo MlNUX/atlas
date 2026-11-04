@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P2.11 (macOS port): atlas-ffi → XCFramework → AtlasKit; swift test
+# calls the services through the generated bindings.
+name: mac-P2.11
+
+on:
+  push:
+    branches: ["port/macos/P2.11-*"]
+    paths:
+      - ".github/workflows/mac-P2.11.yml"
+      - "apps/macos/AtlasKit/**"
+      - "apps/macos/scripts/build-core.sh"
+      - "crates/atlas-ffi/**"
+      - "crates/atlas-api/**"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P2.11-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  atlaskit:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      artifact-name: mac-P2.11
+      cache-key: P2.11
+      run: |
+        export CARGO_TERM_COLOR=never
+        apps/macos/scripts/build-core.sh release 2>&1 | tee "$ATLAS_CI_OUT/build-core.log"
+        (cd apps/macos/AtlasKit && swift test 2>&1) | tee "$ATLAS_CI_OUT/swift-test.log"
+        {
+          echo "# P2.11 – AtlasKit"
+          echo
+          echo "- libatlas_ffi.a: $(du -h target/aarch64-apple-darwin/release/libatlas_ffi.a | cut -f1)"
+          echo "- atlas.swift: $(wc -l < apps/macos/AtlasKit/Sources/AtlasKit/atlas.swift) Zeilen"
+          echo
+          echo '```'
+          grep -E "✔|✘|Test run|error:" "$ATLAS_CI_OUT/swift-test.log" | head -40 || true
+          echo '```'
+        } >"$ATLAS_CI_OUT/summary.md"
