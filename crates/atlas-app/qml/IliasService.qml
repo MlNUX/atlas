@@ -173,7 +173,10 @@ Item {
     /// Fills the remembered login into the page and sends it (only on the
     /// allowed host, once per attempt).
     function fillLogin(host) {
-        if (!credentials || host !== loginHost || filledOn === host) return
+        if (!credentials || host !== loginHost || filledOn === host) {
+            if (!credentials && host === loginHost) trace("Anmeldefenster: gespeicherte Anmeldung noch nicht entschlüsselt – warte")
+            return
+        }
         filledOn = host
         trace("Anmeldefenster: setze gespeicherte Anmeldung ein auf " + host)
         loginPage.runJavaScript("(" + fillScript + ")(" + JSON.stringify(credentials.user) + ", " + JSON.stringify(credentials.password) + ")",
@@ -195,7 +198,15 @@ Item {
         try { h = new URL(loginPage.url.toString()).host } catch (e) {}
         loginPage.runJavaScript(pageScript, (r) => {
             if (!r || !loginWindow.visible) return
-            if (r.password) {
+            trace("  Anmeldeseite " + h + ": Passwortfeld " + r.password + ", SSO-Link " + (r.sso ? "ja" : "nein")
+                  + " · gespeichert " + loginSaved + ", freigegeben für „" + loginHost + "“, entschlüsselt " + !!credentials)
+            // Allowed on the university's page (not on ILIAS itself): go
+            // there first, even if ILIAS shows its own (local) login form.
+            if (r.sso && loginSaved && h === host && loginHost && loginHost !== host && !followedSso) {
+                followedSso = true
+                trace("Anmeldefenster: weiter zur Anmeldung der Hochschule " + r.sso)
+                loginPage.url = r.sso
+            } else if (r.password) {
                 if (!loginSaved) return
                 if (filledOn === h) {
                     loginProblem = qsTr("Die Anmeldung mit den gespeicherten Daten hat nicht geklappt – bitte selbst anmelden oder das Passwort in den Einstellungen neu speichern.")

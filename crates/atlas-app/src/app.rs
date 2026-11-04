@@ -1446,9 +1446,13 @@ impl qobject::AppController {
                 Ok(None) => (String::new(), String::new()),
                 Err(err) => (String::new(), format!("{err:#}")),
             };
-            if !error.is_empty() {
-                atlas_core::ilias::trace(&format!("Anmeldedaten nicht lesbar: {error}"));
-            }
+            atlas_core::ilias::trace(&if !error.is_empty() {
+                format!("Anmeldedaten nicht lesbar: {error}")
+            } else if password.is_empty() {
+                "Anmeldedaten: kein gespeichertes Passwort".to_owned()
+            } else {
+                format!("Anmeldedaten entschlüsselt (Benutzer „{user}“)")
+            });
             let _ = thread.queue(move |app| app.ilias_login_ready(qs(user), qs(password), qs(error)));
         });
     }
