@@ -93,6 +93,11 @@ struct TabStrip: View {
     let group: EditorGroup
     let active: Bool
 
+    private func tabFill(selected: Bool) -> Color {
+        guard selected else { return .clear }
+        return active ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.15)
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
@@ -111,8 +116,7 @@ struct TabStrip: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(selected ? AnyShapeStyle(active ? .tint.opacity(0.18) : .secondary.opacity(0.15)) : AnyShapeStyle(.clear),
-                                in: .rect(cornerRadius: 6))
+                    .background(tabFill(selected: selected), in: .rect(cornerRadius: 6))
                     .onTapGesture { project.editor.select(group: index, tab: i) }
                 }
             }
