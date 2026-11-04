@@ -147,7 +147,9 @@ final class SwiftTermTests: XCTestCase {
         let text = line(t, 0)
         XCTAssertTrue(text.hasPrefix("hello red"), text)
         // translateToString keeps the spacer cell after a wide character.
-        XCTAssertTrue(text.replacingOccurrences(of: " ", with: "").contains("日本x"), text)
+        // (not necessarily U+0020): compare without blanks and NULs.
+        let compact = String(text.unicodeScalars.filter { !$0.properties.isWhitespace && $0.value != 0 }.map(Character.init))
+        XCTAssertTrue(compact.contains("日本x"), text.unicodeScalars.map { String($0.value, radix: 16) }.joined(separator: " "))
     }
 
     func testThroughputFeed() {
