@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# XcodeGen spec of the terminal spike (task P0.5, docs/porting/spike-terminal.md).
+# Variant A: SwiftTerm (Swift package). Variant B: core/ (Rust staticlib built
+# by run.sh into lib/, C header via the bridging header).
+name: TerminalSpike
+options:
+  bundleIdPrefix: de.minux
+  deploymentTarget:
+    macOS: "26.0"
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    from: 1.2.0
+settings:
+  base:
+    ARCHS: arm64
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_OBJC_BRIDGING_HEADER: Sources/TerminalSpike-Bridging-Header.h
+    LIBRARY_SEARCH_PATHS: $(PROJECT_DIR)/lib
+    # Tests run in Release so both variants are measured optimised.
+    ENABLE_TESTABILITY: YES
+targets:
+  TerminalSpike:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: demo.sh
+        buildPhase: resources
+    dependencies:
+      - package: SwiftTerm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.terminalspike
+        INFOPLIST_KEY_CFBundleDisplayName: Atlas Terminal-Spike
+        OTHER_LDFLAGS: -latlas_term_spike
+        # A terminal starts arbitrary programs: no App Sandbox (as in the plan).
+        ENABLE_APP_SANDBOX: NO
+  TerminalSpikeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: demo.sh
+        buildPhase: resources
+    dependencies:
+      - target: TerminalSpike
+      - package: SwiftTerm
+        link: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.terminalspike.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/TerminalSpike.app/Contents/MacOS/TerminalSpike"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  TerminalSpike:
+    build:
+      targets:
+        TerminalSpike: all
+        TerminalSpikeTests: [test]
+    test:
+      targets: [TerminalSpikeTests]

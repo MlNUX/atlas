@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+/target
+/SpikeKit/Sources/AtlasSpike/atlas_spike.swift
+/SpikeKit/AtlasSpikeFFI.xcframework
+/SpikeApp/SpikeApp.xcodeproj

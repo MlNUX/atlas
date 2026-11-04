@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Spike P0.2 (macOS port): UniFFI proc-macro mode, Rust -> Swift.
+# Standalone on purpose (own [workspace]), not part of the Atlas workspace.
+[package]
+name = "atlas-spike-uniffi"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[lib]
+name = "atlas_spike"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+required-features = ["cli"]
+
+[features]
+cli = ["uniffi/cli"]
+
+[dependencies]
+uniffi = "0.32"
+thiserror = "2"
+futures-channel = "0.3"
+
+[profile.release]
+debug = "line-tables-only"

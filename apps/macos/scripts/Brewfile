@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Homebrew packages for building and testing Atlas on macOS.
+# Single source of truth: used by bootstrap.sh on a real Mac and by
+# .github/workflows/macos-setup.yml in CI.
+
+brew "ripgrep"      # search backend, later bundled into Atlas.app (ATLAS_RG_BIN)
+brew "onnxruntime"  # formula OCR (ort with load-dynamic, ORT_DYLIB_PATH)
+brew "xcodegen"     # generates the CI smoke-test Xcode project
