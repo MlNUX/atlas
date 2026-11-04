@@ -189,7 +189,10 @@ fn places_and_urls() {
     let (s, _) = sink();
     let atlas = Atlas::new(s);
     let places = atlas.places();
-    assert!(places.iter().any(|p| p.icon == "home" && p.fixed));
+    // Fixed places exist only as far as their folders do (none in the Nix sandbox).
+    let home_exists = std::env::var_os("HOME").is_some_and(|h| std::path::Path::new(&h).is_dir());
+    assert_eq!(places.iter().any(|p| p.icon == "home" && p.fixed), home_exists, "{places:?}");
+    assert!(places.iter().all(|p| std::path::Path::new(&p.path).is_dir()));
     assert_eq!(atlas.url_to_path("file:///tmp/a%20b.md".into()).as_deref(), Some("/tmp/a b.md"));
     assert_eq!(atlas.url_to_path("file://localhost/tmp/x".into()).as_deref(), Some("/tmp/x"));
     assert_eq!(atlas.url_to_path("https://example.org".into()), None);
