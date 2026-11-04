@@ -5,8 +5,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 # Atlas für macOS 26/27 mit SwiftUI – Plan für mehrere Agents
 
-Stand 04.11.2026 · Basis `release-1.1.5` · Integrationszweig `port/macos-swiftui` (wird von
-`release-1.1.5` abgezweigt, sobald W0 beginnt)
+Stand 04.11.2026 · Integrationszweig **`release-1.1.5`** (nach dessen Veröffentlichung der
+jeweils nächste Release-Branch, z. B. `release-1.1.6`) · Aufgaben-Branches `port/macos/<ID>-<kurz>`
 
 ## Ziel
 
@@ -56,10 +56,10 @@ dokumentiert es im PR und macht weiter.
 | E1 | Mac-Zugang | GitHub-Actions-Runner (macOS, arm64); keine VM auf Fremdhardware; ab Phase 3 optional ein Apple-Silicon-Mac |
 | E2 | Architektur | nur arm64 (Apple Silicon), kein Intel/Universal |
 | E3 | Mindestversion | macOS 26; macOS 27 mittesten, sobald verfügbar |
-| E4 | Branches | Integrationszweig `port/macos-swiftui`, Aufgaben auf `port/macos/<ID>-<kurz>`; keine Betriebssystem-Branches |
+| E4 | Branches | Integrationszweig ist der aktuelle Release-Branch (jetzt `release-1.1.5`, danach der nächste); Aufgaben auf kurzlebigen Branches `port/macos/<ID>-<kurz>`, abgezweigt vom Integrationszweig, PR zurück dorthin, nach dem Merge gelöscht; keine Betriebssystem-Branches |
 | E5 | Name, Bundle-ID | `Atlas`, `de.minux.atlas`. Apple-Developer-Account kommt noch: bis dahin unsignierte Test-Builds (ad hoc signiert), Signatur/Notarisierung (P4.3) so vorbereiten, dass nur Team-ID und Zertifikate fehlen |
 | E6 | Umfang Version 1 | **volle Parität** mit der Linux-Version (alle Funktionen inkl. Kalender-Sync, ILIAS, Erweiterungen mit Ansichten, Formel-OCR, `.atlasnote`); keine kleinere Veröffentlichung vorher |
-| E7 | Weg nach `main` | ab W7 (App-Gerüst läuft) regelmäßig nach `main`, Mac-App als „Vorschau“ gekennzeichnet |
+| E7 | Weg nach `main` | über den Release-Branch wie jede andere Änderung (Release-Branch → `main`); die Mac-App ist ab W7 (App-Gerüst läuft) Teil der Veröffentlichungen, als „Vorschau“ gekennzeichnet, bis die volle Parität erreicht ist |
 | E8 | Aussehen | natives macOS (Liquid Glass, Systemfarben, San Francisco, Hell/Dunkel vom System), einzige Markenfarbe ist die Atlas-Akzentfarbe |
 | E9 | Fenster und Tabs | ein Fenster pro Projekt, darin Atlas-Tabs und -Splits wie unter Linux; Sitzungen zwischen Linux und Mac austauschbar |
 | E10 | Tastenkürzel | macOS-Konvention gewinnt; Atlas-Kürzel nur, wo frei, sonst Ersatzkürzel (Liste in `docs/shortcuts.md` um eine Mac-Spalte ergänzen) |
@@ -91,7 +91,7 @@ packaging/macos/ NEU Info.plist, Entitlements, Icon, bundle.sh, notarize.sh, Spa
 
 | Bereich | Entscheidung | Warum |
 |---|---|---|
-| Rust ↔ Swift | **UniFFI** (Proc-Macro-Modus), XCFramework für arm64 + x86_64 | erprobt (Firefox iOS), erzeugt idiomatisches Swift, Callbacks und `async` |
+| Rust ↔ Swift | **UniFFI** (Proc-Macro-Modus), XCFramework für arm64 (E2) | erprobt (Firefox iOS), erzeugt idiomatisches Swift, Callbacks und `async` |
 | PDF-Anzeige | **PDFKit** (`PDFView` per `NSViewRepresentable`) | native Darstellung, Auswahl, Suche, Zoom; poppler/cairo/glib müssen nicht ins App-Bundle |
 | PDF-Daten im Kern | Anmerkungen bleiben im Atlas-Format (`.atlas/annotations/*.json`, Punkte, Ursprung oben links) und werden in PDFKit-Annotationen umgerechnet (`y' = Seitenhöhe − y`); Seitentext für Suche/Index liefert Swift per Callback an den Kern | Daten bleiben zwischen Linux und Mac austauschbar |
 | PDF-Export mit Anmerkungen | PDFKit schreibt die Kopie | ersetzt den cairo-Weg auf dem Mac |
@@ -99,7 +99,7 @@ packaging/macos/ NEU Info.plist, Entitlements, Icon, bundle.sh, notarize.sh, Spa
 | Syntaxhervorhebung | neu im Kern mit **`syntect`** (reines Rust): `highlight(text, sprache) → Spannen` | KSyntaxHighlighting gibt es auf dem Mac nicht; Qt kann es später auch nutzen |
 | Markdown-Vorschau | Kern rendert HTML (wie heute), Anzeige in SwiftUI-`WebView` mit `crates/atlas-app/web/preview.*` | gleiche Vorschau wie unter Linux |
 | Terminal | Spike entscheidet: **SwiftTerm** (eigene PTY, ausgereift) oder Raster aus `alacritty_terminal` im Kern + eigener Swift-Renderer | SwiftTerm ist schneller fertig; Kern-Variante hält Verhalten gleich |
-| Suche | `rg` ins App-Bundle legen (universal), Pfad über `ATLAS_RG_BIN` | Kern bleibt unverändert |
+| Suche | `rg` (arm64) ins App-Bundle legen, Pfad über `ATLAS_RG_BIN` | Kern bleibt unverändert |
 | Passwörter | Schlüsselbund über das Crate `security-framework` in `platform/macos.rs` | ersetzt `systemd-creds` |
 | Formel-OCR | `ort` mit mitgelieferter `libonnxruntime.dylib` (heute `load-dynamic`) | unverändert im Kern |
 | Mac-Builds und -Tests | GitHub Actions, macOS-Runner arm64; ein gemeinsamer Einrichtungs-Workflow (`.github/workflows/macos-setup.yml`, `workflow_call`), je Aufgabe eine eigene kleine Workflow-Datei, die ihn aufruft; Logs und Bildschirmfotos als Artefakte | legal, arm64 wie die Nutzer, Agents können pushen und Ergebnisse lesen |
@@ -107,10 +107,13 @@ packaging/macos/ NEU Info.plist, Entitlements, Icon, bundle.sh, notarize.sh, Spa
 
 ## Regeln für alle Agents (vor Phase 1 als `AGENTS.md` ins Repo, `CLAUDE.md` verweist darauf)
 
-1. **Branches:** Integrationszweig ist `port/macos-swiftui`. Jede Aufgabe auf eigenem Branch
-   `port/macos/<ID>-<kurz>` (z. B. `port/macos/P2.3-kalender`), Pull-Request zurück in den
-   Integrationszweig. Keine Betriebssystem-Branches, kein Arbeiten direkt auf dem
-   Integrationszweig.
+1. **Branches:** Integrationszweig ist der aktuelle Release-Branch, jetzt `release-1.1.5`
+   (nach dessen Veröffentlichung der nächste, z. B. `release-1.1.6` – der Integrator sagt
+   Bescheid). Jede Aufgabe auf eigenem Branch `port/macos/<ID>-<kurz>`
+   (z. B. `port/macos/P2.3-kalender`), abgezweigt vom aktuellen Integrationszweig,
+   Pull-Request zurück dorthin, nach dem Merge löschen. Keine Betriebssystem-Branches, kein
+   Arbeiten direkt auf dem Integrationszweig. Weil auf `release-1.1.5` auch andere Arbeit
+   landet: vor jedem PR auf den aktuellen Stand rebasen.
 2. **Datei-Besitz:** Jede Aufgabe nennt die Dateien, die sie ändern darf. Gemeinsame Dateien
    (`Cargo.toml` des Workspace, `atlas-api/src/lib.rs`, `ci.yml`, `CHANGELOG.md`,
    Xcode-Projektdatei) ändert nur der **Integrator**; andere melden den Bedarf im PR.
@@ -242,7 +245,8 @@ Abhängigkeiten: alle nach P3.0; P3.4 nach den Editor-Grundlagen aus P3.3; P3.6 
 ## Aufteilung auf zwei Modelle (LLM1, LLM2)
 
 Zwei Agents arbeiten in **Wellen** gleichzeitig. In jeder Welle ändern sie nur ihre eigenen
-Dateien; am Ende der Welle führt LLM1 beide PRs in `port/macos-swiftui` zusammen, lässt die
+Dateien; am Ende der Welle führt LLM1 beide PRs in den Integrationszweig (`release-1.1.5`)
+zusammen, lässt die
 Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`).
 
 ### Damit es keine Konflikte gibt
@@ -272,7 +276,7 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
 |---|---|---|---|---|
 | W0 | **P0.3** CI-Grundlage `macos-setup.yml` | **P0.1** `AGENTS.md`, `CLAUDE.md`, GitHub-Issues | Mac-CI / Linux | LLM1 führt zusammen |
 | W1 | **P0.2** Spike UniFFI (`spikes/uniffi/`) | **P0.4** Spike PDFKit (`spikes/pdfkit/`) | Mac / Mac | |
-| W2 | **P0.6** Kern ohne poppler (Bericht) | **P0.5** Spike Terminal (`spikes/terminal/`) | Mac / Mac | **Du entscheidest:** PDF-Weg, Terminal-Weg |
+| W2 | **P0.6** Kern ohne poppler (Bericht) | **P0.5** Spike Terminal (`spikes/terminal/`) | Mac / Mac | PDF- und Terminal-Weg nach den Spikes festhalten (bei Unklarheit E16) |
 | W3 | **P1.1** poppler optional, dann **P1.2** Plattform-Schicht (`pdf/`, `search.rs`, `platform/`, `background.rs`, `atlas-terminal/src/lib.rs`, `secret.rs`) | **P1.3** Kontextleisten-Profile nach Rust, dann **P1.4** Editor-Logik nach Rust (`context_profiles.rs`, `markdown_edit.rs`, `ContextProfiles.qml`, `TextEditor.qml`, `app/settings.rs`, `app/editing.rs`) | Linux / Linux | |
 | W4 | **P2.1** API-Entwurf (`docs/porting/api.md`, alle `atlas-api`-Dateien als Signaturen) | **P1.5** Syntaxhervorhebung (`highlight.rs`), danach **Prüfer** für P2.1 | Linux / Linux | Entwurf erst nach LLM2-Abnahme zusammenführen |
 | W5 | **P2.2** Projekt/Dateien, **P2.4** Suche, **P2.8** Einstellungen/Editor, **P2.10** ILIAS, ggf. **P2.9** Terminal | **P2.3** Notizen, **P2.5** Kalender, **P2.6** PDF-Daten/OCR, **P2.7** Aktionen/Erweiterungen | Linux / Linux | je Bereich ein PR |
@@ -293,7 +297,8 @@ macht nur LLM1, einmal pro Zusammenführung.
 
 > Du bist **LLM1|LLM2** im Atlas-macOS-Port. Lies `docs/porting/macos-swiftui.md` und
 > `AGENTS.md`. Deine Aufgaben in dieser Welle: **<IDs>**. Arbeite auf Branch
-> `port/macos/<ID>-<kurz>`, abgezweigt vom aktuellen `port/macos-swiftui`. Mac-Builds und
+> `port/macos/<ID>-<kurz>`, abgezweigt vom aktuellen Integrationszweig `release-1.1.5`
+> (vor dem PR rebasen). Mac-Builds und
 > -Tests laufen über deine eigene Workflow-Datei `.github/workflows/mac-<ID>.yml` (ruft
 > `macos-setup.yml` auf); lies Logs und Bildschirmfotos aus den Artefakten. Ändere nur die
 > in der Aufgabe genannten Dateien; brauchst du eine andere,
@@ -302,7 +307,8 @@ macht nur LLM1, einmal pro Zusammenführung.
 
 ## Rollen
 
-- **Integrator** (1 Agent, stark, dauerhaft): führt PRs in `port/macos-swiftui` zusammen,
+- **Integrator** (1 Agent, stark, dauerhaft): führt PRs in den Integrationszweig
+  (`release-1.1.5`, danach den nächsten Release-Branch) zusammen,
   besitzt die gemeinsamen Dateien, lässt nach jedem Merge Linux-Selbsttest + Mac-Tests laufen,
   pflegt die Issue-Liste. Kann die Sitzung sein, die die anderen startet.
 - **Prüfer** (anderes Modell, z. B. Codex oder ein zweites Claude): liest API-Entwurf (P2.1)
