@@ -118,7 +118,9 @@ sie wird mit der ersten Anmerkung angelegt und mit der letzten entfernt.
   `rects` je Zeile und `text`), `note` (angehefteter Kommentar, `rects`
   = Symbol), `ink` (Freihandstriche), `bookmark` (Lesezeichen einer Seite).
 - `page` ist 1-basiert wie in Links; Koordinaten sind PDF-Punkte, Ursprung
-  oben links auf der unrotierten Seite.
+  oben links auf der Seite, wie sie angezeigt wird (CropBox, nach `/Rotate`) –
+  so liefert es poppler, so rechnet die macOS-Version mit PDFKit um
+  (`docs/porting/spike-pdfkit.md`).
 - Markierungen über mehrere Seiten sind je Seite ein Eintrag mit gemeinsamer
   `group`.
 - **Zuordnung:** zuerst über `path`; ist die PDF dort nicht mehr, über

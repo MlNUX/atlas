@@ -3,6 +3,7 @@
 #
 # Task P1.2 (macOS port): the Qt-free crates build and pass their tests on
 # macOS without poppler (platform layer: keychain, trash, places, terminal cwd).
+# Runs after P1.1 (feature pdf-poppler off) and P0.3 (macos-setup.yml).
 name: mac-P1.2
 
 on:
