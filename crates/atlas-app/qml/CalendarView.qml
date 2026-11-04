@@ -207,76 +207,69 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        Rectangle {
-            Layout.fillWidth: true
+        ToolStrip {
             Layout.preferredHeight: 34
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 4
-                Repeater {
-                    model: [{ m: "week", t: qsTr("Woche") }, { m: "month", t: qsTr("Monat") }, { m: "agenda", t: qsTr("Agenda") }]
-                    IconButton {
-                        required property var modelData
-                        glyph: modelData.t
-                        checkable: true
-                        checked: cal.mode === modelData.m
-                        onClicked: cal.mode = modelData.m
-                    }
-                }
-                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
-                IconButton { iconName: "chevron-left"; tip: qsTr("Zurück (Alt+←)"); enabled: cal.mode !== "agenda"; onClicked: cal.step(-1) }
-                IconButton { glyph: qsTr("Heute"); tip: qsTr("Heute (T)"); onClicked: cal.goToday() }
-                IconButton { iconName: "chevron-right"; tip: qsTr("Weiter (Alt+→)"); enabled: cal.mode !== "agenda"; onClicked: cal.step(1) }
-                Label {
-                    text: cal.title
-                    color: Theme.textStrong
-                    font.bold: true
-                    Layout.leftMargin: 8
-                }
-                Item { Layout.fillWidth: true }
-                // Nextcloud: state of the synchronisation.
+            line: "none"
+            Repeater {
+                model: [{ m: "week", t: qsTr("Woche") }, { m: "month", t: qsTr("Monat") }, { m: "agenda", t: qsTr("Agenda") }]
                 IconButton {
-                    visible: !!cal.model && cal.model.connected
-                    glyph: !cal.model ? "" : cal.model.syncing ? "⟳ …" : !cal.model.unlocked ? "🔑" : cal.model.syncFailed ? "⚠ ⟳" : "⟳"
-                        + (cal.model && cal.model.pending ? " " + cal.model.pending : "")
-                    tip: cal.model ? cal.model.syncStatus + (cal.model.pending ? qsTr(" · %n Änderung(en) warten", "", cal.model.pending) : "")
-                        + (cal.model.unlocked ? qsTr(" · Klick: jetzt synchronisieren") : cal.model.google ? qsTr(" · Klick: bei Google anmelden") : qsTr(" · Klick: App-Passwort eingeben")) : ""
-                    onClicked: cal.model.unlocked ? cal.model.syncNow() : cal.actions.calendarSync.askPassword()
+                    required property var modelData
+                    glyph: modelData.t
+                    checkable: true
+                    checked: cal.mode === modelData.m
+                    onClicked: cal.mode = modelData.m
                 }
-                IconButton {
-                    visible: !!cal.model && cal.model.conflictCount > 0
-                    glyph: qsTr("⚠ %n Konflikt(e)", "", cal.model ? cal.model.conflictCount : 0)
-                    tip: qsTr("In Nextcloud und Atlas geändert – Version wählen")
-                    onClicked: cal.actions.calendarSync.showConflicts()
-                }
-                Label {
-                    visible: cal.model && cal.model.error !== ""
-                    textFormat: Text.PlainText
-                    text: cal.model ? "⚠ " + cal.model.error : ""
-                    color: Theme.error
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                    Layout.maximumWidth: 300
-                }
-                IconButton {
-                    glyph: qsTr("+ Neu")
-                    tip: qsTr("Neuer Termin, Arbeitsblock, Frist oder Aufgabe")
-                    onClicked: newMenu.popup()
-                    Menu {
-                        id: newMenu
-                        MenuItem { text: qsTr("Termin …"); onTriggered: cal.newEntry({ kind: "event" }) }
-                        MenuItem { text: qsTr("Arbeitsblock …"); onTriggered: cal.newEntry({ kind: "block" }) }
-                        MenuItem { text: qsTr("Frist …"); onTriggered: cal.newEntry({ kind: "deadline", allDay: true }) }
-                        MenuItem { text: qsTr("Aufgabe …"); onTriggered: cal.newEntry({ kind: "task" }) }
-                    }
-                }
-                IconButton { iconName: "check-square"; tip: qsTr("Noch nicht eingeplante Aufgaben"); checkable: true; checked: cal.showTasks; onClicked: cal.showTasks = !cal.showTasks }
-                IconButton { iconName: "info"; tip: qsTr("Details und Wochenübersicht"); checkable: true; checked: cal.showDetails; onClicked: cal.showDetails = !cal.showDetails }
-                IconButton { iconName: "settings"; tip: qsTr("Kalender-Einstellungen und Nextcloud"); onClicked: cal.settings() }
             }
+            Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
+            IconButton { iconName: "chevron-left"; tip: qsTr("Zurück (Alt+←)"); enabled: cal.mode !== "agenda"; onClicked: cal.step(-1) }
+            IconButton { glyph: qsTr("Heute"); tip: qsTr("Heute (T)"); onClicked: cal.goToday() }
+            IconButton { iconName: "chevron-right"; tip: qsTr("Weiter (Alt+→)"); enabled: cal.mode !== "agenda"; onClicked: cal.step(1) }
+            Label {
+                text: cal.title
+                color: Theme.textStrong
+                font.bold: true
+                Layout.leftMargin: 8
+            }
+            Item { Layout.fillWidth: true }
+            // Nextcloud: state of the synchronisation.
+            IconButton {
+                visible: !!cal.model && cal.model.connected
+                glyph: !cal.model ? "" : cal.model.syncing ? "⟳ …" : !cal.model.unlocked ? "🔑" : cal.model.syncFailed ? "⚠ ⟳" : "⟳"
+                    + (cal.model && cal.model.pending ? " " + cal.model.pending : "")
+                tip: cal.model ? cal.model.syncStatus + (cal.model.pending ? qsTr(" · %n Änderung(en) warten", "", cal.model.pending) : "")
+                    + (cal.model.unlocked ? qsTr(" · Klick: jetzt synchronisieren") : cal.model.google ? qsTr(" · Klick: bei Google anmelden") : qsTr(" · Klick: App-Passwort eingeben")) : ""
+                onClicked: cal.model.unlocked ? cal.model.syncNow() : cal.actions.calendarSync.askPassword()
+            }
+            IconButton {
+                visible: !!cal.model && cal.model.conflictCount > 0
+                glyph: qsTr("⚠ %n Konflikt(e)", "", cal.model ? cal.model.conflictCount : 0)
+                tip: qsTr("In Nextcloud und Atlas geändert – Version wählen")
+                onClicked: cal.actions.calendarSync.showConflicts()
+            }
+            Label {
+                visible: cal.model && cal.model.error !== ""
+                textFormat: Text.PlainText
+                text: cal.model ? "⚠ " + cal.model.error : ""
+                color: Theme.error
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideRight
+                Layout.maximumWidth: 300
+            }
+            IconButton {
+                glyph: qsTr("+ Neu")
+                tip: qsTr("Neuer Termin, Arbeitsblock, Frist oder Aufgabe")
+                onClicked: newMenu.popup()
+                Menu {
+                    id: newMenu
+                    MenuItem { text: qsTr("Termin …"); onTriggered: cal.newEntry({ kind: "event" }) }
+                    MenuItem { text: qsTr("Arbeitsblock …"); onTriggered: cal.newEntry({ kind: "block" }) }
+                    MenuItem { text: qsTr("Frist …"); onTriggered: cal.newEntry({ kind: "deadline", allDay: true }) }
+                    MenuItem { text: qsTr("Aufgabe …"); onTriggered: cal.newEntry({ kind: "task" }) }
+                }
+            }
+            IconButton { iconName: "check-square"; tip: qsTr("Noch nicht eingeplante Aufgaben"); checkable: true; checked: cal.showTasks; onClicked: cal.showTasks = !cal.showTasks }
+            IconButton { iconName: "info"; tip: qsTr("Details und Wochenübersicht"); checkable: true; checked: cal.showDetails; onClicked: cal.showDetails = !cal.showDetails }
+            IconButton { iconName: "settings"; tip: qsTr("Kalender-Einstellungen und Nextcloud"); onClicked: cal.settings() }
         }
 
         RowLayout {

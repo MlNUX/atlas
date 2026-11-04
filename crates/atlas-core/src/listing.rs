@@ -1,52 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Folder contents with metadata for the file list, and the fixed system
-//! places shown above the project tree.
+//! Folder contents with metadata for the file list.
 
 use std::cmp::Ordering;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Place {
-    pub name: String,
-    pub icon: String,
-    pub path: PathBuf,
-}
-
-/// Home, desktop, documents, downloads and trash – only those that exist.
-pub fn places() -> Vec<Place> {
-    let candidates = [
-        ("Persönlicher Ordner", "home", dirs::home_dir()),
-        ("Schreibtisch", "desktop", dirs::desktop_dir()),
-        ("Dokumente", "documents", dirs::document_dir()),
-        ("Downloads", "downloads", dirs::download_dir()),
-        ("Bilder", "pictures", dirs::picture_dir()),
-        ("Musik", "music", dirs::audio_dir()),
-        ("Videos", "videos", dirs::video_dir()),
-        ("Papierkorb", "trash", trash_files_dir()),
-    ];
-    let mut seen = Vec::new();
-    candidates
-        .into_iter()
-        .filter_map(|(name, icon, path)| {
-            let path = path?;
-            // XDG dirs fall back to $HOME when unset; do not list it twice.
-            if !path.is_dir() || seen.contains(&path) {
-                return None;
-            }
-            seen.push(path.clone());
-            Some(Place { name: name.into(), icon: icon.into(), path })
-        })
-        .collect()
-}
-
-/// `$XDG_DATA_HOME/Trash/files` (freedesktop.org trash specification).
-pub fn trash_files_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|d| d.join("Trash/files"))
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileInfo {

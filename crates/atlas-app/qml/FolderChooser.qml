@@ -75,41 +75,15 @@ Dialog {
         spacing: 0
 
         // ---- header
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: 18
-            Layout.bottomMargin: 12
-            spacing: 12
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: 10
-                color: Theme.accentSoft
-                Icon { anchors.centerIn: parent; name: root.mode === "session" ? "session" : root.mode === "pick" ? "downloads" : "folder-open"; size: 20; color: Theme.accent }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                Text {
-                    Layout.fillWidth: true
-                    text: root.mode === "session" ? qsTr("Neue Session") : root.mode === "pick" ? root.pickTitle : qsTr("Projektordner öffnen")
-                    color: Theme.textStrong
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                    text: root.mode === "session" ? qsTr("Jeder Projektordner hat genau eine Session; gibt es sie schon, wird sie geöffnet.")
-                        : root.mode === "pick" ? root.pickHint
-                        : qsTr("Atlas legt seine Daten im Unterordner .atlas des Projekts ab.")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                }
-            }
+        DialogHeader {
+            icon: root.mode === "session" ? "session" : root.mode === "pick" ? "downloads" : "folder-open"
+            title: root.mode === "session" ? qsTr("Neue Session") : root.mode === "pick" ? root.pickTitle : qsTr("Projektordner öffnen")
+            subtitle: root.mode === "session" ? qsTr("Jeder Projektordner hat genau eine Session; gibt es sie schon, wird sie geöffnet.")
+                : root.mode === "pick" ? root.pickHint
+                : qsTr("Atlas legt seine Daten im Unterordner .atlas des Projekts ab.")
+            bottomMargin: 12
             IconButton { iconName: "close"; tip: qsTr("Abbrechen (Esc)"); onClicked: root.close() }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
         RowLayout {
             Layout.fillWidth: true

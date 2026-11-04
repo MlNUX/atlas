@@ -474,7 +474,7 @@ fn recognize_formulas(
     progress: &dyn Fn(String),
 ) -> (String, String) {
     let count = clips.len();
-    let outcome = crate::app::ensure_latex_models(progress).map(|()| {
+    let outcome = crate::formula_ocr::ensure_models(progress).map(|()| {
         let mut latex = Vec::with_capacity(count);
         let mut failed = 0;
         for (i, (w, h, pixels)) in clips.into_iter().enumerate() {

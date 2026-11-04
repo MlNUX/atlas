@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import QtQuick.Window
 import QtWebEngine
 import Atlas
 
@@ -113,8 +114,8 @@ Rectangle {
     function tableMarkdown(rows, cols) {
         const cells = (f) => "| " + Array.from({ length: cols }, (_, i) => f(i)).join(" | ") + " |"
         const lines = [cells(i => qsTr("Spalte %1").arg(i + 1)), cells(() => "---")]
-        for (let r = 0; r < rows; ++r) lines.push(cells(() => "   "))
-        return lines.join("\n")
+        for (let r = 0; r < rows; ++r) lines.push(cells(() => ""))
+        return editor.alignTable(lines.join("\n"))
     }
     function insertTable(rows, cols) { editorForInsert().insertBlock(tableMarkdown(Math.max(1, rows), Math.max(1, cols))) }
     function askTable() { tableDialog.open() }
@@ -258,97 +259,90 @@ Rectangle {
         spacing: 0
 
         // ---- toolbar
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 30
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 2
-                Repeater {
-                    model: [
-                        { mode: "edit", text: qsTr("Bearbeiten") },
-                        { mode: "split", text: qsTr("Geteilt") },
-                        { mode: "preview", text: qsTr("Vorschau") },
-                    ]
-                    IconButton {
-                        required property var modelData
-                        glyph: modelData.text
-                        checkable: true
-                        checked: root.mode === modelData.mode
-                        onClicked: {
-                            const top = root.mode === "edit" ? editor.topLine : root.previewLine
-                            root.mode = modelData.mode
-                            Qt.callLater(root.applyState, { line: top })
-                        }
-                    }
-                }
-                Item { Layout.preferredWidth: 10 }
-                Repeater {
-                    model: root.info.tags || []
-                    Label {
-                        required property string modelData
-                        text: "#" + modelData
-                        color: Theme.link
-                        font.pixelSize: Theme.smallFontSize
-                        leftPadding: 4
-                    }
-                }
-                Item { Layout.fillWidth: true }
+        ToolStrip {
+            spacing: 2
+            line: "none"
+            Repeater {
+                model: [
+                    { mode: "edit", text: qsTr("Bearbeiten") },
+                    { mode: "split", text: qsTr("Geteilt") },
+                    { mode: "preview", text: qsTr("Vorschau") },
+                ]
                 IconButton {
-                    id: insertButton
-                    glyph: qsTr("＋ Einfügen")
-                    tip: qsTr("Bild, Tabelle, Diagramm oder Ordnerbaum an der Schreibmarke einfügen")
-                    onClicked: insertMenu.popup(insertButton, 0, insertButton.height)
+                    required property var modelData
+                    glyph: modelData.text
+                    checkable: true
+                    checked: root.mode === modelData.mode
+                    onClicked: {
+                        const top = root.mode === "edit" ? editor.topLine : root.previewLine
+                        root.mode = modelData.mode
+                        Qt.callLater(root.applyState, { line: top })
+                    }
+                }
+            }
+            Item { Layout.preferredWidth: 10 }
+            Repeater {
+                model: root.info.tags || []
+                Label {
+                    required property string modelData
+                    text: "#" + modelData
+                    color: Theme.link
+                    font.pixelSize: Theme.smallFontSize
+                    leftPadding: 4
+                }
+            }
+            Item { Layout.fillWidth: true }
+            IconButton {
+                id: insertButton
+                glyph: qsTr("＋ Einfügen")
+                tip: qsTr("Bild, Tabelle, Diagramm oder Ordnerbaum an der Schreibmarke einfügen")
+                onClicked: insertMenu.popup(insertButton, 0, insertButton.height)
+                Menu {
+                    id: insertMenu
+                    MenuItem { text: qsTr("Bild …"); onTriggered: root.askImage() }
+                    MenuItem { text: qsTr("Tabelle …"); onTriggered: root.askTable() }
                     Menu {
-                        id: insertMenu
-                        MenuItem { text: qsTr("Bild …"); onTriggered: root.askImage() }
-                        MenuItem { text: qsTr("Tabelle …"); onTriggered: root.askTable() }
-                        Menu {
-                            id: diagramMenu
-                            title: qsTr("Diagramm")
-                            Instantiator {
-                                model: root.diagramTemplates
-                                delegate: MenuItem {
-                                    required property var modelData
-                                    required property int index
-                                    text: modelData.name
-                                    onTriggered: root.insertDiagram(index)
-                                }
-                                onObjectAdded: (index, object) => diagramMenu.insertItem(index, object)
-                                onObjectRemoved: (index, object) => diagramMenu.removeItem(object)
+                        id: diagramMenu
+                        title: qsTr("Diagramm")
+                        Instantiator {
+                            model: root.diagramTemplates
+                            delegate: MenuItem {
+                                required property var modelData
+                                required property int index
+                                text: modelData.name
+                                onTriggered: root.insertDiagram(index)
                             }
+                            onObjectAdded: (index, object) => diagramMenu.insertItem(index, object)
+                            onObjectRemoved: (index, object) => diagramMenu.removeItem(object)
                         }
-                        MenuItem { text: qsTr("Ordnerbaum …"); onTriggered: root.askFolderTree() }
                     }
+                    MenuItem { text: qsTr("Ordnerbaum …"); onTriggered: root.askFolderTree() }
                 }
-                IconButton {
-                    visible: root.info.broken > 0
-                    glyph: "⚠ " + root.info.broken
-                    tip: qsTr("%1 defekte Links – Reparatur suchen").arg(root.info.broken)
-                    onClicked: root.app.findLinkRepairs(root.source)
+            }
+            IconButton {
+                visible: root.info.broken > 0
+                glyph: "⚠ " + root.info.broken
+                tip: qsTr("%1 defekte Links – Reparatur suchen").arg(root.info.broken)
+                onClicked: root.app.findLinkRepairs(root.source)
+            }
+            IconButton {
+                iconName: "backlinks"; glyph: String(contextPanel.count)
+                tip: qsTr("Rückverweise")
+                checkable: true
+                checked: root.showBacklinks && contextPanel.tab === 0
+                onClicked: {
+                    root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 0)
+                    contextPanel.tab = 0
                 }
-                IconButton {
-                    iconName: "backlinks"; glyph: String(contextPanel.count)
-                    tip: qsTr("Rückverweise")
-                    checkable: true
-                    checked: root.showBacklinks && contextPanel.tab === 0
-                    onClicked: {
-                        root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 0)
-                        contextPanel.tab = 0
-                    }
-                }
-                IconButton {
-                    iconName: "graph"
-                    tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
-                    checkable: true
-                    checked: root.showBacklinks && contextPanel.tab === 1
-                    onClicked: {
-                        root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 1)
-                        contextPanel.tab = 1
-                    }
+            }
+            IconButton {
+                iconName: "graph"
+                tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
+                checkable: true
+                checked: root.showBacklinks && contextPanel.tab === 1
+                onClicked: {
+                    root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 1)
+                    contextPanel.tab = 1
                 }
             }
         }
@@ -395,7 +389,12 @@ Rectangle {
                         Component.onCompleted: {
                             webView = PreviewPool.take(webHost)
                             Timing.mark(webView.ready ? "Vorschau aus dem Vorrat (geladen)" : "Vorschau neu erzeugt (lädt)")
-                            webView.anchors.fill = webHost
+                            // On whole pixels (not anchors.fill): see snap().
+                            webView.x = Qt.binding(() => webHost.snapX)
+                            webView.y = Qt.binding(() => webHost.snapY)
+                            webView.width = Qt.binding(() => Math.max(0, Math.floor(webHost.width - webHost.snapX)))
+                            webView.height = Qt.binding(() => Math.max(0, Math.floor(webHost.height - webHost.snapY)))
+                            snap()
                             // A spare was hidden: have Chromium paint it here.
                             webRepaint.request()
                             // Loaded already (the pool's spare): once the Loader
@@ -403,6 +402,30 @@ Rectangle {
                             if (webView.ready) Qt.callLater(loaded)
                         }
                         Component.onDestruction: if (webView) webView.destroy()
+                        // The preview on whole device pixels with a whole-pixel
+                        // size: in a split it gets half widths (x = 996.5), and
+                        // Chromium's frame then lands between pixels – with
+                        // some drivers columns are doubled or dropped ("i"
+                        // turns into ":"). snapX/Y move it onto the next pixel.
+                        property real snapX: 0
+                        property real snapY: 0
+                        function snap() {
+                            const d = Screen.devicePixelRatio
+                            const p = webHost.mapToItem(null, 0, 0)
+                            const fx = Math.ceil(p.x * d) / d - p.x, fy = Math.ceil(p.y * d) / d - p.y
+                            snapX = fx < 1e-6 ? 0 : fx
+                            snapY = fy < 1e-6 ? 0 : fy
+                        }
+                        onXChanged: snap()
+                        onYChanged: snap()
+                        onWidthChanged: snap()
+                        onHeightChanged: snap()
+                        Connections {
+                            target: webHost.Window.window
+                            ignoreUnknownSignals: true
+                            function onWidthChanged() { Qt.callLater(webHost.snap) }
+                            function onHeightChanged() { Qt.callLater(webHost.snap) }
+                        }
                         function loaded() {
                             Timing.mark("Vorschauseite bereit")
                             root.pageLoaded = true

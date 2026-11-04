@@ -15,6 +15,8 @@ use atlas_core::perms;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
 
+use crate::util::qs;
+
 use crate::qt_helpers;
 
 #[cxx_qt::bridge]
@@ -160,10 +162,6 @@ pub mod qobject {
 pub struct FileOpsRust {
     busy: bool,
     status: QString,
-}
-
-fn qs(s: impl AsRef<str>) -> QString {
-    QString::from(s.as_ref())
 }
 
 fn paths_of(list: &QStringList) -> Vec<PathBuf> {

@@ -9,13 +9,18 @@ mod calendar_model;
 mod cli;
 mod file_ops;
 mod folder_model;
+mod formula_ocr;
+mod ilias_backend;
 mod pdf_items;
 mod qt_helpers;
 mod search_model;
+mod spelling;
 mod terminal_item;
+mod test_driver;
 mod text_document;
 mod trash_model;
 mod tree_model;
+mod util;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 

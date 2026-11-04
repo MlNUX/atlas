@@ -95,87 +95,78 @@ Rectangle {
         spacing: 0
 
         // ---- location and actions
-        Rectangle {
-            Layout.fillWidth: true
+        ToolStrip {
             Layout.preferredHeight: 44
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 4
-                IconButton { iconName: "arrow-up"; tip: qsTr("Eine Ebene höher (Rücktaste)"); enabled: root.chain.length > 0; onClicked: root.up() }
-                // Breadcrumbs: ILIAS › course › folder …
-                Flickable {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 30
-                    contentWidth: crumbs.width
-                    clip: true
-                    flickableDirection: Flickable.HorizontalFlick
-                    Row {
-                        id: crumbs
-                        height: parent.height
-                        spacing: 2
-                        Repeater {
-                            model: [{ name: "ILIAS", depth: 0 }].concat(root.chain.map((n, i) => ({ name: n.name, depth: i + 1 })))
-                            Row {
-                                required property var modelData
-                                required property int index
-                                height: crumbs.height
-                                spacing: 2
+            IconButton { iconName: "arrow-up"; tip: qsTr("Eine Ebene höher (Rücktaste)"); enabled: root.chain.length > 0; onClicked: root.up() }
+            // Breadcrumbs: ILIAS › course › folder …
+            Flickable {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 30
+                contentWidth: crumbs.width
+                clip: true
+                flickableDirection: Flickable.HorizontalFlick
+                Row {
+                    id: crumbs
+                    height: parent.height
+                    spacing: 2
+                    Repeater {
+                        model: [{ name: "ILIAS", depth: 0 }].concat(root.chain.map((n, i) => ({ name: n.name, depth: i + 1 })))
+                        Row {
+                            required property var modelData
+                            required property int index
+                            height: crumbs.height
+                            spacing: 2
+                            Text {
+                                visible: parent.index > 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "›"
+                                color: Theme.textFaint
+                            }
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: crumbText.implicitWidth + 14
+                                height: 26
+                                radius: 6
+                                color: crumbHover.hovered ? Theme.hover : "transparent"
                                 Text {
-                                    visible: parent.index > 0
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: "›"
-                                    color: Theme.textFaint
+                                    id: crumbText
+                                    anchors.centerIn: parent
+                                    text: parent.parent.modelData.name
+                                    color: parent.parent.index === root.chain.length ? Theme.textStrong : Theme.text
+                                    font.pixelSize: Theme.fontSize
+                                    font.weight: parent.parent.index === root.chain.length ? Font.DemiBold : Font.Normal
                                 }
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: crumbText.implicitWidth + 14
-                                    height: 26
-                                    radius: 6
-                                    color: crumbHover.hovered ? Theme.hover : "transparent"
-                                    Text {
-                                        id: crumbText
-                                        anchors.centerIn: parent
-                                        text: parent.parent.modelData.name
-                                        color: parent.parent.index === root.chain.length ? Theme.textStrong : Theme.text
-                                        font.pixelSize: Theme.fontSize
-                                        font.weight: parent.parent.index === root.chain.length ? Font.DemiBold : Font.Normal
-                                    }
-                                    HoverHandler { id: crumbHover }
-                                    MouseArea { anchors.fill: parent; onClicked: root.up(root.chain.length - parent.parent.modelData.depth) }
-                                }
+                                HoverHandler { id: crumbHover }
+                                MouseArea { anchors.fill: parent; onClicked: root.up(root.chain.length - parent.parent.modelData.depth) }
                             }
                         }
                     }
                 }
-                Text {
-                    Layout.maximumWidth: 320
-                    text: root.service ? root.service.status : ""
-                    color: root.service && root.service.state === "error" ? Theme.error : Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                }
-                BusyIndicator { Layout.preferredWidth: 22; Layout.preferredHeight: 22; running: !!root.service && (root.service.busy || !!root.service.current); visible: running }
-                IconButton {
-                    iconName: "refresh"
-                    tip: qsTr("Favoriten neu einlesen")
-                    enabled: !!root.service && !root.service.busy
-                    onClicked: root.service.refresh()
-                }
-                IconButton {
-                    iconName: "file-text"
-                    tip: qsTr("ILIAS-Protokoll öffnen (Fehlersuche)")
-                    onClicked: root.service.openLog()
-                }
-                IconButton {
-                    iconName: "downloads"
-                    tip: root.service && root.service.downloadDir ? qsTr("Vorgeschlagener Download-Ordner: %1 (ändern …)").arg(root.service.downloadDir) : qsTr("Vorgeschlagenen Download-Ordner wählen …")
-                    onClicked: root.chooseDir()
-                }
             }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
+            Text {
+                Layout.maximumWidth: 320
+                text: root.service ? root.service.status : ""
+                color: root.service && root.service.state === "error" ? Theme.error : Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideRight
+            }
+            BusyIndicator { Layout.preferredWidth: 22; Layout.preferredHeight: 22; running: !!root.service && (root.service.busy || !!root.service.current); visible: running }
+            IconButton {
+                iconName: "refresh"
+                tip: qsTr("Favoriten neu einlesen")
+                enabled: !!root.service && !root.service.busy
+                onClicked: root.service.refresh()
+            }
+            IconButton {
+                iconName: "file-text"
+                tip: qsTr("ILIAS-Protokoll öffnen (Fehlersuche)")
+                onClicked: root.service.openLog()
+            }
+            IconButton {
+                iconName: "downloads"
+                tip: root.service && root.service.downloadDir ? qsTr("Vorgeschlagener Download-Ordner: %1 (ändern …)").arg(root.service.downloadDir) : qsTr("Vorgeschlagenen Download-Ordner wählen …")
+                onClicked: root.chooseDir()
+            }
         }
 
         // ---- the list
@@ -363,7 +354,7 @@ Rectangle {
         pickHint: qsTr("Atlas lädt die Datei direkt in diesen Ordner, ohne die Ordner aus ILIAS; ist der Name vergeben, bekommt sie eine Nummer.")
         onChosen: (path) => {
             if (root.askingFor) root.service.resume(path)
-            else root.app.setIliasConfig("download_dir", path)
+            else IliasBackend.setConfig("download_dir", path)
             root.askingFor = null
         }
     }

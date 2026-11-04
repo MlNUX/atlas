@@ -65,39 +65,13 @@ Dialog {
         spacing: 0
 
         // ---- header (like the settings)
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: 18
-            Layout.bottomMargin: 14
-            spacing: 12
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                Layout.alignment: Qt.AlignTop
-                radius: 10
-                color: Theme.accentSoft
-                Icon { anchors.centerIn: parent; name: "grid"; size: 20; color: Theme.accent }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                Text {
-                    text: qsTr("Erweiterungen")
-                    color: Theme.textStrong
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    Layout.fillWidth: true
-                    wrapMode: Text.Wrap
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    text: qsTr("Ordner mit einer extension.yaml – global in ~/.config/atlas/extensions/, für ein Projekt in .atlas/extensions/. Sie fügen Aktionen, Anzeigen für weitere Dateitypen und Exporter hinzu.")
-                }
-            }
+        DialogHeader {
+            icon: "grid"
+            title: qsTr("Erweiterungen")
+            subtitle: qsTr("Ordner mit einer extension.yaml – global in ~/.config/atlas/extensions/, für ein Projekt in .atlas/extensions/. Sie fügen Aktionen, Anzeigen für weitere Dateitypen und Exporter hinzu.")
+            wrap: true
             IconButton { Layout.alignment: Qt.AlignTop; iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
         ListView {
             id: extList

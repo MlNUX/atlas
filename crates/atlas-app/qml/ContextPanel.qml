@@ -314,7 +314,7 @@ Rectangle {
                             height: 24
                             radius: 6
                             color: current ? Theme.accentSoft : scopeHover.hovered ? Theme.hover : "transparent"
-                            border.color: current ? Qt.rgba(0.24, 0.55, 0.99, 0.5) : Theme.border
+                            border.color: current ? Theme.accentAlpha(0.5) : Theme.border
                             Text {
                                 id: scopeLabel
                                 anchors.centerIn: parent
@@ -748,7 +748,7 @@ Rectangle {
                                 radius: width / 2
                                 color: node.modelData.missing ? "transparent" : (panel.kindColors[node.modelData.kind] || Theme.textMuted)
                                 border.width: node.index === 0 ? 3 : node.modelData.missing ? 1 : 0
-                                border.color: node.modelData.missing ? Theme.textFaint : Qt.rgba(0.24, 0.55, 0.99, 0.35)
+                                border.color: node.modelData.missing ? Theme.textFaint : Theme.accentAlpha(0.35)
                                 opacity: node.far ? 0.55 : node.modelData.depth >= 2 ? 0.8 : 1
                                 Icon {
                                     anchors.centerIn: parent

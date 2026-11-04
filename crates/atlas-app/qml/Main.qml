@@ -216,6 +216,8 @@ ApplicationWindow {
             { name: qsTr("Einstellungen …"), hint: qsTr("Orte, Editor, Kalender"), run: () => settingsDialog.open() },
             { name: Theme.light ? qsTr("Dunkles Farbschema") : qsTr("Helles Farbschema"), hint: qsTr("Darstellung"), run: () => app.theme = Theme.light ? "dark" : "light" },
             { name: qsTr("Kalender-Einstellungen …"), hint: "Nextcloud", run: () => fileActions.calendarSync.openSettings() },
+            { name: qsTr("Kontextleiste anpassen …"), hint: qsTr("Profil „%1“").arg(ContextProfiles.title(inspector.profileName)),
+              run: () => { window.inspectorVisible = true; inspector.customize() } },
         ]
         if (calendar.connected) {
             list.push({ name: qsTr("Kalender synchronisieren"), hint: calendar.syncStatus,
@@ -238,6 +240,10 @@ ApplicationWindow {
             if (md && md.askTable) {
                 list.push({ name: qsTr("Bild einfügen …"), hint: app.fileName(current), run: () => md.askImage() })
                 list.push({ name: qsTr("Tabelle einfügen …"), hint: app.fileName(current), run: () => md.askTable() })
+                list.push({ name: qsTr("Tabellen ausrichten"), hint: app.fileName(current), run: () => {
+                    const n = md.editorItem.alignTables()
+                    md.message(n ? qsTr("%n Tabelle(n) ausgerichtet", "", n) : qsTr("Alle Tabellen sind schon ausgerichtet"))
+                } })
                 list.push({ name: qsTr("Ordnerbaum einfügen …"), hint: app.fileName(current), run: () => md.askFolderTree() })
                 md.diagramTemplates.forEach((t, i) =>
                     list.push({ name: qsTr("Diagramm einfügen: %1").arg(t.name), hint: "Mermaid", run: () => md.insertDiagram(i) }))
@@ -364,6 +370,7 @@ ApplicationWindow {
         app: app
         actions: fileActions
         onExtensionsRequested: extensionsDialog.open()
+        onCustomizeContext: (profile) => { settingsDialog.close(); window.inspectorVisible = true; inspector.customize(profile) }
     }
 
     FolderChooser {
@@ -574,7 +581,7 @@ ApplicationWindow {
                 "open-folder": () => folderDialog.ask("open", app.projectRoot, ""),
                 "settings": () => settingsDialog.open(),
                 "graph": () => inspector.graphWindow.show(file),
-                "actions": () => { window.inspectorWidth = 300; inspector.tab = 3 },
+                "actions": () => { window.inspectorWidth = 300; inspector.showTab("actions") },
                 "md-edit": () => { if (editor.activeTab && editor.activeTab.viewerItem) editor.activeTab.viewerItem.mode = "split" },
                 "md-sync": () => {
                     const v = editor.activeTab && editor.activeTab.viewerItem
@@ -587,7 +594,7 @@ ApplicationWindow {
                 "pomodoro": () => { inspector.pomodoro.startPause(); inspector.pomodoro.endsAt = Date.now() + (17 * 60 + 42) * 1000; inspector.pomodoro.rounds = 2 },
                 "relate": () => app.requestRelate(file),
                 "html-remote": () => { fileActions.renderHtml(file); Qt.callLater(() => { editor.activeTab.viewerItem.allowRemote = true }) },
-                "quotes": () => { window.inspectorVisible = true; inspector.tab = 1; inspector.linksPanel.scope = "project" },
+                "quotes": () => { window.inspectorVisible = true; inspector.showTab("links"); inspector.linksPanel.scope = "project" },
                 "new-session": () => sessionMenu.askNew(),
                 "quick-look": () => fileActions.quickLook(file),
                 "calendar-settings": () => fileActions.calendarSync.openSettings(),
@@ -612,7 +619,7 @@ ApplicationWindow {
         interval: app.screenshotDelayMs
         onTriggered: {
             window.reportProbe()
-            const ok = app.saveWindowImage(window, app.screenshotPath)
+            const ok = TestDriver.saveWindowImage(window, app.screenshotPath)
             console.info(ok ? "screenshot saved to" : "screenshot failed:", app.screenshotPath)
             if (app.quitAfterMs <= 0) Qt.quit()
         }
@@ -810,7 +817,7 @@ ApplicationWindow {
                     background: Rectangle {
                         radius: 8
                         color: calendarButton.active ? Theme.accentSoft : calendarButton.hovered ? Theme.hover : Theme.header
-                        border.color: calendarButton.active ? Qt.rgba(0.24, 0.55, 0.99, 0.5) : Theme.border
+                        border.color: calendarButton.active ? Theme.accentAlpha(0.5) : Theme.border
                     }
                     contentItem: Item {
                         Row {
@@ -976,7 +983,7 @@ ApplicationWindow {
                         PlacesList {
                             id: placesList
                             // ILIAS as the last place (if switched on).
-                            readonly property bool ilias: { try { return JSON.parse(app.iliasConfig).show_in_places !== false } catch (e) { return true } }
+                            readonly property bool ilias: { try { return JSON.parse(IliasBackend.config).show_in_places !== false } catch (e) { return true } }
                             Layout.fillWidth: true
                             names: ilias ? app.placeNames.concat(["ILIAS"]) : app.placeNames
                             paths: ilias ? app.placePaths.concat(["ilias:"]) : app.placePaths
@@ -1076,6 +1083,7 @@ ApplicationWindow {
             actions: fileActions
             onOpenRequested: (path, line, where, state) => editor.open(path, line, where, state)
             onKeyActionRequested: (binding) => window.runKeyAction(binding)
+            onTagSearchRequested: (tag) => commandPalette.show("#" + tag)
         }
     }
 

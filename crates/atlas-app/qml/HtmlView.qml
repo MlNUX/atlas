@@ -72,36 +72,26 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 30
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 4
-                Label {
-                    Layout.fillWidth: true
-                    text: web.title && web.title !== root.app.fileName(root.source)
-                        ? qsTr("Webseite: %1").arg(web.title) : qsTr("Webseite")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                }
-                IconButton { iconName: "minus"; tip: qsTr("Verkleinern"); onClicked: root.zoom = Math.max(0.3, root.zoom / 1.1) }
-                Label {
-                    text: Math.round(root.zoom * 100) + " %"
-                    color: Theme.text
-                    font.pixelSize: Theme.smallFontSize
-                    MouseArea { anchors.fill: parent; onClicked: root.zoom = 1 }
-                }
-                IconButton { iconName: "plus"; tip: qsTr("Vergrößern"); onClicked: root.zoom = Math.min(5, root.zoom * 1.1) }
-                IconButton { iconName: "refresh"; tip: qsTr("Neu laden (F5)"); onClicked: web.reload() }
-                IconButton { iconName: "file-code"; tip: qsTr("Quelltext anzeigen"); onClicked: root.showSourceRequested() }
-                IconButton { iconName: "external"; tip: qsTr("Im Browser öffnen"); onClicked: Qt.openUrlExternally(root.fileUrl) }
+        ToolStrip {
+            Label {
+                Layout.fillWidth: true
+                text: web.title && web.title !== root.app.fileName(root.source)
+                    ? qsTr("Webseite: %1").arg(web.title) : qsTr("Webseite")
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideRight
             }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
+            IconButton { iconName: "minus"; tip: qsTr("Verkleinern"); onClicked: root.zoom = Math.max(0.3, root.zoom / 1.1) }
+            Label {
+                text: Math.round(root.zoom * 100) + " %"
+                color: Theme.text
+                font.pixelSize: Theme.smallFontSize
+                MouseArea { anchors.fill: parent; onClicked: root.zoom = 1 }
+            }
+            IconButton { iconName: "plus"; tip: qsTr("Vergrößern"); onClicked: root.zoom = Math.min(5, root.zoom * 1.1) }
+            IconButton { iconName: "refresh"; tip: qsTr("Neu laden (F5)"); onClicked: web.reload() }
+            IconButton { iconName: "file-code"; tip: qsTr("Quelltext anzeigen"); onClicked: root.showSourceRequested() }
+            IconButton { iconName: "external"; tip: qsTr("Im Browser öffnen"); onClicked: Qt.openUrlExternally(root.fileUrl) }
         }
 
         // Web resources are blocked unless allowed for this file.

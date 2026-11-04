@@ -13,10 +13,10 @@ import Atlas
 //
 // - The login happens in a web view with a persistent profile (cookies,
 //   also Shibboleth's session cookies); Atlas never sees the password.
-// - Reading and downloading run in Rust (atlas_core::ilias, through
-//   `app.iliasScan` / `app.iliasDownload`) with that profile's session
+// - Reading and downloading run in Rust (atlas_ilias, through
+//   `IliasBackend.scan` / `IliasBackend.download`) with that profile's session
 //   cookies. The tree and the downloads are JSON files in the state
-//   directory (`app.iliasLoad`).
+//   directory (`IliasBackend.load`).
 // - Each download asks for its folder (offering the file's earlier one, else
 //   the last chosen); the file goes straight in (no ILIAS folders; a name
 //   taken by another file gets a number) and is opened. A new version in
@@ -27,7 +27,7 @@ Item {
     /// FileActions: messages and opening files.
     property var actions: null
 
-    readonly property var config: { try { return JSON.parse(app.iliasConfig) } catch (e) { return {} } }
+    readonly property var config: { try { return JSON.parse(IliasBackend.config) } catch (e) { return {} } }
     readonly property string baseUrl: config.base_url || "https://ilias.studium.kit.edu/"
     readonly property string downloadDir: config.download_dir || ""
     readonly property string host: { try { return new URL(baseUrl).host } catch (e) { return "" } }
@@ -64,16 +64,16 @@ Item {
     signal downloadDirNeeded(var item, string dir)
 
     function loadState(name, fallback) {
-        try { return JSON.parse(app.iliasLoad(name) || "null") || fallback } catch (e) { return fallback }
+        try { return JSON.parse(IliasBackend.load(name) || "null") || fallback } catch (e) { return fallback }
     }
     function message(text) { if (actions) actions.showMessage(text) }
     /// A line in the ILIAS log (and on the console).
     function trace(text) {
         console.log("ilias:", text)
-        app.iliasTrace(text)
+        IliasBackend.trace(text)
     }
     /// Opens the ILIAS log in a tab.
-    function openLog() { openLocal(app.iliasDebugLog()) }
+    function openLog() { openLocal(IliasBackend.debugLog()) }
 
     // ------------------------------------------------------------ reading
 
@@ -83,12 +83,12 @@ Item {
         trace("Einlesen gestartet: " + baseUrl)
         state = "scanning"
         status = qsTr("Lese Favoriten von %1 …").arg(host)
-        app.iliasScan()
+        IliasBackend.scan()
     }
     Connections {
-        target: service.app
-        function onIliasProgress(text) { if (service.busy) service.status = text }
-        function onIliasScanned(status, text) {
+        target: IliasBackend
+        function onProgress(text) { if (service.busy) service.status = text }
+        function onScanned(status, text) {
             service.trace("Einlesen beendet: " + status + (text ? " – " + text : ""))
             if (status === "login") {
                 // Right after a login: ILIAS did not take the session – no
@@ -110,11 +110,11 @@ Item {
             service.status = qsTr("%n Favorit(en) eingelesen", "", Number(text))
             service.revision++
         }
-        function onIliasDownloadProgress(url, received, total) {
+        function onDownloadProgress(url, received, total) {
             if (service.current && service.current.item.url === url)
                 service.current = Object.assign({}, service.current, { received: received, total: total })
         }
-        function onIliasDownloaded(url, path, status, text) {
+        function onDownloaded(url, path, status, text) {
             service.trace("Download beendet: " + status + " " + (path || text))
             if (!service.current || service.current.item.url !== url) return
             const job = service.current
@@ -162,8 +162,8 @@ Item {
     property bool followedSso: false
     onLoginSavedChanged: if (!loginSaved) credentials = null
     Connections {
-        target: service.app
-        function onIliasLoginReady(user, password, error) {
+        target: IliasBackend
+        function onLoginReady(user, password, error) {
             service.credentials = password ? { user: user, password: password } : null
             if (error) service.loginProblem = qsTr("Gespeicherte Anmeldung nicht lesbar: %1").arg(error)
             // The page may already be waiting for it.
@@ -173,7 +173,10 @@ Item {
     /// Fills the remembered login into the page and sends it (only on the
     /// allowed host, once per attempt).
     function fillLogin(host) {
-        if (!credentials || host !== loginHost || filledOn === host) return
+        if (!credentials || host !== loginHost || filledOn === host) {
+            if (!credentials && host === loginHost) trace("Anmeldefenster: gespeicherte Anmeldung noch nicht entschlüsselt – warte")
+            return
+        }
         filledOn = host
         trace("Anmeldefenster: setze gespeicherte Anmeldung ein auf " + host)
         loginPage.runJavaScript("(" + fillScript + ")(" + JSON.stringify(credentials.user) + ", " + JSON.stringify(credentials.password) + ")",
@@ -183,7 +186,7 @@ Item {
     function allowLoginHere() {
         if (!offerHost) return
         const h = offerHost
-        app.setIliasConfig("login_host", h)
+        IliasBackend.setConfig("login_host", h)
         offerHost = ""
         fillLogin(h)
     }
@@ -195,7 +198,15 @@ Item {
         try { h = new URL(loginPage.url.toString()).host } catch (e) {}
         loginPage.runJavaScript(pageScript, (r) => {
             if (!r || !loginWindow.visible) return
-            if (r.password) {
+            trace("  Anmeldeseite " + h + ": Passwortfeld " + r.password + ", SSO-Link " + (r.sso ? "ja" : "nein")
+                  + " · gespeichert " + loginSaved + ", freigegeben für „" + loginHost + "“, entschlüsselt " + !!credentials)
+            // Allowed on the university's page (not on ILIAS itself): go
+            // there first, even if ILIAS shows its own (local) login form.
+            if (r.sso && loginSaved && h === host && loginHost && loginHost !== host && !followedSso) {
+                followedSso = true
+                trace("Anmeldefenster: weiter zur Anmeldung der Hochschule " + r.sso)
+                loginPage.url = r.sso
+            } else if (r.password) {
                 if (!loginSaved) return
                 if (filledOn === h) {
                     loginProblem = qsTr("Die Anmeldung mit den gespeicherten Daten hat nicht geklappt – bitte selbst anmelden oder das Passwort in den Einstellungen neu speichern.")
@@ -248,7 +259,7 @@ Item {
         offerHost = ""
         loginProblem = ""
         followedSso = false
-        if (loginSaved && !credentials) app.iliasFetchLogin()
+        if (loginSaved && !credentials) IliasBackend.fetchLogin()
         if (loginPage) loginPage.url = baseUrl
         loginWindow.show()
         loginWindow.raise()
@@ -257,7 +268,7 @@ Item {
     /// Signs out of ILIAS: the session is forgotten, the next reading asks
     /// for the login again.
     function logout() {
-        app.iliasLogout()
+        IliasBackend.logout()
         autoClose = true
         state = "login"
         status = qsTr("Abgemeldet")
@@ -296,7 +307,7 @@ Item {
         const p = pendingOpen
         pendingOpen = null
         // Offered first next time.
-        if (dir !== downloadDir) app.setIliasConfig("download_dir", dir)
+        if (dir !== downloadDir) IliasBackend.setConfig("download_dir", dir)
         queue = queue.concat([{ item: p.item, segments: p.segments, dir: dir }])
         next()
     }
@@ -307,7 +318,7 @@ Item {
         queue = queue.slice(1)
         status = qsTr("Lade „%1“ …").arg(current.item.name)
         const item = current.item
-        app.iliasDownload(item.url, item.download || "", item.name, item.info || "", current.dir)
+        IliasBackend.download(item.url, item.download || "", item.name, item.info || "", current.dir)
     }
     function finish(text) {
         if (text) status = text
@@ -330,7 +341,7 @@ Item {
     property var profile: null
     Component.onCompleted: {
         profile = profilePrototype.instance()
-        app.iliasUseProfile(profile)
+        IliasBackend.useProfile(profile)
     }
 
     // The university's login page, in Atlas' own window.
@@ -343,29 +354,24 @@ Item {
         ColumnLayout {
             anchors.fill: parent
             spacing: 0
-            Rectangle {
-                Layout.fillWidth: true
+            ToolStrip {
                 Layout.preferredHeight: 44
-                color: Theme.header
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 14
-                    anchors.rightMargin: 8
-                    spacing: 10
-                    Icon { name: "key"; size: 16; color: Theme.accent }
-                    Text {
-                        Layout.fillWidth: true
-                        text: service.loginSaved
-                            ? qsTr("Bei %1 anmelden – mit der gespeicherten Anmeldung (verschlüsselt mit systemd-creds).").arg(service.host)
-                            : qsTr("Bei %1 anmelden – Atlas merkt sich nur die Sitzung, nicht das Passwort.").arg(service.host)
-                        color: Theme.text
-                        font.pixelSize: Theme.smallFontSize
-                        elide: Text.ElideRight
-                    }
-                    Button { text: qsTr("Abbrechen"); flat: true; onClicked: { loginWindow.close(); if (service.state === "login") service.status = qsTr("Nicht angemeldet") } }
-                    // If Atlas does not notice the login by itself.
-                    Button { text: qsTr("Angemeldet – Favoriten zeigen"); highlighted: true; onClicked: { service.trace("Knopf „Angemeldet“ gedrückt"); service.autoClose = true; service.loggedIn() } }
+                leftMargin: 14
+                spacing: 10
+                line: "none"
+                Icon { name: "key"; size: 16; color: Theme.accent }
+                Text {
+                    Layout.fillWidth: true
+                    text: service.loginSaved
+                        ? qsTr("Bei %1 anmelden – mit der gespeicherten Anmeldung (verschlüsselt mit systemd-creds).").arg(service.host)
+                        : qsTr("Bei %1 anmelden – Atlas merkt sich nur die Sitzung, nicht das Passwort.").arg(service.host)
+                    color: Theme.text
+                    font.pixelSize: Theme.smallFontSize
+                    elide: Text.ElideRight
                 }
+                Button { text: qsTr("Abbrechen"); flat: true; onClicked: { loginWindow.close(); if (service.state === "login") service.status = qsTr("Nicht angemeldet") } }
+                // If Atlas does not notice the login by itself.
+                Button { text: qsTr("Angemeldet – Favoriten zeigen"); highlighted: true; onClicked: { service.trace("Knopf „Angemeldet“ gedrückt"); service.autoClose = true; service.loggedIn() } }
             }
             // The remembered login: ask once per login page, or report a
             // failed try.

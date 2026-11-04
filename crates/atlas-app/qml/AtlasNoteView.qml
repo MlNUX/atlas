@@ -47,33 +47,28 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        Rectangle {
-            Layout.fillWidth: true
+        ToolStrip {
             implicitHeight: 36
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 8
-                spacing: 8
-                Icon { name: "pen"; color: Theme.accent }
-                Label {
-                    text: root.info.pages.length === 1 ? qsTr("Atlas-Notiz · 1 Seite") : qsTr("Atlas-Notiz · %1 Seiten").arg(root.info.pages.length)
-                    color: Theme.textStrong
-                    font.pixelSize: Theme.smallFontSize
-                }
-                Label {
-                    text: qsTr("Nur Ansicht – bearbeitet wird auf dem Tablet")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                }
-                IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Strg+Mausrad)"); onClicked: root.zoomBy(1 / 1.2) }
-                Label { text: Math.round(root.zoom * 100) + " %"; color: Theme.text; font.pixelSize: Theme.smallFontSize }
-                IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg+Mausrad)"); onClicked: root.zoomBy(1.2) }
-                IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: root.revision++ }
+            leftMargin: 12
+            spacing: 8
+            line: "none"
+            Icon { name: "pen"; color: Theme.accent }
+            Label {
+                text: root.info.pages.length === 1 ? qsTr("Atlas-Notiz · 1 Seite") : qsTr("Atlas-Notiz · %1 Seiten").arg(root.info.pages.length)
+                color: Theme.textStrong
+                font.pixelSize: Theme.smallFontSize
             }
+            Label {
+                text: qsTr("Nur Ansicht – bearbeitet wird auf dem Tablet")
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+            IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Strg+Mausrad)"); onClicked: root.zoomBy(1 / 1.2) }
+            Label { text: Math.round(root.zoom * 100) + " %"; color: Theme.text; font.pixelSize: Theme.smallFontSize }
+            IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg+Mausrad)"); onClicked: root.zoomBy(1.2) }
+            IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: root.revision++ }
         }
         Label {
             visible: root.info.error.length > 0

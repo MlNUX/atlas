@@ -371,7 +371,7 @@ exporters:
 /// extension adds nothing until it is filled in.
 pub fn starter(title: &str) -> (String, String) {
     let title = title.trim();
-    let name = match slug(title) {
+    let name = match crate::text::slug(title) {
         s if s.is_empty() => "erweiterung".to_owned(),
         s => s,
     };
@@ -445,10 +445,6 @@ fn command(entry: &Yaml) -> Result<Command> {
     })
 }
 
-fn slug(name: &str) -> String {
-    name.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-")
-}
-
 fn timeout(entry: &Yaml, default: u64) -> Duration {
     Duration::from_secs(entry["timeout"].as_i64().filter(|t| *t > 0).map(|t| t as u64).unwrap_or(default))
 }
@@ -470,7 +466,7 @@ fn parse_processor(entry: &Yaml, ext: &str, dir: &Path) -> Result<Processor> {
         bail!("PDF-Ausgabe braucht {{output}} im Befehl");
     }
     Ok(Processor {
-        id: format!("{ext}/{}", entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| slug(name))),
+        id: format!("{ext}/{}", entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| crate::text::slug(name))),
         name: name.to_owned(),
         extension: ext.to_owned(),
         globs: globs(&applies_to)?,
@@ -495,7 +491,7 @@ fn parse_exporter(entry: &Yaml, ext: &str, dir: &Path) -> Result<Exporter> {
     }
     let applies_to = strings(&entry["applies_to"]);
     Ok(Exporter {
-        id: format!("{ext}/{}", entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| slug(name))),
+        id: format!("{ext}/{}", entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| crate::text::slug(name))),
         name: name.to_owned(),
         extension: ext.to_owned(),
         globs: globs(&applies_to)?,
@@ -649,7 +645,10 @@ fn parse_view(entry: &Yaml, ext: &str, dir: &Path) -> Result<View> {
         None => None,
     };
     Ok(View {
-        id: format!("view:{ext}/{}", entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| slug(name))),
+        id: format!(
+            "view:{ext}/{}",
+            entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| crate::text::slug(name))
+        ),
         name: name.to_owned(),
         extension: ext.to_owned(),
         page: page.to_owned(),

@@ -188,7 +188,7 @@ pub fn object_name(uid: &str) -> String {
 
 /// Unescaped comparison of two hrefs (`%40` vs `@`, trailing slash).
 pub fn same_href(a: &str, b: &str) -> bool {
-    let norm = |s: &str| crate::markdown::percent_decode(s).trim_end_matches('/').to_owned();
+    let norm = |s: &str| crate::text::percent_decode(s).trim_end_matches('/').to_owned();
     norm(a) == norm(b)
 }
 

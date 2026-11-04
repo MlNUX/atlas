@@ -40,4 +40,4 @@ jobs:
 
       - name: Test Atlas Core
         run: |
-          cargo test --locked --release -p atlas-core
+          cargo test --locked --release -p atlas-core -p atlas-terminal -p atlas-spell -p atlas-ilias

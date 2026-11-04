@@ -31,34 +31,16 @@ Dialog {
 
     contentItem: ColumnLayout {
         spacing: 0
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: 16
-            Layout.bottomMargin: 12
-            spacing: 12
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: 10
-                color: Theme.accentSoft
-                Icon { anchors.centerIn: parent; name: "graph"; size: 20; color: Theme.accent }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                Text { text: qsTr("Graph"); color: Theme.textStrong; font.pixelSize: 16; font.weight: Font.DemiBold }
-                Text {
-                    Layout.fillWidth: true
-                    text: dialog.path ? qsTr("Rund um %1 – Strg+Mausrad zoomt, Ziehen verschiebt, Klick öffnet").arg(dialog.app.relativePath(dialog.path))
-                                      : qsTr("Kein Dokument geöffnet")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideMiddle
-                }
-            }
+        DialogHeader {
+            icon: "graph"
+            title: qsTr("Graph")
+            subtitle: dialog.path ? qsTr("Rund um %1 – Strg+Mausrad zoomt, Ziehen verschiebt, Klick öffnet").arg(dialog.app.relativePath(dialog.path))
+                                  : qsTr("Kein Dokument geöffnet")
+            elide: Text.ElideMiddle
+            margins: 16
+            bottomMargin: 12
             IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
         ContextPanel {
             id: graph
             Layout.fillWidth: true

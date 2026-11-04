@@ -15,6 +15,8 @@ Dialog {
     property var actions: null
 
     signal extensionsRequested()
+    /// „Anpassen …“ of a profile of the context bar.
+    signal customizeContext(string profile)
 
     anchors.centerIn: Overlay.overlay
     width: Math.min(parent ? parent.width - 60 : 600, 600)
@@ -61,43 +63,19 @@ Dialog {
 
     function run(f) { dialog.close(); f() }
     readonly property var context: { try { return JSON.parse(dialog.app.contextModules || "{}") } catch (e) { return {} } }
+    readonly property var contextExtensions: { dialog.app.contextModules; dialog.app.untrustedExtensions
+        try { return JSON.parse(dialog.app.contextExtensions()).filter(e => e.entries.length > 0) } catch (e) { return [] } }
 
     contentItem: ColumnLayout {
         spacing: 0
 
         // ---- header
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: 18
-            Layout.bottomMargin: 14
-            spacing: 12
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: 10
-                color: Theme.accentSoft
-                Icon { anchors.centerIn: parent; name: "settings"; size: 20; color: Theme.accent }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                Text {
-                    text: qsTr("Einstellungen")
-                    color: Theme.textStrong
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Gespeichert in ~/.config/atlas/config.toml")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                }
-            }
+        DialogHeader {
+            icon: "settings"
+            title: qsTr("Einstellungen")
+            subtitle: qsTr("Gespeichert in ~/.config/atlas/config.toml")
             IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
         // Scrolls on small screens (the dialog never grows past the window).
         ScrollView {
@@ -270,7 +248,7 @@ Dialog {
                                 wrapMode: Text.Wrap
                                 color: Theme.textMuted
                                 font.pixelSize: Theme.smallFontSize
-                                readonly property string languages: dialog.visible ? dialog.app.spellLanguages() : ""
+                                readonly property string languages: dialog.visible ? Spelling.languages() : ""
                                 text: (languages ? qsTr("Deutsch und Englisch zugleich (%1), auf diesem Rechner. ").arg(languages)
                                                  : qsTr("Keine Wörterbücher gefunden (Hunspell de_DE, en_US). "))
                                       + qsTr("Rechtsklick auf ein rot unterstrichenes Wort: Vorschläge oder ins eigene Wörterbuch.")
@@ -289,7 +267,7 @@ Dialog {
                     Layout.fillWidth: true
                     id: iliasCard
                     implicitHeight: iliasColumn.implicitHeight + 24
-                    readonly property var ilias: { try { return JSON.parse(dialog.app.iliasConfig) } catch (e) { return {} } }
+                    readonly property var ilias: { try { return JSON.parse(IliasBackend.config) } catch (e) { return {} } }
                     property string loginMessage: ""
                     property bool loginFailed: false
                     property bool storing: false
@@ -298,12 +276,12 @@ Dialog {
                         storing = true
                         loginMessage = qsTr("Verschlüssele …")
                         loginFailed = false
-                        dialog.app.iliasRememberLogin(iliasUser.text.trim(), iliasPassword.text)
+                        IliasBackend.rememberLogin(iliasUser.text.trim(), iliasPassword.text)
                         iliasPassword.text = ""
                     }
                     Connections {
-                        target: dialog.app
-                        function onIliasLoginStored(ok, message) {
+                        target: IliasBackend
+                        function onLoginStored(ok, message) {
                             iliasCard.storing = false
                             iliasCard.loginFailed = !ok
                             iliasCard.loginMessage = message
@@ -311,7 +289,7 @@ Dialog {
                     }
                     function applyAddress() {
                         if (!iliasAddress.valid || !iliasAddress.changed) return
-                        dialog.app.setIliasConfig("base_url", iliasAddress.address)
+                        IliasBackend.setConfig("base_url", iliasAddress.address)
                         iliasAddress.text = Qt.binding(() => iliasCard.ilias.base_url || "")
                     }
                     ColumnLayout {
@@ -340,7 +318,7 @@ Dialog {
                             Toggle {
                                 Layout.alignment: Qt.AlignVCenter
                                 checked: iliasCard.ilias.show_in_places !== false
-                                onToggled: dialog.app.setIliasConfig("show_in_places", checked ? "false" : "true")
+                                onToggled: IliasBackend.setConfig("show_in_places", checked ? "false" : "true")
                             }
                         }
                         // The ILIAS of one's university: its start page.
@@ -401,7 +379,7 @@ Dialog {
                                 visible: iliasCard.ilias.login_saved === true
                                 text: qsTr("Vergessen")
                                 flat: true
-                                onClicked: { dialog.app.iliasForgetLogin(); iliasCard.loginMessage = qsTr("Anmeldung vergessen") }
+                                onClicked: { IliasBackend.forgetLogin(); iliasCard.loginMessage = qsTr("Anmeldung vergessen") }
                             }
                             TextField {
                                 id: iliasUser
@@ -464,24 +442,122 @@ Dialog {
                     }
                 }
 
-                SectionLabel { text: qsTr("Kontextleiste"); Layout.topMargin: 10 }
+                SectionLabel { text: qsTr("Kontextleiste · Profile"); Layout.topMargin: 10 }
                 Card {
                     Layout.fillWidth: true
-                    implicitHeight: moduleRows.implicitHeight
+                    implicitHeight: profileRows.implicitHeight
                     ColumnLayout {
-                        id: moduleRows
+                        id: profileRows
                         anchors.left: parent.left
                         anchors.right: parent.right
                         spacing: 0
-                        ModuleRow {
-                            key: "pomodoro"
+                        Repeater {
+                            model: ContextProfiles.names
+                            Rectangle {
+                                id: profileRow
+                                required property string modelData
+                                required property int index
+                                readonly property bool set: ContextProfiles.isSet(dialog.context, modelData)
+                                Layout.fillWidth: true
+                                implicitHeight: profileColumn.implicitHeight + 20
+                                color: "transparent"
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
+                                    spacing: 12
+                                    Icon {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        name: ({ default: "grid", pdf: "file-pdf", markdown: "file-text", code: "file-code", calendar: "calendar" })[profileRow.modelData]
+                                        size: 18
+                                        color: profileRow.set ? Theme.accent : Theme.textFaint
+                                    }
+                                    ColumnLayout {
+                                        id: profileColumn
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            text: ContextProfiles.title(profileRow.modelData) + (profileRow.modelData === "default" ? " · " + qsTr("Standard") : "")
+                                            color: Theme.textStrong
+                                            font.pixelSize: Theme.fontSize
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: profileRow.set || profileRow.modelData === "default"
+                                                ? ContextProfiles.summary(dialog.context, profileRow.modelData, dialog.contextExtensions)
+                                                : qsTr("Nicht eingestellt – wie Allgemein")
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.Wrap
+                                            color: Theme.textMuted
+                                            font.pixelSize: Theme.smallFontSize
+                                        }
+                                    }
+                                    Button {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        flat: true
+                                        text: profileRow.set ? qsTr("Anpassen …") : qsTr("Einstellen …")
+                                        onClicked: dialog.customizeContext(profileRow.modelData)
+                                    }
+                                }
+                                Rectangle {
+                                    visible: profileRow.index < ContextProfiles.names.length - 1
+                                    anchors.bottom: parent.bottom
+                                    x: 42
+                                    width: parent.width - 54
+                                    height: 1
+                                    color: Theme.border
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SectionLabel { text: qsTr("Kontextleiste · Verhalten"); Layout.topMargin: 10 }
+                Card {
+                    Layout.fillWidth: true
+                    implicitHeight: behaviourRows.implicitHeight
+                    ColumnLayout {
+                        id: behaviourRows
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        spacing: 0
+                        OptionRow {
+                            icon: "collapse"
+                            title: qsTr("Leere Bausteine")
+                            detail: qsTr("z. B. „Anmerkungen“ bei einer PDF ohne Anmerkungen")
+                            Segmented {
+                                current: dialog.context.empty || "collapse"
+                                choices: [{ value: "show", text: qsTr("Zeigen") }, { value: "collapse", text: qsTr("Einklappen") },
+                                          { value: "hide", text: qsTr("Ausblenden") }]
+                                onChosen: (value) => dialog.app.setContextOption("empty", value)
+                            }
+                        }
+                        OptionRow {
+                            icon: "list"
+                            title: qsTr("Reiterbeschriftung")
+                            detail: qsTr("Automatisch: Symbole, wenn die Leiste zu schmal ist")
+                            Segmented {
+                                current: dialog.context.tab_labels || "auto"
+                                choices: [{ value: "auto", text: qsTr("Automatisch") }, { value: "text", text: qsTr("Text") },
+                                          { value: "icons", text: qsTr("Symbole") }]
+                                onChosen: (value) => dialog.app.setContextOption("tab_labels", value)
+                            }
+                        }
+                        OptionRow {
+                            icon: "documents"
+                            title: qsTr("Profile nach Dateityp")
+                            detail: qsTr("Aus: überall gilt „Allgemein“")
+                            Toggle {
+                                checked: dialog.context.by_kind !== false
+                                onToggled: dialog.app.setContextOption("by_kind", checked ? "false" : "true")
+                            }
+                        }
+                        OptionRow {
                             icon: "focus"
-                            title: qsTr("Lernzeit (Pomodoro)")
-                            detail: qsTr("Unten in der Kontextleiste: %1 Min. lernen, %2 Min. Pause, nach vier Runden %3 Min.")
-                                .arg(dialog.context.pomodoro_work || 25).arg(dialog.context.pomodoro_break || 5).arg(dialog.context.pomodoro_long_break || 15)
-                            // Lengths of the phases.
+                            title: qsTr("Lernzeit")
+                            detail: qsTr("Minuten lernen, Pause, lange Pause nach vier Runden")
+                            last: true
                             Row {
-                                visible: dialog.context.pomodoro !== false
                                 spacing: 4
                                 Repeater {
                                     model: [["pomodoro_work", qsTr("Lernen")], ["pomodoro_break", qsTr("Pause")], ["pomodoro_long_break", qsTr("Lange Pause")]]
@@ -499,36 +575,13 @@ Dialog {
                                 }
                             }
                         }
-                        ModuleRow {
-                            key: "calendar"
-                            icon: "calendar"
-                            title: qsTr("Demnächst im Kalender")
-                            detail: qsTr("Termine, Arbeitsblöcke und Fristen der nächsten sieben Tage")
-                        }
-                        ModuleRow {
-                            key: "tasks"
-                            icon: "check-square"
-                            title: qsTr("Aufgaben")
-                            detail: qsTr("Offene Aufgaben abhaken und neue anlegen")
-                            last: extensionRows.count === 0
-                        }
-                        // Extensions with views or commands: a card with buttons.
-                        Repeater {
-                            id: extensionRows
-                            model: { dialog.app.contextModules; dialog.app.untrustedExtensions
-                                     try { return JSON.parse(dialog.app.contextExtensions()) } catch (e) { return [] } }
-                            ModuleRow {
-                                required property var modelData
-                                required property int index
-                                key: "ext:" + modelData.name
-                                on: modelData.shown
-                                icon: "grid"
-                                title: qsTr("Erweiterung: %1").arg(modelData.title)
-                                detail: qsTr("Karte mit Knöpfen für: %1").arg(modelData.entries.map(e => e.name).join(", "))
-                                last: index === extensionRows.count - 1
-                            }
-                        }
                     }
+                }
+                Button {
+                    flat: true
+                    text: qsTr("Alle Profile zurücksetzen")
+                    enabled: Object.keys(dialog.context.profiles || {}).length > 0
+                    onClicked: { for (const name of Object.keys(dialog.context.profiles || {})) dialog.app.setContextProfile(name, "") }
                 }
 
                 // Settings the extensions declare (API 2).
@@ -817,58 +870,44 @@ Dialog {
         pickTitle: qsTr("Vorgeschlagener Download-Ordner")
         pickHint: qsTr("Jeder Download fragt nach seinem Ordner; dieser wird zuerst angeboten.")
         pickButton: qsTr("Hier speichern")
-        onChosen: (path) => dialog.app.setIliasConfig("download_dir", path)
+        onChosen: (path) => IliasBackend.setConfig("download_dir", path)
     }
 
-    /// A module of the context bar with its switch (and extra controls).
-    component ModuleRow: Rectangle {
-        id: moduleRow
-        property string key
+    /// A setting: icon, title, a line of explanation, the control on the right.
+    component OptionRow: Rectangle {
+        id: optionRow
         property string icon
         property string title
         property string detail
         property bool last: false
-        default property alias extra: extraArea.data
-        property bool on: dialog.context[key] !== false
+        default property alias control: controlArea.data
         Layout.fillWidth: true
-        implicitHeight: moduleLayout.implicitHeight + 20
+        implicitHeight: Math.max(optionText.implicitHeight, controlArea.implicitHeight) + 22
         color: "transparent"
         RowLayout {
-            id: moduleLayout
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.leftMargin: 12
             anchors.rightMargin: 12
             spacing: 12
-            Icon { Layout.alignment: Qt.AlignTop; name: moduleRow.icon; size: 18; color: Theme.accent }
+            Icon { Layout.alignment: Qt.AlignVCenter; name: optionRow.icon; size: 18; color: Theme.accent }
             ColumnLayout {
+                id: optionText
                 Layout.fillWidth: true
                 spacing: 2
-                Text { text: moduleRow.title; color: Theme.textStrong; font.pixelSize: Theme.fontSize }
-                Text {
-                    Layout.fillWidth: true
-                    text: moduleRow.detail
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                }
-                Item {
-                    id: extraArea
-                    Layout.topMargin: children.length && childrenRect.height ? 4 : 0
-                    implicitWidth: childrenRect.width
-                    implicitHeight: childrenRect.height
-                }
+                Text { text: optionRow.title; color: Theme.textStrong; font.pixelSize: Theme.fontSize }
+                Text { Layout.fillWidth: true; text: optionRow.detail; wrapMode: Text.Wrap; color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
             }
-            Toggle {
+            Item {
+                id: controlArea
                 Layout.alignment: Qt.AlignVCenter
-                checked: moduleRow.on
-                onToggled: dialog.app.setContextModule(moduleRow.key, moduleRow.on ? 0 : 1)
+                implicitWidth: childrenRect.width
+                implicitHeight: childrenRect.height
             }
         }
         Rectangle {
-            visible: !moduleRow.last
+            visible: !optionRow.last
             anchors.bottom: parent.bottom
             x: 42
             width: parent.width - 54

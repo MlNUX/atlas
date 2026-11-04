@@ -76,6 +76,8 @@ QtObject {
 
     /// Fill of a calendar entry in colour `c`: darkened by `factor` in the
     /// dark design, a pale tint of it in the light one.
+    /// The accent, translucent (frames of active and selected things).
+    function accentAlpha(alpha) { return Qt.rgba(accent.r, accent.g, accent.b, alpha) }
     function entryFill(c, factor) {
         return light ? Qt.tint(c, Qt.rgba(1, 1, 1, factor >= 2 ? 0.78 : 0.5)) : Qt.darker(c, factor)
     }

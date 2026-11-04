@@ -13,9 +13,12 @@ const QML_FILES: &[&str] = &[
     "qml/CalendarView.qml",
     "qml/CalendarWeek.qml",
     "qml/CommandPalette.qml",
+    "qml/ContextBlock.qml",
+    "qml/ContextEditor.qml",
     "qml/ContextModules.qml",
     "qml/ExtensionCards.qml",
     "qml/ContextPanel.qml",
+    "qml/DialogHeader.qml",
     "qml/DocumentView.qml",
     "qml/EditorArea.qml",
     "qml/EditorGroup.qml",
@@ -32,6 +35,11 @@ const QML_FILES: &[&str] = &[
     "qml/Inspector.qml",
     "qml/MarkdownView.qml",
     "qml/MarkdownPdfExport.qml",
+    "qml/PdfAnnotationPopup.qml",
+    "qml/PdfLatexPopup.qml",
+    "qml/PdfSelectionMenu.qml",
+    "qml/PdfSidebar.qml",
+    "qml/PdfToolbar.qml",
     "qml/PdfViewer.qml",
     "qml/AtlasNoteView.qml",
     "qml/PomodoroTimer.qml",
@@ -55,6 +63,7 @@ const QML_FILES: &[&str] = &[
     "qml/TerminalPane.qml",
     "qml/TerminalPanel.qml",
     "qml/TextEditor.qml",
+    "qml/ToolStrip.qml",
     "qml/TouchpadFling.qml",
     "qml/TrashView.qml",
     "qml/WebRepaint.qml",
@@ -66,10 +75,14 @@ const RUST_BRIDGES: &[&str] = &[
     "src/calendar_model.rs",
     "src/file_ops.rs",
     "src/folder_model.rs",
+    "src/formula_ocr.rs",
+    "src/ilias_backend.rs",
     "src/pdf_items.rs",
     "src/qt_helpers.rs",
     "src/search_model.rs",
+    "src/spelling.rs",
     "src/terminal_item.rs",
+    "src/test_driver.rs",
     "src/text_document.rs",
     "src/trash_model.rs",
     "src/tree_model.rs",
@@ -80,7 +93,8 @@ fn main() {
         .qml_files(QML_FILES.iter().map(QmlFile::from))
         .qml_file(QmlFile::from("qml/Theme.qml").singleton(true))
         .qml_file(QmlFile::from("qml/PreviewPool.qml").singleton(true))
-        .qml_file(QmlFile::from("qml/Timing.qml").singleton(true));
+        .qml_file(QmlFile::from("qml/Timing.qml").singleton(true))
+        .qml_file(QmlFile::from("qml/ContextProfiles.qml").singleton(true));
     let builder = CxxQtBuilder::new_qml_module(module)
         .qt_module("Quick")
         .qt_module("QuickControls2")
@@ -89,6 +103,7 @@ fn main() {
         .qt_module("WebEngineQuick")
         .qrc_resources(web_resources())
         .qrc_resources(style_resources())
+        .qrc_resources(syntax_resources())
         .files(RUST_BRIDGES.iter().copied())
         .cpp_file("cpp/helpers.cpp")
         .cpp_file("cpp/touchpad_hold.cpp");
@@ -141,6 +156,15 @@ fn style_resources() -> QResources {
     files.sort();
     println!("cargo::rerun-if-changed=qml/AtlasStyle");
     QResources::new().resource(QResource::new().prefix("/qt").files(files))
+}
+
+/// Extra syntax definitions for the editor (Markdown with coloured code
+/// blocks, see `scripts/gen-markdown-syntax.py`). KSyntaxHighlighting loads
+/// every definition at `:/org.kde.syntax-highlighting/syntax-addons/`.
+fn syntax_resources() -> QResources {
+    println!("cargo::rerun-if-changed=syntax-addons");
+    QResources::new()
+        .resource(QResource::new().prefix("/org.kde.syntax-highlighting").file("syntax-addons/atlas-markdown.xml"))
 }
 
 /// The Markdown preview page and its bundled libraries, served from

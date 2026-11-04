@@ -268,13 +268,31 @@ touchpad_fling = true                            # Schwung nach Touchpad-Wischen
 sort_key = "name"                                # zuletzt gewählte Sortierung (name, size, modified, kind)
 sort_ascending = true
 
-[context]                                        # Module der Kontextleiste (Übersicht)
-calendar = true                                  # Heute: Termine, Blöcke, Fristen des Tages
-tasks = true                                     # offene Aufgaben
-pomodoro = true                                  # Lernzeit-Timer am unteren Rand
+[context]                                        # Kontextleiste (docs/concept/kontextleiste.html)
 pomodoro_work = 25                               # Minuten lernen
 pomodoro_break = 5                               # kurze Pause
 pomodoro_long_break = 15                         # lange Pause nach vier Runden
+empty = "collapse"                               # leere Bausteine: show | collapse | hide
+tab_labels = "auto"                              # Reiter: auto (Symbole, wenn schmal) | text | icons
+by_kind = true                                   # Profile nach Dateityp; false: überall „Allgemein“
+# calendar / tasks = false, pomodoro = false: alte Schalter, gelten nur ohne [context.profiles]
+
+[context.profiles.default]                       # „Allgemein“: gilt für alles ohne eigenes Profil
+tabs = ["links", "graph", "actions"]             # Reiter nach „Übersicht“
+overview = ["today", "tasks", "annotations", "graph", "actions"]
+pinned = ["pomodoro"]                            # unten angeheftet, auf jedem Reiter
+hidden = []                                      # ausgeblendet in Übersicht und unten (ein Reiter: aus tabs entfernen)
+collapsed = []
+
+[context.profiles.pdf]                           # pdf, markdown, code, calendar: nur Abweichungen von default
+tabs = ["links", "actions"]
+overview = ["annotations", "outline", "today", "graph", "actions"]
+# Bausteine: annotations, outline, links, tags, fileinfo, graph, actions, builtin-actions, user-actions,
+#            today, week, tasks, pomodoro, ext:<name>
+
+[context.profiles.markdown.pages."page:lq3x"]  # eigener Reiter („page:…“ in tabs); eingebaute Reiter:
+title = "Lesen"                                  # links, graph, actions = builtin-actions + user-actions
+blocks = ["outline", "tags", "ext:bnki"]
 
 [pdf]
 dark = true                                      # Dunkelmodus: Farben umgekehrt (Mond in der PDF-Leiste)

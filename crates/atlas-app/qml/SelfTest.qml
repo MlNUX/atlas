@@ -88,7 +88,7 @@ Item {
         const pts = [[0, from.x, from.y]]
         for (let i = 1; i <= 10; i++) pts.push([1, from.x + (to.x - from.x) * i / 10, from.y + (to.y - from.y) * i / 10])
         pts.push([1, to.x, to.y], [2, to.x, to.y])
-        pts.forEach((e, i) => app.postMouse(window, e[0], e[1], e[2], 40 * (i + 1)))
+        pts.forEach((e, i) => TestDriver.postMouse(window, e[0], e[1], e[2], 40 * (i + 1)))
     }
     /// Drags tab `index` of `group` to (`x`, `y`) in `target`.
     function dragTabTo(group, index, target, x, y) {
@@ -143,6 +143,8 @@ Item {
             () => {
                 const md = editor.activeTab.viewerItem
                 check("Markdown-Ansicht", !!md && !!md.editorItem)
+                check("Markdown-Hervorhebung mit Codeblöcken (Atlas Markdown)", !!md && md.editorItem.syntax === "Atlas Markdown",
+                      md && md.editorItem.syntax)
                 md.mode = "split"
                 md.editorItem.insertText("\nAutosave-Test [Plan](plan.md#ziele)\n", true)
                 check("Bearbeitung erkannt", md.editorItem.modified)
@@ -333,7 +335,7 @@ Item {
                 const area = md.contextPanelItem.graphView
                 const p = area.mapToItem(null, area.width / 2, area.height / 2)
                 test.zoomBefore = md.contextPanelItem.zoom
-                app.sendWheel(window, p.x, p.y, 120, 0)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 0)
             },
             () => {
                 const panel = editor.activeTab.viewerItem.contextPanelItem
@@ -341,7 +343,7 @@ Item {
                 // Ctrl+wheel, as Wayland reports a mouse wheel ("touchpad").
                 const area = panel.graphView
                 const p = area.mapToItem(null, area.width / 2, area.height / 2)
-                app.sendWheel(window, p.x, p.y, 120, 17)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 17)
             },
             () => {
                 const md = editor.activeTab.viewerItem
@@ -370,7 +372,7 @@ Item {
                 check("Tab rückt Listenpunkte ein und aus, nicht normalen Text", indented && outdented && !ed.indentListItems(false), ed.text.slice(-30))
                 // Enter continues lists (bullets, checkboxes, numbers, quotes)
                 // and ends them on an empty item.
-                const enter = () => app.sendKey(window, Qt.Key_Return, 0)
+                const enter = () => TestDriver.sendKey(window, Qt.Key_Return, 0)
                 ed.focusText()
                 ed.insertText("\n- eins", true)
                 ed.applyState({ cursor: ed.text.length })
@@ -398,7 +400,36 @@ Item {
                 const mdv = editor.activeTab.viewerItem
                 ed.applyState({ cursor: ed.text.length })
                 mdv.insertTable(2, 2)
-                check("Tabelle einfügen", ed.text.indexOf("| Spalte 1 | Spalte 2 |\n| --- | --- |\n|     |     |\n|     |     |") > 0, JSON.stringify(ed.text.slice(-80)))
+                check("Tabelle einfügen (ausgerichtet)", ed.text.indexOf("| Spalte 1 | Spalte 2 |\n| -------- | -------- |\n|          |          |\n|          |          |") > 0, JSON.stringify(ed.text.slice(-120)))
+                // Tables: Tab aligns and goes from cell to cell, Enter adds a row,
+                // Enter in an empty last row ends the table.
+                const tab = (shift) => TestDriver.sendKey(window, shift ? Qt.Key_Backtab : Qt.Key_Tab, shift ? Qt.ShiftModifier : 0)
+                ed.insertText("\n\n| a | b |\n|:-:|--:|\n| langer Text | 1 |", true)
+                const tableAt = ed.text.lastIndexOf("| a | b |")
+                ed.applyState({ cursor: tableAt + 2 })
+                tab(false)
+                const aligned = "|      a      |   b |\n| :---------: | --: |\n| langer Text |   1 |"
+                check("Tabelle: Tab richtet die Spalten aus (mit Ausrichtung)", ed.text.endsWith(aligned), JSON.stringify(ed.text.slice(-70)))
+                check("Tabelle: Tab markiert die nächste Zelle", ed.selectedText === "b", JSON.stringify(ed.selectedText))
+                tab(false)
+                check("Tabelle: Tab springt über die Trennzeile", ed.selectedText === "langer Text", JSON.stringify(ed.selectedText))
+                tab(true)
+                check("Tabelle: Umschalt+Tab geht zurück", ed.selectedText === "b", JSON.stringify(ed.selectedText))
+                tab(false); tab(false); tab(false)
+                check("Tabelle: Tab in der letzten Zelle fügt eine Zeile an", ed.text.endsWith(aligned + "\n|             |     |"), JSON.stringify(ed.text.slice(-50)))
+                ed.insertText("x", false)
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Tabelle: Enter am Zeilenende fügt eine Zeile an",
+                      ed.text.endsWith("|      x      |     |\n|             |     |"), JSON.stringify(ed.text.slice(-50)))
+                ed.applyState({ cursor: ed.text.length })
+                enter()
+                check("Tabelle: Enter in leerer letzter Zeile beendet die Tabelle",
+                      ed.text.endsWith("|      x      |     |\n") && !ed.text.endsWith("|     |\n|             |     |\n"), JSON.stringify(ed.text.slice(-50)))
+                ed.insertText("\n| c | d |\n|---|---|\n| e | ffff |\n\n```\n| x | y |\n|---|---|\n```\n", true)
+                check("Tabellen ausrichten: ganze Notiz", ed.alignTables() === 1
+                      && ed.text.indexOf("| c   | d    |\n| --- | ---- |\n| e   | ffff |") > 0
+                      && ed.text.indexOf("```\n| x | y |\n|---|---|\n```") > 0, JSON.stringify(ed.text.slice(-120)))
                 ed.applyState({ cursor: ed.text.length })
                 mdv.insertDiagram(0)
                 check("Diagramm-Vorlage einfügen", ed.text.indexOf("```mermaid\nflowchart TD") > 0)
@@ -423,10 +454,10 @@ Item {
                 ed.updateSpelling()
                 const typo = ed.text.lastIndexOf("Tippfeler")
                 const flagged = () => ed.spellRanges.some(r => r[0] === typo && r[1] === 9)
-                check("Rechtschreibprüfung: Tippfehler unterstrichen, richtige Wörter nicht", app.spellLanguages() === "de_DE, en_US" && flagged()
-                      && !ed.spellRanges.some(r => r[0] > typo + 9), app.spellLanguages() + " " + JSON.stringify(ed.spellRanges.slice(-3)))
-                check("Rechtschreibprüfung: Vorschlag", app.spellSuggest("Tippfeler").indexOf("Tippfehler") >= 0, app.spellSuggest("Tippfeler"))
-                app.spellAdd("Tippfeler")
+                check("Rechtschreibprüfung: Tippfehler unterstrichen, richtige Wörter nicht", Spelling.languages() === "de_DE, en_US" && flagged()
+                      && !ed.spellRanges.some(r => r[0] > typo + 9), Spelling.languages() + " " + JSON.stringify(ed.spellRanges.slice(-3)))
+                check("Rechtschreibprüfung: Vorschlag", Spelling.suggest("Tippfeler").indexOf("Tippfehler") >= 0, Spelling.suggest("Tippfeler"))
+                Spelling.add("Tippfeler")
                 ed.updateSpelling()
                 check("Rechtschreibprüfung: eigenes Wörterbuch", !flagged(), JSON.stringify(ed.spellRanges.slice(-3)))
                 // Ranges of an older, longer text are not drawn (no positions
@@ -812,24 +843,24 @@ Item {
                 // Qt on Wayland reports mouse wheels as a "touchpad" device with
                 // finger pointer type: Ctrl+wheel zooms all the same.
                 const before = v.zoomScale
-                app.sendWheel(window, p.x, p.y, 120, 17)
-                app.sendWheel(window, p.x, p.y, 120, 17)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 17)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 17)
                 check("Wayland: Strg+Mausrad vom „Touchpad“-Gerät zoomt", v.zoomScale > before * 1.15, before + " → " + v.zoomScale)
                 // Wheel notches in scroll phases without a ScrollBegin (as from
                 // some Wayland compositors) zoom too.
                 const start = v.zoomScale
-                app.sendWheel(window, p.x, p.y, 120, 9)
-                app.sendWheel(window, p.x, p.y, 120, 9)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 9)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 9)
                 check("Strg+Mausrad ohne Gestenbeginn zoomt", v.zoomScale > start * 1.15, start + " → " + v.zoomScale)
                 test.zoomBefore = v.zoomScale
-                app.sendWheel(window, p.x, p.y, 120, true)
+                TestDriver.sendWheel(window, p.x, p.y, 120, true)
                 check("Strg+Mausrad vergrößert die PDF", v.zoomScale > test.zoomBefore * 1.05, test.zoomBefore + " → " + v.zoomScale)
                 const zoomed = v.zoomScale
-                app.sendWheel(window, p.x, p.y, -240, true)
+                TestDriver.sendWheel(window, p.x, p.y, -240, true)
                 check("Strg+Mausrad zurück verkleinert", v.zoomScale < zoomed, zoomed + " → " + v.zoomScale)
                 const plain = v.zoomScale
                 const y0 = v.pagesView.contentY
-                app.sendWheel(window, p.x, p.y, -120, false)
+                TestDriver.sendWheel(window, p.x, p.y, -120, false)
                 check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
                 // (Eased in over a few frames, like a browser: settled here.)
                 check("Mausrad: Stufe wird weich gescrollt", Math.abs(v.fling.wheelY + v.wheelStep) < 1, v.fling.wheelY)
@@ -839,15 +870,15 @@ Item {
                 // of 120 – a touchpad step, not a wheel notch (it made the view
                 // jump by a whole notch).
                 const y1 = v.pagesView.contentY
-                app.sendWheel(window, p.x, p.y, -10, 64 | 16 | 4)
-                app.sendWheel(window, p.x, p.y, -10, 64 | 16)
-                app.sendWheel(window, p.x, p.y, -10, 64 | 16)
+                TestDriver.sendWheel(window, p.x, p.y, -10, 64 | 16 | 4)
+                TestDriver.sendWheel(window, p.x, p.y, -10, 64 | 16)
+                TestDriver.sendWheel(window, p.x, p.y, -10, 64 | 16)
                 v.fling.flush()
                 check("Touchpad unter Wayland: Ansicht folgt den Fingern genau", Math.abs(v.pagesView.contentY - y1 - 30) < 1 && v.fling.wheelY === 0,
                       y1 + " → " + v.pagesView.contentY)
-                app.sendWheel(window, p.x, p.y, 0, 2 | 16 | 32)
+                TestDriver.sendWheel(window, p.x, p.y, 0, 2 | 16 | 32)
                 v.fling.stop()
-                app.sendWheel(window, p.x, p.y, 120, false)
+                TestDriver.sendWheel(window, p.x, p.y, 120, false)
                 v.fling.settle()
                 // Dark mode: one switch for all PDFs, stored in config.toml.
                 app.pdfDark = true
@@ -859,23 +890,23 @@ Item {
                 v.zoom = 0.4
                 test.zoomBefore = v.zoomScale
                 const side = v.mapToItem(null, v.width * 0.8, v.height * 0.6)
-                app.sendWheel(window, side.x, side.y, 120, true)
+                TestDriver.sendWheel(window, side.x, side.y, 120, true)
                 check("Strg+Mausrad: schmale Seite bleibt mittig", v.zoomScale > test.zoomBefore && v.pagesView.contentX === v.pagesView.originX,
                       v.pagesView.contentX + " / " + v.pagesView.originX)
                 v.zoom = plain
                 // Touchpads (and fine scrolling on Wayland): a gesture with
                 // pixel-only deltas zooms as well and never scrolls.
-                app.sendWheel(window, p.x, p.y, 0, 7)
-                app.sendWheel(window, p.x, p.y, 40, 3)
-                app.sendWheel(window, p.x, p.y, 40, 3)
+                TestDriver.sendWheel(window, p.x, p.y, 0, 7)
+                TestDriver.sendWheel(window, p.x, p.y, 40, 3)
+                TestDriver.sendWheel(window, p.x, p.y, 40, 3)
                 check("Strg+Touchpad zoomt die PDF", v.zoomScale > plain * 1.1, plain + " → " + v.zoomScale)
                 // Wayland: wheel notches come in scroll phases; a gesture begun
                 // without Ctrl (scrolling) continues with Ctrl held.
                 const touch = v.zoomScale
-                app.sendWheel(window, p.x, p.y, 0, 4)
-                app.sendWheel(window, p.x, p.y, -120, 8)
-                app.sendWheel(window, p.x, p.y, 120, 9)
-                app.sendWheel(window, p.x, p.y, 120, 9)
+                TestDriver.sendWheel(window, p.x, p.y, 0, 4)
+                TestDriver.sendWheel(window, p.x, p.y, -120, 8)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 9)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 9)
                 check("Wayland: Strg+Mausrad mitten in einer Scroll-Geste zoomt", v.zoomScale > touch * 1.15, touch + " → " + v.zoomScale)
                 // Dialogs of the new design.
                 sendToNote.ask("ok", app.projectRoot)
@@ -899,7 +930,7 @@ Item {
                 const q = v.mapFromItem(null, test.zoomPoint.x, test.zoomPoint.y)
                 const vp = v.pagesView.mapFromItem(v, q.x, q.y)
                 test.zoomAnchor = v.pointAt(vp.x, vp.y)
-                for (let i = 0; i < 6; i++) app.sendWheel(window, test.zoomPoint.x, test.zoomPoint.y, 120, true)
+                for (let i = 0; i < 6; i++) TestDriver.sendWheel(window, test.zoomPoint.x, test.zoomPoint.y, 120, true)
             },
             () => {
                 const v = editor.activeTab.viewerItem
@@ -998,8 +1029,8 @@ Item {
                 // A click next to the segments switches to typing the path.
                 const bar = folderDialog.pathBar
                 const p = bar.mapToItem(null, bar.width - 12, bar.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 check("Pfadleiste: Klick daneben zum Eintippen", folderDialog.pathBar.editing)
@@ -1028,8 +1059,8 @@ Item {
                 const item = projectTree.itemFor(path("docs/umbenannt.pdf"))
                 check("PDF im Baum sichtbar", !!item)
                 const p = item.mapToItem(null, item.width / 2, item.height / 2)
-                app.postMouse(window, 10, p.x, p.y, 20)
-                app.postMouse(window, 12, p.x, p.y, 60)
+                TestDriver.postMouse(window, 10, p.x, p.y, 20)
+                TestDriver.postMouse(window, 12, p.x, p.y, 60)
             },
             () => {
                 const tabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
@@ -1069,14 +1100,17 @@ Item {
                 check("Ordner: nichts vorausgewählt", f.selectedPaths().length === 0, f.selectedPaths().join(","))
                 const item = f.activeView.itemAtIndex(1)
                 const p = item.mapToItem(null, item.width / 2, item.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
                 test.zoomBefore = f.iconSize
-                app.sendWheel(window, p.x, p.y, 120, 17)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 17)
             },
             () => {
                 const f = editor.activeTab.viewerItem
                 check("Ordner: Klick wählt aus", f.selectedPaths().length === 1 && f.selectedPaths()[0] === f.folderModel.pathAt(1), f.selectedPaths().join(","))
+                const pressed = f.activeView.itemAtIndex(1)
+                check("Ordner: Bild am Mauszeiger fürs Ziehen bereit", !!pressed && String(pressed.Drag.imageSource).length > 0,
+                      pressed ? String(pressed.Drag.imageSource) : "kein Eintrag")
                 check("Ordner: Strg+Mausrad zoomt", f.iconSize > test.zoomBefore, test.zoomBefore + " → " + f.iconSize)
                 f.viewMode = "details"
             },
@@ -1086,6 +1120,23 @@ Item {
                       && f.selectedPaths().length === 1, f.activeView.currentIndex)
                 const state = f.viewState()
                 check("Ordner: Ansicht im Sitzungszustand", state.viewMode === "details" && state.iconSize === f.iconSize)
+                // Selection rectangle: from the empty area below the rows up
+                // into the second row.
+                const last = f.activeView.itemAtIndex(f.folderModel.count - 1)
+                const from = last.mapToItem(null, last.width - 40, last.height + 12)
+                const second = f.activeView.itemAtIndex(1)
+                const to = second.mapToItem(null, second.width / 2, second.height / 2)
+                TestDriver.postMouse(window, 0, from.x, from.y, 20)
+                TestDriver.postMouse(window, 1, from.x - 10, from.y - 10, 60)
+                TestDriver.postMouse(window, 1, to.x, to.y, 100)
+                TestDriver.postMouse(window, 2, to.x, to.y, 140)
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                const n = f.folderModel.count
+                if (waitFor(() => f.selectedPaths().length === n - 1)) return
+                check("Ordner: Markierungsrechteck wählt die Zeilen darin", f.selectedPaths().length === n - 1
+                      && f.selectedPaths()[0] === f.folderModel.pathAt(1) && !f.rubberBanding, f.selectedPaths().length + " von " + n)
             },
             () => {
                 // Nextcloud app password from a command (never stored).
@@ -1143,16 +1194,16 @@ Item {
                 editor.activeTab.forceActiveFocus()
                 const b = window.terminalButton
                 const p = b.mapToItem(null, b.width / 2, b.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 check("Terminal-Knopf: ein Klick blendet aus", !terminalPanel.visible && !window.terminalButton.checked,
                       terminalPanel.visible + " / " + window.terminalButton.checked)
                 const b = window.terminalButton
                 const p = b.mapToItem(null, b.width / 2, b.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 check("Terminal-Knopf: ein Klick blendet ein", terminalPanel.visible && window.terminalButton.checked,
@@ -1209,16 +1260,16 @@ Item {
                 check("Unbekanntes Farbschema wird dunkel", app.theme === "dark" && !Theme.light, app.theme)
                 // The ILIAS address: settable, checked, applied.
                 const field = settingsDialog.iliasAddressField
-                const before = JSON.parse(app.iliasConfig).base_url
+                const before = JSON.parse(IliasBackend.config).base_url
                 field.text = "nicht da"
                 const invalid = !field.valid
                 field.text = "ilias.uni-beispiel.de"
                 settingsDialog.applyIliasAddress()
-                const after = JSON.parse(app.iliasConfig).base_url
+                const after = JSON.parse(IliasBackend.config).base_url
                 check("Einstellungen: ILIAS-Adresse einstellbar (ohne https:// ergänzt, Ungültiges abgelehnt)",
                       invalid && after === "https://ilias.uni-beispiel.de/" && fileActions.ilias.host === "ilias.uni-beispiel.de"
                       && fileActions.ilias.index.courses.length === 0 && field.text === after, after + " · " + field.text)
-                app.setIliasConfig("base_url", before)
+                IliasBackend.setConfig("base_url", before)
                 const cals = settingsDialog.defaultCalendarChoices
                 check("Einstellungen: Kalender für neue Termine wählbar", cals.length >= 1 && cals.some(c => c.isDefault),
                       JSON.stringify(cals.map(c => c.name + (c.isDefault ? "★" : ""))))
@@ -1289,15 +1340,15 @@ Item {
                 // The calendar button opens the calendar and closes it again.
                 const b = window.calendarButton
                 const p = b.mapToItem(null, b.width / 2, b.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 check("Kalender-Knopf öffnet", editor.activeTab && editor.activeTab.kind === "calendar")
                 const b = window.calendarButton
                 const p = b.mapToItem(null, b.width / 2, b.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 const open = editor.groups.some(g => g.tabs.some(t => t.kind === "calendar"))
@@ -1457,7 +1508,7 @@ Item {
                 const paper = v.pagesView.itemAtIndex(0).paperItem
                 const at = (x, y) => paper.mapToItem(null, x * v.zoomScale, y * v.zoomScale)
                 const pts = [[0, 60, 80], [1, 60, 110], [1, 60, 150], [1, 60, 165], [2, 60, 170]]
-                pts.forEach((e, i) => { const q = at(e[1], e[2]); app.postMouse(window, e[0], q.x, q.y, 40 * (i + 1)) })
+                pts.forEach((e, i) => { const q = at(e[1], e[2]); TestDriver.postMouse(window, e[0], q.x, q.y, 40 * (i + 1)) })
             },
             () => {
                 const v = editor.activeTab.viewerItem
@@ -1481,9 +1532,9 @@ Item {
                 const paper = v.pagesView.itemAtIndex(0).paperItem
                 const at = (x, y) => paper.mapToItem(null, x * v.zoomScale, y * v.zoomScale)
                 const a = at(72, 130), b = at(97, 145), c = at(122, 160)
-                app.postMouse(window, 0, a.x, a.y, 30)
-                app.postMouse(window, 1, b.x, b.y, 60)
-                app.postMouse(window, 2, c.x, c.y, 90)
+                TestDriver.postMouse(window, 0, a.x, a.y, 30)
+                TestDriver.postMouse(window, 1, b.x, b.y, 60)
+                TestDriver.postMouse(window, 2, c.x, c.y, 90)
             },
             () => {
                 const v = editor.activeTab.viewerItem
@@ -1520,7 +1571,7 @@ Item {
                 v.forceActiveFocus()
                 if (waitFor(() => v.currentPage === 1)) return
                 // F5: from the start (wherever the focus is).
-                app.sendKey(window, Qt.Key_F5, 0)
+                TestDriver.sendKey(window, Qt.Key_F5, 0)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
@@ -1537,35 +1588,35 @@ Item {
                 check("Präsentation: Größenänderung im Tab erreicht sie nicht", v.bodyItem.width === w.width && v.bodyItem.height === w.height,
                       v.bodyItem.width + "×" + v.bodyItem.height + " in " + w.width + "×" + w.height)
                 v.width = before
-                app.sendKey(w, Qt.Key_Right, 0)
+                TestDriver.sendKey(w, Qt.Key_Right, 0)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
                 const w = v.presentationWindowItem
                 if (waitFor(() => v.slide === 1 && slideAlone(v, 1))) return
                 check("Präsentation: Pfeil rechts zeigt die nächste Seite allein", v.slide === 1 && slideAlone(v, 1), v.slide)
-                app.sendKey(w, Qt.Key_Right, 0)
+                TestDriver.sendKey(w, Qt.Key_Right, 0)
                 check("Präsentation: nach der letzten Seite bleibt sie stehen", v.slide === 1, v.slide)
-                app.sendKey(w, Qt.Key_Left, 0)
+                TestDriver.sendKey(w, Qt.Key_Left, 0)
                 check("Präsentation: Pfeil links zurück", v.slide === 0, v.slide)
-                app.postMouse(w, 0, w.width / 2, w.height / 2, 10)
-                app.postMouse(w, 2, w.width / 2, w.height / 2, 30)
+                TestDriver.postMouse(w, 0, w.width / 2, w.height / 2, 10)
+                TestDriver.postMouse(w, 2, w.width / 2, w.height / 2, 30)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
                 const w = v.presentationWindowItem
                 if (waitFor(() => v.slide === 1)) return
                 check("Präsentation: Klick zeigt die nächste Seite", v.slide === 1 && slideAlone(v, 1), v.slide)
-                app.sendWheel(w, w.width / 2, w.height / 2, 120, 0)
+                TestDriver.sendWheel(w, w.width / 2, w.height / 2, 120, 0)
                 check("Präsentation: Mausrad hoch zeigt die vorige Seite", v.slide === 0, v.slide)
-                app.sendKey(w, Qt.Key_2, 0)
-                app.sendKey(w, Qt.Key_Return, 0)
+                TestDriver.sendKey(w, Qt.Key_2, 0)
+                TestDriver.sendKey(w, Qt.Key_Return, 0)
                 check("Präsentation: Zahl + Enter springt zur Seite", v.slide === 1, v.slide)
-                app.sendKey(w, Qt.Key_B, 0)
+                TestDriver.sendKey(w, Qt.Key_B, 0)
                 check("Präsentation: B macht den Bildschirm schwarz", v.blank === "black")
-                app.sendKey(w, Qt.Key_Space, 0)
+                TestDriver.sendKey(w, Qt.Key_Space, 0)
                 check("Präsentation: nächste Taste hebt Schwarz auf, ohne zu blättern", v.blank === "" && v.slide === 1, v.blank + " " + v.slide)
-                app.sendKey(w, Qt.Key_Escape, 0)
+                TestDriver.sendKey(w, Qt.Key_Escape, 0)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
@@ -1624,20 +1675,20 @@ Item {
                 v.goToPage(0)
                 v.forceActiveFocus()
                 const y0 = v.pagesView.contentY
-                app.sendKey(window, Qt.Key_Down, 0)
+                TestDriver.sendKey(window, Qt.Key_Down, 0)
                 check("Pfeil runter scrollt die PDF", v.pagesView.contentY > y0, y0 + " → " + v.pagesView.contentY)
-                app.sendKey(window, Qt.Key_Right, 0)
+                TestDriver.sendKey(window, Qt.Key_Right, 0)
                 check("Pfeil rechts blättert weiter", v.currentPage === 1, v.currentPage)
-                app.sendKey(window, Qt.Key_Left, 0)
+                TestDriver.sendKey(window, Qt.Key_Left, 0)
                 check("Pfeil links blättert zurück", v.currentPage === 0, v.currentPage)
                 // Undo and redo of annotations (#6).
                 const store = v.annotationStore
                 const n0 = store.count
                 const id = v.addAnnot(JSON.stringify({ kind: "ink", page: 1, ink: [[[10, 10], [40, 40]]], color: "#ff6b6b", width: 2 }))
                 check("Strich gezeichnet", store.count === n0 + 1)
-                app.sendKey(window, Qt.Key_Z, Qt.ControlModifier)
+                TestDriver.sendKey(window, Qt.Key_Z, Qt.ControlModifier)
                 check("Strg+Z nimmt den Strich zurück", store.count === n0 && !store.annotation(id), store.count)
-                app.sendKey(window, Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier)
+                TestDriver.sendKey(window, Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier)
                 check("Strg+Umschalt+Z stellt ihn wieder her (gleiche ID)", store.count === n0 + 1 && !!store.annotation(id), store.count)
                 v.updateAnnot(id, JSON.stringify({ color: "#5ac8fa" }))
                 v.undo()
@@ -1652,11 +1703,11 @@ Item {
                 const tp = v.mapToItem(null, v.width / 2, v.height * 0.6)
                 test.flingY = v.pagesView.contentY
                 test.flings = v.fling.count
-                app.sendWheel(window, tp.x, tp.y, -40, 2 | 4 | 16)
-                for (let i = 0; i < 5; ++i) app.sendWheel(window, tp.x, tp.y, -40, 2 | 16)
+                TestDriver.sendWheel(window, tp.x, tp.y, -40, 2 | 4 | 16)
+                for (let i = 0; i < 5; ++i) TestDriver.sendWheel(window, tp.x, tp.y, -40, 2 | 16)
                 // Fingers lifted (Wayland's axis stop): the momentum starts at
                 // once, not after a pause.
-                app.sendWheel(window, tp.x, tp.y, 0, 2 | 16 | 32)
+                TestDriver.sendWheel(window, tp.x, tp.y, 0, 2 | 16 | 32)
                 check("Touchpad: Schwung setzt beim Loslassen sofort ein", v.fling.count === test.flings + 1 && v.fling.gliding,
                       v.fling.count - test.flings)
                 // libinput reports a "hold" while the fingers leave the touchpad:
@@ -1795,7 +1846,7 @@ Item {
                 const p = ed.mapToItem(null, ed.width / 2, ed.height / 2)
                 test.flingY = ed.scrollY
                 test.flings = ed.fling.count
-                app.sendWheel(window, p.x, p.y, -120, 0)
+                TestDriver.sendWheel(window, p.x, p.y, -120, 0)
             },
             () => {
                 // (Qt animates wheel scrolling: checked a step later.)
@@ -1803,8 +1854,8 @@ Item {
                 check("Editor: Mausrad scrollt weiter, ohne Schwung", ed.scrollY > test.flingY && ed.fling.count === test.flings,
                       test.flingY + " → " + ed.scrollY)
                 const p = ed.mapToItem(null, ed.width / 2, ed.height / 2)
-                app.sendWheel(window, p.x, p.y, -30, 2 | 4 | 16)
-                for (let i = 0; i < 5; ++i) app.sendWheel(window, p.x, p.y, -30, 2 | 16)
+                TestDriver.sendWheel(window, p.x, p.y, -30, 2 | 4 | 16)
+                for (let i = 0; i < 5; ++i) TestDriver.sendWheel(window, p.x, p.y, -30, 2 | 16)
             },
             () => {
                 const ed = editor.activeTab.viewerItem.editorItem
@@ -1854,7 +1905,7 @@ Item {
                 settingsDialog.rememberIliasLogin("uxtest", "geheim")
             },
             () => {
-                const saved = () => JSON.parse(app.iliasConfig).login_saved === true
+                const saved = () => JSON.parse(IliasBackend.config).login_saved === true
                 if (waitFor(saved)) return
                 const cred = app.readTextFile(app.stateDir() + "/secrets/ilias.cred")
                 check("ILIAS: Anmeldung nur verschlüsselt gespeichert", saved() && cred.length > 0 && cred.indexOf("geheim") < 0
@@ -1881,7 +1932,7 @@ Item {
                       course ? names(course.children) : "kein Kurs")
                 const sess = course && course.children.find(n => n.kind === "sess")
                 check("ILIAS: Sitzung am Symbol erkannt, mit Datei", !!sess && names(sess.children) === "Skript", JSON.stringify(sess))
-                const ilog = app.readTextFile(app.iliasDebugLog())
+                const ilog = app.readTextFile(IliasBackend.debugLog())
                 check("ILIAS: Protokoll mit Anmeldung, Seiten und Kursen, ohne Cookie-Werte",
                       ilog.indexOf("Anmeldefenster: angemeldet") >= 0 && ilog.indexOf("Favoriten: Höhere Mathematik I (crs100)") >= 0 && ilog.indexOf("crs300") < 0
                       && ilog.indexOf("Cookies: sid") >= 0 && ilog.indexOf("sid=1") < 0, ilog.slice(-600))
@@ -1981,7 +2032,7 @@ Item {
                 const il = fileActions.ilias
                 if (waitFor(() => !il.loginVisible && il.state === "idle" && il.status.indexOf("eingelesen") >= 0)) return
                 check("ILIAS: nach dem Abmelden ohne Zutun wieder angemeldet (gespeicherte Anmeldung)",
-                      !il.loginVisible && il.state === "idle" && il.filledOn === il.host && JSON.parse(app.iliasConfig).login_host === il.host,
+                      !il.loginVisible && il.state === "idle" && il.filledOn === il.host && JSON.parse(IliasBackend.config).login_host === il.host,
                       il.state + " " + il.status + " · " + il.filledOn)
             },
             () => {
@@ -1989,8 +2040,8 @@ Item {
                 const rows = treeModel.rowOf(path("docs")) >= 0
                 const header = projectTree.rootRow
                 const p = header.mapToItem(null, header.width / 2, header.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
                 check("Projektordner-Zeile ohne Pfeil", !header.hasChevron && rows)
             },
             () => {
@@ -2003,15 +2054,171 @@ Item {
                 window.inspectorWidth = 270
             },
             () => {
+                // Narrow: the tabs not shown become icons instead of scrolling.
                 const bar = inspector.tabBar
-                check("Kontextleiste schmal: Reiter scrollbar", bar.contentWidth > bar.width, bar.contentWidth + " / " + bar.width)
-                inspector.tab = 3
+                check("Kontextleiste schmal: Reiter als Symbole, kein Seitwärtsscrollen", bar.contentWidth <= bar.width,
+                      bar.contentWidth + " / " + bar.width)
+                window.inspectorWidth = 400
             },
             () => {
                 const bar = inspector.tabBar
-                check("Aktiver Reiter ins Bild gerückt", bar.contentX > 0 && bar.contentX + bar.width >= bar.contentWidth - 1, bar.contentX)
-                inspector.tab = 0
-                window.inspectorWidth = 400
+                check("Kontextleiste breit: Reiter ausgeschrieben", bar.contentWidth > 300, bar.contentWidth)
+                // ---- Blocks and profiles (docs/concept/kontextleiste.html).
+                const L = () => inspector.layout
+                check("Kontextleiste: Standard wie bisher (ohne Profile)",
+                      L().name === "default" && L().overview.slice(0, 5).join() === "today,tasks,annotations,graph,actions"
+                      && L().tabs.join() === "links,graph,actions" && L().pinned.join() === "pomodoro", JSON.stringify(L()))
+                inspector.toggleCollapsed("graph")
+                const cfg = () => JSON.parse(app.contextModules)
+                check("Baustein einklappen: gespeichert in „Allgemein“", cfg().profiles.default.collapsed.indexOf("graph") >= 0
+                      && inspector.isCollapsed("graph"), JSON.stringify(cfg().profiles))
+                inspector.toggleCollapsed("graph")
+                check("Baustein ausklappen", !inspector.isCollapsed("graph"))
+                inspector.moveBlock("tasks", "overview", -1)
+                check("Baustein nach oben (Alt+↑)", L().overview.slice(0, 2).join() === "tasks,today", L().overview.join())
+                inspector.moveBlock("tasks", "overview", 1)
+                inspector.hideBlock("annotations")
+                check("Baustein ausblenden, mit Rückgängig", inspector.overviewIds.indexOf("annotations") < 0 && !!inspector.undoHide,
+                      inspector.overviewIds.join())
+                inspector.undoHiding()
+                check("Ausblenden rückgängig", inspector.overviewIds.indexOf("annotations") >= 0, inspector.overviewIds.join())
+                // Graph is a tab and in the overview: hiding it there keeps the tab.
+                inspector.hideBlock("graph")
+                check("Graph in der Übersicht ausblenden: Reiter bleibt", inspector.overviewIds.indexOf("graph") < 0
+                      && inspector.tabIds.indexOf("graph") >= 0, inspector.tabIds.join() + " / " + inspector.overviewIds.join())
+                inspector.undoHiding()
+                inspector.hideTab("graph")
+                check("Reiter ausblenden: Baustein bleibt in der Übersicht", inspector.tabIds.indexOf("graph") < 0
+                      && inspector.overviewIds.indexOf("graph") >= 0, inspector.tabIds.join() + " / " + inspector.overviewIds.join())
+                inspector.undoHiding()
+                check("Reiter ausblenden rückgängig", inspector.tabIds.indexOf("graph") >= 0, inspector.tabIds.join())
+                // Tabs are pages of blocks: „Aktionen“ = built-in + own actions.
+                check("Reiter Aktionen aus Bausteinen", inspector.layout.pages.actions.blocks.join() === "builtin-actions,user-actions",
+                      JSON.stringify(inspector.layout.pages.actions))
+                inspector.moveBlockTo("tasks", "overview", "actions")
+                check("Baustein in einen Reiter verschieben", inspector.layout.pages.actions.blocks.indexOf("tasks") >= 0
+                      && inspector.overviewIds.indexOf("tasks") < 0, JSON.stringify(inspector.layout.pages.actions))
+                inspector.moveBlockTo("tasks", "actions", "overview")
+                check("… und zurück in die Übersicht", inspector.layout.pages.actions.blocks.indexOf("tasks") < 0
+                      && inspector.overviewIds.indexOf("tasks") >= 0, inspector.overviewIds.join())
+                inspector.addPage("Lesen", "", "")
+                const own = inspector.tabIds.find(t => t.startsWith("page:"))
+                check("Eigener Reiter angelegt", !!own && inspector.tabTitle(own) === "Lesen", inspector.tabIds.join())
+                inspector.renamePage(own, "Lektüre")
+                inspector.moveBlockTo("outline", "overview", own)
+                check("Eigener Reiter: umbenannt, mit Baustein", inspector.tabTitle(own) === "Lektüre"
+                      && inspector.layout.pages[own].blocks.join() === "outline", JSON.stringify(inspector.layout.pages[own]))
+                inspector.hideTab(own)
+                check("Eigener Reiter entfernt (samt Seite)", inspector.tabIds.indexOf(own) < 0
+                      && !(JSON.parse(app.contextModules).profiles.default.pages || {})[own], inspector.tabIds.join())
+                inspector.blockToTab("annotations")
+                check("Baustein als eigener Reiter", inspector.tabIds.indexOf("annotations") > 0 && inspector.overviewIds.indexOf("annotations") < 0,
+                      inspector.tabIds.join())
+            },
+            () => {
+                check("Als Reiter angezeigt", inspector.tabId === "annotations", inspector.tabId)
+                inspector.blockTo("annotations", "overview")
+                inspector.blockTo("tasks", "pinned")
+                check("Baustein unten anheften", inspector.pinnedIds.join() === "pomodoro,tasks" && inspector.overviewIds.indexOf("tasks") < 0,
+                      inspector.pinnedIds.join())
+                inspector.blockTo("tasks", "overview")
+                // Profiles by file type: a note.
+                editor.open(path("notes/plan-neu.md"), 0, "tab")
+            },
+            () => {
+                // Profiles: a note uses „Allgemein“ until „Markdown“ is set.
+                check("Markdown ohne eigenes Profil: Allgemein", inspector.kind === "markdown" && inspector.profileName === "default")
+                inspector.chooseScope(true)
+                check("„Gilt für: nur Markdown“ legt das Profil an", inspector.profileName === "markdown" && inspector.editTarget === "markdown",
+                      inspector.profileName)
+                inspector.hideBlock("today")
+                const c = JSON.parse(app.contextModules)
+                check("Änderung nur im Markdown-Profil, als Abweichung gespeichert",
+                      inspector.overviewIds.indexOf("today") < 0
+                      && ContextProfiles.layout(c, "default", []).overview.indexOf("today") >= 0
+                      && c.profiles.markdown.hidden.indexOf("today") >= 0 && c.profiles.markdown.tabs === undefined,
+                      JSON.stringify(c.profiles.markdown))
+                // „Gilt für: alle Dateitypen“: changes every profile; undo restores all.
+                inspector.chooseScope(false)
+                inspector.hideBlock("tasks")
+                const c2 = JSON.parse(app.contextModules)
+                check("„Alle Dateitypen“ ändert Allgemein und das Markdown-Profil",
+                      inspector.overviewIds.indexOf("tasks") < 0 && c2.profiles.default.hidden.indexOf("tasks") >= 0
+                      && c2.profiles.markdown.hidden.indexOf("tasks") >= 0, JSON.stringify(c2.profiles))
+                inspector.undoHiding()
+                const c3 = JSON.parse(app.contextModules)
+                check("Rückgängig stellt alle Profile wieder her", c3.profiles.default.hidden.indexOf("tasks") < 0
+                      && c3.profiles.markdown.hidden.indexOf("tasks") < 0 && c3.profiles.markdown.hidden.indexOf("today") >= 0,
+                      JSON.stringify(c3.profiles))
+                inspector.chooseScope(true)
+                // New blocks: outline and tags of the note.
+                check("Gliederung der Notiz", inspector.outline.map(o => o.title).join().startsWith("Plan,Ziele"), JSON.stringify(inspector.outline))
+                editor.open(path("notes/idee.md"), 0, "tab")
+            },
+            () => {
+                check("Tags der Notiz", inspector.noteTags.length === 2 && inspector.noteTags.indexOf("rust") >= 0, JSON.stringify(inspector.noteTags))
+                check("Dateiinfo", !!inspector.fileInfo && inspector.fileInfo.size > 0, JSON.stringify(inspector.fileInfo))
+                editor.open(path("src/main.rs"), 0, "tab")
+            },
+            () => {
+                check("Code: kein eigenes Profil, also Allgemein", inspector.kind === "code" && inspector.profileName === "default", inspector.kind)
+                // Empty blocks (code has no outline): only the header, or hidden.
+                check("Leerer Baustein klappt zu", inspector.isEmpty("outline") && inspector.isCollapsed("outline"))
+                app.setContextOption("empty", "hide")
+                check("Leere Bausteine ausblenden", inspector.shownIn(["outline", "graph"]).join() === "graph")
+                app.setContextOption("empty", "collapse")
+                // Editing mode: add a block, take a suggestion over, reset.
+                inspector.customize()
+                const ed = inspector.editorPanel
+                check("Bearbeitungsmodus öffnet mit dem Profil der Datei", ed.active && ed.profile === "default", ed.profile)
+                ed.profile = "code"
+                check("Profil noch nicht eingestellt: Vorschlag", !ed.profileSet && ed.lists.overview.join() === "actions,fileinfo", ed.lists.overview.join())
+                ed.adopt()
+                check("Vorschlag übernommen: Code-Profil gilt", inspector.profileName === "code"
+                      && inspector.overviewIds.slice(0, 2).join() === "actions,fileinfo", inspector.overviewIds.join())
+                ed.addBlock("week")
+                check("Baustein hinzufügen (Galerie)", inspector.overviewIds.indexOf("week") >= 0 && inspector.modules.showWeek, inspector.overviewIds.join())
+                ed.place("week", "overview", 0)
+                check("Baustein ziehen: an den Anfang", inspector.overviewIds[0] === "week", inspector.overviewIds.join())
+                ed.place("today", "pinned", 0)
+                check("Ziehen nach „Unten angeheftet“", inspector.pinnedIds[0] === "today", inspector.pinnedIds.join())
+                ed.setHidden("fileinfo", true)
+                check("Auge blendet aus, Platz bleibt", inspector.overviewIds.indexOf("fileinfo") < 0 && ed.overviewRows.indexOf("fileinfo") >= 0)
+                // A tab's page in the editing mode.
+                ed.page = "actions"
+                ed.addBlock("tasks")
+                check("Bearbeitungsmodus: Baustein auf den Reiter „Aktionen“", inspector.layout.pages.actions.blocks.indexOf("tasks") >= 0
+                      && ed.pageRows.indexOf("tasks") >= 0, JSON.stringify(inspector.layout.pages.actions))
+                ed.place("tasks", "actions", 0)
+                check("Bearbeitungsmodus: auf dem Reiter ordnen", inspector.layout.pages.actions.blocks[0] === "tasks",
+                      JSON.stringify(inspector.layout.pages.actions))
+                ed.removeFromPage("tasks", "actions")
+                check("Bearbeitungsmodus: vom Reiter entfernen", inspector.layout.pages.actions.blocks.indexOf("tasks") < 0)
+                ed.newPage()
+                check("Bearbeitungsmodus: neuer Reiter gewählt", ed.page.startsWith("page:") && inspector.tabIds.indexOf(ed.page) >= 0, ed.page)
+                ed.renamePage("Notizen")
+                check("Bearbeitungsmodus: Reiter benannt", inspector.tabTitle(ed.page) === "Notizen", inspector.tabTitle(ed.page))
+                ed.removeTab(ed.page)
+                check("Bearbeitungsmodus: Reiter entfernt, Übersicht gewählt", ed.page === "overview")
+                ed.removeTab("actions")
+                check("Reiter entfernen", inspector.tabIds.indexOf("actions") < 0, inspector.tabIds.join())
+                ed.reset()
+                check("Zurücksetzen: Profil gelöscht, es gilt Allgemein", inspector.profileName === "default"
+                      && JSON.parse(app.contextModules).profiles.code === undefined)
+                ed.finish()
+                check("Fertig beendet den Bearbeitungsmodus", !ed.active)
+                // Profiles off: „Allgemein“ everywhere.
+                app.setContextOption("by_kind", "false")
+                editor.open(path("notes/plan-neu.md"), 0, "tab")
+            },
+            () => {
+                check("Profile nach Dateityp aus: überall Allgemein", inspector.profileName === "default", inspector.profileName)
+                app.setContextOption("by_kind", "true")
+                check("Profile nach Dateityp an: Markdown-Profil", inspector.profileName === "markdown", inspector.profileName)
+                // Back to the shipped bar for the remaining tests.
+                for (const name of Object.keys(JSON.parse(app.contextModules).profiles || {})) app.setContextProfile(name, "")
+                check("Alle Profile zurückgesetzt: Leiste wie ausgeliefert", inspector.profileName === "default"
+                      && inspector.layout.overview.slice(0, 5).join() === "today,tasks,annotations,graph,actions", inspector.layout.overview.join())
             },
             () => {
                 // Built-in action „Ausführen“ for scripts.

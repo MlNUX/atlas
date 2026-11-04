@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "atlas-terminal"
+description = "Terminal emulation of Atlas Workspace (alacritty_terminal)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+alacritty_terminal = "0.26"
+anyhow = "1"
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

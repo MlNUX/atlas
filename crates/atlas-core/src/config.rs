@@ -244,6 +244,59 @@ pub struct ContextConfig {
     /// bar; not listed: what the extension asks for (`context:`).
     #[serde(default)]
     pub extensions: std::collections::BTreeMap<String, bool>,
+    /// Empty blocks: "show", "collapse" (only their header) or "hide".
+    #[serde(default = "empty_blocks")]
+    pub empty: String,
+    /// Tab labels: "auto" (icons when narrow), "text" or "icons".
+    #[serde(default = "tab_labels")]
+    pub tab_labels: String,
+    /// Profiles by kind of file; off: "default" everywhere.
+    #[serde(default = "enabled")]
+    pub by_kind: bool,
+    /// Layouts of the bar (`default`, `pdf`, `markdown`, `code`, `calendar`).
+    /// Without any, the built-in layout applies (and the old switches above);
+    /// a profile other than `default` holds only what differs from it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub profiles: std::collections::BTreeMap<String, ContextProfile>,
+}
+
+/// One layout of the context bar: lists of block names (`annotations`,
+/// `today`, `ext:bnki` …). A missing list means: as in `default`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextProfile {
+    /// Tabs after „Übersicht“.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tabs: Option<Vec<String>>,
+    /// Blocks of the overview, in order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overview: Option<Vec<String>>,
+    /// Blocks pinned to the bottom edge (on every tab).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collapsed: Option<Vec<String>>,
+    /// Pages of the tabs (by tab name): title and blocks. Tabs not listed
+    /// here are built in (`links`, `graph`, `actions`) or a single block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pages: Option<std::collections::BTreeMap<String, ContextPage>>,
+}
+
+/// A tab of the context bar made of blocks, like the overview.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextPage {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub blocks: Vec<String>,
+}
+
+fn empty_blocks() -> String {
+    "collapse".into()
+}
+fn tab_labels() -> String {
+    "auto".into()
 }
 
 fn pomodoro_work() -> u32 {
@@ -266,6 +319,10 @@ impl Default for ContextConfig {
             pomodoro_break: pomodoro_short(),
             pomodoro_long_break: pomodoro_long(),
             extensions: Default::default(),
+            empty: empty_blocks(),
+            tab_labels: tab_labels(),
+            by_kind: true,
+            profiles: Default::default(),
         }
     }
 }
@@ -339,14 +396,32 @@ impl Config {
         Self::load_from(&config_file())
     }
 
+    /// Read again only when the file changed (time, size or inode): many
+    /// calls from the UI ask for one setting each. Atlas' own saves replace
+    /// the file (new inode); only an edit in place that keeps the size
+    /// within the same timestamp tick would go unnoticed until the next one.
     pub fn load_from(path: &Path) -> Self {
-        match std::fs::read_to_string(path) {
+        use std::os::unix::fs::MetadataExt;
+        type Cached = (PathBuf, (std::time::SystemTime, u64, u64), Config);
+        static CACHE: std::sync::Mutex<Option<Cached>> = std::sync::Mutex::new(None);
+
+        let stamp = std::fs::metadata(path).ok().and_then(|m| Some((m.modified().ok()?, m.len(), m.ino())));
+        let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let (Some(stamp), Some((p, s, config))) = (stamp, cache.as_ref())
+            && p == path
+            && *s == stamp
+        {
+            return config.clone();
+        }
+        let config = match std::fs::read_to_string(path) {
             Ok(text) => toml::from_str(&text).unwrap_or_else(|err| {
                 log::warn!("ignoring invalid {}: {err}", path.display());
                 Self::default()
             }),
             Err(_) => Self::default(),
-        }
+        };
+        *cache = stamp.map(|stamp| (path.to_owned(), stamp, config.clone()));
+        config
     }
 
     /// Updates only the `[editor]` table and keeps everything else in the
@@ -532,6 +607,48 @@ mod tests {
     use super::*;
 
     #[test]
+    fn context_profiles_keep_only_what_is_set() {
+        // Old files: no profiles, the old switches still apply.
+        let old: Config = toml::from_str("[context]\ncalendar = false\n").unwrap();
+        assert!(!old.context.calendar && old.context.profiles.is_empty());
+        assert_eq!(
+            (old.context.empty.as_str(), old.context.tab_labels.as_str(), old.context.by_kind),
+            ("collapse", "auto", true)
+        );
+
+        let mut context = ContextConfig::default();
+        context.profiles.insert(
+            "pdf".into(),
+            ContextProfile { overview: Some(vec!["annotations".into(), "ext:bnki".into()]), ..Default::default() },
+        );
+        let text = toml::to_string_pretty(&toml::Table::from_iter([(
+            "context".to_owned(),
+            toml::Value::try_from(&context).unwrap(),
+        )]))
+        .unwrap();
+        assert!(text.contains("[context.profiles.pdf]"), "{text}");
+        assert!(text.contains("overview = [") && !text.contains("tabs"), "only the set list: {text}");
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.context, context);
+        assert_eq!(back.context.profiles["pdf"].tabs, None);
+
+        // Pages of tabs (from QML as JSON), stored as TOML tables.
+        let json =
+            r#"{"tabs":["actions","page:x"],"pages":{"page:x":{"title":"Lesen","blocks":["outline","ext:bnki"]}}}"#;
+        let profile: ContextProfile = serde_json::from_str(json).unwrap();
+        context.profiles.insert("markdown".into(), profile);
+        let text = toml::to_string_pretty(&toml::Table::from_iter([(
+            "context".to_owned(),
+            toml::Value::try_from(&context).unwrap(),
+        )]))
+        .unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
+        let pages = back.context.profiles["markdown"].pages.as_ref().unwrap();
+        assert_eq!(pages["page:x"].title, "Lesen");
+        assert_eq!(pages["page:x"].blocks, ["outline", "ext:bnki"]);
+    }
+
+    #[test]
     fn splits_like_a_shell() {
         assert_eq!(split_words(r#"code --goto "{file}:{line}""#).unwrap(), ["code", "--goto", "{file}:{line}"]);
         assert_eq!(split_words(r"a 'b c' d\ e").unwrap(), ["a", "b c", "d e"]);
@@ -576,6 +693,24 @@ mod tests {
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("[other]"), "{text}");
         assert_eq!(Config::load_from(&file).editor, editor);
+    }
+
+    #[test]
+    fn load_sees_changes_to_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config.toml");
+        assert_eq!(Config::load_from(&file), Config::default(), "no file: defaults");
+        std::fs::write(&file, "[editor]\ncommand = \"kate\"\n").unwrap();
+        assert_eq!(Config::load_from(&file).editor.command, "kate");
+        assert_eq!(Config::load_from(&file).editor.command, "kate", "cached");
+        // Atlas' own saves (atomic, new inode) and edits from outside.
+        let editor = EditorConfig { command: "code -g {file}".into(), ..Default::default() };
+        Config::save_editor_to(&file, &editor).unwrap();
+        assert_eq!(Config::load_from(&file).editor, editor);
+        std::fs::write(&file, "[editor]\ncommand = \"nvim\"\n").unwrap();
+        assert_eq!(Config::load_from(&file).editor.command, "nvim");
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(Config::load_from(&file), Config::default(), "file gone: defaults again");
     }
 
     #[test]

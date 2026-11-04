@@ -10,7 +10,6 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-alacritty_terminal = "0.26"
 anyhow = "1"
 blake3 = "1"
 libc = "0.2"
@@ -40,12 +39,10 @@ ureq = { version = "3", features = ["platform-verifier"] }
 chrono = "0.4"
 chrono-tz = "0.10"
 iana-time-zone = "0.1"
-scraper = "0.29.0"
-url = "2.5.8"
+percent-encoding = "2"
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
-spellbook = "0.4"
 
 [dev-dependencies]
 cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"] }

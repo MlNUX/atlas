@@ -21,6 +21,8 @@ Rectangle {
     /// Icon size of the icons view (the zoom slider).
     property int iconSize: 64
     readonly property var activeView: viewMode === "icons" ? grid : list
+    /// A selection rectangle is being drawn (for the smoke test).
+    readonly property bool rubberBanding: listBand.dragging || gridBand.dragging
     readonly property alias folderModel: folder
 
     /// A row was opened: folders navigate, files open a viewer.
@@ -141,6 +143,186 @@ Rectangle {
         else if (!(mouse.button === Qt.RightButton && root.selected[path])) root.selectOnly(path)
         if (mouse.button === Qt.RightButton) root.actions.showMenu(root.selectedPaths(), root.source)
     }
+    /// The empty area of a view (below its entries): a click clears the
+    /// selection (right click: the folder's menu); pressing and dragging
+    /// draws a selection rectangle like Dolphin or Explorer (Ctrl: toggles
+    /// the entries in it, Shift: adds them). Near the top or bottom edge
+    /// the view scrolls along.
+    component RubberBand: MouseArea {
+        id: band
+        required property Flickable view
+        /// The folder view (inline components do not see its ids).
+        required property var host
+        /// Layout of the view's entries (rows of `columns` cells).
+        property int columns: 1
+        property real cellWidth: 0
+        property real cellHeight: 0
+        /// Margin of an entry's highlight inside its cell.
+        property real inset: 0
+        /// The rectangle, in content coordinates.
+        property point start
+        property point end
+        property bool dragging: false
+        property bool moved: false
+        property int mode: 0            // 0 replace, 1 toggle, 2 add
+        property var base: ({})
+        /// Pointer height in the view (for scrolling along).
+        property real viewY: 0
+        readonly property rect area: Qt.rect(Math.min(start.x, end.x), Math.min(start.y, end.y),
+                                             Math.abs(end.x - start.x), Math.abs(end.y - start.y))
+
+        parent: view.contentItem
+        z: -1
+        width: view.width
+        height: Math.max(view.contentHeight, view.height)
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        preventStealing: true
+
+        onPressed: (mouse) => {
+            host.activeView.forceActiveFocus()
+            start = Qt.point(mouse.x, mouse.y)
+            end = start
+            moved = false
+            dragging = false
+            mode = mouse.modifiers & Qt.ControlModifier ? 1 : mouse.modifiers & Qt.ShiftModifier ? 2 : 0
+            base = mode ? Object.assign({}, host.selected) : ({})
+        }
+        onPositionChanged: (mouse) => {
+            if (!(mouse.buttons & Qt.LeftButton)) return
+            end = Qt.point(Math.max(0, Math.min(width, mouse.x)), Math.max(0, mouse.y))
+            viewY = mouse.y - view.contentY
+            if (!dragging && Math.abs(end.x - start.x) + Math.abs(end.y - start.y) < 6) return
+            dragging = true
+            moved = true
+            pick()
+        }
+        onReleased: dragging = false
+        onCanceled: dragging = false
+        onClicked: (mouse) => {
+            if (moved) return
+            // Ctrl/Shift click beside the entries keeps the selection.
+            if (mouse.button === Qt.LeftButton && mode) { host.activeView.forceActiveFocus(); return }
+            host.backgroundClicked(mouse)
+        }
+
+        /// Selects the entries the rectangle touches.
+        function pick() {
+            const r = area
+            const s = Object.assign({}, base)
+            if (cellWidth > 0 && cellHeight > 0) {
+                const first = Math.max(0, Math.floor(r.y / cellHeight)) * columns
+                const last = Math.min(host.folderModel.count - 1, (Math.floor((r.y + r.height) / cellHeight) + 1) * columns - 1)
+                let firstHit = ""
+                for (let i = first; i <= last; ++i) {
+                    const x = (i % columns) * cellWidth + inset, y = Math.floor(i / columns) * cellHeight + inset
+                    if (x > r.x + r.width || x + cellWidth - 2 * inset < r.x || y > r.y + r.height || y + cellHeight - 2 * inset < r.y) continue
+                    const p = host.folderModel.pathAt(i)
+                    if (mode === 1 && base[p]) delete s[p]; else s[p] = true
+                    if (!firstHit) firstHit = p
+                }
+                if (firstHit) host.anchorPath = firstHit
+            }
+            host.selected = s
+        }
+
+        // Scrolls along while the pointer is near the top or bottom edge.
+        Timer {
+            interval: 16
+            repeat: true
+            running: band.dragging && (band.viewY < 24 || band.viewY > band.view.height - 24)
+            onTriggered: {
+                const v = band.view
+                const step = band.viewY < 24 ? -Math.min(40, 24 - band.viewY) : Math.min(40, band.viewY - v.height + 24)
+                const top = v.originY, bottom = v.originY + Math.max(0, v.contentHeight - v.height)
+                const y = Math.max(top, Math.min(bottom, v.contentY + step / 2))
+                if (y === v.contentY) return
+                v.contentY = y
+                band.end = Qt.point(band.end.x, Math.max(0, y + band.viewY))
+                band.pick()
+            }
+        }
+        // The rectangle itself, above the entries.
+        Rectangle {
+            parent: band.view.contentItem
+            z: 100
+            visible: band.dragging
+            x: band.area.x
+            y: band.area.y
+            width: band.area.width
+            height: band.area.height
+            radius: 2
+            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+            border.color: Theme.accent
+        }
+    }
+
+    // ---- the picture at the mouse pointer while dragging entries
+    //
+    // The drag is the system's (also into the project tree and other
+    // programs), so the picture is an image: grabbed from `dragImage` when
+    // an entry is pressed, ready before the drag starts (8 px later).
+    property var dragGrab: null
+    function prepareDrag(source, path, name, isDir) {
+        const n = root.selected[path] ? root.selectedPaths().length : 1
+        dragImage.label = n > 1 ? qsTr("%n Einträge", "", n) : name
+        dragImage.icon = Theme.fileIcon(name, isDir)
+        dragImage.count = n
+        dragImage.grabToImage((result) => {
+            root.dragGrab = result           // keeps the image alive
+            source.Drag.imageSource = result.url
+        })
+    }
+    Rectangle {
+        id: dragImage
+        property string label
+        property var icon: ["file", Theme.text]
+        property int count: 1
+        // Outside the view, but drawn (grabToImage needs a visible item).
+        x: -width - 1000
+        width: Math.min(260, dragRow.implicitWidth + 20)
+        height: 40
+        radius: 8
+        color: Theme.header
+        border.color: Theme.accent
+        Row {
+            id: dragRow
+            x: 8
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+            Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                name: dragImage.icon[0]
+                color: dragImage.icon[1]
+                size: 24
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, 260 - 20 - 32 - (badge.visible ? badge.width + 8 : 0))
+                text: dragImage.label
+                color: Theme.textStrong
+                font.pixelSize: Theme.fontSize
+                elide: Text.ElideMiddle
+            }
+            Rectangle {
+                id: badge
+                visible: dragImage.count > 1
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(20, badgeText.implicitWidth + 10)
+                height: 20
+                radius: 10
+                color: Theme.accent
+                Text {
+                    id: badgeText
+                    anchors.centerIn: parent
+                    text: dragImage.count
+                    color: "white"
+                    font.pixelSize: Theme.smallFontSize
+                    font.weight: Font.DemiBold
+                }
+            }
+        }
+    }
+
     /// Click on the empty area of either view.
     function backgroundClicked(mouse) {
         root.activeView.forceActiveFocus()
@@ -208,64 +390,55 @@ Rectangle {
         spacing: 0
 
         // ---- location bar
-        Rectangle {
-            Layout.fillWidth: true
+        ToolStrip {
             Layout.preferredHeight: 44
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 4
-                IconButton {
-                    iconName: "arrow-up"
-                    tip: qsTr("Übergeordneter Ordner (Alt+↑)")
-                    enabled: root.source !== "/"
-                    onClicked: root.activated(root.parentOf(root.source), true, false)
-                }
-                PathBar {
-                    id: pathBar
-                    Layout.fillWidth: true
-                    app: root.app
-                    path: root.source
-                    onNavigateRequested: (path) => root.activated(path, true, false)
-                }
-                Item { Layout.preferredWidth: 4 }
-                Rectangle {
-                    Layout.preferredHeight: 30
-                    Layout.preferredWidth: modes.implicitWidth + 4
-                    radius: 8
-                    color: Theme.editor
-                    border.color: Theme.border
-                    Row {
-                        id: modes
-                        anchors.centerIn: parent
-                        spacing: 2
-                        Repeater {
-                            model: [{ mode: "icons", icon: "grid", tip: qsTr("Symbole") },
-                                    { mode: "details", icon: "list", tip: qsTr("Details") }]
-                            IconButton {
-                                required property var modelData
-                                implicitWidth: 30
-                                implicitHeight: 26
-                                iconName: modelData.icon
-                                tip: modelData.tip
-                                checkable: true
-                                checked: root.viewMode === modelData.mode
-                                onClicked: root.viewMode = modelData.mode
-                            }
+            IconButton {
+                iconName: "arrow-up"
+                tip: qsTr("Übergeordneter Ordner (Alt+↑)")
+                enabled: root.source !== "/"
+                onClicked: root.activated(root.parentOf(root.source), true, false)
+            }
+            PathBar {
+                id: pathBar
+                Layout.fillWidth: true
+                app: root.app
+                path: root.source
+                onNavigateRequested: (path) => root.activated(path, true, false)
+            }
+            Item { Layout.preferredWidth: 4 }
+            Rectangle {
+                Layout.preferredHeight: 30
+                Layout.preferredWidth: modes.implicitWidth + 4
+                radius: 8
+                color: Theme.editor
+                border.color: Theme.border
+                Row {
+                    id: modes
+                    anchors.centerIn: parent
+                    spacing: 2
+                    Repeater {
+                        model: [{ mode: "icons", icon: "grid", tip: qsTr("Symbole") },
+                                { mode: "details", icon: "list", tip: qsTr("Details") }]
+                        IconButton {
+                            required property var modelData
+                            implicitWidth: 30
+                            implicitHeight: 26
+                            iconName: modelData.icon
+                            tip: modelData.tip
+                            checkable: true
+                            checked: root.viewMode === modelData.mode
+                            onClicked: root.viewMode = modelData.mode
                         }
                     }
                 }
-                IconButton {
-                    iconName: "hidden"
-                    tip: qsTr("Versteckte Dateien anzeigen")
-                    checkable: true
-                    checked: folder.showHidden
-                    onToggled: folder.showHidden = checked
-                }
             }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
+            IconButton {
+                iconName: "hidden"
+                tip: qsTr("Versteckte Dateien anzeigen")
+                checkable: true
+                checked: folder.showHidden
+                onToggled: folder.showHidden = checked
+            }
         }
 
         // ---- details: column headers
@@ -326,16 +499,16 @@ Rectangle {
                 highlightMoveDuration: 0
                 ScrollBar.vertical: ScrollBar {}
                 Keys.onPressed: (event) => root.handleKey(event)
+                RubberBand { id: listBand; host: root; view: list; columns: 1; cellWidth: list.width; cellHeight: 30; inset: 1 }
                 // Keyboard navigation moves the selection like a click would.
                 onCurrentIndexChanged: if (currentIndex >= 0 && !root.mouseSelecting && !root.switching) root.selectOnly(folder.pathAt(currentIndex))
 
                 // The empty area below the rows: clears the selection, right
                 // click offers new file/folder and paste.
-                footer: MouseArea {
+                // (Clicks there go to the band below the rows.)
+                footer: Item {
                     width: list.width
                     height: Math.max(Theme.rowHeight, list.height - list.count * 30)
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onClicked: (mouse) => root.backgroundClicked(mouse)
                     DropArea {
                         anchors.fill: parent
                         keys: ["text/uri-list"]
@@ -365,7 +538,7 @@ Rectangle {
                         radius: 6
                         color: root.selected[row.path] ? (list.activeFocus ? Theme.activeSelection : Theme.selection)
                              : rowHover.hovered ? Theme.hover : "transparent"
-                        border.color: root.selected[row.path] && list.activeFocus ? Qt.rgba(0.24, 0.55, 0.99, 0.45) : "transparent"
+                        border.color: root.selected[row.path] && list.activeFocus ? Theme.accentAlpha(0.45) : "transparent"
                     }
                     HoverHandler { id: rowHover }
 
@@ -426,6 +599,9 @@ Rectangle {
                     Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
                     Drag.proposedAction: Qt.MoveAction
                     Drag.mimeData: ({ "text/uri-list": root.actions.uriList(root.selected[row.path] ? root.selectedPaths() : [row.path]) })
+                    // The pointer on the picture's icon.
+                    Drag.hotSpot.x: 20
+                    Drag.hotSpot.y: 20
 
                     // Drop target: into this folder, or the shown folder.
                     DropArea {
@@ -447,6 +623,7 @@ Rectangle {
                         drag.threshold: 8
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                        onPressed: (mouse) => { if (mouse.button === Qt.LeftButton) root.prepareDrag(row, row.path, row.name, row.isDir) }
                         onClicked: (mouse) => root.itemClicked(row.index, row.path, mouse)
                         onDoubleClicked: (mouse) => {
                             if (mouse.button === Qt.LeftButton) root.openRow(row.index, mouse.modifiers & Qt.ControlModifier)
@@ -482,12 +659,11 @@ Rectangle {
                 ScrollBar.vertical: ScrollBar {}
                 Keys.onPressed: (event) => root.handleKey(event)
                 onCurrentIndexChanged: if (currentIndex >= 0 && !root.mouseSelecting && !root.switching) root.selectOnly(folder.pathAt(currentIndex))
+                RubberBand { id: gridBand; host: root; view: grid; columns: grid.columns; cellWidth: grid.cellWidth; cellHeight: grid.cellHeight; inset: 4 }
 
-                footer: MouseArea {
+                footer: Item {
                     width: grid.width
                     height: Math.max(grid.cellHeight, grid.height - Math.ceil(grid.count / grid.columns) * grid.cellHeight)
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    onClicked: (mouse) => root.backgroundClicked(mouse)
                     DropArea {
                         anchors.fill: parent
                         keys: ["text/uri-list"]
@@ -517,7 +693,7 @@ Rectangle {
                         radius: 8
                         color: cell.isSelected ? (grid.activeFocus ? Theme.activeSelection : Theme.selection)
                              : cellHover.hovered ? Theme.hover : "transparent"
-                        border.color: cell.isSelected && grid.activeFocus ? Qt.rgba(0.24, 0.55, 0.99, 0.45) : "transparent"
+                        border.color: cell.isSelected && grid.activeFocus ? Theme.accentAlpha(0.45) : "transparent"
                     }
                     HoverHandler { id: cellHover }
 
@@ -608,6 +784,8 @@ Rectangle {
                     Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
                     Drag.proposedAction: Qt.MoveAction
                     Drag.mimeData: ({ "text/uri-list": root.actions.uriList(cell.isSelected ? root.selectedPaths() : [cell.path]) })
+                    Drag.hotSpot.x: 20
+                    Drag.hotSpot.y: 20
 
                     DropArea {
                         anchors.fill: parent
@@ -629,6 +807,7 @@ Rectangle {
                         drag.threshold: 8
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                        onPressed: (mouse) => { if (mouse.button === Qt.LeftButton) root.prepareDrag(cell, cell.path, cell.name, cell.isDir) }
                         onClicked: (mouse) => root.itemClicked(cell.index, cell.path, mouse)
                         onDoubleClicked: (mouse) => {
                             if (mouse.button === Qt.LeftButton) root.openRow(cell.index, mouse.modifiers & Qt.ControlModifier)
@@ -672,54 +851,48 @@ Rectangle {
         }
 
         // ---- status bar
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 30
-            color: Theme.header
-            Rectangle { width: parent.width; height: 1; color: Theme.border }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 10
-                spacing: 12
-                Text {
-                    Layout.fillWidth: true
-                    readonly property var summary: folder.summary ? JSON.parse(folder.summary) : ({ dirs: 0, files: 0, sizeText: "" })
-                    readonly property var picked: root.selectedPaths()
-                    text: picked.length > 0
-                        ? qsTr("%n ausgewählt", "", picked.length) + (folder.sizeTextOf(picked) !== "0 B" ? " (" + folder.sizeTextOf(picked) + ")" : "")
-                        : [summary.dirs ? qsTr("%n Ordner", "", summary.dirs) : "",
-                           summary.files ? (summary.files === 1 ? qsTr("1 Datei") : qsTr("%1 Dateien").arg(summary.files)) + " (" + summary.sizeText + ")" : ""]
-                          .filter(t => t).join(", ") || qsTr("Leer")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
+        ToolStrip {
+            leftMargin: 12
+            rightMargin: 10
+            spacing: 12
+            line: "top"
+            Text {
+                Layout.fillWidth: true
+                readonly property var summary: folder.summary ? JSON.parse(folder.summary) : ({ dirs: 0, files: 0, sizeText: "" })
+                readonly property var picked: root.selectedPaths()
+                text: picked.length > 0
+                    ? qsTr("%n ausgewählt", "", picked.length) + (folder.sizeTextOf(picked) !== "0 B" ? " (" + folder.sizeTextOf(picked) + ")" : "")
+                    : [summary.dirs ? qsTr("%n Ordner", "", summary.dirs) : "",
+                       summary.files ? (summary.files === 1 ? qsTr("1 Datei") : qsTr("%1 Dateien").arg(summary.files)) + " (" + summary.sizeText + ")" : ""]
+                      .filter(t => t).join(", ") || qsTr("Leer")
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideRight
+            }
+            Icon { visible: root.viewMode === "icons"; name: "minus"; size: 12; color: Theme.textFaint }
+            Slider {
+                id: zoom
+                visible: root.viewMode === "icons"
+                Layout.preferredWidth: 110
+                from: 32
+                to: 128
+                stepSize: 16
+                value: root.iconSize
+                onMoved: root.iconSize = value
+            }
+            Icon { visible: root.viewMode === "icons"; name: "plus"; size: 12; color: Theme.textFaint }
+            Text {
+                id: freeSpace
+                visible: text.length > 0
+                property var usage: ({})
+                function refresh() {
+                    try { usage = root.app && root.source ? JSON.parse(root.app.diskUsage(root.source) || "{}") : {} } catch (e) { usage = {} }
                 }
-                Icon { visible: root.viewMode === "icons"; name: "minus"; size: 12; color: Theme.textFaint }
-                Slider {
-                    id: zoom
-                    visible: root.viewMode === "icons"
-                    Layout.preferredWidth: 110
-                    from: 32
-                    to: 128
-                    stepSize: 16
-                    value: root.iconSize
-                    onMoved: root.iconSize = value
-                }
-                Icon { visible: root.viewMode === "icons"; name: "plus"; size: 12; color: Theme.textFaint }
-                Text {
-                    id: freeSpace
-                    visible: text.length > 0
-                    property var usage: ({})
-                    function refresh() {
-                        try { usage = root.app && root.source ? JSON.parse(root.app.diskUsage(root.source) || "{}") : {} } catch (e) { usage = {} }
-                    }
-                    text: usage.total ? qsTr("%1 frei").arg(Theme.formatBytes(usage.free)) : ""
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    Component.onCompleted: refresh()
-                    Connections { target: root; function onSourceChanged() { freeSpace.refresh() } }
-                }
+                text: usage.total ? qsTr("%1 frei").arg(Theme.formatBytes(usage.free)) : ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                Component.onCompleted: refresh()
+                Connections { target: root; function onSourceChanged() { freeSpace.refresh() } }
             }
         }
     }

@@ -220,19 +220,6 @@ fn scalar(value: &Yaml) -> Option<String> {
     }
 }
 
-fn slug(name: &str) -> String {
-    let s: String = name
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>()
-        .join("-");
-    if s.is_empty() { "aktion".into() } else { s }
-}
-
 fn build_globs(patterns: &[String]) -> Result<Option<globset::GlobSet>> {
     if patterns.is_empty() {
         return Ok(None);
@@ -301,7 +288,10 @@ pub fn parse_action(entry: &Yaml, source: &Source) -> Result<Action> {
             places
         }
     };
-    let id = entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| slug(name));
+    let id = entry["id"].as_str().map(str::to_owned).unwrap_or_else(|| match crate::text::slug(name) {
+        s if s.is_empty() => "aktion".into(),
+        s => s,
+    });
     let id = match source {
         Source::Extension(ext) => format!("{ext}/{id}"),
         _ => id,

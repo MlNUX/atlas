@@ -47,6 +47,7 @@ alle übrigen Tasten gehen dort an das Programm im Terminal.
 | Strg+Klick (Datei im Baum) | Schnellansicht |
 | Strg+L | Pfad eintippen (Dateiliste, Ordnerauswahl) |
 | Strg+Mausrad, Strg+Plus/Minus | Symbole größer/kleiner (Dateiliste) |
+| Ziehen auf freier Fläche | Markierungsrechteck: wählt die Einträge darin (Strg: umschalten, Umschalt: hinzufügen; am Rand scrollt die Liste mit) |
 
 ## Texte, Code und Markdown
 
