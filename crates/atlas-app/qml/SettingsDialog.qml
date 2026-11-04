@@ -70,38 +70,12 @@ Dialog {
         spacing: 0
 
         // ---- header
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: 18
-            Layout.bottomMargin: 14
-            spacing: 12
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: 10
-                color: Theme.accentSoft
-                Icon { anchors.centerIn: parent; name: "settings"; size: 20; color: Theme.accent }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                Text {
-                    text: qsTr("Einstellungen")
-                    color: Theme.textStrong
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Gespeichert in ~/.config/atlas/config.toml")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                }
-            }
+        DialogHeader {
+            icon: "settings"
+            title: qsTr("Einstellungen")
+            subtitle: qsTr("Gespeichert in ~/.config/atlas/config.toml")
             IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
         // Scrolls on small screens (the dialog never grows past the window).
         ScrollView {

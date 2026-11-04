@@ -44,36 +44,31 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        Rectangle {
-            Layout.fillWidth: true
+        ToolStrip {
             Layout.preferredHeight: 34
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 8
-                spacing: 6
-                Label {
-                    Layout.fillWidth: true
-                    text: trash.error ? trash.error : qsTr("Papierkorb · %n Element(e)", "", trash.count)
-                    color: trash.error ? Theme.error : Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                }
-                Button {
-                    text: qsTr("Wiederherstellen")
-                    enabled: root.rowsOrCurrent().length > 0
-                    onClicked: root.restoreSelected()
-                }
-                Button {
-                    text: qsTr("Endgültig löschen")
-                    enabled: root.rowsOrCurrent().length > 0
-                    onClicked: root.purgeSelected()
-                }
-                Button {
-                    text: qsTr("Papierkorb leeren")
-                    enabled: trash.count > 0
-                    onClicked: root.emptyTrash()
-                }
+            leftMargin: 10
+            spacing: 6
+            line: "none"
+            Label {
+                Layout.fillWidth: true
+                text: trash.error ? trash.error : qsTr("Papierkorb · %n Element(e)", "", trash.count)
+                color: trash.error ? Theme.error : Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+            }
+            Button {
+                text: qsTr("Wiederherstellen")
+                enabled: root.rowsOrCurrent().length > 0
+                onClicked: root.restoreSelected()
+            }
+            Button {
+                text: qsTr("Endgültig löschen")
+                enabled: root.rowsOrCurrent().length > 0
+                onClicked: root.purgeSelected()
+            }
+            Button {
+                text: qsTr("Papierkorb leeren")
+                enabled: trash.count > 0
+                onClicked: root.emptyTrash()
             }
         }
 

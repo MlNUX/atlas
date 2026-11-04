@@ -1236,51 +1236,47 @@ Rectangle {
         }
 
         // ---- status line
-        Rectangle {
-            Layout.fillWidth: true
+        ToolStrip {
             Layout.preferredHeight: 22
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 14
-                Label {
-                    text: doc.saving ? qsTr("Speichert …")
-                        : doc.conflict ? qsTr("Konflikt")
-                        : root.modified ? qsTr("● Ungespeichert")
-                        : root.readOnly ? qsTr("Nur lesen") : qsTr("Gespeichert")
-                    color: root.modified || doc.conflict ? Theme.warn : Theme.textFaint
-                    font.pixelSize: Theme.smallFontSize
-                }
-                Item { Layout.fillWidth: true }
-                Label {
-                    visible: !root.wrap
-                    text: qsTr("Zeile %1").arg(area.cursorLine)
-                    color: Theme.textFaint
-                    font.pixelSize: Theme.smallFontSize
-                }
-                Label {
-                    text: root.large ? qsTr("Ohne Hervorhebung (große Datei)") : Repository.definitionForFileName(root.source).translatedName
-                    color: Theme.textFaint
-                    font.pixelSize: Theme.smallFontSize
-                }
-                IconButton {
-                    visible: !root.wrap
-                    implicitHeight: 20
-                    iconName: "list"
-                    tip: qsTr("Symbolübersicht")
-                    checkable: true
-                    checked: root.showSymbols
-                    onClicked: root.showSymbols = !root.showSymbols
-                }
-                IconButton {
-                    visible: !!root.actions
-                    implicitHeight: 20
-                    iconName: "external"
-                    tip: qsTr("Im Editor öffnen")
-                    onClicked: { root.save(); root.actions.openInEditor(root.source, Math.max(1, area.cursorLine)) }
-                }
+            leftMargin: 10
+            rightMargin: 10
+            spacing: 14
+            line: "none"
+            Label {
+                text: doc.saving ? qsTr("Speichert …")
+                    : doc.conflict ? qsTr("Konflikt")
+                    : root.modified ? qsTr("● Ungespeichert")
+                    : root.readOnly ? qsTr("Nur lesen") : qsTr("Gespeichert")
+                color: root.modified || doc.conflict ? Theme.warn : Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+            }
+            Item { Layout.fillWidth: true }
+            Label {
+                visible: !root.wrap
+                text: qsTr("Zeile %1").arg(area.cursorLine)
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+            }
+            Label {
+                text: root.large ? qsTr("Ohne Hervorhebung (große Datei)") : Repository.definitionForFileName(root.source).translatedName
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+            }
+            IconButton {
+                visible: !root.wrap
+                implicitHeight: 20
+                iconName: "list"
+                tip: qsTr("Symbolübersicht")
+                checkable: true
+                checked: root.showSymbols
+                onClicked: root.showSymbols = !root.showSymbols
+            }
+            IconButton {
+                visible: !!root.actions
+                implicitHeight: 20
+                iconName: "external"
+                tip: qsTr("Im Editor öffnen")
+                onClicked: { root.save(); root.actions.openInEditor(root.source, Math.max(1, area.cursorLine)) }
             }
         }
     }

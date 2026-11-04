@@ -390,64 +390,55 @@ Rectangle {
         spacing: 0
 
         // ---- location bar
-        Rectangle {
-            Layout.fillWidth: true
+        ToolStrip {
             Layout.preferredHeight: 44
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 4
-                IconButton {
-                    iconName: "arrow-up"
-                    tip: qsTr("Übergeordneter Ordner (Alt+↑)")
-                    enabled: root.source !== "/"
-                    onClicked: root.activated(root.parentOf(root.source), true, false)
-                }
-                PathBar {
-                    id: pathBar
-                    Layout.fillWidth: true
-                    app: root.app
-                    path: root.source
-                    onNavigateRequested: (path) => root.activated(path, true, false)
-                }
-                Item { Layout.preferredWidth: 4 }
-                Rectangle {
-                    Layout.preferredHeight: 30
-                    Layout.preferredWidth: modes.implicitWidth + 4
-                    radius: 8
-                    color: Theme.editor
-                    border.color: Theme.border
-                    Row {
-                        id: modes
-                        anchors.centerIn: parent
-                        spacing: 2
-                        Repeater {
-                            model: [{ mode: "icons", icon: "grid", tip: qsTr("Symbole") },
-                                    { mode: "details", icon: "list", tip: qsTr("Details") }]
-                            IconButton {
-                                required property var modelData
-                                implicitWidth: 30
-                                implicitHeight: 26
-                                iconName: modelData.icon
-                                tip: modelData.tip
-                                checkable: true
-                                checked: root.viewMode === modelData.mode
-                                onClicked: root.viewMode = modelData.mode
-                            }
+            IconButton {
+                iconName: "arrow-up"
+                tip: qsTr("Übergeordneter Ordner (Alt+↑)")
+                enabled: root.source !== "/"
+                onClicked: root.activated(root.parentOf(root.source), true, false)
+            }
+            PathBar {
+                id: pathBar
+                Layout.fillWidth: true
+                app: root.app
+                path: root.source
+                onNavigateRequested: (path) => root.activated(path, true, false)
+            }
+            Item { Layout.preferredWidth: 4 }
+            Rectangle {
+                Layout.preferredHeight: 30
+                Layout.preferredWidth: modes.implicitWidth + 4
+                radius: 8
+                color: Theme.editor
+                border.color: Theme.border
+                Row {
+                    id: modes
+                    anchors.centerIn: parent
+                    spacing: 2
+                    Repeater {
+                        model: [{ mode: "icons", icon: "grid", tip: qsTr("Symbole") },
+                                { mode: "details", icon: "list", tip: qsTr("Details") }]
+                        IconButton {
+                            required property var modelData
+                            implicitWidth: 30
+                            implicitHeight: 26
+                            iconName: modelData.icon
+                            tip: modelData.tip
+                            checkable: true
+                            checked: root.viewMode === modelData.mode
+                            onClicked: root.viewMode = modelData.mode
                         }
                     }
                 }
-                IconButton {
-                    iconName: "hidden"
-                    tip: qsTr("Versteckte Dateien anzeigen")
-                    checkable: true
-                    checked: folder.showHidden
-                    onToggled: folder.showHidden = checked
-                }
             }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
+            IconButton {
+                iconName: "hidden"
+                tip: qsTr("Versteckte Dateien anzeigen")
+                checkable: true
+                checked: folder.showHidden
+                onToggled: folder.showHidden = checked
+            }
         }
 
         // ---- details: column headers
@@ -860,54 +851,48 @@ Rectangle {
         }
 
         // ---- status bar
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 30
-            color: Theme.header
-            Rectangle { width: parent.width; height: 1; color: Theme.border }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 10
-                spacing: 12
-                Text {
-                    Layout.fillWidth: true
-                    readonly property var summary: folder.summary ? JSON.parse(folder.summary) : ({ dirs: 0, files: 0, sizeText: "" })
-                    readonly property var picked: root.selectedPaths()
-                    text: picked.length > 0
-                        ? qsTr("%n ausgewählt", "", picked.length) + (folder.sizeTextOf(picked) !== "0 B" ? " (" + folder.sizeTextOf(picked) + ")" : "")
-                        : [summary.dirs ? qsTr("%n Ordner", "", summary.dirs) : "",
-                           summary.files ? (summary.files === 1 ? qsTr("1 Datei") : qsTr("%1 Dateien").arg(summary.files)) + " (" + summary.sizeText + ")" : ""]
-                          .filter(t => t).join(", ") || qsTr("Leer")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
+        ToolStrip {
+            leftMargin: 12
+            rightMargin: 10
+            spacing: 12
+            line: "top"
+            Text {
+                Layout.fillWidth: true
+                readonly property var summary: folder.summary ? JSON.parse(folder.summary) : ({ dirs: 0, files: 0, sizeText: "" })
+                readonly property var picked: root.selectedPaths()
+                text: picked.length > 0
+                    ? qsTr("%n ausgewählt", "", picked.length) + (folder.sizeTextOf(picked) !== "0 B" ? " (" + folder.sizeTextOf(picked) + ")" : "")
+                    : [summary.dirs ? qsTr("%n Ordner", "", summary.dirs) : "",
+                       summary.files ? (summary.files === 1 ? qsTr("1 Datei") : qsTr("%1 Dateien").arg(summary.files)) + " (" + summary.sizeText + ")" : ""]
+                      .filter(t => t).join(", ") || qsTr("Leer")
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideRight
+            }
+            Icon { visible: root.viewMode === "icons"; name: "minus"; size: 12; color: Theme.textFaint }
+            Slider {
+                id: zoom
+                visible: root.viewMode === "icons"
+                Layout.preferredWidth: 110
+                from: 32
+                to: 128
+                stepSize: 16
+                value: root.iconSize
+                onMoved: root.iconSize = value
+            }
+            Icon { visible: root.viewMode === "icons"; name: "plus"; size: 12; color: Theme.textFaint }
+            Text {
+                id: freeSpace
+                visible: text.length > 0
+                property var usage: ({})
+                function refresh() {
+                    try { usage = root.app && root.source ? JSON.parse(root.app.diskUsage(root.source) || "{}") : {} } catch (e) { usage = {} }
                 }
-                Icon { visible: root.viewMode === "icons"; name: "minus"; size: 12; color: Theme.textFaint }
-                Slider {
-                    id: zoom
-                    visible: root.viewMode === "icons"
-                    Layout.preferredWidth: 110
-                    from: 32
-                    to: 128
-                    stepSize: 16
-                    value: root.iconSize
-                    onMoved: root.iconSize = value
-                }
-                Icon { visible: root.viewMode === "icons"; name: "plus"; size: 12; color: Theme.textFaint }
-                Text {
-                    id: freeSpace
-                    visible: text.length > 0
-                    property var usage: ({})
-                    function refresh() {
-                        try { usage = root.app && root.source ? JSON.parse(root.app.diskUsage(root.source) || "{}") : {} } catch (e) { usage = {} }
-                    }
-                    text: usage.total ? qsTr("%1 frei").arg(Theme.formatBytes(usage.free)) : ""
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    Component.onCompleted: refresh()
-                    Connections { target: root; function onSourceChanged() { freeSpace.refresh() } }
-                }
+                text: usage.total ? qsTr("%1 frei").arg(Theme.formatBytes(usage.free)) : ""
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                Component.onCompleted: refresh()
+                Connections { target: root; function onSourceChanged() { freeSpace.refresh() } }
             }
         }
     }

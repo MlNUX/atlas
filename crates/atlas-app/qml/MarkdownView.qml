@@ -259,97 +259,90 @@ Rectangle {
         spacing: 0
 
         // ---- toolbar
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 30
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 2
-                Repeater {
-                    model: [
-                        { mode: "edit", text: qsTr("Bearbeiten") },
-                        { mode: "split", text: qsTr("Geteilt") },
-                        { mode: "preview", text: qsTr("Vorschau") },
-                    ]
-                    IconButton {
-                        required property var modelData
-                        glyph: modelData.text
-                        checkable: true
-                        checked: root.mode === modelData.mode
-                        onClicked: {
-                            const top = root.mode === "edit" ? editor.topLine : root.previewLine
-                            root.mode = modelData.mode
-                            Qt.callLater(root.applyState, { line: top })
-                        }
-                    }
-                }
-                Item { Layout.preferredWidth: 10 }
-                Repeater {
-                    model: root.info.tags || []
-                    Label {
-                        required property string modelData
-                        text: "#" + modelData
-                        color: Theme.link
-                        font.pixelSize: Theme.smallFontSize
-                        leftPadding: 4
-                    }
-                }
-                Item { Layout.fillWidth: true }
+        ToolStrip {
+            spacing: 2
+            line: "none"
+            Repeater {
+                model: [
+                    { mode: "edit", text: qsTr("Bearbeiten") },
+                    { mode: "split", text: qsTr("Geteilt") },
+                    { mode: "preview", text: qsTr("Vorschau") },
+                ]
                 IconButton {
-                    id: insertButton
-                    glyph: qsTr("＋ Einfügen")
-                    tip: qsTr("Bild, Tabelle, Diagramm oder Ordnerbaum an der Schreibmarke einfügen")
-                    onClicked: insertMenu.popup(insertButton, 0, insertButton.height)
+                    required property var modelData
+                    glyph: modelData.text
+                    checkable: true
+                    checked: root.mode === modelData.mode
+                    onClicked: {
+                        const top = root.mode === "edit" ? editor.topLine : root.previewLine
+                        root.mode = modelData.mode
+                        Qt.callLater(root.applyState, { line: top })
+                    }
+                }
+            }
+            Item { Layout.preferredWidth: 10 }
+            Repeater {
+                model: root.info.tags || []
+                Label {
+                    required property string modelData
+                    text: "#" + modelData
+                    color: Theme.link
+                    font.pixelSize: Theme.smallFontSize
+                    leftPadding: 4
+                }
+            }
+            Item { Layout.fillWidth: true }
+            IconButton {
+                id: insertButton
+                glyph: qsTr("＋ Einfügen")
+                tip: qsTr("Bild, Tabelle, Diagramm oder Ordnerbaum an der Schreibmarke einfügen")
+                onClicked: insertMenu.popup(insertButton, 0, insertButton.height)
+                Menu {
+                    id: insertMenu
+                    MenuItem { text: qsTr("Bild …"); onTriggered: root.askImage() }
+                    MenuItem { text: qsTr("Tabelle …"); onTriggered: root.askTable() }
                     Menu {
-                        id: insertMenu
-                        MenuItem { text: qsTr("Bild …"); onTriggered: root.askImage() }
-                        MenuItem { text: qsTr("Tabelle …"); onTriggered: root.askTable() }
-                        Menu {
-                            id: diagramMenu
-                            title: qsTr("Diagramm")
-                            Instantiator {
-                                model: root.diagramTemplates
-                                delegate: MenuItem {
-                                    required property var modelData
-                                    required property int index
-                                    text: modelData.name
-                                    onTriggered: root.insertDiagram(index)
-                                }
-                                onObjectAdded: (index, object) => diagramMenu.insertItem(index, object)
-                                onObjectRemoved: (index, object) => diagramMenu.removeItem(object)
+                        id: diagramMenu
+                        title: qsTr("Diagramm")
+                        Instantiator {
+                            model: root.diagramTemplates
+                            delegate: MenuItem {
+                                required property var modelData
+                                required property int index
+                                text: modelData.name
+                                onTriggered: root.insertDiagram(index)
                             }
+                            onObjectAdded: (index, object) => diagramMenu.insertItem(index, object)
+                            onObjectRemoved: (index, object) => diagramMenu.removeItem(object)
                         }
-                        MenuItem { text: qsTr("Ordnerbaum …"); onTriggered: root.askFolderTree() }
                     }
+                    MenuItem { text: qsTr("Ordnerbaum …"); onTriggered: root.askFolderTree() }
                 }
-                IconButton {
-                    visible: root.info.broken > 0
-                    glyph: "⚠ " + root.info.broken
-                    tip: qsTr("%1 defekte Links – Reparatur suchen").arg(root.info.broken)
-                    onClicked: root.app.findLinkRepairs(root.source)
+            }
+            IconButton {
+                visible: root.info.broken > 0
+                glyph: "⚠ " + root.info.broken
+                tip: qsTr("%1 defekte Links – Reparatur suchen").arg(root.info.broken)
+                onClicked: root.app.findLinkRepairs(root.source)
+            }
+            IconButton {
+                iconName: "backlinks"; glyph: String(contextPanel.count)
+                tip: qsTr("Rückverweise")
+                checkable: true
+                checked: root.showBacklinks && contextPanel.tab === 0
+                onClicked: {
+                    root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 0)
+                    contextPanel.tab = 0
                 }
-                IconButton {
-                    iconName: "backlinks"; glyph: String(contextPanel.count)
-                    tip: qsTr("Rückverweise")
-                    checkable: true
-                    checked: root.showBacklinks && contextPanel.tab === 0
-                    onClicked: {
-                        root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 0)
-                        contextPanel.tab = 0
-                    }
-                }
-                IconButton {
-                    iconName: "graph"
-                    tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
-                    checkable: true
-                    checked: root.showBacklinks && contextPanel.tab === 1
-                    onClicked: {
-                        root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 1)
-                        contextPanel.tab = 1
-                    }
+            }
+            IconButton {
+                iconName: "graph"
+                tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
+                checkable: true
+                checked: root.showBacklinks && contextPanel.tab === 1
+                onClicked: {
+                    root.showBacklinks = !(root.showBacklinks && contextPanel.tab === 1)
+                    contextPanel.tab = 1
                 }
             }
         }

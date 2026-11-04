@@ -447,72 +447,65 @@ Rectangle {
         }
 
         // Navigation: back/forward and breadcrumbs of the current tab.
-        Rectangle {
-            Layout.fillWidth: true
+        ToolStrip {
             Layout.preferredHeight: 28
-            color: Theme.header
             visible: !!group.currentTab && group.currentTab.kind !== "calendar"
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 4
-                anchors.rightMargin: 8
-                spacing: 2
-                IconButton {
-                    iconName: "arrow-left"
-                    iconSize: 14
-                    tip: qsTr("Zurück (Alt+←)")
-                    enabled: group.currentTab ? group.currentTab.canGoBack : false
-                    onClicked: group.currentTab.goBack()
-                }
-                IconButton {
-                    iconName: "arrow-right"
-                    iconSize: 14
-                    tip: qsTr("Vor (Alt+→)")
-                    enabled: group.currentTab ? group.currentTab.canGoForward : false
-                    onClicked: group.currentTab.goForward()
-                }
-                ListView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    orientation: ListView.Horizontal
-                    clip: true
-                    interactive: contentWidth > width
-                    model: group.currentTab ? group.crumbs(group.currentTab.path) : []
-                    onCountChanged: positionViewAtEnd()
-                    delegate: Row {
-                        id: crumb
-                        required property var modelData
-                        required property int index
-                        height: ListView.view.height
-                        Text {
-                            visible: crumb.index > 0
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "  ›  "
-                            color: Theme.textFaint
-                            font.pixelSize: Theme.smallFontSize
-                        }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: crumb.modelData.label
-                            color: crumbArea.containsMouse ? Theme.textStrong : Theme.textMuted
-                            font.pixelSize: Theme.smallFontSize
-                            MouseArea {
-                                id: crumbArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: (mouse) => {
-                                    if (crumb.modelData.path === group.currentTab.path) return
-                                    if (mouse.button === Qt.MiddleButton) group.openTab(crumb.modelData.path, 0, "tab")
-                                    else group.currentTab.navigate(crumb.modelData.path, 0)
-                                }
+            leftMargin: 4
+            spacing: 2
+            IconButton {
+                iconName: "arrow-left"
+                iconSize: 14
+                tip: qsTr("Zurück (Alt+←)")
+                enabled: group.currentTab ? group.currentTab.canGoBack : false
+                onClicked: group.currentTab.goBack()
+            }
+            IconButton {
+                iconName: "arrow-right"
+                iconSize: 14
+                tip: qsTr("Vor (Alt+→)")
+                enabled: group.currentTab ? group.currentTab.canGoForward : false
+                onClicked: group.currentTab.goForward()
+            }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                orientation: ListView.Horizontal
+                clip: true
+                interactive: contentWidth > width
+                model: group.currentTab ? group.crumbs(group.currentTab.path) : []
+                onCountChanged: positionViewAtEnd()
+                delegate: Row {
+                    id: crumb
+                    required property var modelData
+                    required property int index
+                    height: ListView.view.height
+                    Text {
+                        visible: crumb.index > 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "  ›  "
+                        color: Theme.textFaint
+                        font.pixelSize: Theme.smallFontSize
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: crumb.modelData.label
+                        color: crumbArea.containsMouse ? Theme.textStrong : Theme.textMuted
+                        font.pixelSize: Theme.smallFontSize
+                        MouseArea {
+                            id: crumbArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: (mouse) => {
+                                if (crumb.modelData.path === group.currentTab.path) return
+                                if (mouse.button === Qt.MiddleButton) group.openTab(crumb.modelData.path, 0, "tab")
+                                else group.currentTab.navigate(crumb.modelData.path, 0)
                             }
                         }
                     }
                 }
             }
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
         }
 
         Item {

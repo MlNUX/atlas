@@ -55,38 +55,13 @@ Dialog {
 
     contentItem: ColumnLayout {
         spacing: 0
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.margins: 16
-            Layout.bottomMargin: 12
-            spacing: 12
-            Rectangle {
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                radius: 10
-                color: Theme.accentSoft
-                Icon { anchors.centerIn: parent; name: "image"; size: 20; color: Theme.accent }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                Text {
-                    Layout.fillWidth: true
-                    text: dialog.caption || qsTr("Bild")
-                    color: Theme.textStrong
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
-                    elide: Text.ElideRight
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: (img.status === Image.Ready ? img.implicitWidth + " × " + img.implicitHeight + " px · " : "")
-                          + qsTr("Mausrad zoomt, Ziehen verschiebt, Doppelklick: ganz/1:1")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                }
-            }
+        DialogHeader {
+            icon: "image"
+            title: dialog.caption || qsTr("Bild")
+            subtitle: (img.status === Image.Ready ? img.implicitWidth + " × " + img.implicitHeight + " px · " : "")
+                      + qsTr("Mausrad zoomt, Ziehen verschiebt, Doppelklick: ganz/1:1")
+            margins: 16
+            bottomMargin: 12
             IconButton { iconName: "minus"; tip: qsTr("Verkleinern (−)"); onClicked: dialog.zoomBy(0.8) }
             Label {
                 text: Math.round(dialog.zoomScale * 100) + " %"
@@ -100,7 +75,6 @@ Dialog {
             IconButton { iconName: "maximize"; tip: qsTr("Einpassen (0)"); checkable: true; checked: dialog.zoom === 0; onClicked: dialog.zoom = 0 }
             IconButton { iconName: "close"; tip: qsTr("Schließen (Esc)"); onClicked: dialog.close() }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
 
         Flickable {
             id: flick

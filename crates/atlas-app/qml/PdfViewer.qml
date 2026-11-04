@@ -920,193 +920,189 @@ Rectangle {
             anchors.fill: parent
             spacing: 0
 
-            Rectangle {
-                Layout.fillWidth: true
+            ToolStrip {
                 id: toolbar
                 Layout.preferredHeight: 32
                 visible: root.chrome && !root.presenting
-                color: Theme.header
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 6
-                    anchors.rightMargin: 6
-                    spacing: 3
-                    IconButton {
-                        iconName: "list"
-                        tip: qsTr("Seitenleiste: Miniaturen, Inhalt und Annotationen")
-                        checkable: true
-                        checked: root.sidebarVisible
-                        onClicked: root.sidebarVisible = !root.sidebarVisible
-                    }
-                    TextField {
-                        id: pageField
-                        Layout.preferredWidth: 44
-                        implicitHeight: 24
-                        horizontalAlignment: Text.AlignHCenter
-                        font.pixelSize: Theme.smallFontSize
-                        text: doc.pageCount > 0 ? String(root.currentPage + 1) : ""
-                        validator: IntValidator { bottom: 1; top: Math.max(1, doc.pageCount) }
-                        onAccepted: { root.goToPage(parseInt(text) - 1); root.forceActiveFocus() }
-                    }
-                    Label {
-                        text: "/ " + doc.pageCount
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.smallFontSize
-                    }
-                    IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Strg+−)"); onClicked: root.zoomBy(1 / 1.2) }
-                    Label {
-                        text: Math.round(root.zoomScale * 100) + " %"
-                        color: Theme.text
-                        font.pixelSize: Theme.smallFontSize
-                        Layout.preferredWidth: 40
-                        horizontalAlignment: Text.AlignHCenter
-                    }
-                    IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg++)"); onClicked: root.zoomBy(1.2) }
-                    IconButton { glyph: "↔"; tip: qsTr("Seitenbreite (Strg+0)"); checkable: true; checked: root.zoom === 0; onClicked: root.zoom = 0 }
-                    IconButton { glyph: "▯"; tip: qsTr("Ganze Seite"); checkable: true; checked: root.zoom < 0; onClicked: root.zoom = -1 }
-                    IconButton {
-                        iconName: "moon"
-                        tip: root.dark ? qsTr("Dunkelmodus aus: Originalfarben") : qsTr("Dunkelmodus: Farben umkehren (für alle PDFs)")
-                        checkable: true
-                        checked: root.dark
-                        enabled: !!root.app
-                        onClicked: root.app.pdfDark = !root.app.pdfDark
-                    }
-                    Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
-                    IconButton {
-                        glyph: "I"
-                        tip: qsTr("Text auswählen und markieren")
-                        checkable: true
-                        checked: root.tool === "select"
-                        onClicked: root.tool = "select"
-                    }
-                    IconButton {
-                        iconName: "pen"
-                        tip: qsTr("Freihand zeichnen")
-                        checkable: true
-                        checked: root.tool === "ink"
-                        onClicked: { root.tool = root.tool === "ink" ? "select" : "ink"; root.clearSelection() }
-                    }
-                    Rectangle {
-                        visible: root.tool === "ink"
-                        Layout.preferredWidth: 16
-                        Layout.preferredHeight: 16
-                        radius: 8
-                        color: root.inkColor
-                        border.color: Theme.border
-                        MouseArea { anchors.fill: parent; onClicked: inkMenu.popup() }
-                        Menu {
-                            id: inkMenu
-                            Repeater {
-                                model: root.markColors
-                                MenuItem {
-                                    required property string modelData
-                                    text: "●"
-                                    onTriggered: root.inkColor = modelData
-                                    contentItem: Text { text: "●  " + parent.modelData; color: parent.modelData }
-                                }
+                leftMargin: 6
+                rightMargin: 6
+                spacing: 3
+                line: "none"
+                IconButton {
+                    iconName: "list"
+                    tip: qsTr("Seitenleiste: Miniaturen, Inhalt und Annotationen")
+                    checkable: true
+                    checked: root.sidebarVisible
+                    onClicked: root.sidebarVisible = !root.sidebarVisible
+                }
+                TextField {
+                    id: pageField
+                    Layout.preferredWidth: 44
+                    implicitHeight: 24
+                    horizontalAlignment: Text.AlignHCenter
+                    font.pixelSize: Theme.smallFontSize
+                    text: doc.pageCount > 0 ? String(root.currentPage + 1) : ""
+                    validator: IntValidator { bottom: 1; top: Math.max(1, doc.pageCount) }
+                    onAccepted: { root.goToPage(parseInt(text) - 1); root.forceActiveFocus() }
+                }
+                Label {
+                    text: "/ " + doc.pageCount
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.smallFontSize
+                }
+                IconButton { iconName: "minus"; tip: qsTr("Verkleinern (Strg+−)"); onClicked: root.zoomBy(1 / 1.2) }
+                Label {
+                    text: Math.round(root.zoomScale * 100) + " %"
+                    color: Theme.text
+                    font.pixelSize: Theme.smallFontSize
+                    Layout.preferredWidth: 40
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                IconButton { iconName: "plus"; tip: qsTr("Vergrößern (Strg++)"); onClicked: root.zoomBy(1.2) }
+                IconButton { glyph: "↔"; tip: qsTr("Seitenbreite (Strg+0)"); checkable: true; checked: root.zoom === 0; onClicked: root.zoom = 0 }
+                IconButton { glyph: "▯"; tip: qsTr("Ganze Seite"); checkable: true; checked: root.zoom < 0; onClicked: root.zoom = -1 }
+                IconButton {
+                    iconName: "moon"
+                    tip: root.dark ? qsTr("Dunkelmodus aus: Originalfarben") : qsTr("Dunkelmodus: Farben umkehren (für alle PDFs)")
+                    checkable: true
+                    checked: root.dark
+                    enabled: !!root.app
+                    onClicked: root.app.pdfDark = !root.app.pdfDark
+                }
+                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
+                IconButton {
+                    glyph: "I"
+                    tip: qsTr("Text auswählen und markieren")
+                    checkable: true
+                    checked: root.tool === "select"
+                    onClicked: root.tool = "select"
+                }
+                IconButton {
+                    iconName: "pen"
+                    tip: qsTr("Freihand zeichnen")
+                    checkable: true
+                    checked: root.tool === "ink"
+                    onClicked: { root.tool = root.tool === "ink" ? "select" : "ink"; root.clearSelection() }
+                }
+                Rectangle {
+                    visible: root.tool === "ink"
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    radius: 8
+                    color: root.inkColor
+                    border.color: Theme.border
+                    MouseArea { anchors.fill: parent; onClicked: inkMenu.popup() }
+                    Menu {
+                        id: inkMenu
+                        Repeater {
+                            model: root.markColors
+                            MenuItem {
+                                required property string modelData
+                                text: "●"
+                                onTriggered: root.inkColor = modelData
+                                contentItem: Text { text: "●  " + parent.modelData; color: parent.modelData }
                             }
-                            MenuSeparator {}
-                            MenuItem { text: qsTr("Dünn"); onTriggered: root.inkWidth = 1 }
-                            MenuItem { text: qsTr("Mittel"); onTriggered: root.inkWidth = 2 }
-                            MenuItem { text: qsTr("Breit"); onTriggered: root.inkWidth = 4 }
                         }
+                        MenuSeparator {}
+                        MenuItem { text: qsTr("Dünn"); onTriggered: root.inkWidth = 1 }
+                        MenuItem { text: qsTr("Mittel"); onTriggered: root.inkWidth = 2 }
+                        MenuItem { text: qsTr("Breit"); onTriggered: root.inkWidth = 4 }
                     }
-                    IconButton {
-                        iconName: "eraser"
-                        tip: qsTr("Radierer: ganze Striche löschen (über sie fahren)")
-                        checkable: true
-                        checked: root.tool === "erase"
-                        onClicked: { root.tool = root.tool === "erase" ? "select" : "erase"; root.clearSelection() }
-                    }
-                    IconButton {
-                        glyph: "🗨"
-                        tip: qsTr("Notiz auf der Seite anheften")
-                        checkable: true
-                        checked: root.tool === "note"
-                        onClicked: { root.tool = root.tool === "note" ? "select" : "note"; root.clearSelection() }
-                    }
-                    IconButton {
-                        iconName: "image"
-                        tip: qsTr("Bild als Zitat: Rahmen um Abbildung oder Tabelle ziehen, dann Notiz wählen")
-                        checkable: true
-                        checked: root.tool === "figure"
-                        onClicked: { root.tool = root.tool === "figure" ? "select" : "figure"; root.clearSelection() }
-                    }
-                    IconButton {
-                        glyph: "∑"
-                        tip: qsTr("Formel als LaTeX: Rahmen um die Formel ziehen (läuft auf diesem Rechner)")
-                        checkable: true
-                        checked: root.tool === "latex"
-                        onClicked: { root.tool = root.tool === "latex" ? "select" : "latex"; root.clearSelection() }
-                    }
-                    IconButton {
-                        iconName: "undo"
-                        tip: qsTr("Rückgängig (Strg+Z)")
-                        enabled: root.canUndo
-                        onClicked: root.undo()
-                    }
-                    IconButton {
-                        iconName: "redo"
-                        tip: qsTr("Wiederholen (Strg+Umschalt+Z)")
-                        enabled: root.canRedo
-                        onClicked: root.redo()
-                    }
-                    IconButton {
-                        iconName: "bookmark"
-                        tip: root.pageBookmarked ? qsTr("Lesezeichen entfernen (Strg+D)") : qsTr("Lesezeichen für diese Seite (Strg+D)")
-                        checkable: true
-                        checked: root.pageBookmarked
-                        enabled: notes.status !== "loading" && notes.status !== "error"
-                        onClicked: root.toggleBookmark()
-                    }
-                    Item { Layout.fillWidth: true }
-                    TextField {
-                        id: searchField
-                        Layout.preferredWidth: Math.min(220, root.width * 0.3)
-                        implicitHeight: 24
-                        font.pixelSize: Theme.smallFontSize
-                        placeholderText: qsTr("Im Dokument suchen (Strg+F)")
-                        onTextEdited: searchDebounce.restart()
-                        onAccepted: { searchDebounce.stop(); if (text === root.searchQuery) root.nextHit(1); else root.search(text) }
-                        Keys.onEscapePressed: { text = ""; root.search(""); root.forceActiveFocus() }
-                        Timer { id: searchDebounce; interval: 300; onTriggered: root.search(searchField.text) }
-                    }
-                    Label {
-                        visible: root.searchQuery.length > 0
-                        text: root.hits.length ? qsTr("%1/%2").arg(root.currentHit + 1).arg(root.hits.length) : qsTr("0 Treffer")
-                        color: root.hits.length ? Theme.textMuted : Theme.warn
-                        font.pixelSize: Theme.smallFontSize
-                    }
-                    IconButton { glyph: "↑"; tip: qsTr("Vorheriger Treffer (Umschalt+F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(-1) }
-                    IconButton { glyph: "↓"; tip: qsTr("Nächster Treffer (F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(1) }
-                    IconButton {
-                        glyph: "T"
-                        tip: qsTr("Text der aktuellen Seite, Formeln als LaTeX")
-                        enabled: doc.status === "ready"
-                        onClicked: doc.extractText(root.currentPage)
-                    }
-                    IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
-                    IconButton {
-                        iconName: "play"
-                        tip: qsTr("Präsentieren ab dieser Seite (Umschalt+F5; F5: von vorn)")
-                        onClicked: root.startPresentation(false)
-                    }
-                    Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
-                    IconButton {
-                        iconName: "backlinks"; glyph: String(contextPanel.count)
-                        tip: qsTr("Notizen, die auf diese PDF verweisen oder daraus zitieren")
-                        checkable: true
-                        checked: root.showContext && contextPanel.tab === 0
-                        onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 0); contextPanel.tab = 0 }
-                    }
-                    IconButton {
-                        iconName: "graph"
-                        tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
-                        checkable: true
-                        checked: root.showContext && contextPanel.tab === 1
-                        onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 1); contextPanel.tab = 1 }
-                    }
+                }
+                IconButton {
+                    iconName: "eraser"
+                    tip: qsTr("Radierer: ganze Striche löschen (über sie fahren)")
+                    checkable: true
+                    checked: root.tool === "erase"
+                    onClicked: { root.tool = root.tool === "erase" ? "select" : "erase"; root.clearSelection() }
+                }
+                IconButton {
+                    glyph: "🗨"
+                    tip: qsTr("Notiz auf der Seite anheften")
+                    checkable: true
+                    checked: root.tool === "note"
+                    onClicked: { root.tool = root.tool === "note" ? "select" : "note"; root.clearSelection() }
+                }
+                IconButton {
+                    iconName: "image"
+                    tip: qsTr("Bild als Zitat: Rahmen um Abbildung oder Tabelle ziehen, dann Notiz wählen")
+                    checkable: true
+                    checked: root.tool === "figure"
+                    onClicked: { root.tool = root.tool === "figure" ? "select" : "figure"; root.clearSelection() }
+                }
+                IconButton {
+                    glyph: "∑"
+                    tip: qsTr("Formel als LaTeX: Rahmen um die Formel ziehen (läuft auf diesem Rechner)")
+                    checkable: true
+                    checked: root.tool === "latex"
+                    onClicked: { root.tool = root.tool === "latex" ? "select" : "latex"; root.clearSelection() }
+                }
+                IconButton {
+                    iconName: "undo"
+                    tip: qsTr("Rückgängig (Strg+Z)")
+                    enabled: root.canUndo
+                    onClicked: root.undo()
+                }
+                IconButton {
+                    iconName: "redo"
+                    tip: qsTr("Wiederholen (Strg+Umschalt+Z)")
+                    enabled: root.canRedo
+                    onClicked: root.redo()
+                }
+                IconButton {
+                    iconName: "bookmark"
+                    tip: root.pageBookmarked ? qsTr("Lesezeichen entfernen (Strg+D)") : qsTr("Lesezeichen für diese Seite (Strg+D)")
+                    checkable: true
+                    checked: root.pageBookmarked
+                    enabled: notes.status !== "loading" && notes.status !== "error"
+                    onClicked: root.toggleBookmark()
+                }
+                Item { Layout.fillWidth: true }
+                TextField {
+                    id: searchField
+                    Layout.preferredWidth: Math.min(220, root.width * 0.3)
+                    implicitHeight: 24
+                    font.pixelSize: Theme.smallFontSize
+                    placeholderText: qsTr("Im Dokument suchen (Strg+F)")
+                    onTextEdited: searchDebounce.restart()
+                    onAccepted: { searchDebounce.stop(); if (text === root.searchQuery) root.nextHit(1); else root.search(text) }
+                    Keys.onEscapePressed: { text = ""; root.search(""); root.forceActiveFocus() }
+                    Timer { id: searchDebounce; interval: 300; onTriggered: root.search(searchField.text) }
+                }
+                Label {
+                    visible: root.searchQuery.length > 0
+                    text: root.hits.length ? qsTr("%1/%2").arg(root.currentHit + 1).arg(root.hits.length) : qsTr("0 Treffer")
+                    color: root.hits.length ? Theme.textMuted : Theme.warn
+                    font.pixelSize: Theme.smallFontSize
+                }
+                IconButton { glyph: "↑"; tip: qsTr("Vorheriger Treffer (Umschalt+F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(-1) }
+                IconButton { glyph: "↓"; tip: qsTr("Nächster Treffer (F3)"); enabled: root.hits.length > 0; onClicked: root.nextHit(1) }
+                IconButton {
+                    glyph: "T"
+                    tip: qsTr("Text der aktuellen Seite, Formeln als LaTeX")
+                    enabled: doc.status === "ready"
+                    onClicked: doc.extractText(root.currentPage)
+                }
+                IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: { doc.reload(); notes.reload() } }
+                IconButton {
+                    iconName: "play"
+                    tip: qsTr("Präsentieren ab dieser Seite (Umschalt+F5; F5: von vorn)")
+                    onClicked: root.startPresentation(false)
+                }
+                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.border }
+                IconButton {
+                    iconName: "backlinks"; glyph: String(contextPanel.count)
+                    tip: qsTr("Notizen, die auf diese PDF verweisen oder daraus zitieren")
+                    checkable: true
+                    checked: root.showContext && contextPanel.tab === 0
+                    onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 0); contextPanel.tab = 0 }
+                }
+                IconButton {
+                    iconName: "graph"
+                    tip: qsTr("Graph: Notizen, PDFs und Dateien des Projekts")
+                    checkable: true
+                    checked: root.showContext && contextPanel.tab === 1
+                    onClicked: { root.showContext = !(root.showContext && contextPanel.tab === 1); contextPanel.tab = 1 }
                 }
             }
 

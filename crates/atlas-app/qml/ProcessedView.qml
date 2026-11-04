@@ -66,37 +66,30 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 30
-            color: Theme.header
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                spacing: 6
-                Label {
-                    text: root.current ? qsTr("Angezeigt mit „%1“ (Erweiterung %2) – nur lesen").arg(root.current.name).arg(root.current.extension)
-                                       : qsTr("Anzeige über Erweiterung")
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.smallFontSize
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                }
-                ComboBox {
-                    visible: root.choices.length > 1
-                    implicitHeight: 24
-                    font.pixelSize: Theme.smallFontSize
-                    model: root.choices.map(c => c.name)
-                    currentIndex: Math.max(0, root.choices.findIndex(c => c.id === root.processor))
-                    onActivated: (index) => root.processor = root.choices[index].id
-                }
-                IconButton { glyph: "⟳"; tip: qsTr("Erneut umwandeln"); enabled: !root.busy; onClicked: root.run() }
-                IconButton {
-                    glyph: "↗"
-                    tip: qsTr("Mit Standardprogramm öffnen")
-                    onClicked: Qt.openUrlExternally("file://" + encodeURI(root.source))
-                }
+        ToolStrip {
+            spacing: 6
+            line: "none"
+            Label {
+                text: root.current ? qsTr("Angezeigt mit „%1“ (Erweiterung %2) – nur lesen").arg(root.current.name).arg(root.current.extension)
+                                   : qsTr("Anzeige über Erweiterung")
+                color: Theme.textMuted
+                font.pixelSize: Theme.smallFontSize
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+            ComboBox {
+                visible: root.choices.length > 1
+                implicitHeight: 24
+                font.pixelSize: Theme.smallFontSize
+                model: root.choices.map(c => c.name)
+                currentIndex: Math.max(0, root.choices.findIndex(c => c.id === root.processor))
+                onActivated: (index) => root.processor = root.choices[index].id
+            }
+            IconButton { glyph: "⟳"; tip: qsTr("Erneut umwandeln"); enabled: !root.busy; onClicked: root.run() }
+            IconButton {
+                glyph: "↗"
+                tip: qsTr("Mit Standardprogramm öffnen")
+                onClicked: Qt.openUrlExternally("file://" + encodeURI(root.source))
             }
         }
 

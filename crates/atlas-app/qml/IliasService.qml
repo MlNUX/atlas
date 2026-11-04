@@ -354,29 +354,24 @@ Item {
         ColumnLayout {
             anchors.fill: parent
             spacing: 0
-            Rectangle {
-                Layout.fillWidth: true
+            ToolStrip {
                 Layout.preferredHeight: 44
-                color: Theme.header
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 14
-                    anchors.rightMargin: 8
-                    spacing: 10
-                    Icon { name: "key"; size: 16; color: Theme.accent }
-                    Text {
-                        Layout.fillWidth: true
-                        text: service.loginSaved
-                            ? qsTr("Bei %1 anmelden – mit der gespeicherten Anmeldung (verschlüsselt mit systemd-creds).").arg(service.host)
-                            : qsTr("Bei %1 anmelden – Atlas merkt sich nur die Sitzung, nicht das Passwort.").arg(service.host)
-                        color: Theme.text
-                        font.pixelSize: Theme.smallFontSize
-                        elide: Text.ElideRight
-                    }
-                    Button { text: qsTr("Abbrechen"); flat: true; onClicked: { loginWindow.close(); if (service.state === "login") service.status = qsTr("Nicht angemeldet") } }
-                    // If Atlas does not notice the login by itself.
-                    Button { text: qsTr("Angemeldet – Favoriten zeigen"); highlighted: true; onClicked: { service.trace("Knopf „Angemeldet“ gedrückt"); service.autoClose = true; service.loggedIn() } }
+                leftMargin: 14
+                spacing: 10
+                line: "none"
+                Icon { name: "key"; size: 16; color: Theme.accent }
+                Text {
+                    Layout.fillWidth: true
+                    text: service.loginSaved
+                        ? qsTr("Bei %1 anmelden – mit der gespeicherten Anmeldung (verschlüsselt mit systemd-creds).").arg(service.host)
+                        : qsTr("Bei %1 anmelden – Atlas merkt sich nur die Sitzung, nicht das Passwort.").arg(service.host)
+                    color: Theme.text
+                    font.pixelSize: Theme.smallFontSize
+                    elide: Text.ElideRight
                 }
+                Button { text: qsTr("Abbrechen"); flat: true; onClicked: { loginWindow.close(); if (service.state === "login") service.status = qsTr("Nicht angemeldet") } }
+                // If Atlas does not notice the login by itself.
+                Button { text: qsTr("Angemeldet – Favoriten zeigen"); highlighted: true; onClicked: { service.trace("Knopf „Angemeldet“ gedrückt"); service.autoClose = true; service.loggedIn() } }
             }
             // The remembered login: ask once per login page, or report a
             // failed try.

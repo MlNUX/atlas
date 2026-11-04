@@ -396,14 +396,32 @@ impl Config {
         Self::load_from(&config_file())
     }
 
+    /// Read again only when the file changed (time, size or inode): many
+    /// calls from the UI ask for one setting each. Atlas' own saves replace
+    /// the file (new inode); only an edit in place that keeps the size
+    /// within the same timestamp tick would go unnoticed until the next one.
     pub fn load_from(path: &Path) -> Self {
-        match std::fs::read_to_string(path) {
+        use std::os::unix::fs::MetadataExt;
+        type Cached = (PathBuf, (std::time::SystemTime, u64, u64), Config);
+        static CACHE: std::sync::Mutex<Option<Cached>> = std::sync::Mutex::new(None);
+
+        let stamp = std::fs::metadata(path).ok().and_then(|m| Some((m.modified().ok()?, m.len(), m.ino())));
+        let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let (Some(stamp), Some((p, s, config))) = (stamp, cache.as_ref())
+            && p == path
+            && *s == stamp
+        {
+            return config.clone();
+        }
+        let config = match std::fs::read_to_string(path) {
             Ok(text) => toml::from_str(&text).unwrap_or_else(|err| {
                 log::warn!("ignoring invalid {}: {err}", path.display());
                 Self::default()
             }),
             Err(_) => Self::default(),
-        }
+        };
+        *cache = stamp.map(|stamp| (path.to_owned(), stamp, config.clone()));
+        config
     }
 
     /// Updates only the `[editor]` table and keeps everything else in the
@@ -671,6 +689,24 @@ mod tests {
         let text = std::fs::read_to_string(&file).unwrap();
         assert!(text.contains("[other]"), "{text}");
         assert_eq!(Config::load_from(&file).editor, editor);
+    }
+
+    #[test]
+    fn load_sees_changes_to_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config.toml");
+        assert_eq!(Config::load_from(&file), Config::default(), "no file: defaults");
+        std::fs::write(&file, "[editor]\ncommand = \"kate\"\n").unwrap();
+        assert_eq!(Config::load_from(&file).editor.command, "kate");
+        assert_eq!(Config::load_from(&file).editor.command, "kate", "cached");
+        // Atlas' own saves (atomic, new inode) and edits from outside.
+        let editor = EditorConfig { command: "code -g {file}".into(), ..Default::default() };
+        Config::save_editor_to(&file, &editor).unwrap();
+        assert_eq!(Config::load_from(&file).editor, editor);
+        std::fs::write(&file, "[editor]\ncommand = \"nvim\"\n").unwrap();
+        assert_eq!(Config::load_from(&file).editor.command, "nvim");
+        std::fs::remove_file(&file).unwrap();
+        assert_eq!(Config::load_from(&file), Config::default(), "file gone: defaults again");
     }
 
     #[test]
