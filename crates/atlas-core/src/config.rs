@@ -434,6 +434,11 @@ impl Config {
         save_table(path, "editor", editor)
     }
 
+    /// Updates only the `[terminal]` table.
+    pub fn save_terminal(terminal: &TerminalConfig) -> Result<()> {
+        save_table(&config_file(), "terminal", terminal)
+    }
+
     /// Updates only the `[places]` table.
     pub fn save_places(places: &PlacesConfig) -> Result<()> {
         save_table(&config_file(), "places", places)

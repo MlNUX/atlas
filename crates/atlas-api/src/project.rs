@@ -227,7 +227,7 @@ impl Project {
     }
 
     pub fn search(&self) -> Arc<crate::search::Search> {
-        todo_task!("P2.4")
+        Arc::new(crate::search::Search::new(self.shared.clone()))
     }
 
     pub fn calendar(&self) -> Arc<crate::calendar::Calendar> {
@@ -256,12 +256,12 @@ impl Project {
     }
 
     pub fn editor(&self) -> Arc<crate::editor::Editor> {
-        todo_task!("P2.8")
+        Arc::new(crate::editor::Editor::new(self.shared.clone()))
     }
 
     /// Context bar profiles of this project (falls back to the user's).
     pub fn context(&self) -> Arc<crate::settings::Context> {
-        todo_task!("P2.8")
+        Arc::new(crate::settings::Context::new())
     }
 }
 

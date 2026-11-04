@@ -409,6 +409,75 @@ fn pdf_text(path: &Path) -> Option<Arc<Vec<String>>> {
     Some(pages)
 }
 
+/// Options of the search window, turned into a [`Query`] the same way on
+/// every UI.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Options {
+    pub regex: bool,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
+    /// Glob filters (`*.rs`, `!docs/**`).
+    pub globs: Vec<String>,
+    /// Search build and dependency folders too.
+    pub build_dirs: bool,
+    /// Document types (`markdown`, `pdf`, `latex`, `code`, `text`); none means all.
+    pub kinds: Vec<String>,
+}
+
+impl Options {
+    pub fn query(&self, pattern: impl Into<String>) -> Query {
+        let mut query = Query {
+            regex: self.regex,
+            case_sensitive: Some(self.case_sensitive),
+            whole_word: self.whole_word,
+            globs: (!self.build_dirs)
+                .then(crate::finder::build_dir_globs)
+                .unwrap_or_default()
+                .into_iter()
+                .chain(self.globs.iter().map(|g| g.trim()).filter(|g| !g.is_empty()).map(str::to_owned))
+                .collect(),
+            ..Query::new(pattern)
+        };
+        let kinds: Vec<&str> = self.kinds.iter().map(String::as_str).collect();
+        restrict_to_kinds(&mut query, &kinds);
+        query
+    }
+}
+
+/// Longest line of the context shown around a match.
+pub const CONTEXT_LINE_CHARS: usize = 600;
+
+/// Lines `line ± radius` of a text file (1-based numbers).
+pub fn text_context(path: &Path, line: usize, radius: usize) -> Vec<(usize, String)> {
+    let Ok(file) = std::fs::File::open(path) else { return Vec::new() };
+    let line = line.max(1);
+    let first = line.saturating_sub(radius).max(1);
+    let last = line + radius;
+    BufReader::new(file)
+        .split(b'\n')
+        .map_while(std::result::Result::ok)
+        .enumerate()
+        .skip(first - 1)
+        .take(last + 1 - first)
+        .map(|(i, bytes)| {
+            let text: String =
+                String::from_utf8_lossy(&bytes).trim_end_matches('\r').chars().take(CONTEXT_LINE_CHARS).collect();
+            (i + 1, text)
+        })
+        .collect()
+}
+
+/// The non-empty lines of page `page` (1-based) of a PDF, numbered.
+pub fn pdf_context(path: &Path, page: usize) -> Vec<(usize, String)> {
+    let Some(text) = pdf_page_text(path, page.max(1)) else { return Vec::new() };
+    text.lines()
+        .map(str::trim_end)
+        .filter(|l| !l.is_empty())
+        .enumerate()
+        .map(|(i, l)| (i + 1, l.chars().take(CONTEXT_LINE_CHARS).collect()))
+        .collect()
+}
+
 /// The text of page `page` (1-based) of a PDF, from the search cache.
 pub fn pdf_page_text(path: &Path, page: usize) -> Option<String> {
     pdf_text(path)?.get(page.checked_sub(1)?).cloned()

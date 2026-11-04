@@ -50,6 +50,8 @@ pub struct BackgroundJob {
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
 pub struct Atlas {
     sink: Arc<dyn EventSink>,
+    /// One ILIAS connection (its web session) per process.
+    ilias: std::sync::OnceLock<Arc<crate::ilias::Ilias>>,
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
@@ -57,7 +59,7 @@ impl Atlas {
     /// Once per process. `sink` receives the app-wide events.
     #[cfg_attr(feature = "ffi", uniffi::constructor)]
     pub fn new(sink: Arc<dyn EventSink>) -> Arc<Self> {
-        Arc::new(Self { sink })
+        Arc::new(Self { sink, ilias: std::sync::OnceLock::new() })
     }
 
     pub fn version(&self) -> String {
@@ -71,7 +73,7 @@ impl Atlas {
 
     /// The settings (shared by all windows).
     pub fn settings(&self) -> Arc<crate::settings::Settings> {
-        todo_task!("P2.8")
+        Arc::new(crate::settings::Settings::new(self.sink.clone()))
     }
 
     /// Sidebar places (fixed ones first, then file manager bookmarks if on).
@@ -157,7 +159,7 @@ impl Atlas {
 
     /// The ILIAS connection (one account per user).
     pub fn ilias(&self) -> Arc<crate::ilias::Ilias> {
-        todo_task!("P2.10")
+        self.ilias.get_or_init(|| Arc::new(crate::ilias::Ilias::new())).clone()
     }
 
     /// Converts a `file://` URL (drag and drop, clipboard) to a path.
