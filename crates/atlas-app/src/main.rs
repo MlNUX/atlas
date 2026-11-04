@@ -7,6 +7,7 @@ mod annotations_model;
 mod app;
 mod calendar_model;
 mod cli;
+mod context_profiles;
 mod file_ops;
 mod folder_model;
 mod formula_ocr;

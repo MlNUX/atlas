@@ -14,6 +14,7 @@ pub mod atlasnote;
 pub mod background;
 pub mod calendar;
 pub mod config;
+pub mod context_profiles;
 pub mod extensions;
 pub mod fileops;
 pub mod finder;
