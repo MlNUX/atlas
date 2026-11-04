@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use atlas_core::config::{Config, EditorConfig, EditorLaunch, editor_launch};
 use atlas_core::finder;
@@ -133,56 +133,10 @@ pub mod qobject {
         fn set_touchpad_fling(self: Pin<&mut AppController>, on: bool);
         fn set_spellcheck(self: Pin<&mut AppController>, on: bool);
 
-        /// Misspelled words of the Markdown `text`: JSON `[[start, length]]`
-        /// in characters (UTF-16); "null" if no dictionary was found.
-        #[qinvokable]
-        #[cxx_name = "spellCheck"]
-        fn spell_check(self: &AppController, text: &QString) -> QString;
-
-        /// Up to five suggestions for `word`.
-        #[qinvokable]
-        #[cxx_name = "spellSuggest"]
-        fn spell_suggest(self: &AppController, word: &QString) -> QStringList;
-
-        /// Adds `word` to the personal dictionary (config folder).
-        #[qinvokable]
-        #[cxx_name = "spellAdd"]
-        fn spell_add(self: &AppController, word: &QString);
-
         /// Viewers keeping `path` open in the PDF service (smoke test).
         #[qinvokable]
         #[cxx_name = "pdfUsers"]
         fn pdf_users(self: &AppController, path: &QString) -> i32;
-
-        /// The dictionaries in use ("de_DE, en_US"; "" if none was found).
-        #[qinvokable]
-        #[cxx_name = "spellLanguages"]
-        fn spell_languages(self: &AppController) -> QString;
-
-        /// Recognizes the formula in `area` (JSON `[x0, y0, x1, y1]`,
-        /// points) of `page` (0-based) of PDF `path` as LaTeX (built-in
-        /// pix2tex model, downloaded on first use), in the background; then
-        /// `latexRecognized` with `request`.
-        #[qinvokable]
-        #[cxx_name = "latexFromPdf"]
-        fn latex_from_pdf(self: &AppController, request: i32, path: &QString, page: i32, area: &QString);
-
-        /// What the recognition of `request` is doing (the first time:
-        /// downloading the model).
-        #[qsignal]
-        #[cxx_name = "latexProgress"]
-        fn latex_progress(self: Pin<&mut AppController>, request: i32, text: QString);
-
-        /// `latex` (tidied) or `error` for `request`.
-        #[qsignal]
-        #[cxx_name = "latexRecognized"]
-        fn latex_recognized(self: Pin<&mut AppController>, request: i32, latex: QString, error: QString);
-
-        /// Whether the formula model is loaded already (later recognitions
-        /// are quick).
-        #[qinvokable]
-        #[cxx_name = "latexOcrWarm"]
-        fn latex_ocr_warm(self: &AppController) -> bool;
 
         /// Atlas' state folder (`$XDG_STATE_HOME/atlas`) and config folder.
         #[qinvokable]
@@ -1102,68 +1056,6 @@ impl qobject::AppController {
 
     pub fn pdf_users(&self, path: &QString) -> i32 {
         atlas_core::pdf::PdfService::get().users_of(std::path::Path::new(&path.to_string())) as i32
-    }
-
-    pub fn spell_check(&self, text: &QString) -> QString {
-        let text = text.to_string();
-        with_speller(|checker| {
-            let bad = checker.misspelled(&text);
-            let list: Vec<[usize; 2]> =
-                atlas_core::spell::utf16_ranges(&text, &bad).into_iter().map(|(s, l)| [s, l]).collect();
-            serde_json::to_string(&list).unwrap_or_else(|_| "[]".into())
-        })
-        .map_or_else(|| qs("null"), qs)
-    }
-
-    pub fn spell_suggest(&self, word: &QString) -> QStringList {
-        let mut out = QStringList::default();
-        for s in with_speller(|c| c.suggest(&word.to_string(), 5)).unwrap_or_default() {
-            out.append(qs(s));
-        }
-        out
-    }
-
-    pub fn spell_add(&self, word: &QString) {
-        if let Some(Err(err)) = with_speller(|c| c.add(&word.to_string())) {
-            log::warn!("spellcheck: {err:#}");
-        }
-    }
-
-    pub fn spell_languages(&self) -> QString {
-        qs(with_speller(|c| c.languages().join(", ")).unwrap_or_default())
-    }
-
-    pub fn latex_from_pdf(&self, request: i32, path: &QString, page: i32, area: &QString) {
-        let thread = self.qt_thread();
-        let Ok([x0, y0, x1, y1]) = serde_json::from_str::<[f64; 4]>(&area.to_string()) else {
-            log::warn!("latexFromPdf: bad area {area}");
-            return;
-        };
-        atlas_core::pdf::PdfService::get().formula_clip(
-            path_of(path),
-            page.max(0) as usize,
-            [x0, y0, x1, y1],
-            move |result| {
-                // The recognition takes a while: not on the PDF thread.
-                std::thread::spawn(move || {
-                    let outcome = result.and_then(|(w, h, pixels)| {
-                        ensure_latex_models(&|text| {
-                            let _ = thread.queue(move |app| app.latex_progress(request, qs(text)));
-                        })?;
-                        atlas_core::latex_ocr::recognize_gray(w, h, pixels).map(|t| atlas_core::pdf::formulas::tidy(&t))
-                    });
-                    let (latex, error) = match outcome {
-                        Ok(l) => (l, String::new()),
-                        Err(e) => (String::new(), format!("{e:#}")),
-                    };
-                    let _ = thread.queue(move |app| app.latex_recognized(request, qs(latex), qs(error)));
-                });
-            },
-        );
-    }
-
-    pub fn latex_ocr_warm(&self) -> bool {
-        atlas_core::latex_ocr::is_running()
     }
 
     pub fn state_dir(&self) -> QString {
@@ -3218,41 +3110,3 @@ fn context_json(c: &atlas_core::config::ContextConfig) -> QString {
     QString::from(serde_json::to_string(c).unwrap_or_else(|_| "{}".into()).as_str())
 }
 
-/// Runs `f` with the spellchecker, loaded on first use (about 0.1 s);
-/// `None` if no dictionary was found.
-fn with_speller<T>(f: impl FnOnce(&mut atlas_core::spell::Checker) -> T) -> Option<T> {
-    use atlas_core::spell::{Checker, dictionary_dirs};
-    static SPELLER: OnceLock<Mutex<Option<Checker>>> = OnceLock::new();
-    let speller = SPELLER.get_or_init(|| {
-        let personal = atlas_core::config::config_dir().join("dictionary.txt");
-        Mutex::new(
-            Checker::load(&dictionary_dirs(), Some(personal)).inspect_err(|e| log::info!("spellcheck: {e:#}")).ok(),
-        )
-    });
-    let mut guard = speller.lock().unwrap_or_else(|e| e.into_inner());
-    guard.as_mut().map(f)
-}
-
-/// Downloads the formula model the first time (see
-/// [`atlas_core::latex_ocr`]), telling `progress` about it now and then.
-pub(crate) fn ensure_latex_models(progress: &dyn Fn(String)) -> anyhow::Result<()> {
-    use atlas_core::latex_ocr;
-    use std::time::{Duration, Instant};
-    let dir = latex_ocr::model_dir();
-    if latex_ocr::models_present(&dir) {
-        return Ok(());
-    }
-    let last = std::sync::Mutex::new(Instant::now() - Duration::from_secs(1));
-    latex_ocr::download_models(&dir, &|file, received, total| {
-        let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
-        if last.elapsed() < Duration::from_millis(250) {
-            return;
-        }
-        *last = Instant::now();
-        let mb = |b: u64| b as f64 / 1_048_576.0;
-        progress(match total {
-            Some(t) => format!("Lade das Formelmodell (einmalig): {file} {:.0} von {:.0} MB", mb(received), mb(t)),
-            None => format!("Lade das Formelmodell (einmalig): {file} {:.0} MB", mb(received)),
-        });
-    })
-}

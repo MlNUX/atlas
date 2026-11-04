@@ -545,7 +545,7 @@ Rectangle {
     property var spellMarks: []
     function updateSpelling() {
         let ranges = null
-        if (spellOn) try { ranges = JSON.parse(root.app.spellCheck(area.text)) } catch (e) {}
+        if (spellOn) try { ranges = JSON.parse(Spelling.check(area.text)) } catch (e) {}
         spellRanges = ranges || []
         updateSpellMarks()
     }
@@ -585,7 +585,7 @@ Rectangle {
         const pos = area.positionAt(x, y)
         const r = spellOn ? spellRangeAt(pos) : null
         menuWord = r ? { start: r[0], length: r[1], text: area.text.slice(r[0], r[0] + r[1]) } : null
-        menuSuggestions = menuWord ? root.app.spellSuggest(menuWord.text) : []
+        menuSuggestions = menuWord ? Spelling.suggest(menuWord.text) : []
         editMenu.popup()
     }
     function replaceWord(start, length, text) {
@@ -1059,7 +1059,7 @@ Rectangle {
                             visible: !!root.menuWord
                             height: visible ? implicitHeight : 0
                             text: root.menuWord ? qsTr("„%1“ zum Wörterbuch hinzufügen").arg(root.menuWord.text) : ""
-                            onTriggered: { root.app.spellAdd(root.menuWord.text); root.updateSpelling() }
+                            onTriggered: { Spelling.add(root.menuWord.text); root.updateSpelling() }
                         }
                         MenuSeparator { visible: !!root.menuWord; height: visible ? implicitHeight : 0 }
                         MenuItem { text: qsTr("Ausschneiden"); enabled: area.selectedText.length > 0; onTriggered: area.cut() }

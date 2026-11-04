@@ -248,7 +248,7 @@ Dialog {
                                 wrapMode: Text.Wrap
                                 color: Theme.textMuted
                                 font.pixelSize: Theme.smallFontSize
-                                readonly property string languages: dialog.visible ? dialog.app.spellLanguages() : ""
+                                readonly property string languages: dialog.visible ? Spelling.languages() : ""
                                 text: (languages ? qsTr("Deutsch und Englisch zugleich (%1), auf diesem Rechner. ").arg(languages)
                                                  : qsTr("Keine Wörterbücher gefunden (Hunspell de_DE, en_US). "))
                                       + qsTr("Rechtsklick auf ein rot unterstrichenes Wort: Vorschläge oder ins eigene Wörterbuch.")

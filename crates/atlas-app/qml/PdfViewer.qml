@@ -511,8 +511,8 @@ Rectangle {
     function recognizeLatex(page, x0, y0, x1, y1) {
         if (!root.app) return
         latexRequest++
-        latexPopup.start(root.app.latexOcrWarm())
-        root.app.latexFromPdf(latexRequest, root.source, page, JSON.stringify([x0, y0, x1, y1]))
+        latexPopup.start(FormulaOcr.warm())
+        FormulaOcr.recognize(latexRequest, root.source, page, JSON.stringify([x0, y0, x1, y1]))
     }
     /// The selected text's box on its first page, with a little margin.
     function recognizeSelection() {
@@ -526,11 +526,11 @@ Rectangle {
         recognizeLatex(s.page, x0 - 3, y0 - 3, x1 + 3, y1 + 3)
     }
     Connections {
-        target: root.app
-        function onLatexProgress(request, text) {
+        target: FormulaOcr
+        function onProgress(request, text) {
             if (request === root.latexRequest) latexPopup.progress = text
         }
-        function onLatexRecognized(request, latex, error) {
+        function onRecognized(request, latex, error) {
             if (request !== root.latexRequest) return
             latexPopup.finish(latex, error)
             if (latex) {
