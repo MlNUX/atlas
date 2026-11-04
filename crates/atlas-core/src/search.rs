@@ -345,6 +345,12 @@ struct PdfTextCache {
 }
 
 impl PdfTextCache {
+    fn remove(&mut self, path: &Path) {
+        if let Some(gone) = self.entries.remove(path) {
+            self.bytes -= gone.bytes;
+        }
+    }
+
     fn get(&mut self, path: &Path, stamp: (SystemTime, u64)) -> Option<Arc<Vec<String>>> {
         self.clock += 1;
         let clock = self.clock;
@@ -375,14 +381,26 @@ impl PdfTextCache {
 }
 
 /// The text of each page of `path`, cached by modification time and size.
-fn pdf_text(path: &Path) -> Option<Arc<Vec<String>>> {
+fn pdf_text_cache() -> &'static Mutex<PdfTextCache> {
     static CACHE: OnceLock<Mutex<PdfTextCache>> = OnceLock::new();
+    CACHE.get_or_init(Mutex::default)
+}
+
+/// Drops the cached text of `path` (new text was handed in, see
+/// [`crate::pdf::set_page_texts`]).
+pub(crate) fn forget_pdf_text(path: &Path) {
+    if let Ok(mut cache) = pdf_text_cache().lock() {
+        cache.remove(path);
+    }
+}
+
+fn pdf_text(path: &Path) -> Option<Arc<Vec<String>>> {
     let meta = std::fs::metadata(path).ok()?;
     if meta.len() > MAX_PDF_SIZE {
         return None;
     }
     let stamp = (meta.modified().ok()?, meta.len());
-    let cache = CACHE.get_or_init(Mutex::default);
+    let cache = pdf_text_cache();
     if let Some(pages) = cache.lock().ok()?.get(path, stamp) {
         return Some(pages);
     }
@@ -546,6 +564,7 @@ mod tests {
         assert_eq!(m[0].ranges, vec![(5, 9)]);
     }
 
+    #[cfg(feature = "pdf-poppler")]
     fn pdf_with(path: &Path, pages: &[&str]) {
         let surface = cairo::PdfSurface::new(595.0, 842.0, path).unwrap();
         let cr = cairo::Context::new(&surface).unwrap();
@@ -559,6 +578,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pdf-poppler")]
     fn finds_text_in_pdfs() {
         let d = tempfile::tempdir().unwrap();
         pdf_with(&d.path().join("skript.pdf"), &["Einleitung", "Die Fourier Transformation"]);
@@ -577,6 +597,24 @@ mod tests {
         // Globs apply to PDFs as well.
         let (m, _) = run(d.path(), Query { globs: vec!["*.md".into()], ..Query::new("Fourier") });
         assert!(m.iter().all(|m| !m.pdf));
+    }
+
+    /// Text handed in by the UI (PDFKit on macOS) is searched like engine text.
+    #[test]
+    fn finds_handed_in_pdf_text() {
+        let d = tempfile::tempdir().unwrap();
+        let pdf = d.path().join("skript.pdf");
+        std::fs::write(&pdf, b"%PDF stand-in").unwrap();
+        crate::pdf::set_page_texts(&pdf, vec!["Einleitung".into(), "Die Fourier Transformation".into()]);
+        let (m, summary) = run(d.path(), Query { case_sensitive: Some(false), ..Query::new("fourier") });
+        assert_eq!(summary.matches, 1);
+        assert!(m[0].pdf);
+        assert_eq!(m[0].line, 2, "page");
+        // New text replaces the cached one.
+        crate::pdf::set_page_texts(&pdf, vec!["Laplace".into()]);
+        let (m, _) = run(d.path(), Query::new("Laplace"));
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].line, 1);
     }
 
     #[test]

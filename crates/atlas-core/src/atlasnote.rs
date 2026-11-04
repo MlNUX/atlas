@@ -17,7 +17,9 @@
 //!
 //! The archive is extracted once into the cache (keyed by path, size and
 //! modification time) and pages are rendered with cairo to PNG files there;
-//! the original file is never written.
+//! the original file is never written. Rendering needs the feature
+//! `pdf-poppler` (cairo, poppler for PDF backgrounds); without it, reading
+//! works and [`NoteFile::render`] reports that it is unavailable.
 
 use std::collections::HashSet;
 use std::fs::File;
@@ -282,6 +284,13 @@ impl NoteFile {
     }
 
     /// Page `index` as RGBA pixels, `width_px` wide.
+    #[cfg(not(feature = "pdf-poppler"))]
+    pub fn render(&self, _index: usize, _width_px: u32) -> Result<(u32, u32, Vec<u8>)> {
+        bail!("Atlas-Notizen können in diesem Build nicht gezeichnet werden (ohne pdf-poppler)")
+    }
+
+    /// Page `index` as RGBA pixels, `width_px` wide.
+    #[cfg(feature = "pdf-poppler")]
     pub fn render(&self, index: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)> {
         let page = self.notebook.pages.get(index).context("Seite nicht vorhanden")?;
         let scale = f64::from(width_px) / PAGE_WIDTH;
@@ -320,6 +329,7 @@ impl NoteFile {
         Ok((width_px, height_px, rgba))
     }
 
+    #[cfg(feature = "pdf-poppler")]
     fn draw_paper(&self, cr: &cairo::Context, page: &Page) -> Result<()> {
         let (r, g, b) = if page.dark { rgb(0x242528) } else { rgb(0xfffdf7) };
         cr.set_source_rgb(r, g, b);
@@ -399,6 +409,7 @@ impl NoteFile {
         Ok(())
     }
 
+    #[cfg(feature = "pdf-poppler")]
     fn draw_image(&self, cr: &cairo::Context, mark: &Mark) -> Result<()> {
         let name = mark.image.as_deref().context("Bild fehlt")?;
         let surface = load_picture(&self.dir.join("images").join(name))?;
@@ -470,12 +481,14 @@ pub fn paper_start(step: f64, margin: f64) -> f64 {
     (PAGE_WIDTH - ((PAGE_WIDTH - 2.0 * margin) / step).floor() * step) / 2.0
 }
 
-fn rgb(value: u32) -> (f64, f64, f64) {
+/// Red, green and blue of `0xRRGGBB` (alpha bits ignored) in 0…1.
+pub fn rgb(value: u32) -> (f64, f64, f64) {
     (f64::from((value >> 16) & 0xff) / 255.0, f64::from((value >> 8) & 0xff) / 255.0, f64::from(value & 0xff) / 255.0)
 }
 
-/// Colour and opacity of a stroke, following the tablet's brushes.
-fn stroke_color(style: &Style) -> (f64, f64, f64, f64) {
+/// Colour and opacity of a stroke, following the tablet's brushes (also
+/// for UIs that draw notebooks themselves).
+pub fn stroke_color(style: &Style) -> (f64, f64, f64, f64) {
     let argb = (style.color & 0xffff_ffff) as u32;
     let (r, g, b) = rgb(argb);
     let alpha = f64::from(argb >> 24) / 255.0;
@@ -487,6 +500,7 @@ fn stroke_color(style: &Style) -> (f64, f64, f64, f64) {
     (r, g, b, alpha)
 }
 
+#[cfg(feature = "pdf-poppler")]
 fn draw_stroke(cr: &cairo::Context, mark: &Mark) -> Result<()> {
     let (r, g, b, alpha) = stroke_color(&mark.style);
     let width = mark.style.width;
@@ -528,6 +542,7 @@ fn draw_stroke(cr: &cairo::Context, mark: &Mark) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "pdf-poppler")]
 fn draw_text(cr: &cairo::Context, mark: &Mark) -> Result<()> {
     let text = mark.text.as_deref().unwrap_or_default();
     let origin = mark.points.first().context("Textfeld ohne Position")?;
@@ -552,6 +567,7 @@ fn draw_text(cr: &cairo::Context, mark: &Mark) -> Result<()> {
 }
 
 /// PNG or JPEG as a cairo surface.
+#[cfg(feature = "pdf-poppler")]
 fn load_picture(path: &Path) -> Result<cairo::ImageSurface> {
     let picture =
         image::open(path).with_context(|| format!("Bild {} kann nicht geladen werden", path.display()))?.to_rgba8();
@@ -613,6 +629,7 @@ mod tests {
         });
     }
 
+    #[cfg(feature = "pdf-poppler")]
     fn png(w: u32, h: u32, rgba: [u8; 4]) -> Vec<u8> {
         let mut out = std::io::Cursor::new(Vec::new());
         image::RgbaImage::from_pixel(w, h, image::Rgba(rgba)).write_to(&mut out, image::ImageFormat::Png).unwrap();
@@ -620,6 +637,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pdf-poppler")]
     fn renders_paper_strokes_text_and_placed_images() {
         let dir = tempfile::tempdir().unwrap();
         test_cache();
