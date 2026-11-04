@@ -45,6 +45,10 @@ on:
         description: Extra key for the Cargo cache (use the task ID)
         type: string
         default: ""
+      cargo-workspaces:
+        description: Cargo workspaces to cache, "<dir> -> <target dir>" per line (Swatinem/rust-cache syntax)
+        type: string
+        default: ". -> target"
       timeout-minutes:
         type: number
         default: 60
@@ -87,6 +91,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: macos-${{ inputs.cache-key }}
+          workspaces: ${{ inputs.cargo-workspaces }}
 
       - name: Homebrew cache
         uses: actions/cache@v4
