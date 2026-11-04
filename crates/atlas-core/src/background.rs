@@ -4,8 +4,8 @@
 //! Commands that run in the background (`terminal: background`, e.g. the
 //! Jupyter server): no terminal, the output goes into a log file. Atlas
 //! keeps one job per key (the action id), and the jobs end with Atlas –
-//! when it quits ([`stop_all`]) and, as a safety net, when it crashes
-//! (`PR_SET_PDEATHSIG`).
+//! when it quits ([`stop_all`]) and, as a safety net on Linux, when it
+//! crashes (`PR_SET_PDEATHSIG`, see [`crate::platform::end_with_parent`]).
 
 use anyhow::{Context, Result, bail};
 use std::collections::BTreeMap;
@@ -80,10 +80,10 @@ pub fn start(key: &str, name: &str, argv: &[String], cwd: &Path, env: &[(String,
     cmd.args(args).current_dir(cwd).envs(env.iter().cloned()).stdin(Stdio::null()).stdout(out).stderr(err);
     // Own process group (stopped as a whole); ends when Atlas ends.
     cmd.process_group(0);
-    // SAFETY: prctl is async-signal-safe.
+    // SAFETY: end_with_parent is async-signal-safe (prctl or nothing).
     unsafe {
         cmd.pre_exec(|| {
-            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+            crate::platform::end_with_parent();
             Ok(())
         });
     }

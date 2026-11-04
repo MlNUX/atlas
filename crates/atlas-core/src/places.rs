@@ -27,16 +27,7 @@ pub struct Place {
 
 /// Home, desktop, documents, downloads and trash – only those that exist.
 pub fn fixed() -> Vec<Place> {
-    let candidates = [
-        ("Persönlicher Ordner", "home", dirs::home_dir()),
-        ("Schreibtisch", "desktop", dirs::desktop_dir()),
-        ("Dokumente", "documents", dirs::document_dir()),
-        ("Downloads", "downloads", dirs::download_dir()),
-        ("Bilder", "pictures", dirs::picture_dir()),
-        ("Musik", "music", dirs::audio_dir()),
-        ("Videos", "videos", dirs::video_dir()),
-        ("Papierkorb", "trash", trash_files_dir()),
-    ];
+    let candidates = crate::platform::fixed_places();
     let mut seen = Vec::new();
     candidates
         .into_iter()
@@ -52,9 +43,10 @@ pub fn fixed() -> Vec<Place> {
         .collect()
 }
 
-/// `$XDG_DATA_HOME/Trash/files` (freedesktop.org trash specification).
+/// The trash folder: `$XDG_DATA_HOME/Trash/files` (freedesktop.org) on
+/// Linux, `~/.Trash` on macOS.
 pub fn trash_files_dir() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|d| d.join("Trash/files"))
+    crate::platform::trash_files_dir()
 }
 
 /// The files the places are read from (for watching).

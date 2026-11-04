@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P1.2 (macOS port): the Qt-free crates build and pass their tests on
+# macOS without poppler (platform layer: keychain, trash, places, terminal cwd).
+# Runs after P1.1 (feature pdf-poppler off) and P0.3 (macos-setup.yml).
+name: mac-P1.2
+
+on:
+  push:
+    branches: ["port/macos/P1.2-*"]
+    paths:
+      - ".github/workflows/mac-P1.2.yml"
+      - "crates/atlas-core/**"
+      - "crates/atlas-terminal/**"
+      - "crates/atlas-spell/**"
+      - "crates/atlas-ilias/**"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P1.2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      artifact-name: mac-P1.2
+      cache-key: P1.2
+      run: |
+        export CARGO_TERM_COLOR=never
+        cargo test --locked -p atlas-core --no-default-features \
+          -p atlas-terminal -p atlas-spell -p atlas-ilias 2>&1 | tee "$ATLAS_CI_OUT/cargo-test.log"
+        {
+          echo "# P1.2 – Kern-Crates auf macOS (ohne poppler)"
+          echo
+          echo '```'
+          grep -E '^test result|FAILED|^error' "$ATLAS_CI_OUT/cargo-test.log" || true
+          echo '```'
+        } >"$ATLAS_CI_OUT/summary.md"

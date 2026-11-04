@@ -3,6 +3,10 @@
 
 //! Trash round trip against a private trash (own process, so redirecting
 //! `XDG_DATA_HOME` does not affect other tests or the user's trash).
+//!
+//! Not on macOS: there the trash is always `~/.Trash` (the user's real one)
+//! and items can only be put back in the Finder.
+#![cfg(not(target_os = "macos"))]
 
 use std::fs;
 

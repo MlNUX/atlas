@@ -167,9 +167,9 @@ impl Terminal {
         Ok(Self { term, sender, size: size_cell, pid })
     }
 
-    /// Current working directory of the shell (Linux: `/proc/<pid>/cwd`).
+    /// Current working directory of the shell.
     pub fn current_dir(&self) -> Option<PathBuf> {
-        std::fs::read_link(format!("/proc/{}/cwd", self.pid)).ok()
+        process_cwd(self.pid)
     }
 
     pub fn size(&self) -> GridSize {
@@ -508,6 +508,41 @@ impl Frame {
             history_size: term.grid().history_size(),
         }
     }
+}
+
+/// Working directory of process `pid`: `/proc/<pid>/cwd` on Linux.
+#[cfg(target_os = "linux")]
+fn process_cwd(pid: u32) -> Option<PathBuf> {
+    std::fs::read_link(format!("/proc/{pid}/cwd")).ok()
+}
+
+/// Working directory of process `pid`: `proc_pidinfo(PROC_PIDVNODEPATHINFO)` on macOS.
+#[cfg(target_os = "macos")]
+fn process_cwd(pid: u32) -> Option<PathBuf> {
+    use std::ffi::CStr;
+    use std::os::unix::ffi::OsStrExt;
+    let mut info = std::mem::MaybeUninit::<libc::proc_vnodepathinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_vnodepathinfo>() as libc::c_int;
+    // SAFETY: the buffer is a zeroed proc_vnodepathinfo of exactly `size` bytes.
+    let n = unsafe {
+        libc::proc_pidinfo(pid as libc::c_int, libc::PROC_PIDVNODEPATHINFO, 0, info.as_mut_ptr().cast(), size)
+    };
+    if n != size {
+        return None;
+    }
+    // SAFETY: proc_pidinfo filled all `size` bytes.
+    let info = unsafe { info.assume_init() };
+    // vip_path is MAXPATHLEN bytes, split into rows by libc; NUL terminated.
+    let raw = &info.pvi_cdir.vip_path;
+    // SAFETY: the rows are contiguous c_chars.
+    let bytes: &[u8] = unsafe { std::slice::from_raw_parts(raw.as_ptr().cast(), std::mem::size_of_val(raw)) };
+    let path = CStr::from_bytes_until_nul(bytes).ok()?;
+    (!path.is_empty()).then(|| PathBuf::from(std::ffi::OsStr::from_bytes(path.to_bytes())))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn process_cwd(_pid: u32) -> Option<PathBuf> {
+    None
 }
 
 #[cfg(test)]
