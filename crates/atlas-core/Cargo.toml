@@ -9,6 +9,17 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+default = ["pdf-poppler"]
+# Rendering, text and export of PDFs (and .atlasnote pages) with poppler/cairo.
+# Without it the core builds on macOS: PDF display is done by the UI, which
+# hands page text to the core (pdf::set_page_texts / pdf::set_page_text_source).
+pdf-poppler = ["dep:poppler-rs", "dep:poppler-sys-rs", "dep:glib", "dep:cairo-rs"]
+
+[[example]]
+name = "fixture"
+required-features = ["pdf-poppler"]
+
 [dependencies]
 anyhow = "1"
 blake3 = "1"
@@ -17,10 +28,11 @@ crossbeam-channel = "0.5"
 dirs = "6"
 log = "0.4"
 notify = "8"
-poppler-rs = "0.26"
-poppler-sys-rs = { version = "0.26", features = ["v25_6"] }
-glib = "0.22"
-cairo-rs = "0.22"
+# PDF engine on Linux (feature "pdf-poppler"); macOS uses PDFKit in Swift.
+poppler-rs = { version = "0.26", optional = true }
+poppler-sys-rs = { version = "0.26", features = ["v25_6"], optional = true }
+glib = { version = "0.22", optional = true }
+cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -45,5 +57,4 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"] }
 tempfile = "3"
