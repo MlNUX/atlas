@@ -611,7 +611,10 @@ mod tests {
         // Old files: no profiles, the old switches still apply.
         let old: Config = toml::from_str("[context]\ncalendar = false\n").unwrap();
         assert!(!old.context.calendar && old.context.profiles.is_empty());
-        assert_eq!((old.context.empty.as_str(), old.context.tab_labels.as_str(), old.context.by_kind), ("collapse", "auto", true));
+        assert_eq!(
+            (old.context.empty.as_str(), old.context.tab_labels.as_str(), old.context.by_kind),
+            ("collapse", "auto", true)
+        );
 
         let mut context = ContextConfig::default();
         context.profiles.insert(
@@ -630,7 +633,8 @@ mod tests {
         assert_eq!(back.context.profiles["pdf"].tabs, None);
 
         // Pages of tabs (from QML as JSON), stored as TOML tables.
-        let json = r#"{"tabs":["actions","page:x"],"pages":{"page:x":{"title":"Lesen","blocks":["outline","ext:bnki"]}}}"#;
+        let json =
+            r#"{"tabs":["actions","page:x"],"pages":{"page:x":{"title":"Lesen","blocks":["outline","ext:bnki"]}}}"#;
         let profile: ContextProfile = serde_json::from_str(json).unwrap();
         context.profiles.insert("markdown".into(), profile);
         let text = toml::to_string_pretty(&toml::Table::from_iter([(

@@ -10,6 +10,8 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+## [1.1.4] – 2026-11-04
+
 ### Hinzugefügt
 - **Ordneransicht: Markierungsrechteck** wie in Dolphin und im Explorer –
   mit gedrückter linker Maustaste auf freier Fläche ziehen wählt alle
@@ -21,6 +23,79 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 - **bnki-Karten 1.1**: Bilder auf Vorderseite, Rückseite und im Tipp –
   über „Bild…“, Strg+V oder Ziehen aufs Feld, mit Vorschau. Sie stehen
   verkleinert in den neuen CSV-Spalten `frontImage;backImage;hintImage`.
+- **Code-Highlighting in Markdown-Codeblöcken im Editor** wie in einer IDE,
+  jetzt für rund 300 Sprachen statt etwa 40 (u. a. LaTeX, Lua, Kotlin,
+  Swift, Julia, OCaml, F#, Prolog, Nix, Diff, Dockerfile, Makefile,
+  PowerShell, Assembler, VHDL/Verilog). Auch mit Angaben nach der Sprache
+  (` ```python title="a.py" `). Atlas bringt dafür eine erweiterte
+  Markdown-Definition für KSyntaxHighlighting mit
+  (`scripts/gen-markdown-syntax.py`).
+- **Anpassbare Kontextleiste** (Konzept: docs/concept/kontextleiste.html):
+  - Die Leiste besteht aus **Bausteinen** mit einheitlicher Kopfzeile:
+    Klick klappt ein und aus, das ⋯-Menü verschiebt (auch Alt+↑/↓),
+    zeigt einen Baustein als eigenen Reiter, heftet ihn unten an oder
+    blendet ihn aus (mit „Rückgängig“). Leere Bausteine klappen von selbst
+    zu (einstellbar: zeigen, einklappen, ausblenden).
+  - **„Leiste anpassen“** (Knopf in der Reiterzeile, Arbeitsleiste) schaltet
+    die Leiste in einen Bearbeitungsmodus: Reiter als Chips, Bausteine zum
+    Ziehen zwischen Übersicht und „Unten angeheftet“, Auge zum Ausblenden,
+    Galerie mit allen Bausteinen, Zurücksetzen.
+  - **Profile je Dateityp** (PDF, Markdown, Code, Kalender): Die Leiste
+    wechselt mit dem aktiven Tab. Solange ein Profil nicht eingestellt ist,
+    gilt „Allgemein“; „Gilt für“ im ⋯-Menü legt es an. Gespeichert in
+    `[context.profiles]` der eigenen config.toml, nur Abweichungen.
+  - **Neue Bausteine**: Gliederung (PDF-Lesezeichen mit aktuellem Abschnitt,
+    Überschriften der Notiz), Tags der Notiz, Dateiinfo, Diese Woche.
+    Erweiterungskarten sind jetzt Bausteine der Übersicht.
+  - Bei schmaler Leiste zeigen die Reiter Symbole statt seitwärts zu
+    scrollen (einstellbar: automatisch, Text, Symbole).
+  - **Jeder Reiter ist eine Seite aus Bausteinen**, wie die Übersicht:
+    „Aktionen“ besteht aus „Für diese Datei“ und „Eigene Aktionen“; jeder
+    Baustein lässt sich über „Verschieben nach …“ in einen anderen Reiter
+    legen. **Eigene Reiter** anlegen und benennen (Rechtsklick auf einen
+    Reiter, „Verschieben nach → Neuer Reiter …“ oder im
+    Bearbeitungsmodus, wo ein Klick auf einen Reiter-Chip dessen Seite
+    zum Bearbeiten wählt).
+  - Einstellungen → Kontextleiste zeigt die Profile mit „Anpassen …“ und das
+    Verhalten. Alte Einstellungen (`calendar = false` …) gelten weiter,
+    bis ein Profil gespeichert wird; dabei werden sie übernommen.
+- **Markdown-Tabellen im Editor ausgerichtet**: Spalten stehen im Text
+  untereinander, die Ausrichtung der Trennzeile (`:---:`, `---:`) wird
+  übernommen. Tab / Umschalt+Tab springen von Zelle zu Zelle (Tab in der
+  letzten Zelle fügt eine Zeile an), Enter am Zeilenende fügt eine Zeile
+  ein, Enter in einer leeren letzten Zeile beendet die Tabelle. Verlässt
+  die Schreibmarke eine Tabelle, wird sie ausgerichtet; „Tabellen
+  ausrichten“ in der Arbeitsleiste macht die ganze Notiz. Eingefügte
+  Tabellen kommen gleich ausgerichtet. Codeblöcke bleiben unberührt.
+
+### Geändert
+- **Intern aufgeräumt** (ohne sichtbare Änderung): Terminal,
+  Rechtschreibung und ILIAS sind eigene Crates (`atlas-terminal`,
+  `atlas-spell`, `atlas-ilias`); ILIAS, Rechtschreibung und
+  Formelerkennung eigene QML-Objekte; AppController, Kalender und
+  PDF-Ansicht nach Themen aufgeteilt; doppelte Hilfsfunktionen
+  zusammengelegt; `config.toml` wird nur neu gelesen, wenn sie sich
+  geändert hat; ILIAS liest Seiten wirklich parallel.
+
+### Behoben
+- **PDF beim Rauszoomen verschwommen**: Die Seite lag oft auf halben Pixeln
+  oder war einen Bruchteil größer als ihr gerendertes Bild und wurde dadurch
+  ein zweites Mal geglättet. Jetzt pixelgenau (bei 100 % Skalierung
+  gemessen identisch mit Poppler; bei 125/150 % noch nicht ganz).
+- **Markdown-Vorschau im geteilten Modus mit Pixelfehlern** (z. B. „i“ als
+  „:“): Bei halber Breite lag die Vorschau auf halben Pixeln, je nach
+  Grafiktreiber wurden Spalten doppelt gezeigt oder ausgelassen. Sie liegt
+  jetzt immer auf ganzen Pixeln.
+- **ILIAS: gespeicherte Anmeldung nach dem Neustart**: Zeigt die
+  ILIAS-Anmeldeseite neben dem Hochschul-Login auch ein eigenes
+  Passwortfeld, folgt das Anmeldefenster jetzt trotzdem der
+  Hochschul-Anmeldung und setzt die gespeicherten Daten dort ein. Das
+  ILIAS-Protokoll zeigt, ob das Passwort entschlüsselt wurde und was jede
+  Anmeldeseite enthält.
+
+## [1.1.3] – 2026-10-30
+
+### Hinzugefügt
 - **Helles Farbschema** für die ganze App: Hauptfenster, alle Dialoge und
   Menüs, Kalender, Kontextleiste und Graph, Suche, ILIAS-Anmeldung,
   Markdown-Vorschau (mit hellem Code-Highlighting und Diagrammen) und
@@ -139,50 +214,6 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   PDF-Hintergründen; Zoom mit Strg+Mausrad. Nur lesend: das Archiv wird
   einmal in `~/.cache/atlas/atlasnote` entpackt und die Seiten werden dort
   gerendert; die Datei selbst bleibt unverändert.
-- **Code-Highlighting in Markdown-Codeblöcken im Editor** wie in einer IDE,
-  jetzt für rund 300 Sprachen statt etwa 40 (u. a. LaTeX, Lua, Kotlin,
-  Swift, Julia, OCaml, F#, Prolog, Nix, Diff, Dockerfile, Makefile,
-  PowerShell, Assembler, VHDL/Verilog). Auch mit Angaben nach der Sprache
-  (` ```python title="a.py" `). Atlas bringt dafür eine erweiterte
-  Markdown-Definition für KSyntaxHighlighting mit
-  (`scripts/gen-markdown-syntax.py`).
-- **Anpassbare Kontextleiste** (Konzept: docs/concept/kontextleiste.html):
-  - Die Leiste besteht aus **Bausteinen** mit einheitlicher Kopfzeile:
-    Klick klappt ein und aus, das ⋯-Menü verschiebt (auch Alt+↑/↓),
-    zeigt einen Baustein als eigenen Reiter, heftet ihn unten an oder
-    blendet ihn aus (mit „Rückgängig“). Leere Bausteine klappen von selbst
-    zu (einstellbar: zeigen, einklappen, ausblenden).
-  - **„Leiste anpassen“** (Knopf in der Reiterzeile, Arbeitsleiste) schaltet
-    die Leiste in einen Bearbeitungsmodus: Reiter als Chips, Bausteine zum
-    Ziehen zwischen Übersicht und „Unten angeheftet“, Auge zum Ausblenden,
-    Galerie mit allen Bausteinen, Zurücksetzen.
-  - **Profile je Dateityp** (PDF, Markdown, Code, Kalender): Die Leiste
-    wechselt mit dem aktiven Tab. Solange ein Profil nicht eingestellt ist,
-    gilt „Allgemein“; „Gilt für“ im ⋯-Menü legt es an. Gespeichert in
-    `[context.profiles]` der eigenen config.toml, nur Abweichungen.
-  - **Neue Bausteine**: Gliederung (PDF-Lesezeichen mit aktuellem Abschnitt,
-    Überschriften der Notiz), Tags der Notiz, Dateiinfo, Diese Woche.
-    Erweiterungskarten sind jetzt Bausteine der Übersicht.
-  - Bei schmaler Leiste zeigen die Reiter Symbole statt seitwärts zu
-    scrollen (einstellbar: automatisch, Text, Symbole).
-  - **Jeder Reiter ist eine Seite aus Bausteinen**, wie die Übersicht:
-    „Aktionen“ besteht aus „Für diese Datei“ und „Eigene Aktionen“; jeder
-    Baustein lässt sich über „Verschieben nach …“ in einen anderen Reiter
-    legen. **Eigene Reiter** anlegen und benennen (Rechtsklick auf einen
-    Reiter, „Verschieben nach → Neuer Reiter …“ oder im
-    Bearbeitungsmodus, wo ein Klick auf einen Reiter-Chip dessen Seite
-    zum Bearbeiten wählt).
-  - Einstellungen → Kontextleiste zeigt die Profile mit „Anpassen …“ und das
-    Verhalten. Alte Einstellungen (`calendar = false` …) gelten weiter,
-    bis ein Profil gespeichert wird; dabei werden sie übernommen.
-- **Markdown-Tabellen im Editor ausgerichtet**: Spalten stehen im Text
-  untereinander, die Ausrichtung der Trennzeile (`:---:`, `---:`) wird
-  übernommen. Tab / Umschalt+Tab springen von Zelle zu Zelle (Tab in der
-  letzten Zelle fügt eine Zeile an), Enter am Zeilenende fügt eine Zeile
-  ein, Enter in einer leeren letzten Zeile beendet die Tabelle. Verlässt
-  die Schreibmarke eine Tabelle, wird sie ausgerichtet; „Tabellen
-  ausrichten“ in der Arbeitsleiste macht die ganze Notiz. Eingefügte
-  Tabellen kommen gleich ausgerichtet. Codeblöcke bleiben unberührt.
 
 ### Sicherheit
 - **Freigabe von Projekt-Erweiterungen gilt für den ganzen Ordner**, nicht
@@ -222,16 +253,6 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   - Das Formelmodell verlässt den Speicher nach 3 Minuten ohne Nutzung.
   - Der Notizindex überspringt Build- und Abhängigkeitsordner
     (`node_modules`, `target`, …) auch ohne `.gitignore`.
-
-### Behoben
-- **PDF beim Rauszoomen verschwommen**: Die Seite lag oft auf halben Pixeln
-  oder war einen Bruchteil größer als ihr gerendertes Bild und wurde dadurch
-  ein zweites Mal geglättet. Jetzt pixelgenau (bei 100 % Skalierung
-  gemessen identisch mit Poppler; bei 125/150 % noch nicht ganz).
-- **Markdown-Vorschau im geteilten Modus mit Pixelfehlern** (z. B. „i“ als
-  „:“): Bei halber Breite lag die Vorschau auf halben Pixeln, je nach
-  Grafiktreiber wurden Spalten doppelt gezeigt oder ausgelassen. Sie liegt
-  jetzt immer auf ganzen Pixeln.
 
 ## [1.1.2] – 2026-10-27
 
@@ -566,7 +587,9 @@ Erste öffentliche Version.
 - Nix-Flake mit Paket, App, Overlay und Entwicklungsumgebung.
 - PKGBUILD für das AUR (`atlas-workspace`).
 
-[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.2...HEAD
+[Unveröffentlicht]: https://github.com/MlNUX/atlas/compare/v1.1.4...HEAD
+[1.1.4]: https://github.com/MlNUX/atlas/compare/v1.1.3...v1.1.4
+[1.1.3]: https://github.com/MlNUX/atlas/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/MlNUX/atlas/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/MlNUX/atlas/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/MlNUX/atlas/compare/v1.0.0...v1.1.0

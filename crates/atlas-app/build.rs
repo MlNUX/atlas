@@ -163,9 +163,8 @@ fn style_resources() -> QResources {
 /// every definition at `:/org.kde.syntax-highlighting/syntax-addons/`.
 fn syntax_resources() -> QResources {
     println!("cargo::rerun-if-changed=syntax-addons");
-    QResources::new().resource(
-        QResource::new().prefix("/org.kde.syntax-highlighting").file("syntax-addons/atlas-markdown.xml"),
-    )
+    QResources::new()
+        .resource(QResource::new().prefix("/org.kde.syntax-highlighting").file("syntax-addons/atlas-markdown.xml"))
 }
 
 /// The Markdown preview page and its bundled libraries, served from
