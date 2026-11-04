@@ -36,6 +36,7 @@ TEST_RUNNER_ATLAS_CI_OUT="$out" xcodebuild \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$derived" \
   -resultBundlePath "$out/TerminalSpike.xcresult" \
+  -skipPackagePluginValidation -skipMacroValidation \
   test >"$out/xcodebuild.log" 2>&1 || rc=$?
 grep -E "Test Case .*(passed|failed)|Executed|\*\* " "$out/xcodebuild.log" || true
 if (( rc != 0 )); then
