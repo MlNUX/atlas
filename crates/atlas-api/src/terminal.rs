@@ -8,6 +8,18 @@
 use crate::actions::{EnvVar, Placement, Prepared};
 use crate::util::string;
 
+/// Atlas' terminal colours as `0xRRGGBB` (same as the Linux terminal).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct TerminalPalette {
+    pub foreground: u32,
+    pub background: u32,
+    pub cursor: u32,
+    pub selection: u32,
+    /// ANSI colours 0–15.
+    pub ansi: Vec<u32>,
+}
+
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
 pub struct Terminal {}
 
@@ -45,6 +57,18 @@ impl Terminal {
             confirm: false,
             destructive: false,
             placement: Placement::Panel,
+        }
+    }
+
+    /// The dark or light palette (`dark` follows the system appearance).
+    pub fn palette(&self, dark: bool) -> TerminalPalette {
+        let p = atlas_terminal::colors::hex_palette(!dark);
+        TerminalPalette {
+            foreground: p.foreground,
+            background: p.background,
+            cursor: p.cursor,
+            selection: p.selection,
+            ansi: p.ansi.to_vec(),
         }
     }
 

@@ -71,6 +71,31 @@ const LIGHT: Palette = Palette {
     ],
 };
 
+/// A palette as `0xRRGGBB` values, for terminals drawn elsewhere (SwiftTerm
+/// on macOS) so both systems show the same colours.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HexPalette {
+    pub foreground: u32,
+    pub background: u32,
+    pub cursor: u32,
+    pub selection: u32,
+    /// ANSI colours 0–15.
+    pub ansi: [u32; 16],
+}
+
+/// The dark or light Atlas palette.
+pub fn hex_palette(light: bool) -> HexPalette {
+    let p = if light { &LIGHT } else { &DARK };
+    let hex = |c: Rgb| (u32::from(c.r) << 16) | (u32::from(c.g) << 8) | u32::from(c.b);
+    HexPalette {
+        foreground: hex(p.foreground),
+        background: hex(p.background),
+        cursor: hex(p.cursor),
+        selection: hex(p.selection),
+        ansi: p.ansi.map(hex),
+    }
+}
+
 static LIGHT_DESIGN: AtomicBool = AtomicBool::new(false);
 
 /// Switches all terminals to the light (or dark) palette; they pick it up
