@@ -22,6 +22,7 @@ pub mod identity;
 pub mod latex_ocr;
 pub mod listing;
 pub mod markdown;
+pub mod markdown_edit;
 pub mod notes;
 pub mod paths;
 pub mod pdf;
