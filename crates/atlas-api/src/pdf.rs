@@ -8,8 +8,10 @@
 //! `pdf_items.rs`.
 //!
 //! Coordinates are PDF points, origin top left of the page as displayed
-//! (CropBox, after `/Rotate`), see `docs/data-format.md`; PDFKit converts
-//! with `y' = height − y` (`Features/PDF/Coordinates.swift`).
+//! (relative to the CropBox, after `/Rotate`), see `docs/data-format.md`.
+//! The conversion to PDFKit's page space is `PageGeometry` from spike P0.4
+//! (`docs/porting/spike-pdfkit.md`, later `Features/PDF/Coordinates.swift`);
+//! a plain `y' = height − y` is only right without CropBox offset and rotation.
 
 use crate::{Result, todo_task};
 
@@ -36,13 +38,12 @@ pub struct Rect {
     pub y1: f64,
 }
 
+/// A point of a freehand stroke (the file format stores `[x, y]`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct Point {
     pub x: f64,
     pub y: f64,
-    /// Pen pressure 0…1, −1 if unknown.
-    pub pressure: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]

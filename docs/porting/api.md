@@ -21,6 +21,9 @@ Stand 04.11.2026 · Aufgabe P2.1 · Code: `crates/atlas-api/src/*.rs` (Signature
    `Calendar::time_zone`, weil Ganztägiges und Ortszeit sonst verloren gehen. JSON bleibt
    nur, wo das Format nicht Atlas gehört: Sitzungs-Layout und Dokumentzustand (Dateiformat,
    E12), Kalender-Ansicht, Anfragen von Erweiterungs-Ansichten.
+   **Positionen in Texten sind UTF-16-Einheiten** (wie `NSString` und QML-Strings): Editor
+   (Spannen, Änderungen, Vervollständigung), Rechtschreibung, Suchtreffer. Die Kernmodule
+   aus P1.4/P1.5 rechnen schon so; Swift muss nichts umrechnen.
 3. **Ein Fehlertyp** `AtlasError` mit den Fällen `NotFound`, `Invalid`, `Conflict`,
    `Unavailable`, `Auth` und `Failed`, jeweils mit deutscher Meldung für die Oberfläche.
    Swift sieht ihn als `throws`.
@@ -62,8 +65,8 @@ Fehler: 15 657 Zeilen, rund 440 öffentliche Typen und Methoden.
 | `ocr.rs` | `LatexOcr`, `GrayImage`, `OcrStatus` | P2.6 | `formula_ocr.rs` |
 | `actions.rs` | `Actions`, `ActionInfo`, `Prepared`, `KeyBinding` | P2.7 | `app/actions.rs` |
 | `extensions.rs` | `Extensions`, `ExtensionInfo`, `ViewPage` … | P2.7 | `app/extensions.rs` |
-| `settings.rs` | `Settings`, `AppSettings`, `Context` (Kontextleiste), `Spelling` | P2.8 | `app/settings.rs`, `spelling.rs`, `ContextProfiles.qml` → P1.3 |
-| `editor.rs` | `Editor`, `Span`, `Edit`, `EditorKey`, `Completion`, `Symbol` | P2.8 | `app/editing.rs`, `TextEditor.qml` → P1.4, Hervorhebung → P1.5 |
+| `settings.rs` | `Settings`, `AppSettings`, `Context` (Kontextleiste mit `ContextTarget` „nur dieses Profil“/„alle“, Rückgängig über `ContextSnapshot`), `Spelling` | P2.8 | `app/settings.rs`, `spelling.rs`, `ContextProfiles.qml` → P1.3 |
+| `editor.rs` | `Editor`, `Highlighter` (inkrementell), `Span`/`HighlightKind`, `Edit` (`anchor`/`cursor`), `CompletionContext`/`Completion` (Wiki-Links und Tags), `Symbol` | P2.8 | `app/editing.rs`, `TextEditor.qml` → P1.4, Hervorhebung → P1.5 |
 | `terminal.rs` | `Terminal` (Shell starten, Arbeitsverzeichnis) | P2.2 | `terminal_item.rs`; das Raster entfällt (SwiftTerm, P0.5) |
 | `ilias.rs` | `Ilias`, `IliasConfig`, `Cookie`, `IliasItem` | P2.10 | `ilias_backend.rs`, `IliasService.qml` |
 | `events.rs` | `EventSink`, `Event`, `Level` | P2.1 (Integrator) | Qt-Signale aller Brücken |
@@ -94,6 +97,28 @@ Fehler: 15 657 Zeilen, rund 440 öffentliche Typen und Methoden.
   Projekt-Innenleben an (Index, Writer, Watcher, Sink), die anderen Bereiche bekommen
   es über `Project`.
 
+## Eingearbeitet nach dem Gegenlesen (LLM2, #68)
+
+1. UTF-16 statt UTF-8-Bytes für alle Textpositionen (Grundsatz 2).
+2. `Editor` an P1.4 angeglichen: `continue_list`, `indent_list_items`, `table_tab`,
+   `table_enter`, `align_table_at` (Cursor bleibt in der Zelle), `align_tables`,
+   `format_table` und `toggle_task`. `EditorKey::Pipe` ist gestrichen, `Edit` hat
+   `anchor`/`cursor`.
+3. Vervollständigung: `completion_at` → `completions` → `accept_completion`, für Wiki-Links
+   *und* Tags. Das `]]`-Schließen und die Cursorposition übernimmt der Kern.
+4. `Context` vollständig gegenüber `ContextProfiles.qml`: `ContextTarget::All` („Gilt für
+   alle Dateitypen“), `set_hidden`, `unplace`, `rename_page`, `remove_tab`, `is_set`,
+   `snapshot`/`restore`. Die Erweiterungs-Karten holt `Context` selbst vom Projekt;
+   `move_by` richtet sich nach der sichtbaren Reihenfolge.
+5. Inkrementelle Hervorhebung über `Editor::highlighter(language)`; `Span::kind` ist ein
+   Enum. Sprachen sind syntect-Namen und für die Oberfläche opak.
+6. `pdf.rs` verweist für die Umrechnung auf `PageGeometry` (P0.4). `docs/data-format.md`
+   ist korrigiert (#65).
+7. `Point` ohne Druck, weil das Dateiformat nur `[x, y]` speichert.
+8. Google-Anmeldung: `google_sign_in` (URL) und `async google_sign_in_finished`,
+   abbrechbar.
+9. Terminal-Palette (`Terminal::palette`) und `async Files::read_text` sind im
+   P2.2-Branch, UTF-16-Bereiche der Suchtreffer im P2.4-Branch, um Konflikte zu vermeiden.
 ## Änderungen am Vertrag
 
 | Aufgabe | Änderung | Grund |

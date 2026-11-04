@@ -2,59 +2,94 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Editor logic for the Markdown and code editors (NSTextView on macOS):
-//! syntax highlighting (P1.5, `syntect`), list and table editing (P1.4),
-//! wiki-link completion, symbols, Markdown preview HTML, external editor.
-//! The UI only draws and forwards keys. Template: `app/editing.rs`,
-//! `TextEditor.qml`, `text_document.rs`.
+//! syntax highlighting (P1.5, `atlas_core::highlight`), list, table and
+//! task editing and completion (P1.4, `atlas_core::markdown_edit`),
+//! symbols, Markdown preview HTML, external editor. The UI only draws,
+//! decides *when* a key applies (read-only, Markdown mode) and applies the
+//! returned [`Edit`]s. Template: `app/editing.rs`, `TextEditor.qml`,
+//! `text_document.rs`.
 //!
-//! Offsets are UTF-8 byte offsets into the text passed in; the UI converts
-//! to UTF-16 for NSTextView.
+//! All positions are UTF-16 code units (like `NSString` and QML strings).
+
+use std::sync::Arc;
 
 use crate::{Result, todo_task};
 
-/// A coloured span (highlighting).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Kind of a highlighted span (`atlas_core::highlight::Kind`); colours are the UI's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Enum))]
+pub enum HighlightKind {
+    Comment,
+    String,
+    Escape,
+    Number,
+    Constant,
+    Keyword,
+    Operator,
+    Function,
+    Type,
+    Variable,
+    Tag,
+    Attribute,
+    Punctuation,
+    Heading,
+    Emphasis,
+    Strong,
+    Link,
+    Code,
+    Quote,
+    List,
+    Math,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct Span {
     pub start: u32,
     pub end: u32,
-    /// Style name from the Atlas palette (`keyword`, `string`, `comment`,
-    /// `heading`, `emphasis`, `link`, `code`, …); colours are the UI's.
-    pub style: String,
+    pub kind: HighlightKind,
 }
 
-/// A change the editor applies: replace `[start, end)` with `text`, then
-/// put the cursor (and selection) at `cursor_start..cursor_end`.
+/// A change to apply: replace `[start, end)` with `text`, then select from
+/// `anchor` to `cursor` (the direction of the selection matters). Common
+/// start and end are left out, so undo stays fine-grained.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct Edit {
     pub start: u32,
     pub end: u32,
     pub text: String,
-    pub cursor_start: u32,
-    pub cursor_end: u32,
+    pub anchor: u32,
+    pub cursor: u32,
 }
 
-/// Keys the core handles in Markdown (everything else is the editor's).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Enum))]
-pub enum EditorKey {
-    /// Return: continue lists and tables.
-    Enter,
-    /// Tab / Shift-Tab: indent list items, next/previous table cell.
-    Tab,
-    BackTab,
-    /// Typing `|`: align the table.
-    Pipe,
+pub enum CompletionKind {
+    /// `[[Notiz…` → note names (quick open).
+    WikiLink,
+    /// `#wi…` → the project's tags by frequency.
+    Tag,
+}
+
+/// What is being completed at the cursor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct CompletionContext {
+    pub kind: CompletionKind,
+    /// The text typed so far (after `[[` or `#`).
+    pub typed: String,
+    /// Where the typed text starts.
+    pub start: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct Completion {
-    /// Text to insert in place of the typed prefix.
-    pub insert: String,
+    /// Note: project-relative path; tag: the tag as written.
+    pub value: String,
     pub label: String,
-    /// Project-relative path for display.
+    /// Project-relative path or the tag's count, for display.
     pub detail: String,
 }
 
@@ -76,42 +111,123 @@ pub struct ExternalEditor {
     pub in_terminal: bool,
 }
 
+/// Incremental highlighting of one document (`atlas_core::highlight::Session`):
+/// remembers the parser state per line, so a keystroke re-highlights from
+/// the changed line on (also across Markdown code blocks).
+#[cfg_attr(feature = "ffi", derive(uniffi::Object))]
+pub struct Highlighter {}
+
+#[cfg_attr(feature = "ffi", uniffi::export)]
+impl Highlighter {
+    /// The language is known (otherwise everything is plain text).
+    pub fn known(&self) -> bool {
+        todo_task!("P2.8")
+    }
+
+    /// Spans of the whole `text` after a change.
+    pub fn update(&self, text: String) -> Vec<Span> {
+        let _ = text;
+        todo_task!("P2.8")
+    }
+}
+
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
 pub struct Editor {}
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 impl Editor {
-    /// Language id for a file (`markdown`, `rust`, `python`, `matlab`,
-    /// `latex`, …), `None` for plain text.
+    /// Language of a file (syntect name like `Rust`, `MATLAB`; opaque for
+    /// the UI, passed back to [`Editor::highlighter`]), `None`: plain text.
     pub fn language(&self, path: String) -> Option<String> {
         let _ = path;
         todo_task!("P2.8")
     }
 
-    /// Highlighting of `text` in `language` (Markdown includes its code blocks).
-    pub fn highlight(&self, text: String, language: String) -> Vec<Span> {
-        let _ = (text, language);
+    /// Language of a code block's info string (```` ```py ````).
+    pub fn language_for_fence(&self, info: String) -> Option<String> {
+        let _ = info;
         todo_task!("P2.8")
     }
 
-    /// The core's reaction to `key` at the selection, `None`: let the editor
-    /// handle it.
-    pub fn key(&self, text: String, key: EditorKey, selection_start: u32, selection_end: u32) -> Option<Edit> {
-        let _ = (text, key, selection_start, selection_end);
+    pub fn highlighter(&self, language: String) -> Arc<Highlighter> {
+        let _ = language;
         todo_task!("P2.8")
     }
 
-    /// Aligns the Markdown table around `offset`.
-    pub fn align_table(&self, text: String, offset: u32) -> Option<Edit> {
-        let _ = (text, offset);
+    // --- Markdown editing (P1.4); `None`: let the editor handle the key ---
+
+    /// Return in a list: continue it (or end it on an empty item).
+    pub fn continue_list(&self, text: String, position: u32) -> Option<Edit> {
+        let _ = (text, position);
         todo_task!("P2.8")
     }
 
-    /// Completions for the `[[…` before `offset`.
-    pub fn complete_wiki_link(&self, text: String, offset: u32, limit: u32) -> Vec<Completion> {
-        let _ = (text, offset, limit);
+    /// Tab / Shift-Tab on list items (all lines of the selection).
+    pub fn indent_list_items(&self, text: String, anchor: u32, cursor: u32, outdent: bool) -> Option<Edit> {
+        let _ = (text, anchor, cursor, outdent);
         todo_task!("P2.8")
     }
+
+    /// Tab / Shift-Tab in a table: next / previous cell (aligns the table).
+    pub fn table_tab(&self, text: String, position: u32, back: bool) -> Option<Edit> {
+        let _ = (text, position, back);
+        todo_task!("P2.8")
+    }
+
+    /// Return in a table: new row below.
+    pub fn table_enter(&self, text: String, position: u32) -> Option<Edit> {
+        let _ = (text, position);
+        todo_task!("P2.8")
+    }
+
+    /// Aligns the table at `position` (when the cursor leaves it), keeping
+    /// `cursor` in its cell.
+    pub fn align_table_at(&self, text: String, position: u32, cursor: u32) -> Option<Edit> {
+        let _ = (text, position, cursor);
+        todo_task!("P2.8")
+    }
+
+    /// Aligns all tables (menu „Tabellen ausrichten“); apply in order.
+    pub fn align_tables(&self, text: String, cursor: u32) -> Vec<Edit> {
+        let _ = (text, cursor);
+        todo_task!("P2.8")
+    }
+
+    /// An aligned table as text (inserting a table).
+    pub fn format_table(&self, markdown: String) -> String {
+        let _ = markdown;
+        todo_task!("P2.8")
+    }
+
+    /// Checks or unchecks the task on `line` (1-based; checkbox in the preview).
+    pub fn toggle_task(&self, text: String, line: u32, done: bool) -> Option<Edit> {
+        let _ = (text, line, done);
+        todo_task!("P2.8")
+    }
+
+    // --- completion (P1.4) ---
+
+    /// What is being completed at `position`, `None` if nothing.
+    pub fn completion_at(&self, text: String, position: u32) -> Option<CompletionContext> {
+        let _ = (text, position);
+        todo_task!("P2.8")
+    }
+
+    /// Candidates: notes (quick open) for wiki links, the project's tags by
+    /// frequency for `#`.
+    pub fn completions(&self, context: CompletionContext, limit: u32) -> Vec<Completion> {
+        let _ = (context, limit);
+        todo_task!("P2.8")
+    }
+
+    /// Inserts `item` for the typed text up to `end` (closes `]]` unless
+    /// already there; cursor after it).
+    pub fn accept_completion(&self, text: String, context: CompletionContext, end: u32, item: Completion) -> Edit {
+        let _ = (text, context, end, item);
+        todo_task!("P2.8")
+    }
+
+    // --- other ---
 
     pub fn symbols(&self, path: String, text: String) -> Vec<Symbol> {
         let _ = (path, text);
@@ -141,7 +257,7 @@ impl Editor {
     }
 
     /// Opens `path` at `line` in the external editor (outside a terminal);
-    /// with `in_terminal` the UI runs [`crate::actions::Prepared`] itself.
+    /// with `in_terminal` the UI runs the returned command itself.
     pub fn open_in_external_editor(&self, path: String, line: u32) -> Result<Option<crate::actions::Prepared>> {
         let _ = (path, line);
         todo_task!("P2.8")
