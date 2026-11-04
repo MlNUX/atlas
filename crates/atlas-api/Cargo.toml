@@ -29,8 +29,11 @@ log = "0.4"
 libc = "0.2"
 ignore = "0.4"
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
 uniffi = { version = "0.32", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+atlas-ilias = { path = "../atlas-ilias" }
 serde_json = "1"
+atlas-core = { path = "../atlas-core", default-features = false }

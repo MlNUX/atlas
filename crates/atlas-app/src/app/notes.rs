@@ -353,44 +353,24 @@ impl qobject::AppController {
         let query = query.to_string();
         let query = query.trim();
         let store = atlas_core::annotations::Store::new(self.annotations_dir.to_string());
-        let mut found: Vec<(i32, serde_json::Value)> = Vec::new();
-        for (_, file) in store.all() {
-            let key = &file.document.path;
-            let path = if Path::new(key).is_absolute() {
-                PathBuf::from(key)
-            } else {
-                self.root.as_ref().map(|r| r.join(key)).unwrap_or_else(|| PathBuf::from(key))
-            };
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            let mut groups = std::collections::HashSet::new();
-            for a in &file.annotations {
-                // One entry per multi-page markup.
-                if !a.group.is_empty() && !groups.insert(a.group.clone()) {
-                    continue;
-                }
-                let haystack = format!("{} {} {} {name}", a.text, a.comment, a.title);
-                let score = if query.is_empty() { 0 } else { finder::score(query, &haystack).unwrap_or(-1) };
-                if score < 0 {
-                    continue;
-                }
-                found.push((
-                    score,
+        let found: Vec<serde_json::Value> =
+            atlas_core::annotations::search(&store, self.root.as_deref(), query, limit.max(1) as usize)
+                .into_iter()
+                .map(|h| {
+                    let a = h.annotation;
                     serde_json::json!({
-                        "path": path.to_string_lossy(),
-                        "relative": key,
+                        "path": h.path.to_string_lossy(),
+                        "relative": h.key,
                         "page": a.page,
                         "id": a.id,
                         "kind": a.kind,
                         "text": a.text,
                         "comment": a.comment,
                         "title": a.title,
-                    }),
-                ));
-            }
-        }
-        found.sort_by_key(|f| std::cmp::Reverse(f.0));
-        found.truncate(limit.max(1) as usize);
-        qs(serde_json::Value::from(found.into_iter().map(|f| f.1).collect::<Vec<_>>()).to_string())
+                    })
+                })
+                .collect();
+        qs(serde_json::Value::from(found).to_string())
     }
 
     pub fn pdf_area_to_note(&self, pdf: &QString, page: i32, area: &QString, note: &QString) -> QString {
