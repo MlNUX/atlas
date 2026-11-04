@@ -142,3 +142,5 @@ Fehler: 15 657 Zeilen, rund 440 öffentliche Typen und Methoden.
 mitgelieferte Dateien. P3.3 nimmt deshalb `NSSpellChecker`, solange
 `Spelling::available()` `false` ist; das eigene Wörterbuch (`dictionary.txt`) bleibt
 gemeinsam.
+| P2.10 | `Ilias::set_session(cookies, user_agent)` statt `set_cookies`; `Cookie` nur `name`/`value`/`domain` | der Kern sendet die Cookies passend zum Host (wie Linux mit dem Web-Profil); WKWebView liefert sie über `WKHTTPCookieStore` |
+| P2.10 | `scan` → `IliasIndex` (mit Zeitpunkt), `last_index` → `Option<IliasIndex>`, `download(…, download: Option<String>, …)`, neu `logout` | wie der gespeicherte Index unter Linux (`index.json`) |
