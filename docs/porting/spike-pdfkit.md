@@ -14,7 +14,7 @@ Stand 04.11.2026 · Aufgabe #16 · Code in `spikes/pdfkit/`, CI `.github/workflo
 verlustfrei hin- und herrechnen.**
 
 - Gespeicherte Atlas-Anmerkungen (Linux, poppler) erscheinen in PDFKit an derselben Stelle
-  (siehe [Gezeichnete Markierungen](#gezeichnete-markierungen-macos-gegen-linux)).
+  – entlang der Zeile auf ±0,5 pt, PDFKit rückt Highlights nur quer etwas ein (siehe [Gezeichnete Markierungen](#gezeichnete-markierungen-macos-gegen-linux)).
   Das gilt auch für die beiden Fälle, die schiefgehen können: eine CropBox, die nicht bei
   (0, 0) beginnt, und `/Rotate 90`.
 - Eine Textauswahl in PDFKit ergibt dieselben Atlas-Rechtecke, die poppler unter Linux
@@ -86,10 +86,40 @@ ist auf S. 3 die y-Achse.
 
 ### Gezeichnete Markierungen: macOS gegen Linux
 
-RENDER_TABLE
+Ausdehnung der Markierungsfarbe in den gerenderten Seiten (2 px je Punkt), auf beiden Bildern
+mit demselben Verfahren gemessen (`MeasuredExtent`), in Punkten. Linux: poppler/cairo mit dem
+Overlay wie `PdfViewer.qml`; macOS: `PDFPage.draw(with:to:)` mit den umgerechneten
+`PDFAnnotation`s. Grenze im Test: 1,5 pt je Kante.
 
-Vergleichsbilder (Linux | macOS | Überlagerung) liegen im CI-Artefakt `mac-P0.4`
-(`compare-page-*.png`), ebenso ein Bildschirmfoto der App (`app-window.png`).
+| S. | Text | gespeichert (Atlas) | Linux gemessen | macOS gemessen | max. Abweichung |
+|---|---|---|---|---|---|
+| 1 | alpha | 291.42, 139.95, 34.24, 12.95 | 291.0, 140.0, 35.0 × 13.0 | 291.5, 141.0, 34.5 × 11.0 | 1,0 pt |
+| 1 | charlie delta | 436.97, 165.95, 75.47, 12.95 | 437.0, 166.0, 75.5 × 13.0 | 437.0, 167.5, 75.5 × 10.5 | 1,5 pt |
+| 2 | alpha | 273.42, 113.95, 34.24, 12.95 | 273.0, 114.0, 35.0 × 13.0 | 273.5, 115.0, 34.5 × 11.0 | 1,0 pt |
+| 2 | charlie delta | 418.97, 139.95, 75.47, 12.95 | 419.0, 140.0, 75.5 × 13.0 | 419.0, 141.0, 75.5 × 10.5 | 1,5 pt |
+| 3 | alpha | 688.99, 291.42, 12.95, 34.24 | 689.0, 291.0, 13.0 × 35.0 | 690.0, 291.5, 11.0 × 34.5 | 1,0 pt |
+| 3 | charlie delta | 662.99, 436.97, 12.95, 75.47 | 663.0, 437.0, 13.0 × 75.5 | 664.0, 437.0, 10.5 × 75.5 | 1,5 pt |
+
+Entlang der Zeile liegen beide Bilder auf ±0,5 pt (eine Pixelreihe) übereinander. Quer dazu
+zeichnet PDFKit Highlights rund 1 pt oben und unten **eingerückt** (Höhe 10,5–11 statt 13 pt):
+Das ist PDFKits eigene Highlight-Darstellung, nicht die Lage – die Mitte ist identisch. Die
+1,5 pt liegen genau an der Testgrenze; stören wird das niemanden, aber wer in P3.2 die
+Linux-Optik exakt will, zeichnet Highlights selbst (`PDFAnnotation`-Unterklasse mit
+`draw(with:in:)`) statt PDFKits Standardaussehen zu nehmen.
+
+Unterstreichen, Durchstreichen, Freihand und Notizen liegen in den Vergleichsbildern
+sichtbar deckungsgleich (nicht gemessen; Notizen zeichnet PDFKit als Sprechblase statt als
+Quadrat).
+
+Vergleichsbilder (Linux | macOS | Überlagerung, macOS mit Linux zu 50 % darüber):
+
+![Seite 1](spike-pdfkit/compare-page-1.jpg)
+![Seite 2 – CropBox](spike-pdfkit/compare-page-2.jpg)
+![Seite 3 – Rotate 90](spike-pdfkit/compare-page-3.jpg)
+
+Die App auf dem CI-Runner (`PDFView`, Seiten nebeneinander):
+
+![App-Fenster](spike-pdfkit/app-window.jpg)
 
 ## Befunde für andere Aufgaben
 
@@ -110,7 +140,10 @@ Vergleichsbilder (Linux | macOS | Überlagerung) liegen im CI-Artefakt `mac-P0.4
 4. **Rendern einer Seite:** `PDFPage.draw(with:to:)` wendet CropBox und `/Rotate` selbst an.
    Wer zusätzlich `transform(for:)` anwendet, verschiebt bzw. dreht doppelt (erster CI-Lauf).
    Wichtig für P3.2 (Bereich als Bild, Export, Miniaturen).
-5. **Farben:** PDFKit zeichnet Highlights mit eigener Mischung; mit Farbe × 0,38 wie unter Linux
+5. **CI-Artefakte:** Der Upload der Artefakte lief einmal in einen Timeout (`CreateArtifact`),
+   obwohl die Tests grün waren; der Job ist dann rot. Bilder stehen zusätzlich im Log
+   (`ci-screenshots.sh`), die wichtigen liegen hier im Repo.
+6. **Farben:** PDFKit zeichnet Highlights mit eigener Mischung; mit Farbe × 0,38 wie unter Linux
    wirkt Gelb auf dem Mac etwas kräftiger, Grün blasser. Feinabstimmung in P3.2/P4.5.
 
 ## Für P3.2 übernehmen
