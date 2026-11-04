@@ -49,9 +49,10 @@ struct Bitmap: Sendable {
     }
 
     /// Coloured (not white/grey/black): highlights are, text is not.
+    /// 12 catches the pale green PDFKit draws and still ignores antialiased text.
     func isTinted(_ x: Int, _ y: Int) -> Bool {
         let c = rgb(x, y)
-        return max(c.r, c.g, c.b) - min(c.r, c.g, c.b) >= 25
+        return max(c.r, c.g, c.b) - min(c.r, c.g, c.b) >= 12
     }
 
     var cgImage: CGImage {
@@ -87,8 +88,8 @@ enum PageRenderer {
             ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
             ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
             ctx.scaleBy(x: scale, y: scale)
-            // Page space -> displayed box (crop box origin, rotation applied).
-            ctx.concatenate(page.transform(for: .cropBox))
+            // draw(with:to:) applies crop box origin and /Rotate itself;
+            // concatenating page.transform(for:) as well would apply them twice.
             page.draw(with: .cropBox, to: ctx)
         }
         return Bitmap(width: w, height: h, pixels: data)
