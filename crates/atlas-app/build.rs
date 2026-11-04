@@ -78,6 +78,7 @@ const RUST_BRIDGES: &[&str] = &[
     "src/folder_model.rs",
     "src/formula_ocr.rs",
     "src/ilias_backend.rs",
+    "src/markdown_edit.rs",
     "src/pdf_items.rs",
     "src/qt_helpers.rs",
     "src/search_model.rs",
