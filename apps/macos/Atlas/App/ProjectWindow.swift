@@ -1,0 +1,123 @@
+// SPDX-FileCopyrightText: 2026 Minux
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import AtlasKit
+import SwiftUI
+
+/// The window of one project: sidebar | editor area | context bar (inspector).
+struct ProjectWindow: View {
+    @Bindable var project: ProjectModel
+
+    var body: some View {
+        NavigationSplitView {
+            FilesSidebar(project: project)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 260)
+        } detail: {
+            EditorAreaView(project: project)
+        }
+        .inspector(isPresented: $project.inspectorVisible) {
+            ContextBar(project: project)
+                .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
+        }
+        .toolbar {
+            ToolbarItem(placement: .status) {
+                if !project.indexReady {
+                    ProgressView().controlSize(.small).help(project.indexText)
+                }
+            }
+            ToolbarItem {
+                Button("Schnell öffnen", systemImage: "magnifyingglass") { project.quickOpenVisible = true }
+                    .help("Datei schnell öffnen (⌘P)")
+            }
+            ToolbarItem {
+                Button("Kontextleiste", systemImage: "sidebar.trailing") { project.inspectorVisible.toggle() }
+            }
+        }
+        .sheet(isPresented: $project.quickOpenVisible) {
+            QuickOpenView(project: project)
+        }
+        .onDisappear { project.close() }
+    }
+}
+
+/// Splits with their tab bars.
+struct EditorAreaView: View {
+    let project: ProjectModel
+
+    var body: some View {
+        let editor = project.editor
+        Group {
+            if editor.orientation == .horizontal {
+                HSplitView { groups(editor) }
+            } else {
+                VSplitView { groups(editor) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func groups(_ editor: EditorAreaModel) -> some View {
+        ForEach(Array(editor.groups.enumerated()), id: \.element.id) { index, group in
+            EditorGroupView(project: project, index: index, group: group, active: index == editor.active)
+                .frame(minWidth: 240, minHeight: 160)
+        }
+    }
+}
+
+struct EditorGroupView: View {
+    let project: ProjectModel
+    let index: Int
+    let group: EditorGroup
+    let active: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TabStrip(project: project, index: index, group: group, active: active)
+            Divider()
+            if group.tabs.indices.contains(group.current) {
+                FeatureRouter.view(for: group.tabs[group.current], project: project)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView("Keine Datei geöffnet", systemImage: "doc",
+                                       description: Text("Datei in der Seitenleiste wählen oder ⌘P drücken"))
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { project.editor.activate(group: index) }
+    }
+}
+
+struct TabStrip: View {
+    let project: ProjectModel
+    let index: Int
+    let group: EditorGroup
+    let active: Bool
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(Array(group.tabs.enumerated()), id: \.element.id) { i, tab in
+                    let selected = i == group.current
+                    HStack(spacing: 4) {
+                        Text(FeatureRouter.title(for: tab))
+                            .lineLimit(1)
+                        Button {
+                            project.editor.close(group: index, tab: i)
+                        } label: {
+                            Image(systemName: "xmark").font(.caption2)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Tab schließen")
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(selected ? AnyShapeStyle(active ? .tint.opacity(0.18) : .secondary.opacity(0.15)) : AnyShapeStyle(.clear),
+                                in: .rect(cornerRadius: 6))
+                    .onTapGesture { project.editor.select(group: index, tab: i) }
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+        }
+    }
+}

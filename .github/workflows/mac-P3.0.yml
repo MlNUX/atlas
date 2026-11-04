@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P3.0 (macOS port): the app skeleton – build, unit tests, launch on a
+# sample project, screenshots in the log (apps/macos/scripts/ci-screenshots.sh).
+name: mac-P3.0
+
+on:
+  push:
+    branches: ["port/macos/P3.0-*"]
+    paths:
+      - ".github/workflows/mac-P3.0.yml"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-ffi/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P3.0-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: apps/macos/scripts/ci-app.sh
+      artifact-name: mac-P3.0
+      cache-key: P3.0

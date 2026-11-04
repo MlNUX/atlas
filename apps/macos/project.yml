@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The macOS app (P3.0). The Xcode project is generated from this file
+# (`xcodegen generate` in apps/macos; done by apps/macos/scripts/ci-app.sh)
+# and not checked in: new Swift files in a folder are picked up without
+# touching a project file, so feature tasks never conflict on it.
+name: Atlas
+options:
+  bundleIdPrefix: de.minux
+  deploymentTarget:
+    macOS: "26.0"
+  developmentLanguage: de
+settings:
+  base:
+    ARCHS: arm64
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Ad hoc signing until the Apple Developer account exists (E5).
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: "1.1.5"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+packages:
+  AtlasKit:
+    path: AtlasKit
+targets:
+  Atlas:
+    type: application
+    platform: macOS
+    sources: [Atlas]
+    dependencies:
+      - package: AtlasKit
+        product: AtlasKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas
+        PRODUCT_NAME: Atlas
+        INFOPLIST_KEY_CFBundleDisplayName: Atlas
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Minux · GPL-3.0-or-later"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  AtlasTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [AtlasTests]
+    dependencies:
+      - target: Atlas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Atlas.app/Contents/MacOS/Atlas"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  Atlas:
+    build:
+      targets:
+        Atlas: all
+        AtlasTests: [test]
+    test:
+      targets: [AtlasTests]
