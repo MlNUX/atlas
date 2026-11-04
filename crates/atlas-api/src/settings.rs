@@ -140,6 +140,29 @@ pub enum ContextArea {
     },
 }
 
+/// Which profiles an edit changes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Enum))]
+pub enum ContextTarget {
+    /// Only this profile (the first change of a profile also saves
+    /// „Allgemein“, as on Linux: `context_profiles::commit`).
+    Profile { name: String },
+    /// „Gilt für alle Dateitypen“: `default` and every profile of its own,
+    /// so no profile hides the change.
+    All,
+}
+
+/// Opaque copy of all profiles, for undo after hiding or removing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct ContextSnapshot {
+    pub data: String,
+}
+
+/// The context bar of a project (P1.3, `atlas_core::context_profiles`).
+/// Layouts include the cards of active extensions (`ext:…`), which this
+/// object takes from the project itself. Moving by places follows the
+/// *visible* order (cards missing from the stored list included).
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
 pub struct Context {}
 
@@ -151,6 +174,12 @@ impl Context {
 
     /// Profile names (`default`, `pdf`, `markdown`, `code`, `calendar`).
     pub fn profiles(&self) -> Vec<String> {
+        todo_task!("P2.8")
+    }
+
+    /// The profile has settings of its own (else it shows „wie Allgemein“).
+    pub fn is_set(&self, profile: String) -> bool {
+        let _ = profile;
         todo_task!("P2.8")
     }
 
@@ -166,37 +195,63 @@ impl Context {
     }
 
     /// Edit mode: moves `block` from one area to another (at the end).
-    pub fn move_block(
-        &self,
-        profile: String,
-        block: String,
-        from: ContextArea,
-        to: ContextArea,
-    ) -> Result<ContextLayout> {
-        let _ = (profile, block, from, to);
+    pub fn move_block(&self, target: ContextTarget, block: String, from: ContextArea, to: ContextArea) -> Result<()> {
+        let _ = (target, block, from, to);
         todo_task!("P2.8")
     }
 
-    /// Moves `block` within its area by `delta` places.
-    pub fn move_by(&self, profile: String, area: ContextArea, block: String, delta: i64) -> Result<ContextLayout> {
-        let _ = (profile, area, block, delta);
+    /// Moves `block` within its area by `delta` visible places.
+    pub fn move_by(&self, target: ContextTarget, area: ContextArea, block: String, delta: i64) -> Result<()> {
+        let _ = (target, area, block, delta);
+        todo_task!("P2.8")
+    }
+
+    /// Hides or shows a block (it keeps its place).
+    pub fn set_hidden(&self, target: ContextTarget, block: String, hidden: bool) -> Result<()> {
+        let _ = (target, block, hidden);
+        todo_task!("P2.8")
+    }
+
+    /// Takes a block out of every area („ganz herausnehmen“).
+    pub fn unplace(&self, target: ContextTarget, block: String) -> Result<()> {
+        let _ = (target, block);
+        todo_task!("P2.8")
+    }
+
+    pub fn set_collapsed(&self, target: ContextTarget, block: String, collapsed: bool) -> Result<()> {
+        let _ = (target, block, collapsed);
         todo_task!("P2.8")
     }
 
     /// New page of one's own with `title`; returns its id.
-    pub fn new_page(&self, profile: String, title: String) -> Result<String> {
-        let _ = (profile, title);
+    pub fn new_page(&self, target: ContextTarget, title: String) -> Result<String> {
+        let _ = (target, title);
         todo_task!("P2.8")
     }
 
-    pub fn set_collapsed(&self, profile: String, block: String, collapsed: bool) -> Result<()> {
-        let _ = (profile, block, collapsed);
+    pub fn rename_page(&self, target: ContextTarget, id: String, title: String) -> Result<()> {
+        let _ = (target, id, title);
+        todo_task!("P2.8")
+    }
+
+    /// Removes a tab; a page of one's own goes with it.
+    pub fn remove_tab(&self, target: ContextTarget, id: String) -> Result<()> {
+        let _ = (target, id);
         todo_task!("P2.8")
     }
 
     /// Back to the suggestion for this profile.
-    pub fn reset(&self, profile: String) -> Result<ContextLayout> {
+    pub fn reset(&self, profile: String) -> Result<()> {
         let _ = profile;
+        todo_task!("P2.8")
+    }
+
+    pub fn snapshot(&self) -> ContextSnapshot {
+        todo_task!("P2.8")
+    }
+
+    pub fn restore(&self, snapshot: ContextSnapshot) -> Result<()> {
+        let _ = snapshot;
         todo_task!("P2.8")
     }
 }
@@ -206,7 +261,7 @@ impl Context {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct Misspelling {
-    /// Byte offsets in the checked text.
+    /// UTF-16 positions in the checked text.
     pub start: u32,
     pub end: u32,
     pub word: String,

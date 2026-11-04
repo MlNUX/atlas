@@ -335,10 +335,21 @@ impl Calendar {
         todo_task!("P2.5")
     }
 
-    /// Starts the Google OAuth flow; returns the URL to open in the browser.
-    /// The redirect is caught on localhost; completion: `Event::SyncChanged`.
+    /// Starts the Google OAuth flow: returns the URL to open in the browser
+    /// at once; the redirect is caught on localhost. Wait for it with
+    /// [`Calendar::google_sign_in_finished`].
     pub fn google_sign_in(&self, client_id: String, client_secret: String) -> Result<String> {
         let _ = (client_id, client_secret);
+        todo_task!("P2.5")
+    }
+
+    /// Ends when the browser came back (or after the timeout); `Ok` when
+    /// signed in. Cancel with [`Calendar::cancel_google_sign_in`].
+    pub async fn google_sign_in_finished(&self) -> Result<()> {
+        todo_task!("P2.5")
+    }
+
+    pub fn cancel_google_sign_in(&self) {
         todo_task!("P2.5")
     }
 
