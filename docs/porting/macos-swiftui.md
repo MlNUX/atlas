@@ -14,9 +14,14 @@ Atlas bekommt unter macOS eine **eigene, native SwiftUI-Oberfläche** auf dem be
 teilen sich alles, was nicht Darstellung ist: Projekte, Notizen und Links, Suche, Kalender
 und Sync, Aktionen, Erweiterungen, Anmerkungen, Konfiguration, Kontextleisten-Profile.
 
-- **Mindestversion macOS 26 (Tahoe)**, Apple Silicon und Intel (Universal Binary).
-  macOS 27 wird geprüft, sobald die Beta erscheint (WWDC, Juni 2027), und ab der ersten
-  Veröffentlichung in der CI mitgetestet.
+- **Mindestversion macOS 26 (Tahoe), nur Apple Silicon (arm64).** macOS 27 unterstützt
+  ohnehin nur noch Apple Silicon. macOS 27 wird geprüft, sobald die Beta erscheint (WWDC,
+  Juni 2027), und in der CI mitgetestet, sobald GitHub ein Runner-Image dafür anbietet.
+- **Kein eigener Mac nötig zum Start:** Mac-Arbeit läuft über die macOS-Runner von GitHub
+  Actions (arm64, Apple-Hardware). Ab Phase 3 beschleunigt ein Apple-Silicon-Mac (Mac mini
+  oder Cloud-Mac) das interaktive Arbeiten; er ist keine Voraussetzung. **Keine
+  macOS-VM auf Fremdhardware** (Apples Lizenz erlaubt macOS-VMs nur auf Apple-Hardware;
+  ohne Metal und arm64 wäre sie für die Oberfläche ohnehin unbrauchbar).
 - Swift 6 mit strikter Nebenläufigkeitsprüfung, `@Observable`, neue macOS-26-APIs dort, wo
   sie Arbeit sparen (SwiftUI-`WebView`/`WebPage`, Rich-Text im `TextEditor`, Liquid Glass
   kommt mit den Systemsteuerelementen von selbst).
@@ -36,6 +41,35 @@ und Sync, Aktionen, Erweiterungen, Anmerkungen, Konfiguration, Kontextleisten-Pr
 Plattformgebunden im Kern: PDF über poppler/cairo/glib (`crates/atlas-core/src/pdf/`, Trait
 `Backend`), `prctl` und `/proc` (`background.rs`, `terminal/mod.rs`), Passwortspeicher über
 `systemd-creds` (`secret.rs`), Suche über das Programm `rg` (`search.rs`, `ATLAS_RG_BIN`).
+
+## Entscheidungen
+
+Festgelegt (gilt für alle Agents, nicht neu verhandeln):
+
+| # | Frage | Entscheidung |
+|---|---|---|
+| E1 | Mac-Zugang | GitHub-Actions-Runner (macOS, arm64); keine VM auf Fremdhardware; ab Phase 3 optional ein Apple-Silicon-Mac |
+| E2 | Architektur | nur arm64 (Apple Silicon), kein Intel/Universal |
+| E3 | Mindestversion | macOS 26; macOS 27 mittesten, sobald verfügbar |
+| E4 | Branches | Integrationszweig `port/macos-swiftui`, Aufgaben auf `port/macos/<ID>-<kurz>`; keine Betriebssystem-Branches |
+
+Noch offen (vor dem genannten Zeitpunkt vom Projektinhaber zu entscheiden; bis dahin gilt
+die Empfehlung):
+
+| # | Frage | Bis | Empfehlung |
+|---|---|---|---|
+| O1 | App-Name, Bundle-ID, Apple-Developer-Team | W0 | `Atlas`, `de.minux.atlas`; ohne Account nur unsignierte Test-Builds |
+| O2 | Umfang Version 1 | W0 | Projekte, Dateien, PDF + Anmerkungen, Markdown, Suche, Kontextleiste, Kalender ohne Sync, Terminal, Einstellungen; später Kalender-Sync, ILIAS, Erweiterungs-Ansichten, Formel-OCR, `.atlasnote` |
+| O3 | Wann nach `main` | W0 | ab W7 regelmäßig, Mac-App als „Vorschau“ |
+| O4 | Aussehen | W7 | natives macOS (Liquid Glass, Systemfarben, SF), Atlas-Akzentfarbe |
+| O5 | Fenster und Tabs | W7 | ein Fenster pro Projekt, darin Atlas-Tabs und -Splits wie unter Linux (Sitzungen austauschbar) |
+| O6 | Tastenkürzel bei Konflikten | W7 | macOS-Konvention vor Atlas-Gewohnheit |
+| O7 | Sprache | W7 | String Catalogs, Deutsch als Ausgangssprache |
+| O8 | Projekte zwischen Linux und Mac austauschbar | W3 | ja, gleiches `.atlas/`-Format (bindend für P1/P2) |
+| O9 | Ort der Einstellungen | W3 | `~/Library/Application Support/Atlas` |
+| O10 | Kalender | W5 | eigener Kalender wie unter Linux; EventKit später |
+| O11 | Verteilung | W12 | DMG auf GitHub-Releases + Sparkle; Homebrew-Cask später |
+| O12 | Spikes ohne klare Antwort | W2 | im Zweifel die Variante, die schneller fertig ist |
 
 ## Architektur
 
@@ -67,6 +101,7 @@ packaging/macos/ NEU Info.plist, Entitlements, Icon, bundle.sh, notarize.sh, Spa
 | Suche | `rg` ins App-Bundle legen (universal), Pfad über `ATLAS_RG_BIN` | Kern bleibt unverändert |
 | Passwörter | Schlüsselbund über das Crate `security-framework` in `platform/macos.rs` | ersetzt `systemd-creds` |
 | Formel-OCR | `ort` mit mitgelieferter `libonnxruntime.dylib` (heute `load-dynamic`) | unverändert im Kern |
+| Mac-Builds und -Tests | GitHub Actions, macOS-Runner arm64; ein gemeinsamer Einrichtungs-Workflow (`.github/workflows/macos-setup.yml`, `workflow_call`), je Aufgabe eine eigene kleine Workflow-Datei, die ihn aufruft; Logs und Bildschirmfotos als Artefakte | legal, arm64 wie die Nutzer, Agents können pushen und Ergebnisse lesen |
 | Kontextleiste | SwiftUI `.inspector`; Profile-Logik (heute JS in `ContextProfiles.qml`) wandert nach Rust | beide Oberflächen gleich |
 
 ## Regeln für alle Agents (vor Phase 1 als `AGENTS.md` ins Repo, `CLAUDE.md` verweist darauf)
@@ -84,13 +119,18 @@ packaging/macos/ NEU Info.plist, Entitlements, Icon, bundle.sh, notarize.sh, Spa
 4. **Fertig heißt:** Code formatiert (`cargo fmt`, `swift-format`), Tests grün (`cargo test`,
    Xcode-Tests), Linux-Selbsttest (`scripts/smoke-test.sh`) weiter BESTANDEN, wenn der Kern
    berührt wurde, kurze Notiz im PR: was, wie geprüft, was offen.
-5. **Mac-VM:** Jeder Agent mit eigenem Klon (`~/atlas-<ID>`). Homebrew, Xcode und Toolchains
-   installiert nur P0.3. Keine zwei großen Builds gleichzeitig.
+5. **macOS über CI:** Jede Mac-Aufgabe bekommt eine eigene Workflow-Datei
+   (`.github/workflows/mac-<ID>.yml`), die nur auf ihren Branches (`port/macos/<ID>-*`)
+   läuft und `macos-setup.yml` aufruft. Installationen nur im Einrichtungs-Workflow (gehört
+   dem Integrator), nie von Hand. Ergebnisse (Logs, `screencapture`-Bilder, `.xcresult`) als
+   Artefakte hochladen; Agents lesen sie über die GitHub-Anbindung. Caches für Cargo und
+   Homebrew nutzen; Läufe nur bei Änderungen in den eigenen Pfaden (`paths:`).
 6. **Sprache:** Oberfläche Deutsch (wie Linux), Code-Kommentare Englisch, Commits Deutsch.
 
 ## Phasen und Aufgaben
 
-Legende: **Mac** = braucht die macOS-VM · **Linux** = geht in der Cloud · Modell: **stark** =
+Legende: **Mac** = macOS-Runner der CI (ab Phase 3 optional zusätzlich ein Apple-Silicon-Mac)
+· **Linux** = geht in der Cloud · Modell: **stark** =
 größtes verfügbares Modell (Entwurf, schwierige Integration), **schnell** = kleineres Modell
 nach klarer Vorgabe.
 
@@ -99,13 +139,13 @@ nach klarer Vorgabe.
 | ID | Aufgabe | Ort | Modell | Dateien | Fertig, wenn |
 |---|---|---|---|---|---|
 | P0.1 | `AGENTS.md` (Regeln oben), `CLAUDE.md` mit Verweis, Aufgabenliste als GitHub-Issues | Linux | schnell | `AGENTS.md`, `CLAUDE.md` | Issues P0–P4 angelegt, je mit ID, Branch, Abnahme |
-| P0.2 | **Spike UniFFI:** Mini-Crate mit 3 Funktionen + 1 Callback + 1 `async`, als XCFramework in einer leeren SwiftUI-App aufrufen | Mac | stark | `spikes/uniffi/` | App zeigt Werte aus Rust, Callback kommt im Main-Actor an; Bericht `docs/porting/spike-uniffi.md` |
-| P0.3 | **Toolchain:** Xcode 26, Rust-Targets `aarch64/x86_64-apple-darwin`, Homebrew (`ripgrep`, `onnxruntime`), Skript `apps/macos/scripts/bootstrap.sh` | Mac | schnell | `apps/macos/scripts/` | frische VM baut nach einem Skriptaufruf |
-| P0.4 | **Spike PDFKit:** PDF anzeigen, Atlas-Anmerkungen aus einer Beispiel-JSON einzeichnen, Auswahl → Rechtecke in Atlas-Koordinaten | Mac | stark | `spikes/pdfkit/` | Markierungen liegen pixelgenau auf denen der Linux-Version (Screenshot-Vergleich) |
-| P0.5 | **Spike Terminal:** SwiftTerm vs. Kern-Raster, je 1 Tag; Entscheidung mit Begründung | Mac | stark | `spikes/terminal/` | Entscheidung in `docs/porting/spike-terminal.md` |
-| P0.6 | **Kern ohne poppler auf dem Mac übersetzen** (Feature-Schalter vorbereiten, s. P1.1) | Mac | stark | – (Bericht) | Liste aller Stellen, die ohne poppler brechen |
+| P0.2 | **Spike UniFFI:** Mini-Crate mit 3 Funktionen + 1 Callback + 1 `async`, als XCFramework in einer leeren SwiftUI-App aufrufen | Mac | stark | `spikes/uniffi/`, `.github/workflows/mac-P0.2.yml` | CI-Test ruft die Werte aus Rust ab, Callback kommt im Main-Actor an; Bericht `docs/porting/spike-uniffi.md` |
+| P0.3 | **CI-Grundlage:** `macos-setup.yml` (`workflow_call`): neuestes macOS-arm64-Image (26, sobald verfügbar), Xcode 26, Rust-Target `aarch64-apple-darwin`, Homebrew (`ripgrep`, `onnxruntime`), Caches; dasselbe als Skript `apps/macos/scripts/bootstrap.sh` für einen späteren echten Mac | Linux (schreiben) + Mac-CI (prüfen) | schnell | `.github/workflows/macos-setup.yml`, `.github/workflows/mac-P0.3.yml`, `apps/macos/scripts/` | Testlauf baut ein leeres Xcode-Projekt und `cargo test -p atlas-core --no-default-features` (bzw. listet, was ohne poppler bricht), Artefakte hochgeladen |
+| P0.4 | **Spike PDFKit:** PDF anzeigen, Atlas-Anmerkungen aus einer Beispiel-JSON einzeichnen, Auswahl → Rechtecke in Atlas-Koordinaten | Mac | stark | `spikes/pdfkit/`, `.github/workflows/mac-P0.4.yml` | Bildschirmfoto aus der CI zeigt die Markierungen deckungsgleich mit der Linux-Version (Vergleichsbild im Bericht) |
+| P0.5 | **Spike Terminal:** SwiftTerm vs. Kern-Raster, je 1 Tag; Entscheidung mit Begründung | Mac | stark | `spikes/terminal/`, `.github/workflows/mac-P0.5.yml` | Entscheidung in `docs/porting/spike-terminal.md`, mit CI-Bildschirmfotos beider Varianten |
+| P0.6 | **Kern ohne poppler für macOS übersetzen** (Feature-Schalter vorbereiten, s. P1.1) | Mac | stark | `.github/workflows/mac-P0.6.yml` (Bericht) | Liste aller Stellen, die ohne poppler brechen |
 
-Abhängigkeiten: P0.2, P0.4, P0.5 nach P0.3. P0.1 sofort.
+Abhängigkeiten: P0.2, P0.4, P0.5, P0.6 nach P0.3 (sie rufen `macos-setup.yml` auf). P0.1 sofort.
 
 ### Phase 1 – Kern vorbereiten (≈ 1–2 Wochen, bis zu 5 Agents parallel, alles Linux)
 
@@ -114,7 +154,7 @@ Jede Aufgabe hält die Qt-Version unverändert lauffähig (Selbsttest grün).
 | ID | Aufgabe | Modell | Dateien | Fertig, wenn |
 |---|---|---|---|---|
 | P1.1 | poppler als optionales Feature `pdf-poppler` (Standard an); `Backend`-Trait öffentlich; Seitentext von außen einspeisbar (`pdf::set_page_texts(path, pages)`) für Suche/Index | stark | `crates/atlas-core/src/pdf/`, `search.rs`, `Cargo.toml` (Kern) | `cargo check --no-default-features` grün, Suche findet eingespeisten Text (Test) |
-| P1.2 | Plattform-Schicht `platform/{mod,linux,macos}.rs`: Prozess-Arbeitsverzeichnis, Elternende, Schlüsselbund (`security-framework`), Dateimanager-Orte (macOS: feste Liste + Finder-Favoriten, wenn lesbar) | stark | `crates/atlas-core/src/platform/`, `background.rs`, `terminal/mod.rs`, `secret.rs` | Linux-Tests grün; macOS-Teil übersetzt (P0.3-VM) |
+| P1.2 | Plattform-Schicht `platform/{mod,linux,macos}.rs`: Prozess-Arbeitsverzeichnis, Elternende, Schlüsselbund (`security-framework`), Dateimanager-Orte (macOS: feste Liste + Finder-Favoriten, wenn lesbar) | stark | `crates/atlas-core/src/platform/`, `background.rs`, `terminal/mod.rs`, `secret.rs` | Linux-Tests grün; macOS-Teil übersetzt in der macOS-CI (`mac-P1.2.yml`) |
 | P1.3 | Kontextleisten-Profile von JS nach Rust: `context_profiles.rs` (Katalog, `layout`, `edit`, `move`, Seiten) mit Tests; QML ruft es über die Qt-Brücke auf | stark | `crates/atlas-core/src/context_profiles.rs`, `qml/ContextProfiles.qml`, `app.rs` (nur neue Funktionen) | alle Kontextleisten-Prüfungen im Selbsttest grün |
 | P1.4 | Editor-Logik nach Rust: Tabellen ausrichten, Listen fortsetzen, Zelle finden, Wiki-Vervollständigung (heute JS in `TextEditor.qml`) → `markdown_edit.rs` | stark | `crates/atlas-core/src/markdown_edit.rs`, `qml/TextEditor.qml` | Tabellen-/Listen-Prüfungen grün, Rust-Tests decken dieselben Fälle |
 | P1.5 | Syntaxhervorhebung im Kern mit `syntect`: Sprachen erkennen (Dateiendung, Codeblock-Info), Spannen liefern; Markdown mit eingebetteten Codeblöcken | schnell | `crates/atlas-core/src/highlight.rs` | Tests für Markdown, Rust, Python, MATLAB, LaTeX |
@@ -151,7 +191,7 @@ die entsprechende Qt-Brücke):
 Jede: Rust-Tests für die Fassade; keine Logik doppeln, nur `atlas-core` aufrufen.
 
 **P2.11 `atlas-ffi` + Build (1 Agent, stark, Mac):** UniFFI-Export aller Bereiche, Skript
-`apps/macos/scripts/build-core.sh` (Universal-XCFramework, Swift-Bindings in `AtlasKit`),
+`apps/macos/scripts/build-core.sh` (XCFramework arm64, Swift-Bindings in `AtlasKit`),
 Xcode-Build-Phase ruft es auf. Fertig, wenn `swift test` in `AtlasKit` jeden Dienst einmal
 aufruft.
 
@@ -189,7 +229,7 @@ Abhängigkeiten: alle nach P3.0; P3.4 nach den Editor-Grundlagen aus P3.3; P3.6 
 | ID | Aufgabe | Ort | Modell |
 |---|---|---|---|
 | P4.1 | **UI-Tests** (XCUITest) nach dem Vorbild des Linux-Selbsttests (`crates/atlas-app/qml/SelfTest.qml`): gleiche Szenarien, gleiches Testprojekt (`scripts/smoke-test.sh` erzeugt es) | Mac | schnell |
-| P4.2 | CI: Job `macos-26` (Kern bauen, `AtlasKit`-Tests, App bauen, UI-Tests), Linux-Jobs unverändert | Linux/Mac | schnell |
+| P4.2 | CI ausbauen: dauerhafter Workflow `macos.yml` (Kern bauen, `AtlasKit`-Tests, App bauen, UI-Tests) für Integrationszweig und PRs; die `mac-<ID>.yml` der erledigten Aufgaben entfernen; Linux-Jobs unverändert | Linux/Mac | schnell |
 | P4.3 | Paket: App-Bundle mit `rg` und `libonnxruntime`, Hardened Runtime, Developer-ID-Signatur, Notarisierung, DMG | Mac | stark |
 | P4.4 | Updates mit Sparkle, Appcast im Release-Workflow | Mac | schnell |
 | P4.5 | Barrierefreiheit (VoiceOver-Beschriftungen), Tastaturbedienung, Dunkel/Hell, Liquid-Glass-Durchsicht | Mac | schnell |
@@ -206,6 +246,7 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
 
 - **LLM1 ist Integrator** und besitzt allein: Workspace-`Cargo.toml`, `crates/atlas-core/Cargo.toml`,
   `crates/atlas-core/src/lib.rs`, `crates/atlas-api/src/lib.rs`, `.github/workflows/ci.yml`,
+  `.github/workflows/macos-setup.yml`,
   `CHANGELOG.md`, Xcode-Projekt (`apps/macos/Atlas.xcodeproj`), `AGENTS.md` (nach P0.1).
   LLM2 schreibt benötigte Abhängigkeiten oder `pub mod`-Zeilen in die PR-Beschreibung,
   LLM1 trägt sie beim Zusammenführen ein.
@@ -215,8 +256,9 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
   und Projektdatei nicht.
 - **Xcode:** synchronisierte Ordner (bzw. ein lokales Swift-Paket je Funktion), damit neue
   Swift-Dateien die `project.pbxproj` nicht ändern.
-- **Mac-VM:** je ein eigener Klon (`~/atlas-llm1`, `~/atlas-llm2`), Installationen nur durch
-  den, der P0.3 macht; den Rust-Kern (XCFramework) baut nach jedem Zusammenführen nur LLM1.
+- **macOS-CI:** jede Mac-Aufgabe hat ihre eigene Workflow-Datei `mac-<ID>.yml`; der gemeinsame
+  `macos-setup.yml` gehört LLM1. Das Kern-XCFramework baut nach jedem Zusammenführen nur
+  LLM1 und legt es als Artefakt ab; LLM2 lädt es in seinen Läufen herunter.
 - **Kern-Änderungen in Phase 1** halten die Qt-Version lauffähig; Selbsttest
   (`scripts/smoke-test.sh`) grün vor jedem PR.
 
@@ -224,14 +266,14 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
 
 | Welle | LLM1 (Integrator) | LLM2 | Wo | Danach |
 |---|---|---|---|---|
-| W0 | **P0.3** Toolchain auf der VM (einzige Installation) | **P0.1** `AGENTS.md`, `CLAUDE.md`, GitHub-Issues | Mac / Linux | LLM1 führt zusammen |
+| W0 | **P0.3** CI-Grundlage `macos-setup.yml` | **P0.1** `AGENTS.md`, `CLAUDE.md`, GitHub-Issues | Mac-CI / Linux | LLM1 führt zusammen |
 | W1 | **P0.2** Spike UniFFI (`spikes/uniffi/`) | **P0.4** Spike PDFKit (`spikes/pdfkit/`) | Mac / Mac | |
 | W2 | **P0.6** Kern ohne poppler (Bericht) | **P0.5** Spike Terminal (`spikes/terminal/`) | Mac / Mac | **Du entscheidest:** PDF-Weg, Terminal-Weg |
 | W3 | **P1.1** poppler optional, dann **P1.2** Plattform-Schicht (`pdf/`, `search.rs`, `platform/`, `background.rs`, `terminal/mod.rs`, `secret.rs`) | **P1.3** Kontextleisten-Profile nach Rust, dann **P1.4** Editor-Logik nach Rust (`context_profiles.rs`, `markdown_edit.rs`, `ContextProfiles.qml`, `TextEditor.qml`, neue Funktionen am Ende von `app.rs`) | Linux / Linux | |
 | W4 | **P2.1** API-Entwurf (`docs/porting/api.md`, alle `atlas-api`-Dateien als Signaturen) | **P1.5** Syntaxhervorhebung (`highlight.rs`), danach **Prüfer** für P2.1 | Linux / Linux | Entwurf erst nach LLM2-Abnahme zusammenführen |
 | W5 | **P2.2** Projekt/Dateien, **P2.4** Suche, **P2.8** Einstellungen/Editor, **P2.10** ILIAS, ggf. **P2.9** Terminal | **P2.3** Notizen, **P2.5** Kalender, **P2.6** PDF-Daten/OCR, **P2.7** Aktionen/Erweiterungen | Linux / Linux | je Bereich ein PR |
 | W6 | **P2.11** `atlas-ffi`, XCFramework, `AtlasKit` | Paritätstabelle `docs/porting/paritaet.md` + Testkatalog aus `SelfTest.qml` für P4.1 | Mac / Linux | |
-| W7 | **P3.0** App-Gerüst mit allen Platzhaltern | **P4.2** CI als eigene Datei `.github/workflows/macos.yml` | Mac / Linux | ab hier füllt jeder nur seine Feature-Ordner |
+| W7 | **P3.0** App-Gerüst mit allen Platzhaltern | **P4.2** dauerhafter Workflow `macos.yml` (eigene Datei) | Mac / Linux | ab hier füllt jeder nur seine Feature-Ordner |
 | W8 | **P3.2** PDF (`Features/PDF/`) | **P3.3** Markdown (`Features/Markdown/`) | Mac / Mac | |
 | W9 | **P3.8** Suche, **P3.11** ILIAS | **P3.4** Code-Editor (baut auf P3.3), **P3.1** Dateien | Mac / Mac | |
 | W10 | **P3.6** Kontextleiste (braucht P3.2/P3.3) | **P3.5** Terminal, **P3.7** Kalender | Mac / Mac | |
@@ -239,15 +281,18 @@ Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`
 | W12 | **P4.3** Bundle, Signatur, Notarisierung, **P4.4** Sparkle | **P4.1** UI-Tests, **P4.5** Barrierefreiheit | Mac / Mac | |
 | W13 | **P4.6** macOS 27 (sobald Beta) | **P4.7** Doku, README, CHANGELOG-Text (LLM1 trägt ein) | Mac / Linux | Version fertig |
 
-Ab W8 bauen beide in der VM gleichzeitig Swift-Code; das geht mit eigenen Klonen. Große
-Rust-Builds (Kern, XCFramework) macht nur LLM1, einmal pro Zusammenführung.
+Ab W8 bauen beide gleichzeitig Swift-Code – jeder in seinen eigenen CI-Läufen (bzw. mit
+eigenem Klon auf einem echten Mac, falls vorhanden). Große Rust-Builds (Kern, XCFramework)
+macht nur LLM1, einmal pro Zusammenführung.
 
 ### Auftrag an jedes Modell (Vorlage)
 
 > Du bist **LLM1|LLM2** im Atlas-macOS-Port. Lies `docs/porting/macos-swiftui.md` und
 > `AGENTS.md`. Deine Aufgaben in dieser Welle: **<IDs>**. Arbeite auf Branch
-> `port/macos/<ID>-<kurz>`, abgezweigt vom aktuellen `port/macos-swiftui`, im Klon
-> `~/atlas-<llm>`. Ändere nur die in der Aufgabe genannten Dateien; brauchst du eine andere,
+> `port/macos/<ID>-<kurz>`, abgezweigt vom aktuellen `port/macos-swiftui`. Mac-Builds und
+> -Tests laufen über deine eigene Workflow-Datei `.github/workflows/mac-<ID>.yml` (ruft
+> `macos-setup.yml` auf); lies Logs und Bildschirmfotos aus den Artefakten. Ändere nur die
+> in der Aufgabe genannten Dateien; brauchst du eine andere,
 > schreib es in den PR. Fertig heißt: Abnahmekriterium der Aufgabe erfüllt, Tests grün,
 > PR mit kurzer Notiz (was, wie geprüft, was offen).
 
@@ -259,7 +304,9 @@ Rust-Builds (Kern, XCFramework) macht nur LLM1, einmal pro Zusammenführung.
 - **Prüfer** (anderes Modell, z. B. Codex oder ein zweites Claude): liest API-Entwurf (P2.1)
   und die schwierigen PRs (P2.11, P3.0, P3.2, P3.3) gegen.
 - **Du:** Entscheidungen bei Spikes (P0.4, P0.5), Abnahme auf echtem Mac (Trackpad, Retina,
-  Gefühl), Apple-Developer-Account für P4.3.
+  Gefühl), Apple-Developer-Account für P4.3; bis Phase 3 möglichst einen Apple-Silicon-Mac
+  (Mac mini oder Cloud-Mac) für schnelleres Arbeiten an der Oberfläche – sonst geht P3 nur
+  über CI, langsamer.
 
 ## Parallelität auf einen Blick
 
@@ -270,13 +317,13 @@ P1        ████████ (5 Agents, Linux)
 P2.1          ██
 P2.x             ██████ (9 Agents, Linux)  P2.11 ██ (Mac)
 P3.0                         ███
-P3.x                            ██████████████ (bis 6 Agents gleichzeitig; Mac-VM ist der Engpass)
+P3.x                            ██████████████ (bis 6 Agents gleichzeitig; Mac-Rechenzeit ist der Engpass)
 P4                                       ██████████
 ```
 
-Engpass ist die **Mac-VM**: Linux-Aufgaben (P1, P2) können breit parallel laufen,
-Mac-Aufgaben (P0, P2.11, P3, P4) besser mit 2–3 Agents gleichzeitig, mehr nur mit mehr
-Mac-Rechenzeit (zweite VM oder echter Mac).
+Engpass ist die **Mac-Rechenzeit**: Linux-Aufgaben (P1, P2) können breit parallel laufen.
+Mac-Aufgaben (P0, P2.11, P3, P4) laufen über CI-Runner (einige Minuten pro Versuch,
+Kontingent für macOS-Minuten beachten) und ab Phase 3 bevorzugt auf einem echten Mac.
 
 ## Grobe Gesamtdauer
 
@@ -292,4 +339,5 @@ P3.3 (Editor) und P4.3 (Signatur/Notarisierung beim ersten Mal).
 | PDFKit-Koordinaten weichen von poppler ab | Spike P0.4 mit Screenshot-Vergleich, Umrechnung zentral in `Features/PDF/Coordinates.swift` |
 | Editor (Markdown/Code) wird aufwendiger als gedacht | Logik vorher in den Kern (P1.4, P1.5), Swift nur Darstellung |
 | Qt- und SwiftUI-Version laufen auseinander | gemeinsame Logik nur in `atlas-core`/`atlas-api`; Funktionsliste als Paritätstabelle in `docs/porting/paritaet.md` (P4.7) |
-| Zu viele Agents auf einer VM | max. 2–3 Mac-Aufgaben gleichzeitig, eigene Klone, ein Agent für Installationen |
+| Lange Wartezeiten und Minutenverbrauch in der macOS-CI | Caches, Läufe nur bei Änderungen in eigenen Pfaden, Kern-XCFramework als Artefakt wiederverwenden; ab Phase 3 Apple-Silicon-Mac für die Oberfläche |
+| GitHub hat noch kein macOS-26-Image | bis dahin neuestes Image mit Xcode 26 nutzen; App-Ziel macOS 26 lässt sich dort bauen, nur nicht ausführen – dann UI-Tests erst, wenn das Image da ist bzw. auf echtem Mac |
