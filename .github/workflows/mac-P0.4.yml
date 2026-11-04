@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P0.4 (macOS port): PDFKit spike - Atlas annotations in PDFKit,
+# compared with the Linux version. Removed again in P4.2.
+name: mac-P0.4
+
+on:
+  push:
+    branches:
+      - "port/macos/P0.4-*"
+    paths:
+      - ".github/workflows/mac-P0.4.yml"
+      - "spikes/pdfkit/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P0.4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spike:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: spikes/pdfkit/run.sh
+      artifact-name: mac-P0.4
+      cache-key: P0.4
