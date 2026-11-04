@@ -73,6 +73,7 @@ const RUST_BRIDGES: &[&str] = &[
     "src/annotations_model.rs",
     "src/app.rs",
     "src/calendar_model.rs",
+    "src/context_profiles.rs",
     "src/file_ops.rs",
     "src/folder_model.rs",
     "src/formula_ocr.rs",
