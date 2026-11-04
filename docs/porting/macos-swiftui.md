@@ -196,6 +196,61 @@ Abhängigkeiten: alle nach P3.0; P3.4 nach den Editor-Grundlagen aus P3.3; P3.6 
 | P4.6 | macOS 27: Beta prüfen, Abweichungen als Aufgaben anlegen | Mac | schnell |
 | P4.7 | Doku: `README.md` (Installation macOS), `docs/porting/` aufräumen, CHANGELOG | Linux | schnell |
 
+## Aufteilung auf zwei Modelle (LLM1, LLM2)
+
+Zwei Agents arbeiten in **Wellen** gleichzeitig. In jeder Welle ändern sie nur ihre eigenen
+Dateien; am Ende der Welle führt LLM1 beide PRs in `port/macos-swiftui` zusammen, lässt die
+Tests laufen, und beide starten die nächste Welle vom neuen Stand (`git rebase`).
+
+### Damit es keine Konflikte gibt
+
+- **LLM1 ist Integrator** und besitzt allein: Workspace-`Cargo.toml`, `crates/atlas-core/Cargo.toml`,
+  `crates/atlas-core/src/lib.rs`, `crates/atlas-api/src/lib.rs`, `.github/workflows/ci.yml`,
+  `CHANGELOG.md`, Xcode-Projekt (`apps/macos/Atlas.xcodeproj`), `AGENTS.md` (nach P0.1).
+  LLM2 schreibt benötigte Abhängigkeiten oder `pub mod`-Zeilen in die PR-Beschreibung,
+  LLM1 trägt sie beim Zusammenführen ein.
+- **Gerüste mit Platzhaltern:** P2.1 legt *alle* Dateien von `atlas-api` mit Signaturen an,
+  P3.0 *alle* Feature-Ordner mit einer Platzhalter-Ansicht und einer leeren `Commands`-Datei
+  je Funktion. Spätere Aufgaben füllen nur ihre eigenen Dateien und ändern Router, Menüleiste
+  und Projektdatei nicht.
+- **Xcode:** synchronisierte Ordner (bzw. ein lokales Swift-Paket je Funktion), damit neue
+  Swift-Dateien die `project.pbxproj` nicht ändern.
+- **Mac-VM:** je ein eigener Klon (`~/atlas-llm1`, `~/atlas-llm2`), Installationen nur durch
+  den, der P0.3 macht; den Rust-Kern (XCFramework) baut nach jedem Zusammenführen nur LLM1.
+- **Kern-Änderungen in Phase 1** halten die Qt-Version lauffähig; Selbsttest
+  (`scripts/smoke-test.sh`) grün vor jedem PR.
+
+### Wellen
+
+| Welle | LLM1 (Integrator) | LLM2 | Wo | Danach |
+|---|---|---|---|---|
+| W0 | **P0.3** Toolchain auf der VM (einzige Installation) | **P0.1** `AGENTS.md`, `CLAUDE.md`, GitHub-Issues | Mac / Linux | LLM1 führt zusammen |
+| W1 | **P0.2** Spike UniFFI (`spikes/uniffi/`) | **P0.4** Spike PDFKit (`spikes/pdfkit/`) | Mac / Mac | |
+| W2 | **P0.6** Kern ohne poppler (Bericht) | **P0.5** Spike Terminal (`spikes/terminal/`) | Mac / Mac | **Du entscheidest:** PDF-Weg, Terminal-Weg |
+| W3 | **P1.1** poppler optional, dann **P1.2** Plattform-Schicht (`pdf/`, `search.rs`, `platform/`, `background.rs`, `terminal/mod.rs`, `secret.rs`) | **P1.3** Kontextleisten-Profile nach Rust, dann **P1.4** Editor-Logik nach Rust (`context_profiles.rs`, `markdown_edit.rs`, `ContextProfiles.qml`, `TextEditor.qml`, neue Funktionen am Ende von `app.rs`) | Linux / Linux | |
+| W4 | **P2.1** API-Entwurf (`docs/porting/api.md`, alle `atlas-api`-Dateien als Signaturen) | **P1.5** Syntaxhervorhebung (`highlight.rs`), danach **Prüfer** für P2.1 | Linux / Linux | Entwurf erst nach LLM2-Abnahme zusammenführen |
+| W5 | **P2.2** Projekt/Dateien, **P2.4** Suche, **P2.8** Einstellungen/Editor, **P2.10** ILIAS, ggf. **P2.9** Terminal | **P2.3** Notizen, **P2.5** Kalender, **P2.6** PDF-Daten/OCR, **P2.7** Aktionen/Erweiterungen | Linux / Linux | je Bereich ein PR |
+| W6 | **P2.11** `atlas-ffi`, XCFramework, `AtlasKit` | Paritätstabelle `docs/porting/paritaet.md` + Testkatalog aus `SelfTest.qml` für P4.1 | Mac / Linux | |
+| W7 | **P3.0** App-Gerüst mit allen Platzhaltern | **P4.2** CI als eigene Datei `.github/workflows/macos.yml` | Mac / Linux | ab hier füllt jeder nur seine Feature-Ordner |
+| W8 | **P3.2** PDF (`Features/PDF/`) | **P3.3** Markdown (`Features/Markdown/`) | Mac / Mac | |
+| W9 | **P3.8** Suche, **P3.11** ILIAS | **P3.4** Code-Editor (baut auf P3.3), **P3.1** Dateien | Mac / Mac | |
+| W10 | **P3.6** Kontextleiste (braucht P3.2/P3.3) | **P3.5** Terminal, **P3.7** Kalender | Mac / Mac | |
+| W11 | **P3.10** Aktionen und Erweiterungen | **P3.9** Einstellungen, **P3.12** weitere Ansichten | Mac / Mac | |
+| W12 | **P4.3** Bundle, Signatur, Notarisierung, **P4.4** Sparkle | **P4.1** UI-Tests, **P4.5** Barrierefreiheit | Mac / Mac | |
+| W13 | **P4.6** macOS 27 (sobald Beta) | **P4.7** Doku, README, CHANGELOG-Text (LLM1 trägt ein) | Mac / Linux | Version fertig |
+
+Ab W8 bauen beide in der VM gleichzeitig Swift-Code; das geht mit eigenen Klonen. Große
+Rust-Builds (Kern, XCFramework) macht nur LLM1, einmal pro Zusammenführung.
+
+### Auftrag an jedes Modell (Vorlage)
+
+> Du bist **LLM1|LLM2** im Atlas-macOS-Port. Lies `docs/porting/macos-swiftui.md` und
+> `AGENTS.md`. Deine Aufgaben in dieser Welle: **<IDs>**. Arbeite auf Branch
+> `port/macos/<ID>-<kurz>`, abgezweigt vom aktuellen `port/macos-swiftui`, im Klon
+> `~/atlas-<llm>`. Ändere nur die in der Aufgabe genannten Dateien; brauchst du eine andere,
+> schreib es in den PR. Fertig heißt: Abnahmekriterium der Aufgabe erfüllt, Tests grün,
+> PR mit kurzer Notiz (was, wie geprüft, was offen).
+
 ## Rollen
 
 - **Integrator** (1 Agent, stark, dauerhaft): führt PRs in `port/macos-swiftui` zusammen,
