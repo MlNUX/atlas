@@ -227,7 +227,7 @@ impl Project {
     }
 
     pub fn search(&self) -> Arc<crate::search::Search> {
-        todo_task!("P2.4")
+        Arc::new(crate::search::Search::new(self.shared.clone()))
     }
 
     pub fn calendar(&self) -> Arc<crate::calendar::Calendar> {

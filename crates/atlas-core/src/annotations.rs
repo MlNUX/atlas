@@ -431,6 +431,49 @@ pub fn by_page(annotations: &[Annotation]) -> BTreeMap<u32, Vec<&Annotation>> {
     map
 }
 
+/// An annotation found by [`search`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Hit {
+    /// The PDF (absolute when the stored key is project-relative).
+    pub path: PathBuf,
+    /// The key as stored (project-relative path).
+    pub key: String,
+    pub score: i32,
+    pub annotation: Annotation,
+}
+
+/// Annotations whose text, comment, title or file name match `query`
+/// (fuzzy), best first; one entry per multi-page markup. An empty query
+/// lists all.
+pub fn search(store: &Store, root: Option<&Path>, query: &str, limit: usize) -> Vec<Hit> {
+    let query = query.trim();
+    let mut found = Vec::new();
+    for (_, file) in store.all() {
+        let key = file.document.path.clone();
+        let path = if Path::new(&key).is_absolute() {
+            PathBuf::from(&key)
+        } else {
+            root.map(|r| r.join(&key)).unwrap_or_else(|| PathBuf::from(&key))
+        };
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let mut groups = std::collections::HashSet::new();
+        for a in file.annotations {
+            if !a.group.is_empty() && !groups.insert(a.group.clone()) {
+                continue;
+            }
+            let haystack = format!("{} {} {} {name}", a.text, a.comment, a.title);
+            let score = if query.is_empty() { 0 } else { crate::finder::score(query, &haystack).unwrap_or(-1) };
+            if score < 0 {
+                continue;
+            }
+            found.push(Hit { path: path.clone(), key: key.clone(), score, annotation: a });
+        }
+    }
+    found.sort_by_key(|h| std::cmp::Reverse(h.score));
+    found.truncate(limit.max(1));
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

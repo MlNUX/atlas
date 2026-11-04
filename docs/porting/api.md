@@ -129,3 +129,6 @@ Fehler: 15 657 Zeilen, rund 440 öffentliche Typen und Methoden.
 | P2.2 | neu: `Project::resolve_document`, `Atlas::rename_project_session`, `Files::disk_space` | Funktionen der Qt-Brücke, die gefehlt haben |
 | P2.2 | `KnownProject` mit der aktiven Sitzung statt einer Liste | wie das Sitzungsmenü unter Linux |
 | P2.2 | `FileEntry::kind` ist der lesbare Typ; die Viewer-Art kommt aus `Files::file_kind` | `file_kind` steckte in der Qt-Brücke und liegt jetzt im Kern (`listing::viewer_kind`) |
+| P2.4 | `SearchQuery`: `case_sensitive: bool`, `build_dirs`, kein `text`/`pdf` mehr (über `kinds`) | wie das Suchfenster unter Linux; Optionen → Query jetzt im Kern (`search::Options`) |
+| P2.4 | `Search::context` liefert `Vec<ContextLine>` | Zeilennummern je Zeile (PDF: Zeile auf der Seite) |
+| P2.4 | `AnnotationHit` mit `relative`, `kind`, `title` | wie die Anmerkungssuche unter Linux; Logik jetzt im Kern (`annotations::search`) |
