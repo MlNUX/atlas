@@ -34,6 +34,8 @@ fn setup() -> (tempfile::TempDir, Arc<atlas_api::project::Project>, Receiver<Eve
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("a.md"), "Die Fourier Transformation\nzweite Zeile\n").unwrap();
     std::fs::write(dir.path().join("b.rs"), "fn fourier() {}\n").unwrap();
+    // UTF-16 positions: "Größe 🙂 " is 9 units before the match, 12 bytes.
+    std::fs::write(dir.path().join("c.txt"), "Größe 🙂 FOURIERX\n").unwrap();
     std::fs::write(dir.path().join("skript.pdf"), b"%PDF stand-in").unwrap();
     let (tx, rx) = channel();
     let atlas = Atlas::new(Arc::new(Collect(Mutex::new(channel().0))));
@@ -76,14 +78,17 @@ fn finds_text_and_handed_in_pdf_text() {
     let search = project.search();
     let id = search.start(query("fourier")).unwrap();
     let (matches, summary) = collect(&rx, id);
-    assert_eq!(summary.matches, 3, "{matches:?}");
-    assert_eq!(summary.files, 3);
+    assert_eq!(summary.matches, 4, "{matches:?}");
+    assert_eq!(summary.files, 4);
+    let c = matches.iter().find(|m| m.relative == "c.txt").unwrap();
+    assert_eq!((c.ranges[0].start, c.ranges[0].end), (9, 16));
     assert!(summary.error.is_none());
     let pdf_hit = matches.iter().find(|m| m.pdf).expect("PDF match");
     assert_eq!(pdf_hit.line, 2, "page");
     let md = matches.iter().find(|m| m.relative == "a.md").unwrap();
     let r = &md.ranges[0];
-    assert_eq!(&md.text[r.start as usize..r.end as usize], "Fourier");
+    let utf16: Vec<u16> = md.text.encode_utf16().collect();
+    assert_eq!(String::from_utf16(&utf16[r.start as usize..r.end as usize]).unwrap(), "Fourier");
     assert!(summary.kinds.iter().any(|k| k.kind == "markdown" && k.count == 1));
 
     // Type filter: only code.

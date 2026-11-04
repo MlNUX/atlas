@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 use std::pin::Pin;
 
-use atlas_core::search::{self, Match, Query, SearchHandle};
+use atlas_core::search::{self, Match, SearchHandle};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QByteArray, QHash, QHashPair_i32_QByteArray, QModelIndex, QString, QVariant, QVector};
 use serde_json::{Value, json};

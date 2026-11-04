@@ -36,7 +36,7 @@ pub struct SearchQuery {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct TextRange {
-    /// Byte offsets in `SearchMatch::text`.
+    /// UTF-16 positions in `SearchMatch::text`.
     pub start: u32,
     pub end: u32,
 }
@@ -110,15 +110,15 @@ impl Search {
     }
 }
 
+/// UTF-16 length of the first `byte` bytes of `text`.
+fn utf16_at(text: &str, byte: usize) -> u32 {
+    text.get(..byte.min(text.len())).map_or(0, |s| s.encode_utf16().count()) as u32
+}
+
 fn to_match(m: core::Match) -> SearchMatch {
-    SearchMatch {
-        path: string(&m.path),
-        relative: m.relative,
-        line: m.line,
-        text: m.text,
-        ranges: m.ranges.into_iter().map(|(s, e)| TextRange { start: s as u32, end: e as u32 }).collect(),
-        pdf: m.pdf,
-    }
+    let ranges =
+        m.ranges.iter().map(|&(s, e)| TextRange { start: utf16_at(&m.text, s), end: utf16_at(&m.text, e) }).collect();
+    SearchMatch { path: string(&m.path), relative: m.relative, line: m.line, text: m.text, ranges, pdf: m.pdf }
 }
 
 pub(crate) fn kind_of(kind: &atlas_core::annotations::Kind) -> crate::pdf::AnnotationKind {
