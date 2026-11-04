@@ -163,8 +163,8 @@ fn lists_creates_renames_and_transfers_files() {
     assert!(files.new_file(format!("{root}/docs"), "Neu.md".into()).is_err(), "no overwrite");
     let renamed = files.rename(new, "Umbenannt.md".into()).unwrap();
     files.write_text(renamed.clone(), "Inhalt\n".into()).unwrap();
-    assert_eq!(files.read_text(renamed.clone(), 1024).unwrap(), "Inhalt\n");
-    assert_eq!(files.read_text(renamed.clone(), 3).unwrap(), "Inh");
+    assert_eq!(block_on(files.read_text(renamed.clone(), 1024)).unwrap(), "Inhalt\n");
+    assert_eq!(block_on(files.read_text(renamed.clone(), 3)).unwrap(), "Inh");
 
     let dest = files.new_folder(root.clone(), "Ziel".into()).unwrap();
     assert!(files.conflicts(vec![renamed.clone()], dest.clone()).is_empty());
@@ -193,4 +193,40 @@ fn places_and_urls() {
     assert_eq!(atlas.url_to_path("file:///tmp/a%20b.md".into()).as_deref(), Some("/tmp/a b.md"));
     assert_eq!(atlas.url_to_path("file://localhost/tmp/x".into()).as_deref(), Some("/tmp/x"));
     assert_eq!(atlas.url_to_path("https://example.org".into()), None);
+}
+
+#[test]
+fn terminal_shell_and_palette() {
+    let terminal = atlas_api::terminal::Terminal::new();
+    let shell = terminal.shell("/tmp".into(), Some("/projekt".into()));
+    assert!(std::path::Path::new(&shell.argv[0]).exists(), "{:?}", shell.argv);
+    assert!(shell.env.iter().any(|e| e.name == "ATLAS_PROJECT" && e.value == "/projekt"));
+    let dark = terminal.palette(true);
+    let light = terminal.palette(false);
+    assert_eq!(dark.ansi.len(), 16);
+    assert_ne!(dark.background, light.background);
+    assert_eq!(dark.background, 0x0b111d);
+    // The shell's folder of this very process.
+    let cwd = terminal.process_cwd(std::process::id()).unwrap();
+    assert_eq!(std::path::Path::new(&cwd), std::env::current_dir().unwrap().canonicalize().unwrap());
+}
+
+/// Minimal executor for the `async` methods (the UI's executor polls in real use).
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    use std::task::{Context, Poll, Wake, Waker};
+    struct Unpark(std::thread::Thread);
+    impl Wake for Unpark {
+        fn wake(self: Arc<Self>) {
+            self.0.unpark();
+        }
+    }
+    let waker = Waker::from(Arc::new(Unpark(std::thread::current())));
+    let mut cx = Context::from_waker(&waker);
+    let mut future = std::pin::pin!(future);
+    loop {
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(v) => return v,
+            Poll::Pending => std::thread::park(),
+        }
+    }
 }

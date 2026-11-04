@@ -224,12 +224,16 @@ impl Files {
         listing::viewer_kind(&crate::util::path(&path)).to_owned()
     }
 
-    /// UTF-8 text of a file (lossy), at most `max_bytes`.
-    pub fn read_text(&self, path: String, max_bytes: u64) -> Result<String> {
-        use std::io::Read;
-        let mut data = Vec::new();
-        std::fs::File::open(crate::util::path(&path))?.take(max_bytes).read_to_end(&mut data)?;
-        Ok(String::from_utf8_lossy(&data).into_owned())
+    /// UTF-8 text of a file (lossy), at most `max_bytes` (in the background:
+    /// files may be large or on slow disks).
+    pub async fn read_text(&self, path: String, max_bytes: u64) -> Result<String> {
+        crate::util::background(move || {
+            use std::io::Read;
+            let mut data = Vec::new();
+            std::fs::File::open(crate::util::path(&path))?.take(max_bytes).read_to_end(&mut data)?;
+            Ok(String::from_utf8_lossy(&data).into_owned())
+        })
+        .await
     }
 
     /// Writes atomically (temp file + rename).
