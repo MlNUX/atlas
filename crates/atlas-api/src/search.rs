@@ -101,12 +101,11 @@ pub struct AnnotationHit {
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
 pub struct Search {
     shared: Arc<Shared>,
-    running: Mutex<Option<core::SearchHandle>>,
 }
 
 impl Search {
     pub(crate) fn new(shared: Arc<Shared>) -> Self {
-        Self { shared, running: Mutex::new(None) }
+        Self { shared }
     }
 }
 
@@ -136,7 +135,7 @@ pub(crate) fn kind_of(kind: &atlas_core::annotations::Kind) -> crate::pdf::Annot
 
 #[cfg_attr(feature = "ffi", uniffi::export)]
 impl Search {
-    /// Starts a search (cancelling the previous one of this object); results
+    /// Starts a search (cancelling the previous one of this window); results
     /// stream as `Event::SearchMatches` and end with `Event::SearchFinished`,
     /// both with the returned id. Invalid patterns fail right away.
     pub fn start(&self, query: SearchQuery) -> Result<u64> {
@@ -190,12 +189,12 @@ impl Search {
             },
         )
         .map_err(|e| AtlasError::Invalid { message: format!("{e:#}") })?;
-        *self.running.lock().unwrap() = Some(handle);
+        *self.shared.search.lock().unwrap() = Some(handle);
         Ok(id)
     }
 
     pub fn cancel(&self) {
-        if let Some(handle) = self.running.lock().unwrap().take() {
+        if let Some(handle) = self.shared.search.lock().unwrap().take() {
             handle.cancel();
         }
     }
