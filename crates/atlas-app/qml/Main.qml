@@ -619,7 +619,7 @@ ApplicationWindow {
         interval: app.screenshotDelayMs
         onTriggered: {
             window.reportProbe()
-            const ok = app.saveWindowImage(window, app.screenshotPath)
+            const ok = TestDriver.saveWindowImage(window, app.screenshotPath)
             console.info(ok ? "screenshot saved to" : "screenshot failed:", app.screenshotPath)
             if (app.quitAfterMs <= 0) Qt.quit()
         }

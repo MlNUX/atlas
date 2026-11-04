@@ -75,6 +75,7 @@ const RUST_BRIDGES: &[&str] = &[
     "src/qt_helpers.rs",
     "src/search_model.rs",
     "src/terminal_item.rs",
+    "src/test_driver.rs",
     "src/text_document.rs",
     "src/trash_model.rs",
     "src/tree_model.rs",

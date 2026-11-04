@@ -88,7 +88,7 @@ Item {
         const pts = [[0, from.x, from.y]]
         for (let i = 1; i <= 10; i++) pts.push([1, from.x + (to.x - from.x) * i / 10, from.y + (to.y - from.y) * i / 10])
         pts.push([1, to.x, to.y], [2, to.x, to.y])
-        pts.forEach((e, i) => app.postMouse(window, e[0], e[1], e[2], 40 * (i + 1)))
+        pts.forEach((e, i) => TestDriver.postMouse(window, e[0], e[1], e[2], 40 * (i + 1)))
     }
     /// Drags tab `index` of `group` to (`x`, `y`) in `target`.
     function dragTabTo(group, index, target, x, y) {
@@ -335,7 +335,7 @@ Item {
                 const area = md.contextPanelItem.graphView
                 const p = area.mapToItem(null, area.width / 2, area.height / 2)
                 test.zoomBefore = md.contextPanelItem.zoom
-                app.sendWheel(window, p.x, p.y, 120, 0)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 0)
             },
             () => {
                 const panel = editor.activeTab.viewerItem.contextPanelItem
@@ -343,7 +343,7 @@ Item {
                 // Ctrl+wheel, as Wayland reports a mouse wheel ("touchpad").
                 const area = panel.graphView
                 const p = area.mapToItem(null, area.width / 2, area.height / 2)
-                app.sendWheel(window, p.x, p.y, 120, 17)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 17)
             },
             () => {
                 const md = editor.activeTab.viewerItem
@@ -372,7 +372,7 @@ Item {
                 check("Tab rückt Listenpunkte ein und aus, nicht normalen Text", indented && outdented && !ed.indentListItems(false), ed.text.slice(-30))
                 // Enter continues lists (bullets, checkboxes, numbers, quotes)
                 // and ends them on an empty item.
-                const enter = () => app.sendKey(window, Qt.Key_Return, 0)
+                const enter = () => TestDriver.sendKey(window, Qt.Key_Return, 0)
                 ed.focusText()
                 ed.insertText("\n- eins", true)
                 ed.applyState({ cursor: ed.text.length })
@@ -403,7 +403,7 @@ Item {
                 check("Tabelle einfügen (ausgerichtet)", ed.text.indexOf("| Spalte 1 | Spalte 2 |\n| -------- | -------- |\n|          |          |\n|          |          |") > 0, JSON.stringify(ed.text.slice(-120)))
                 // Tables: Tab aligns and goes from cell to cell, Enter adds a row,
                 // Enter in an empty last row ends the table.
-                const tab = (shift) => app.sendKey(window, shift ? Qt.Key_Backtab : Qt.Key_Tab, shift ? Qt.ShiftModifier : 0)
+                const tab = (shift) => TestDriver.sendKey(window, shift ? Qt.Key_Backtab : Qt.Key_Tab, shift ? Qt.ShiftModifier : 0)
                 ed.insertText("\n\n| a | b |\n|:-:|--:|\n| langer Text | 1 |", true)
                 const tableAt = ed.text.lastIndexOf("| a | b |")
                 ed.applyState({ cursor: tableAt + 2 })
@@ -843,24 +843,24 @@ Item {
                 // Qt on Wayland reports mouse wheels as a "touchpad" device with
                 // finger pointer type: Ctrl+wheel zooms all the same.
                 const before = v.zoomScale
-                app.sendWheel(window, p.x, p.y, 120, 17)
-                app.sendWheel(window, p.x, p.y, 120, 17)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 17)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 17)
                 check("Wayland: Strg+Mausrad vom „Touchpad“-Gerät zoomt", v.zoomScale > before * 1.15, before + " → " + v.zoomScale)
                 // Wheel notches in scroll phases without a ScrollBegin (as from
                 // some Wayland compositors) zoom too.
                 const start = v.zoomScale
-                app.sendWheel(window, p.x, p.y, 120, 9)
-                app.sendWheel(window, p.x, p.y, 120, 9)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 9)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 9)
                 check("Strg+Mausrad ohne Gestenbeginn zoomt", v.zoomScale > start * 1.15, start + " → " + v.zoomScale)
                 test.zoomBefore = v.zoomScale
-                app.sendWheel(window, p.x, p.y, 120, true)
+                TestDriver.sendWheel(window, p.x, p.y, 120, true)
                 check("Strg+Mausrad vergrößert die PDF", v.zoomScale > test.zoomBefore * 1.05, test.zoomBefore + " → " + v.zoomScale)
                 const zoomed = v.zoomScale
-                app.sendWheel(window, p.x, p.y, -240, true)
+                TestDriver.sendWheel(window, p.x, p.y, -240, true)
                 check("Strg+Mausrad zurück verkleinert", v.zoomScale < zoomed, zoomed + " → " + v.zoomScale)
                 const plain = v.zoomScale
                 const y0 = v.pagesView.contentY
-                app.sendWheel(window, p.x, p.y, -120, false)
+                TestDriver.sendWheel(window, p.x, p.y, -120, false)
                 check("Mausrad allein zoomt nicht", v.zoomScale === plain, plain + " → " + v.zoomScale)
                 // (Eased in over a few frames, like a browser: settled here.)
                 check("Mausrad: Stufe wird weich gescrollt", Math.abs(v.fling.wheelY + v.wheelStep) < 1, v.fling.wheelY)
@@ -870,15 +870,15 @@ Item {
                 // of 120 – a touchpad step, not a wheel notch (it made the view
                 // jump by a whole notch).
                 const y1 = v.pagesView.contentY
-                app.sendWheel(window, p.x, p.y, -10, 64 | 16 | 4)
-                app.sendWheel(window, p.x, p.y, -10, 64 | 16)
-                app.sendWheel(window, p.x, p.y, -10, 64 | 16)
+                TestDriver.sendWheel(window, p.x, p.y, -10, 64 | 16 | 4)
+                TestDriver.sendWheel(window, p.x, p.y, -10, 64 | 16)
+                TestDriver.sendWheel(window, p.x, p.y, -10, 64 | 16)
                 v.fling.flush()
                 check("Touchpad unter Wayland: Ansicht folgt den Fingern genau", Math.abs(v.pagesView.contentY - y1 - 30) < 1 && v.fling.wheelY === 0,
                       y1 + " → " + v.pagesView.contentY)
-                app.sendWheel(window, p.x, p.y, 0, 2 | 16 | 32)
+                TestDriver.sendWheel(window, p.x, p.y, 0, 2 | 16 | 32)
                 v.fling.stop()
-                app.sendWheel(window, p.x, p.y, 120, false)
+                TestDriver.sendWheel(window, p.x, p.y, 120, false)
                 v.fling.settle()
                 // Dark mode: one switch for all PDFs, stored in config.toml.
                 app.pdfDark = true
@@ -890,23 +890,23 @@ Item {
                 v.zoom = 0.4
                 test.zoomBefore = v.zoomScale
                 const side = v.mapToItem(null, v.width * 0.8, v.height * 0.6)
-                app.sendWheel(window, side.x, side.y, 120, true)
+                TestDriver.sendWheel(window, side.x, side.y, 120, true)
                 check("Strg+Mausrad: schmale Seite bleibt mittig", v.zoomScale > test.zoomBefore && v.pagesView.contentX === v.pagesView.originX,
                       v.pagesView.contentX + " / " + v.pagesView.originX)
                 v.zoom = plain
                 // Touchpads (and fine scrolling on Wayland): a gesture with
                 // pixel-only deltas zooms as well and never scrolls.
-                app.sendWheel(window, p.x, p.y, 0, 7)
-                app.sendWheel(window, p.x, p.y, 40, 3)
-                app.sendWheel(window, p.x, p.y, 40, 3)
+                TestDriver.sendWheel(window, p.x, p.y, 0, 7)
+                TestDriver.sendWheel(window, p.x, p.y, 40, 3)
+                TestDriver.sendWheel(window, p.x, p.y, 40, 3)
                 check("Strg+Touchpad zoomt die PDF", v.zoomScale > plain * 1.1, plain + " → " + v.zoomScale)
                 // Wayland: wheel notches come in scroll phases; a gesture begun
                 // without Ctrl (scrolling) continues with Ctrl held.
                 const touch = v.zoomScale
-                app.sendWheel(window, p.x, p.y, 0, 4)
-                app.sendWheel(window, p.x, p.y, -120, 8)
-                app.sendWheel(window, p.x, p.y, 120, 9)
-                app.sendWheel(window, p.x, p.y, 120, 9)
+                TestDriver.sendWheel(window, p.x, p.y, 0, 4)
+                TestDriver.sendWheel(window, p.x, p.y, -120, 8)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 9)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 9)
                 check("Wayland: Strg+Mausrad mitten in einer Scroll-Geste zoomt", v.zoomScale > touch * 1.15, touch + " → " + v.zoomScale)
                 // Dialogs of the new design.
                 sendToNote.ask("ok", app.projectRoot)
@@ -930,7 +930,7 @@ Item {
                 const q = v.mapFromItem(null, test.zoomPoint.x, test.zoomPoint.y)
                 const vp = v.pagesView.mapFromItem(v, q.x, q.y)
                 test.zoomAnchor = v.pointAt(vp.x, vp.y)
-                for (let i = 0; i < 6; i++) app.sendWheel(window, test.zoomPoint.x, test.zoomPoint.y, 120, true)
+                for (let i = 0; i < 6; i++) TestDriver.sendWheel(window, test.zoomPoint.x, test.zoomPoint.y, 120, true)
             },
             () => {
                 const v = editor.activeTab.viewerItem
@@ -1029,8 +1029,8 @@ Item {
                 // A click next to the segments switches to typing the path.
                 const bar = folderDialog.pathBar
                 const p = bar.mapToItem(null, bar.width - 12, bar.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 check("Pfadleiste: Klick daneben zum Eintippen", folderDialog.pathBar.editing)
@@ -1059,8 +1059,8 @@ Item {
                 const item = projectTree.itemFor(path("docs/umbenannt.pdf"))
                 check("PDF im Baum sichtbar", !!item)
                 const p = item.mapToItem(null, item.width / 2, item.height / 2)
-                app.postMouse(window, 10, p.x, p.y, 20)
-                app.postMouse(window, 12, p.x, p.y, 60)
+                TestDriver.postMouse(window, 10, p.x, p.y, 20)
+                TestDriver.postMouse(window, 12, p.x, p.y, 60)
             },
             () => {
                 const tabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
@@ -1100,10 +1100,10 @@ Item {
                 check("Ordner: nichts vorausgewählt", f.selectedPaths().length === 0, f.selectedPaths().join(","))
                 const item = f.activeView.itemAtIndex(1)
                 const p = item.mapToItem(null, item.width / 2, item.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
                 test.zoomBefore = f.iconSize
-                app.sendWheel(window, p.x, p.y, 120, 17)
+                TestDriver.sendWheel(window, p.x, p.y, 120, 17)
             },
             () => {
                 const f = editor.activeTab.viewerItem
@@ -1126,10 +1126,10 @@ Item {
                 const from = last.mapToItem(null, last.width - 40, last.height + 12)
                 const second = f.activeView.itemAtIndex(1)
                 const to = second.mapToItem(null, second.width / 2, second.height / 2)
-                app.postMouse(window, 0, from.x, from.y, 20)
-                app.postMouse(window, 1, from.x - 10, from.y - 10, 60)
-                app.postMouse(window, 1, to.x, to.y, 100)
-                app.postMouse(window, 2, to.x, to.y, 140)
+                TestDriver.postMouse(window, 0, from.x, from.y, 20)
+                TestDriver.postMouse(window, 1, from.x - 10, from.y - 10, 60)
+                TestDriver.postMouse(window, 1, to.x, to.y, 100)
+                TestDriver.postMouse(window, 2, to.x, to.y, 140)
             },
             () => {
                 const f = editor.activeTab.viewerItem
@@ -1194,16 +1194,16 @@ Item {
                 editor.activeTab.forceActiveFocus()
                 const b = window.terminalButton
                 const p = b.mapToItem(null, b.width / 2, b.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 check("Terminal-Knopf: ein Klick blendet aus", !terminalPanel.visible && !window.terminalButton.checked,
                       terminalPanel.visible + " / " + window.terminalButton.checked)
                 const b = window.terminalButton
                 const p = b.mapToItem(null, b.width / 2, b.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 check("Terminal-Knopf: ein Klick blendet ein", terminalPanel.visible && window.terminalButton.checked,
@@ -1340,15 +1340,15 @@ Item {
                 // The calendar button opens the calendar and closes it again.
                 const b = window.calendarButton
                 const p = b.mapToItem(null, b.width / 2, b.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 check("Kalender-Knopf öffnet", editor.activeTab && editor.activeTab.kind === "calendar")
                 const b = window.calendarButton
                 const p = b.mapToItem(null, b.width / 2, b.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
             },
             () => {
                 const open = editor.groups.some(g => g.tabs.some(t => t.kind === "calendar"))
@@ -1508,7 +1508,7 @@ Item {
                 const paper = v.pagesView.itemAtIndex(0).paperItem
                 const at = (x, y) => paper.mapToItem(null, x * v.zoomScale, y * v.zoomScale)
                 const pts = [[0, 60, 80], [1, 60, 110], [1, 60, 150], [1, 60, 165], [2, 60, 170]]
-                pts.forEach((e, i) => { const q = at(e[1], e[2]); app.postMouse(window, e[0], q.x, q.y, 40 * (i + 1)) })
+                pts.forEach((e, i) => { const q = at(e[1], e[2]); TestDriver.postMouse(window, e[0], q.x, q.y, 40 * (i + 1)) })
             },
             () => {
                 const v = editor.activeTab.viewerItem
@@ -1532,9 +1532,9 @@ Item {
                 const paper = v.pagesView.itemAtIndex(0).paperItem
                 const at = (x, y) => paper.mapToItem(null, x * v.zoomScale, y * v.zoomScale)
                 const a = at(72, 130), b = at(97, 145), c = at(122, 160)
-                app.postMouse(window, 0, a.x, a.y, 30)
-                app.postMouse(window, 1, b.x, b.y, 60)
-                app.postMouse(window, 2, c.x, c.y, 90)
+                TestDriver.postMouse(window, 0, a.x, a.y, 30)
+                TestDriver.postMouse(window, 1, b.x, b.y, 60)
+                TestDriver.postMouse(window, 2, c.x, c.y, 90)
             },
             () => {
                 const v = editor.activeTab.viewerItem
@@ -1571,7 +1571,7 @@ Item {
                 v.forceActiveFocus()
                 if (waitFor(() => v.currentPage === 1)) return
                 // F5: from the start (wherever the focus is).
-                app.sendKey(window, Qt.Key_F5, 0)
+                TestDriver.sendKey(window, Qt.Key_F5, 0)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
@@ -1588,35 +1588,35 @@ Item {
                 check("Präsentation: Größenänderung im Tab erreicht sie nicht", v.bodyItem.width === w.width && v.bodyItem.height === w.height,
                       v.bodyItem.width + "×" + v.bodyItem.height + " in " + w.width + "×" + w.height)
                 v.width = before
-                app.sendKey(w, Qt.Key_Right, 0)
+                TestDriver.sendKey(w, Qt.Key_Right, 0)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
                 const w = v.presentationWindowItem
                 if (waitFor(() => v.slide === 1 && slideAlone(v, 1))) return
                 check("Präsentation: Pfeil rechts zeigt die nächste Seite allein", v.slide === 1 && slideAlone(v, 1), v.slide)
-                app.sendKey(w, Qt.Key_Right, 0)
+                TestDriver.sendKey(w, Qt.Key_Right, 0)
                 check("Präsentation: nach der letzten Seite bleibt sie stehen", v.slide === 1, v.slide)
-                app.sendKey(w, Qt.Key_Left, 0)
+                TestDriver.sendKey(w, Qt.Key_Left, 0)
                 check("Präsentation: Pfeil links zurück", v.slide === 0, v.slide)
-                app.postMouse(w, 0, w.width / 2, w.height / 2, 10)
-                app.postMouse(w, 2, w.width / 2, w.height / 2, 30)
+                TestDriver.postMouse(w, 0, w.width / 2, w.height / 2, 10)
+                TestDriver.postMouse(w, 2, w.width / 2, w.height / 2, 30)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
                 const w = v.presentationWindowItem
                 if (waitFor(() => v.slide === 1)) return
                 check("Präsentation: Klick zeigt die nächste Seite", v.slide === 1 && slideAlone(v, 1), v.slide)
-                app.sendWheel(w, w.width / 2, w.height / 2, 120, 0)
+                TestDriver.sendWheel(w, w.width / 2, w.height / 2, 120, 0)
                 check("Präsentation: Mausrad hoch zeigt die vorige Seite", v.slide === 0, v.slide)
-                app.sendKey(w, Qt.Key_2, 0)
-                app.sendKey(w, Qt.Key_Return, 0)
+                TestDriver.sendKey(w, Qt.Key_2, 0)
+                TestDriver.sendKey(w, Qt.Key_Return, 0)
                 check("Präsentation: Zahl + Enter springt zur Seite", v.slide === 1, v.slide)
-                app.sendKey(w, Qt.Key_B, 0)
+                TestDriver.sendKey(w, Qt.Key_B, 0)
                 check("Präsentation: B macht den Bildschirm schwarz", v.blank === "black")
-                app.sendKey(w, Qt.Key_Space, 0)
+                TestDriver.sendKey(w, Qt.Key_Space, 0)
                 check("Präsentation: nächste Taste hebt Schwarz auf, ohne zu blättern", v.blank === "" && v.slide === 1, v.blank + " " + v.slide)
-                app.sendKey(w, Qt.Key_Escape, 0)
+                TestDriver.sendKey(w, Qt.Key_Escape, 0)
             },
             () => {
                 const v = test.fullscreenTab.viewerItem
@@ -1675,20 +1675,20 @@ Item {
                 v.goToPage(0)
                 v.forceActiveFocus()
                 const y0 = v.pagesView.contentY
-                app.sendKey(window, Qt.Key_Down, 0)
+                TestDriver.sendKey(window, Qt.Key_Down, 0)
                 check("Pfeil runter scrollt die PDF", v.pagesView.contentY > y0, y0 + " → " + v.pagesView.contentY)
-                app.sendKey(window, Qt.Key_Right, 0)
+                TestDriver.sendKey(window, Qt.Key_Right, 0)
                 check("Pfeil rechts blättert weiter", v.currentPage === 1, v.currentPage)
-                app.sendKey(window, Qt.Key_Left, 0)
+                TestDriver.sendKey(window, Qt.Key_Left, 0)
                 check("Pfeil links blättert zurück", v.currentPage === 0, v.currentPage)
                 // Undo and redo of annotations (#6).
                 const store = v.annotationStore
                 const n0 = store.count
                 const id = v.addAnnot(JSON.stringify({ kind: "ink", page: 1, ink: [[[10, 10], [40, 40]]], color: "#ff6b6b", width: 2 }))
                 check("Strich gezeichnet", store.count === n0 + 1)
-                app.sendKey(window, Qt.Key_Z, Qt.ControlModifier)
+                TestDriver.sendKey(window, Qt.Key_Z, Qt.ControlModifier)
                 check("Strg+Z nimmt den Strich zurück", store.count === n0 && !store.annotation(id), store.count)
-                app.sendKey(window, Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier)
+                TestDriver.sendKey(window, Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier)
                 check("Strg+Umschalt+Z stellt ihn wieder her (gleiche ID)", store.count === n0 + 1 && !!store.annotation(id), store.count)
                 v.updateAnnot(id, JSON.stringify({ color: "#5ac8fa" }))
                 v.undo()
@@ -1703,11 +1703,11 @@ Item {
                 const tp = v.mapToItem(null, v.width / 2, v.height * 0.6)
                 test.flingY = v.pagesView.contentY
                 test.flings = v.fling.count
-                app.sendWheel(window, tp.x, tp.y, -40, 2 | 4 | 16)
-                for (let i = 0; i < 5; ++i) app.sendWheel(window, tp.x, tp.y, -40, 2 | 16)
+                TestDriver.sendWheel(window, tp.x, tp.y, -40, 2 | 4 | 16)
+                for (let i = 0; i < 5; ++i) TestDriver.sendWheel(window, tp.x, tp.y, -40, 2 | 16)
                 // Fingers lifted (Wayland's axis stop): the momentum starts at
                 // once, not after a pause.
-                app.sendWheel(window, tp.x, tp.y, 0, 2 | 16 | 32)
+                TestDriver.sendWheel(window, tp.x, tp.y, 0, 2 | 16 | 32)
                 check("Touchpad: Schwung setzt beim Loslassen sofort ein", v.fling.count === test.flings + 1 && v.fling.gliding,
                       v.fling.count - test.flings)
                 // libinput reports a "hold" while the fingers leave the touchpad:
@@ -1846,7 +1846,7 @@ Item {
                 const p = ed.mapToItem(null, ed.width / 2, ed.height / 2)
                 test.flingY = ed.scrollY
                 test.flings = ed.fling.count
-                app.sendWheel(window, p.x, p.y, -120, 0)
+                TestDriver.sendWheel(window, p.x, p.y, -120, 0)
             },
             () => {
                 // (Qt animates wheel scrolling: checked a step later.)
@@ -1854,8 +1854,8 @@ Item {
                 check("Editor: Mausrad scrollt weiter, ohne Schwung", ed.scrollY > test.flingY && ed.fling.count === test.flings,
                       test.flingY + " → " + ed.scrollY)
                 const p = ed.mapToItem(null, ed.width / 2, ed.height / 2)
-                app.sendWheel(window, p.x, p.y, -30, 2 | 4 | 16)
-                for (let i = 0; i < 5; ++i) app.sendWheel(window, p.x, p.y, -30, 2 | 16)
+                TestDriver.sendWheel(window, p.x, p.y, -30, 2 | 4 | 16)
+                for (let i = 0; i < 5; ++i) TestDriver.sendWheel(window, p.x, p.y, -30, 2 | 16)
             },
             () => {
                 const ed = editor.activeTab.viewerItem.editorItem
@@ -2040,8 +2040,8 @@ Item {
                 const rows = treeModel.rowOf(path("docs")) >= 0
                 const header = projectTree.rootRow
                 const p = header.mapToItem(null, header.width / 2, header.height / 2)
-                app.postMouse(window, 0, p.x, p.y, 20)
-                app.postMouse(window, 2, p.x, p.y, 60)
+                TestDriver.postMouse(window, 0, p.x, p.y, 20)
+                TestDriver.postMouse(window, 2, p.x, p.y, 60)
                 check("Projektordner-Zeile ohne Pfeil", !header.hasChevron && rows)
             },
             () => {

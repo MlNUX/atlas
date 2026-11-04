@@ -14,6 +14,7 @@ mod pdf_items;
 mod qt_helpers;
 mod search_model;
 mod terminal_item;
+mod test_driver;
 mod text_document;
 mod trash_model;
 mod tree_model;

@@ -806,33 +806,11 @@ pub mod qobject {
         #[cxx_name = "importIntoNote"]
         fn import_into_note(self: &AppController, note: &QString, paths: &QString) -> QString;
 
-        /// Saves a PNG of `window` (a QQuickWindow), used by `--screenshot`.
-        #[qinvokable]
-        #[cxx_name = "saveWindowImage"]
-        unsafe fn save_window_image(self: &AppController, window: *mut QObject, path: &QString) -> bool;
-
-        /// Sends a wheel event at window coordinates; for the smoke test.
-        #[qinvokable]
-        #[cxx_name = "sendWheel"]
-        unsafe fn send_wheel(self: &AppController, window: *mut QObject, x: f64, y: f64, delta: i32, flags: i32);
-
-        /// Sends a key press and release (Qt key code, modifier flags) to
-        /// the window's focus item; for the smoke test.
-        #[qinvokable]
-        #[cxx_name = "sendKey"]
-        unsafe fn send_key(self: &AppController, window: *mut QObject, key: i32, modifiers: i32);
-
         /// Makes `owner` responsible for deleting `object` (QObject parent),
         /// whatever its visual parent.
         #[qinvokable]
         #[cxx_name = "setOwner"]
         unsafe fn set_owner(self: &AppController, object: *mut QObject, owner: *mut QObject);
-
-        /// Sends a mouse event (0 press, 1 move, 2 release; +10 with Ctrl) at window
-        /// coordinates after `delay_ms`; for the smoke test.
-        #[qinvokable]
-        #[cxx_name = "postMouse"]
-        unsafe fn post_mouse(self: &AppController, window: *mut QObject, kind: i32, x: f64, y: f64, delay_ms: i32);
     }
 
     impl cxx_qt::Initialize for AppController {}
@@ -3145,34 +3123,9 @@ impl qobject::AppController {
     }
 
     /// # Safety
-    /// `window` must be null or point to a live QObject (QML passes the
-    /// window object).
-    pub unsafe fn save_window_image(&self, window: *mut cxx_qt::QObject, path: &QString) -> bool {
-        unsafe { crate::qt_helpers::save_window_image(window, path) }
-    }
-
-    /// # Safety
-    /// As for `save_window_image`.
-    pub unsafe fn send_wheel(&self, window: *mut cxx_qt::QObject, x: f64, y: f64, delta: i32, flags: i32) {
-        unsafe { crate::qt_helpers::send_wheel(window, x, y, delta, flags) }
-    }
-
-    /// # Safety
-    /// As for `save_window_image`.
-    pub unsafe fn send_key(&self, window: *mut cxx_qt::QObject, key: i32, modifiers: i32) {
-        unsafe { crate::qt_helpers::send_key(window, key, modifiers) }
-    }
-
-    /// # Safety
     /// Both must be null or live QObjects (passed from QML).
     pub unsafe fn set_owner(&self, object: *mut cxx_qt::QObject, owner: *mut cxx_qt::QObject) {
         unsafe { crate::qt_helpers::set_owner(object, owner) }
-    }
-
-    /// # Safety
-    /// As for `save_window_image`.
-    pub unsafe fn post_mouse(&self, window: *mut cxx_qt::QObject, kind: i32, x: f64, y: f64, delay_ms: i32) {
-        unsafe { crate::qt_helpers::post_mouse(window, kind, x, y, delay_ms) }
     }
 }
 
