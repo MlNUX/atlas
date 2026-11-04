@@ -135,18 +135,21 @@ impl Atlas {
 
     /// Background jobs of all projects.
     pub fn background_jobs(&self) -> Vec<BackgroundJob> {
-        todo_task!("P2.7")
+        atlas_core::background::list().into_iter().map(job).collect()
     }
 
     pub fn background_job(&self, key: String) -> Option<BackgroundJob> {
-        let _ = key;
-        todo_task!("P2.7")
+        atlas_core::background::status(&key).map(job)
     }
 
-    /// Stops a job (SIGTERM, then SIGKILL after 3 s); `false` if not running.
+    /// Asks a job to end (SIGTERM, then SIGKILL after 5 s; returns at once);
+    /// `false` if it does not run.
     pub fn stop_background_job(&self, key: String) -> bool {
-        let _ = key;
-        todo_task!("P2.7")
+        let stopped = atlas_core::background::stop(&key);
+        if stopped {
+            self.sink.on_event(crate::events::Event::BackgroundJobChanged { key });
+        }
+        stopped
     }
 
     /// Stops every background job; call when the app quits (macOS has no
@@ -167,6 +170,10 @@ impl Atlas {
         let rest = rest.strip_prefix("localhost").unwrap_or(rest);
         rest.starts_with('/').then(|| atlas_core::text::percent_decode(rest))
     }
+}
+
+fn job(s: atlas_core::background::Status) -> BackgroundJob {
+    BackgroundJob { key: s.key, name: s.name, cwd: s.cwd, running: s.running, exit_code: s.code, log: s.log }
 }
 
 #[cfg(test)]

@@ -241,11 +241,11 @@ impl Project {
     }
 
     pub fn actions(&self) -> Arc<crate::actions::Actions> {
-        todo_task!("P2.7")
+        Arc::new(crate::actions::Actions::new(self.shared.clone()))
     }
 
     pub fn extensions(&self) -> Arc<crate::extensions::Extensions> {
-        todo_task!("P2.7")
+        Arc::new(crate::extensions::Extensions::new(self.shared.clone()))
     }
 
     pub fn editor(&self) -> Arc<crate::editor::Editor> {
