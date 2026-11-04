@@ -75,8 +75,9 @@ fn finds_text_and_handed_in_pdf_text() {
     // As the macOS app does after reading the PDF with PDFKit (core API;
     // PdfDocument::set_page_texts wraps it in P2.6).
     atlas_core::pdf::set_page_texts(&pdf.canonicalize().unwrap(), vec!["Einleitung".into(), "Fourier Reihen".into()]);
+    // The handle may go away at once (as in Swift): the search goes on.
+    let id = project.search().start(query("fourier")).unwrap();
     let search = project.search();
-    let id = search.start(query("fourier")).unwrap();
     let (matches, summary) = collect(&rx, id);
     assert_eq!(summary.matches, 4, "{matches:?}");
     assert_eq!(summary.files, 4);
