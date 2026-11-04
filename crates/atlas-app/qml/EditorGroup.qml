@@ -36,7 +36,7 @@ Rectangle {
     color: Theme.editor
     radius: Theme.radius
     clip: true
-    border.color: temporary ? Theme.warn : active ? Qt.rgba(0.24, 0.55, 0.99, 0.55) : Theme.border
+    border.color: temporary ? Theme.warn : active ? Theme.accentAlpha(0.55) : Theme.border
     border.width: 1
 
     // Used only without an EditorArea; normally the area owns documents.
@@ -314,7 +314,7 @@ Rectangle {
                             anchors.bottomMargin: 6
                             radius: 8
                             color: tabItem.isCurrent ? Theme.raised : tabHover.hovered ? Theme.hover : "transparent"
-                            border.color: tabItem.isCurrent ? (group.active ? Qt.rgba(0.24, 0.55, 0.99, 0.4) : Theme.border) : "transparent"
+                            border.color: tabItem.isCurrent ? (group.active ? Theme.accentAlpha(0.4) : Theme.border) : "transparent"
                         }
                         HoverHandler { id: tabHover }
                         // Drag source: a ghost of the tab follows the mouse (an

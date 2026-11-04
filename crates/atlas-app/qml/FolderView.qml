@@ -547,7 +547,7 @@ Rectangle {
                         radius: 6
                         color: root.selected[row.path] ? (list.activeFocus ? Theme.activeSelection : Theme.selection)
                              : rowHover.hovered ? Theme.hover : "transparent"
-                        border.color: root.selected[row.path] && list.activeFocus ? Qt.rgba(0.24, 0.55, 0.99, 0.45) : "transparent"
+                        border.color: root.selected[row.path] && list.activeFocus ? Theme.accentAlpha(0.45) : "transparent"
                     }
                     HoverHandler { id: rowHover }
 
@@ -702,7 +702,7 @@ Rectangle {
                         radius: 8
                         color: cell.isSelected ? (grid.activeFocus ? Theme.activeSelection : Theme.selection)
                              : cellHover.hovered ? Theme.hover : "transparent"
-                        border.color: cell.isSelected && grid.activeFocus ? Qt.rgba(0.24, 0.55, 0.99, 0.45) : "transparent"
+                        border.color: cell.isSelected && grid.activeFocus ? Theme.accentAlpha(0.45) : "transparent"
                     }
                     HoverHandler { id: cellHover }
 

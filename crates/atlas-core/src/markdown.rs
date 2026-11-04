@@ -144,25 +144,6 @@ pub fn normalize_tag(tag: &str) -> String {
     tag.trim().trim_start_matches('#').trim_matches('/').to_lowercase()
 }
 
-pub(crate) fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let hex = bytes.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok());
-        if bytes[i] == b'%'
-            && let Some(Ok(v)) = hex.map(|h| u8::from_str_radix(h, 16))
-        {
-            out.push(v);
-            i += 3;
-        } else {
-            out.push(bytes[i]);
-            i += 1;
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 pub(crate) fn percent_encode_path(path: &str) -> String {
     let mut out = String::new();
     for c in path.chars() {
@@ -203,7 +184,7 @@ fn parse_anchor(fragment: &str) -> Anchor {
         if let Some(Ok(page)) = parts.next().map(str::parse::<u32>) {
             let annot = parts.find_map(|p| p.strip_prefix("annot=")).filter(|id| !id.is_empty());
             return match annot {
-                Some(id) => Anchor::Annotation(page, percent_decode(id)),
+                Some(id) => Anchor::Annotation(page, crate::text::percent_decode(id)),
                 None => Anchor::Page(page),
             };
         }
@@ -215,7 +196,7 @@ fn parse_anchor(fragment: &str) -> Anchor {
             return Anchor::Lines(start, end.max(start));
         }
     }
-    Anchor::Heading(percent_decode(fragment))
+    Anchor::Heading(crate::text::percent_decode(fragment))
 }
 
 /// Resolves a link destination written in `file`.
@@ -231,7 +212,7 @@ pub fn resolve(raw: &str, file: &Path, root: Option<&Path>) -> Target {
         return Target::External(raw.to_owned());
     }
     if let Some(fragment) = raw.strip_prefix('#') {
-        return Target::SameDocument(percent_decode(fragment));
+        return Target::SameDocument(crate::text::percent_decode(fragment));
     }
     let raw = raw.strip_prefix("file://").unwrap_or(raw);
     let (path_part, fragment) = match raw.split_once('#') {
@@ -243,7 +224,7 @@ pub fn resolve(raw: &str, file: &Path, root: Option<&Path>) -> Target {
         Some((p, page)) => (p, page.parse::<u32>().ok()),
         None => (path_part, None),
     };
-    let decoded = percent_decode(path_part);
+    let decoded = crate::text::percent_decode(path_part);
     let root_relative = decoded.starts_with('/') && root.is_some();
     let path = if root_relative {
         root.unwrap_or(Path::new("/")).join(decoded.trim_start_matches('/'))
@@ -485,7 +466,7 @@ fn render_impl(src: &str, file: &Path, root: Option<&Path>, html: bool) -> Rende
                     let block = if lang.eq_ignore_ascii_case("mermaid") {
                         format!("<pre class=\"mermaid\">{}</pre>\n", escape(&text))
                     } else if lang.eq_ignore_ascii_case("tree") {
-                        format!("<pre class=\"tree\">{}</pre>\n", escape(&crate::tree::draw(&text)))
+                        format!("<pre class=\"tree\">{}</pre>\n", escape(&crate::text_tree::draw(&text)))
                     } else if lang.is_empty() {
                         format!("<pre><code class=\"nohighlight\">{}</code></pre>\n", escape(&text))
                     } else {

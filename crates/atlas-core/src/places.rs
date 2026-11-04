@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The places in the sidebar when `[places] file_manager` is on:
+//! The places in the sidebar: Atlas' fixed ones ([`fixed`]: home, desktop,
+//! documents, …, trash) and, when `[places] file_manager` is on, those of
+//! the file manager:
 //!
 //! - with KDE/Dolphin's `$XDG_DATA_HOME/user-places.xbel` (shared with the
 //!   KDE file dialogs): exactly Dolphin's places, in its order, instead of
@@ -16,7 +18,44 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::listing::Place;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Place {
+    pub name: String,
+    pub icon: String,
+    pub path: PathBuf,
+}
+
+/// Home, desktop, documents, downloads and trash – only those that exist.
+pub fn fixed() -> Vec<Place> {
+    let candidates = [
+        ("Persönlicher Ordner", "home", dirs::home_dir()),
+        ("Schreibtisch", "desktop", dirs::desktop_dir()),
+        ("Dokumente", "documents", dirs::document_dir()),
+        ("Downloads", "downloads", dirs::download_dir()),
+        ("Bilder", "pictures", dirs::picture_dir()),
+        ("Musik", "music", dirs::audio_dir()),
+        ("Videos", "videos", dirs::video_dir()),
+        ("Papierkorb", "trash", trash_files_dir()),
+    ];
+    let mut seen = Vec::new();
+    candidates
+        .into_iter()
+        .filter_map(|(name, icon, path)| {
+            let path = path?;
+            // XDG dirs fall back to $HOME when unset; do not list it twice.
+            if !path.is_dir() || seen.contains(&path) {
+                return None;
+            }
+            seen.push(path.clone());
+            Some(Place { name: name.into(), icon: icon.into(), path })
+        })
+        .collect()
+}
+
+/// `$XDG_DATA_HOME/Trash/files` (freedesktop.org trash specification).
+pub fn trash_files_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|d| d.join("Trash/files"))
+}
 
 /// The files the places are read from (for watching).
 pub fn sources() -> Vec<PathBuf> {
@@ -85,7 +124,7 @@ pub fn parse_xbel(text: &str) -> Option<Vec<Place>> {
     for bookmark in doc.descendants().filter(|n| n.is_element() && n.tag_name().name() == "bookmark") {
         let href = bookmark.attribute("href").unwrap_or("");
         let trash = href.starts_with("trash:");
-        let path = if trash { crate::listing::trash_files_dir() } else { local_path(href) };
+        let path = if trash { trash_files_dir() } else { local_path(href) };
         let Some(path) = path else { continue };
         let child_text = |name: &str| {
             bookmark
@@ -240,11 +279,7 @@ mod tests {
                 ("Persönlicher Ordner".into(), "home".into(), "/home/user".into()),
                 ("Arbeit".into(), "folder".into(), "/home/user/Projects/Meine Arbeit".into()),
                 // trash:/ is Atlas' trash.
-                (
-                    "Papierkorb".into(),
-                    "trash".into(),
-                    crate::listing::trash_files_dir().unwrap().to_string_lossy().into_owned()
-                ),
+                ("Papierkorb".into(), "trash".into(), trash_files_dir().unwrap().to_string_lossy().into_owned()),
                 // No title: the folder's name.
                 ("Musik".into(), "music".into(), "/home/user/Musik".into()),
             ]

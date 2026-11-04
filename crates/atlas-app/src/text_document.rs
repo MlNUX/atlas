@@ -20,6 +20,8 @@ use atlas_core::watcher::DirWatcher;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
+use crate::util::qs;
+
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -184,10 +186,6 @@ pub struct TextDocumentRust {
     stat: Option<(i64, u64)>,
     watcher: Option<DirWatcher>,
     pending_saves: u32,
-}
-
-fn qs(s: impl AsRef<str>) -> QString {
-    QString::from(s.as_ref())
 }
 
 fn stat_of(path: &Path) -> Option<(i64, u64)> {

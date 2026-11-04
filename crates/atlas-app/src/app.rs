@@ -21,6 +21,8 @@ use atlas_core::session::{AppState, ProjectSession};
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QString, QStringList};
 
+use crate::util::qs;
+
 use crate::cli::Cli;
 
 #[cxx_qt::bridge]
@@ -1113,10 +1115,6 @@ impl cxx_qt::Initialize for qobject::AppController {
     }
 }
 
-fn qs(s: impl AsRef<str>) -> QString {
-    QString::from(s.as_ref())
-}
-
 /// Note texts read once per call, for the quoted text of quote links.
 #[derive(Default)]
 struct NoteTexts(std::collections::HashMap<PathBuf, Option<String>>);
@@ -1131,7 +1129,7 @@ impl NoteTexts {
 impl qobject::AppController {
     pub fn refresh_places(mut self: Pin<&mut Self>) {
         let (places, fixed) =
-            atlas_core::places::sidebar_places(atlas_core::listing::places(), self.file_manager_places);
+            atlas_core::places::sidebar_places(atlas_core::places::fixed(), self.file_manager_places);
         let (mut names, mut paths, mut icons) =
             (QStringList::default(), QStringList::default(), QStringList::default());
         for place in &places {
@@ -1791,7 +1789,7 @@ impl qobject::AppController {
     pub fn url_to_path(&self, url: &QString) -> QString {
         let url = url.to_string();
         let Some(rest) = url.strip_prefix("file://") else { return qs(url) };
-        qs(percent_decode(rest))
+        qs(atlas_core::text::percent_decode(rest))
     }
 
     pub fn has_checklist(&self, path: &QString) -> bool {
@@ -3052,7 +3050,7 @@ impl qobject::AppController {
             }
             Some((view, ext)) => {
                 crate::qt_helpers::set_extension_dir(&qs(&ext.name), &qs(ext.dir.to_string_lossy()));
-                let page: String = view.page.split('/').map(|p| url_escape(p)).collect::<Vec<_>>().join("/");
+                let page: String = view.page.split('/').map(url_escape).collect::<Vec<_>>().join("/");
                 serde_json::json!({
                     "url": format!("atlas://app/ext/{}/{page}", ext.name),
                     "name": view.name,
@@ -3408,7 +3406,7 @@ impl qobject::AppController {
     }
 
     pub fn folder_tree(&self, path: &QString) -> QString {
-        qs(atlas_core::tree::of_folder(&path_of(path), 3, 300))
+        qs(atlas_core::text_tree::of_folder(&path_of(path), 3, 300))
     }
 
     pub fn paste_into_note(&self, note: &QString) -> QString {
@@ -3436,7 +3434,7 @@ impl qobject::AppController {
         let list: Vec<String> = serde_json::from_str(&paths.to_string()).unwrap_or_default();
         let files: Vec<PathBuf> = list
             .iter()
-            .map(|p| PathBuf::from(p.strip_prefix("file://").map(percent_decode).unwrap_or_else(|| p.clone())))
+            .map(|p| PathBuf::from(p.strip_prefix("file://").map(atlas_core::text::percent_decode).unwrap_or_else(|| p.clone())))
             .collect();
         qs(self.import_files(&path_of(note), &files))
     }
@@ -3530,7 +3528,7 @@ pub fn file_kind(path: &Path) -> &'static str {
     if is_terminal_path(path) {
         return "terminal";
     }
-    if atlas_core::listing::trash_files_dir().is_some_and(|t| t == path) {
+    if atlas_core::places::trash_files_dir().is_some_and(|t| t == path) {
         return "trash";
     }
     if path.is_dir() {
@@ -3565,25 +3563,6 @@ fn url_escape(segment: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let hex = bytes.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok());
-        if bytes[i] == b'%'
-            && let Some(Ok(v)) = hex.map(|h| u8::from_str_radix(h, 16))
-        {
-            out.push(v);
-            i += 3;
-        } else {
-            out.push(bytes[i]);
-            i += 1;
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// `[ilias]` for QML.
@@ -3648,16 +3627,4 @@ pub(crate) fn ensure_latex_models(progress: &dyn Fn(String)) -> anyhow::Result<(
             None => format!("Lade das Formelmodell (einmalig): {file} {:.0} MB", mb(received)),
         });
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::percent_decode;
-
-    #[test]
-    fn decodes_file_urls() {
-        assert_eq!(percent_decode("/home/a%20b/%C3%A4.pdf"), "/home/a b/ä.pdf");
-        assert_eq!(percent_decode("/x%2"), "/x%2");
-        assert_eq!(percent_decode("/x%aä"), "/x%aä");
-    }
 }

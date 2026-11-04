@@ -35,7 +35,7 @@ AbstractButton {
     background: Rectangle {
         radius: 8
         color: root.down || panel.visible ? Theme.selection : root.hovered ? Theme.hover : Theme.header
-        border.color: panel.visible ? Qt.rgba(0.24, 0.55, 0.99, 0.5) : Theme.border
+        border.color: panel.visible ? Theme.accentAlpha(0.5) : Theme.border
     }
     contentItem: Item {
         implicitWidth: row.implicitWidth

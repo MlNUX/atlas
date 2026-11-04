@@ -16,6 +16,7 @@ mod terminal_item;
 mod text_document;
 mod trash_model;
 mod tree_model;
+mod util;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 

@@ -817,7 +817,7 @@ ApplicationWindow {
                     background: Rectangle {
                         radius: 8
                         color: calendarButton.active ? Theme.accentSoft : calendarButton.hovered ? Theme.hover : Theme.header
-                        border.color: calendarButton.active ? Qt.rgba(0.24, 0.55, 0.99, 0.5) : Theme.border
+                        border.color: calendarButton.active ? Theme.accentAlpha(0.5) : Theme.border
                     }
                     contentItem: Item {
                         Row {

@@ -85,7 +85,7 @@ pub struct TrashModelRust {
 impl cxx_qt::Initialize for qobject::TrashModel {
     fn initialize(mut self: Pin<&mut Self>) {
         // Watch the home trash; other trash folders refresh on reload.
-        if let Some(files) = listing::trash_files_dir() {
+        if let Some(files) = atlas_core::places::trash_files_dir() {
             let thread = self.qt_thread();
             if let Ok(watcher) = DirWatcher::new(move |_| {
                 let _ = thread.queue(|model| model.reload());

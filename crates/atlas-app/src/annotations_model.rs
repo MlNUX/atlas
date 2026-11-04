@@ -17,6 +17,8 @@ use atlas_core::pdf::PdfService;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 
+use crate::util::qs;
+
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
@@ -138,10 +140,6 @@ pub struct PdfAnnotationsRust {
     /// Fingerprint of the PDF as it is now (stored with the next write).
     current: Fingerprint,
     generation: u64,
-}
-
-fn qs(s: impl AsRef<str>) -> QString {
-    QString::from(s.as_ref())
 }
 
 // ------------------------------------------------------------------- I/O

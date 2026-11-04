@@ -25,6 +25,8 @@ use chrono::{Duration, NaiveDateTime, Utc};
 use chrono_tz::Tz;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
+
+use crate::util::qs;
 use serde_json::{Value, json};
 
 #[cxx_qt::bridge]
@@ -444,10 +446,6 @@ impl Default for CalendarModelRust {
             waiting: Default::default(),
         }
     }
-}
-
-fn qs(s: impl AsRef<str>) -> QString {
-    QString::from(s.as_ref())
 }
 
 const ISO: &str = "%Y-%m-%dT%H:%M";

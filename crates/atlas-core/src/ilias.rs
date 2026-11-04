@@ -15,7 +15,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Condvar, Mutex};
+use std::sync::{Condvar, LazyLock, Mutex};
 use std::time::Duration;
 
 use anyhow::{Result, bail};
@@ -349,33 +349,43 @@ fn page_title(doc: &Html) -> String {
     doc.select(&sel).next().map(|t| clean(&t.text().collect::<String>())).unwrap_or_default()
 }
 
+// Patterns of ILIAS addresses, built once.
+fn regex(pattern: &str) -> Regex {
+    Regex::new(pattern).expect("valid pattern")
+}
+static LINK_PATTERNS: LazyLock<[Regex; 3]> = LazyLock::new(|| {
+    [
+        regex(r"(?i)[?&]target=(crs|grp|sess|fold|file)_(\d+)"),
+        regex(r"(?i)goto_[^/?#]*?_(crs|grp|sess|fold|file)_(\d+)"),
+        // `/go/crs/12` and, from ILIAS 9 on, `goto.php/crs/12`.
+        regex(r"(?i)/go(?:to\.php)?/(crs|grp|sess|fold|file)/(\d+)"),
+    ]
+});
+static REF_ID: LazyLock<Regex> = LazyLock::new(|| regex(r"(?i)[?&]ref_id=(\d+)"));
+static CMD_CLASS: LazyLock<Regex> =
+    LazyLock::new(|| regex(r"(?i)[?&]cmdClass=ilObj(Course|Group|Session|Folder|File)GUI\b"));
+static ICON_KIND: LazyLock<Regex> = LazyLock::new(|| regex(r"(?i)icon_(crs|grp|sess|fold|file)\b"));
+static TARGET_FILE: LazyLock<Regex> = LazyLock::new(|| regex(r"(?i)(target=file_\d+)"));
+static DISPOSITION_STAR: LazyLock<Regex> =
+    LazyLock::new(|| regex(r#"(?i)filename\*\s*=\s*(?:UTF-8|ISO-8859-1)?'[^']*'([^;]+)"#));
+static DISPOSITION_PLAIN: LazyLock<Regex> = LazyLock::new(|| regex(r#"(?i)filename\s*=\s*(?:"([^"]*)"|([^;]+))"#));
+
 /// Kind and ID of an ILIAS object link: from permalinks (`target=fold_12`,
 /// `goto_…_fold_12.html`, `/go/fold/12`, `goto.php/fold/12`), from the
 /// GUI class of `ref_id` links (`cmdClass=ilObjFolderGUI`) or, for
 /// other links with a
 /// `ref_id`, from the type icon of the list item.
 fn classify(href: &str, icon: Option<&str>) -> Option<(String, String)> {
-    static PATTERNS: std::sync::OnceLock<[Regex; 3]> = std::sync::OnceLock::new();
-    let patterns = PATTERNS.get_or_init(|| {
-        [
-            Regex::new(r"(?i)[?&]target=(crs|grp|sess|fold|file)_(\d+)").unwrap(),
-            Regex::new(r"(?i)goto_[^/?#]*?_(crs|grp|sess|fold|file)_(\d+)").unwrap(),
-            // `/go/crs/12` and, from ILIAS 9 on, `goto.php/crs/12`.
-            Regex::new(r"(?i)/go(?:to\.php)?/(crs|grp|sess|fold|file)/(\d+)").unwrap(),
-        ]
-    });
-    let decoded = percent_decode(href);
-    for re in patterns {
+    let decoded = crate::text::percent_decode(href);
+    for re in LINK_PATTERNS.iter() {
         if let Some(c) = re.captures(&decoded) {
             return Some((c[1].to_lowercase(), c[2].to_owned()));
         }
     }
-    let ref_id = Regex::new(r"(?i)[?&]ref_id=(\d+)").unwrap().captures(&decoded)?;
+    let ref_id = REF_ID.captures(&decoded)?;
     // `ilias.php?…&cmdClass=ilObjFileGUI&cmd=sendfile&ref_id=12`: the GUI
     // class names the type (KIT links files and folders like this).
-    if let Some(class) =
-        Regex::new(r"(?i)[?&]cmdClass=ilObj(Course|Group|Session|Folder|File)GUI\b").unwrap().captures(&decoded)
-    {
+    if let Some(class) = CMD_CLASS.captures(&decoded) {
         let kind = match class[1].to_lowercase().as_str() {
             "course" => "crs",
             "group" => "grp",
@@ -385,29 +395,8 @@ fn classify(href: &str, icon: Option<&str>) -> Option<(String, String)> {
         };
         return Some((kind.to_owned(), ref_id[1].to_owned()));
     }
-    let kind = Regex::new(r"(?i)icon_(crs|grp|sess|fold|file)\b").unwrap().captures(icon?)?;
+    let kind = ICON_KIND.captures(icon?)?;
     Some((kind[1].to_lowercase(), ref_id[1].to_owned()))
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%'
-            && i + 2 < bytes.len()
-            && bytes[i + 1].is_ascii_hexdigit()
-            && bytes[i + 2].is_ascii_hexdigit()
-        {
-            let hex = |b: u8| (b as char).to_digit(16).unwrap_or(0) as u8;
-            out.push(hex(bytes[i + 1]) * 16 + hex(bytes[i + 2]));
-            i += 3;
-        } else {
-            out.push(bytes[i]);
-            i += 1;
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Address that sends the file itself.
@@ -420,7 +409,7 @@ fn download_url(href: &str, id: &str, page: &Url) -> String {
     {
         return href.to_owned();
     }
-    if let Some(m) = Regex::new(r"(?i)(target=file_\d+)").unwrap().find(href) {
+    if let Some(m) = TARGET_FILE.find(href) {
         return format!("{}_download{}", &href[..m.end()], &href[m.end()..]);
     }
     page.join(&format!("goto.php?target=file_{id}_download")).map(|u| u.to_string()).unwrap_or_default()
@@ -472,7 +461,7 @@ fn list_item(a: ElementRef) -> Option<ElementRef> {
 /// (`icon_fold.svg`) or, in ILIAS 9, its classes (`icon fold medium`).
 fn item_icon(item: ElementRef) -> Option<String> {
     let images = Selector::parse("img").unwrap();
-    let kind = Regex::new(r"(?i)icon_(crs|grp|sess|fold|file)\b").unwrap();
+    let kind = &*ICON_KIND;
     item.select(&images).find_map(|img| {
         let el = img.value();
         if let Some(src) = el.attr("src").filter(|s| kind.is_match(s)) {
@@ -818,70 +807,88 @@ pub fn scan(client: &Client, progress: &(dyn Fn(Progress) + Sync)) -> Result<Vec
                             w = wake.wait(w).unwrap();
                         }
                     };
-                    let result = client.page(&task.url);
-                    let mut w = work.lock().unwrap();
-                    w.active -= 1;
-                    match result {
-                        Ok((html, at)) => {
-                            w.pages += 1;
-                            let pages = w.pages;
-                            let found: Vec<Node> = objects(&html, &at)
-                                .into_iter()
-                                .filter(|o| o.kind != "crs" && o.key() != task.key)
-                                .collect();
-                            let mut kept = Vec::new();
-                            let mut queued = 0;
-                            for o in found {
-                                if o.is_container() {
-                                    // Each container once (it may be linked twice).
-                                    if !w.visited.insert(o.key()) {
-                                        continue;
+                    // Read and parse without the lock: only the bookkeeping
+                    // below is shared.
+                    let result = client.page(&task.url).map(|(html, at)| {
+                        let found: Vec<Node> = objects(&html, &at)
+                            .into_iter()
+                            .filter(|o| o.kind != "crs" && o.key() != task.key)
+                            .collect();
+                        let empty =
+                            if found.is_empty() { format!(" · leer: {}", explain(&html, &at)) } else { String::new() };
+                        (found, empty)
+                    });
+                    let mut log = None;
+                    let mut report = None;
+                    {
+                        let mut w = work.lock().unwrap();
+                        w.active -= 1;
+                        match result {
+                            Ok((found, empty)) => {
+                                w.pages += 1;
+                                let pages = w.pages;
+                                let mut kept = Vec::new();
+                                let mut queued = 0;
+                                for o in found {
+                                    if o.is_container() {
+                                        // Each container once (it may be linked twice).
+                                        if !w.visited.insert(o.key()) {
+                                            continue;
+                                        }
+                                        if task.depth >= MAX_DEPTH {
+                                            // (listed, not read)
+                                        } else if w.pages + w.queue.len() + w.active >= MAX_PAGES {
+                                            w.skipped += 1;
+                                        } else {
+                                            queued += 1;
+                                            w.queue.push_back(Task {
+                                                key: o.key(),
+                                                url: o.url.clone(),
+                                                depth: task.depth + 1,
+                                                name: o.name.clone(),
+                                                course: task.course.clone(),
+                                            });
+                                        }
                                     }
-                                    if task.depth >= MAX_DEPTH {
-                                        // (listed, not read)
-                                    } else if w.pages + w.queue.len() + w.active >= MAX_PAGES {
-                                        w.skipped += 1;
-                                    } else {
-                                        queued += 1;
-                                        w.queue.push_back(Task {
-                                            key: o.key(),
-                                            url: o.url.clone(),
-                                            depth: task.depth + 1,
-                                            name: o.name.clone(),
-                                            course: task.course.clone(),
-                                        });
-                                    }
+                                    kept.push(o);
                                 }
-                                kept.push(o);
+                                let files = kept.iter().filter(|o| o.kind == "file").count();
+                                let entry = w.per_course.entry(task.course.clone()).or_default();
+                                entry.0 += 1;
+                                entry.1 += files;
+                                let detail = if !empty.is_empty() {
+                                    empty
+                                } else if kept.is_empty() {
+                                    " · leer (alles schon gelesen)".to_owned()
+                                } else {
+                                    String::new()
+                                };
+                                log = Some(format!(
+                                    "  {}{} ({}): {}, {queued} zum Lesen{detail}",
+                                    "  ".repeat(task.depth),
+                                    task.name,
+                                    task.key,
+                                    summary(&kept)
+                                ));
+                                w.children.insert(task.key, kept);
+                                if pages.is_multiple_of(5) {
+                                    report = Some(Progress { pages, text: task.name });
+                                }
                             }
-                            let files = kept.iter().filter(|o| o.kind == "file").count();
-                            let entry = w.per_course.entry(task.course.clone()).or_default();
-                            entry.0 += 1;
-                            entry.1 += files;
-                            let detail = if kept.is_empty() {
-                                format!(" · leer: {}", explain(&html, &at))
-                            } else {
-                                String::new()
-                            };
-                            trace(&format!(
-                                "  {}{} ({}): {}, {queued} zum Lesen{detail}",
-                                "  ".repeat(task.depth),
-                                task.name,
-                                task.key,
-                                summary(&kept)
-                            ));
-                            w.children.insert(task.key, kept);
-                            if pages.is_multiple_of(5) {
-                                progress(Progress { pages, text: task.name });
+                            Err(IliasError::Login) => w.login = true,
+                            Err(IliasError::Other(e)) => {
+                                log = Some(format!("  {} ({}): Fehler {e}", task.name, task.key));
+                                w.errors.insert(task.key, e);
                             }
-                        }
-                        Err(IliasError::Login) => w.login = true,
-                        Err(IliasError::Other(e)) => {
-                            trace(&format!("  {} ({}): Fehler {e}", task.name, task.key));
-                            w.errors.insert(task.key, e);
                         }
                     }
                     wake.notify_all();
+                    if let Some(line) = log {
+                        trace(&line);
+                    }
+                    if let Some(p) = report {
+                        progress(p);
+                    }
                 }
             });
         }
@@ -978,12 +985,10 @@ fn summary(found: &[Node]) -> String {
 
 /// File name from a `Content-Disposition` header (RFC 6266/5987).
 pub fn disposition_name(header: &str) -> Option<String> {
-    let star = Regex::new(r#"(?i)filename\*\s*=\s*(?:UTF-8|ISO-8859-1)?'[^']*'([^;]+)"#).unwrap();
-    if let Some(c) = star.captures(header) {
-        return Some(percent_decode(c[1].trim()));
+    if let Some(c) = DISPOSITION_STAR.captures(header) {
+        return Some(crate::text::percent_decode(c[1].trim()));
     }
-    let plain = Regex::new(r#"(?i)filename\s*=\s*(?:"([^"]*)"|([^;]+))"#).unwrap();
-    let c = plain.captures(header)?;
+    let c = DISPOSITION_PLAIN.captures(header)?;
     Some(c.get(1).or(c.get(2))?.as_str().trim().to_owned())
 }
 
@@ -1329,7 +1334,6 @@ mod tests {
         assert_eq!(classify(fold, None), Some(("fold".into(), "3042915".into())));
         let info = "https://x/ilias.php?baseClass=ilrepositorygui&cmdNode=xu:nl:f6&cmdClass=ilinfoscreengui&cmd=showSummary&ref_id=3";
         assert_eq!(classify(info, None), None, "info page is no object");
-        assert_eq!(percent_decode("a%20b%zz%4"), "a b%zz%4");
     }
 
     #[test]

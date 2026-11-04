@@ -36,6 +36,7 @@ pub mod session;
 pub mod spell;
 pub mod symbols;
 pub mod terminal;
+pub mod text;
+pub mod text_tree;
 pub mod textfile;
-pub mod tree;
 pub mod watcher;

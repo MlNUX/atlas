@@ -28,7 +28,7 @@ AbstractButton {
     background: Rectangle {
         radius: 6
         color: control.down ? Theme.selection : control.checkedLook ? Theme.accentSoft : control.hovered ? Theme.hover : "transparent"
-        border.color: control.checkedLook ? Qt.rgba(0.24, 0.55, 0.99, 0.5) : "transparent"
+        border.color: control.checkedLook ? Theme.accentAlpha(0.5) : "transparent"
     }
     contentItem: Item {
         implicitWidth: row.implicitWidth
