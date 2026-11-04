@@ -256,6 +256,73 @@ Rectangle {
         }
     }
 
+    // ---- the picture at the mouse pointer while dragging entries
+    //
+    // The drag is the system's (also into the project tree and other
+    // programs), so the picture is an image: grabbed from `dragImage` when
+    // an entry is pressed, ready before the drag starts (8 px later).
+    property var dragGrab: null
+    function prepareDrag(source, path, name, isDir) {
+        const n = root.selected[path] ? root.selectedPaths().length : 1
+        dragImage.label = n > 1 ? qsTr("%n Einträge", "", n) : name
+        dragImage.icon = Theme.fileIcon(name, isDir)
+        dragImage.count = n
+        dragImage.grabToImage((result) => {
+            root.dragGrab = result           // keeps the image alive
+            source.Drag.imageSource = result.url
+        })
+    }
+    Rectangle {
+        id: dragImage
+        property string label
+        property var icon: ["file", Theme.text]
+        property int count: 1
+        // Outside the view, but drawn (grabToImage needs a visible item).
+        x: -width - 1000
+        width: Math.min(260, dragRow.implicitWidth + 20)
+        height: 40
+        radius: 8
+        color: Theme.header
+        border.color: Theme.accent
+        Row {
+            id: dragRow
+            x: 8
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+            Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                name: dragImage.icon[0]
+                color: dragImage.icon[1]
+                size: 24
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, 260 - 20 - 32 - (badge.visible ? badge.width + 8 : 0))
+                text: dragImage.label
+                color: Theme.textStrong
+                font.pixelSize: Theme.fontSize
+                elide: Text.ElideMiddle
+            }
+            Rectangle {
+                id: badge
+                visible: dragImage.count > 1
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(20, badgeText.implicitWidth + 10)
+                height: 20
+                radius: 10
+                color: Theme.accent
+                Text {
+                    id: badgeText
+                    anchors.centerIn: parent
+                    text: dragImage.count
+                    color: "white"
+                    font.pixelSize: Theme.smallFontSize
+                    font.weight: Font.DemiBold
+                }
+            }
+        }
+    }
+
     /// Click on the empty area of either view.
     function backgroundClicked(mouse) {
         root.activeView.forceActiveFocus()
@@ -541,6 +608,9 @@ Rectangle {
                     Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
                     Drag.proposedAction: Qt.MoveAction
                     Drag.mimeData: ({ "text/uri-list": root.actions.uriList(root.selected[row.path] ? root.selectedPaths() : [row.path]) })
+                    // The pointer on the picture's icon.
+                    Drag.hotSpot.x: 20
+                    Drag.hotSpot.y: 20
 
                     // Drop target: into this folder, or the shown folder.
                     DropArea {
@@ -562,6 +632,7 @@ Rectangle {
                         drag.threshold: 8
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                        onPressed: (mouse) => { if (mouse.button === Qt.LeftButton) root.prepareDrag(row, row.path, row.name, row.isDir) }
                         onClicked: (mouse) => root.itemClicked(row.index, row.path, mouse)
                         onDoubleClicked: (mouse) => {
                             if (mouse.button === Qt.LeftButton) root.openRow(row.index, mouse.modifiers & Qt.ControlModifier)
@@ -722,6 +793,8 @@ Rectangle {
                     Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
                     Drag.proposedAction: Qt.MoveAction
                     Drag.mimeData: ({ "text/uri-list": root.actions.uriList(cell.isSelected ? root.selectedPaths() : [cell.path]) })
+                    Drag.hotSpot.x: 20
+                    Drag.hotSpot.y: 20
 
                     DropArea {
                         anchors.fill: parent
@@ -743,6 +816,7 @@ Rectangle {
                         drag.threshold: 8
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                        onPressed: (mouse) => { if (mouse.button === Qt.LeftButton) root.prepareDrag(cell, cell.path, cell.name, cell.isDir) }
                         onClicked: (mouse) => root.itemClicked(cell.index, cell.path, mouse)
                         onDoubleClicked: (mouse) => {
                             if (mouse.button === Qt.LeftButton) root.openRow(cell.index, mouse.modifiers & Qt.ControlModifier)

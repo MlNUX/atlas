@@ -15,6 +15,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
   mit gedrückter linker Maustaste auf freier Fläche ziehen wählt alle
   Einträge im Rechteck (Strg schaltet um, Umschalt fügt hinzu); am oberen
   und unteren Rand scrollt die Ansicht mit.
+- **Ordneransicht: Bild am Mauszeiger beim Ziehen** – Symbol und Name
+  des Eintrags, bei mehreren die Anzahl; auch beim Ziehen in den
+  Projektordner und in andere Programme.
 - **bnki-Karten 1.1**: Bilder auf Vorderseite, Rückseite und im Tipp –
   über „Bild…“, Strg+V oder Ziehen aufs Feld, mit Vorschau. Sie stehen
   verkleinert in den neuen CSV-Spalten `frontImage;backImage;hintImage`.

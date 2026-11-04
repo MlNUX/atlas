@@ -1108,6 +1108,9 @@ Item {
             () => {
                 const f = editor.activeTab.viewerItem
                 check("Ordner: Klick wählt aus", f.selectedPaths().length === 1 && f.selectedPaths()[0] === f.folderModel.pathAt(1), f.selectedPaths().join(","))
+                const pressed = f.activeView.itemAtIndex(1)
+                check("Ordner: Bild am Mauszeiger fürs Ziehen bereit", !!pressed && String(pressed.Drag.imageSource).length > 0,
+                      pressed ? String(pressed.Drag.imageSource) : "kein Eintrag")
                 check("Ordner: Strg+Mausrad zoomt", f.iconSize > test.zoomBefore, test.zoomBefore + " → " + f.iconSize)
                 f.viewMode = "details"
             },
