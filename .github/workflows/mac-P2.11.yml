@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Task P2.11 (macOS port): atlas-ffi → XCFramework → AtlasKit; swift test
-# calls the services through the generated bindings.
+# calls the services through the generated bindings (built by the integrator).
 name: mac-P2.11
 
 on:
