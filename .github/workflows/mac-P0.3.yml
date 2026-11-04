@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P0.3 (macOS port): checks the shared setup by building an empty SwiftUI
+# app and trying the Rust crates on macOS. Removed again in P4.2.
+name: mac-P0.3
+
+on:
+  push:
+    branches:
+      - "port/macos/P0.3-*"
+      - "ccr-d6123878-*"
+    paths:
+      - ".github/workflows/mac-P0.3.yml"
+      - ".github/workflows/macos-setup.yml"
+      - "apps/macos/scripts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P0.3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: apps/macos/scripts/ci-smoke/run.sh
+      artifact-name: mac-P0.3
+      cache-key: P0.3

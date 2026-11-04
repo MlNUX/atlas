@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# XcodeGen spec for the empty SwiftUI app the macOS CI builds (task P0.3).
+# It only proves the toolchain works; the real Atlas.xcodeproj comes with P3.0.
+name: AtlasSmoke
+options:
+  bundleIdPrefix: de.minux
+  deploymentTarget:
+    macOS: "26.0"
+settings:
+  base:
+    ARCHS: arm64
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Ad hoc signing until the Apple Developer account exists (E5).
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  AtlasSmoke:
+    type: application
+    platform: macOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.smoke
+        INFOPLIST_KEY_CFBundleDisplayName: Atlas Smoke
+  AtlasSmokeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests]
+    dependencies:
+      - target: AtlasSmoke
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.smoke.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AtlasSmoke.app/Contents/MacOS/AtlasSmoke"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  AtlasSmoke:
+    build:
+      targets:
+        AtlasSmoke: all
+        AtlasSmokeTests: [test]
+    test:
+      targets: [AtlasSmokeTests]
