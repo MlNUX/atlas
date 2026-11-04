@@ -36,8 +36,16 @@ TEST_RUNNER_ATLAS_CI_OUT="$out" xcodebuild \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$derived" \
   -resultBundlePath "$out/TerminalSpike.xcresult" \
-  test 2>&1 | tee "$out/xcodebuild.log" | grep -E "error|warning: .*Sendable|Test Case|Executed|\*\*" || rc=$?
-grep -q "\*\* TEST SUCCEEDED \*\*" "$out/xcodebuild.log" && rc=0 || rc=1
+  test >"$out/xcodebuild.log" 2>&1 || rc=$?
+grep -E "Test Case .*(passed|failed)|Executed|\*\* " "$out/xcodebuild.log" || true
+if (( rc != 0 )); then
+  # Artifacts cannot be downloaded from every agent environment: put the
+  # errors into the job log.
+  echo "--- errors (xcodebuild exit $rc)"
+  grep -E "error[: ]|failed|Could not|cannot|unresolved" "$out/xcodebuild.log" | grep -v "^note:" | sort -u | head -n 80 || true
+  echo "--- last lines"
+  tail -n 40 "$out/xcodebuild.log"
+fi
 
 say "Screenshot"
 app="$derived/Build/Products/Debug/TerminalSpike.app"
