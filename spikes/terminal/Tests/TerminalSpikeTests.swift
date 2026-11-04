@@ -73,6 +73,8 @@ final class CoreTerminalTests: XCTestCase {
 
     func testThroughputSeq() throws {
         let exited = expectation(description: "exit")
+        // atlas-terminal reports the end twice (ChildExit and Exit).
+        exited.assertForOverFulfill = false
         let start = Date()
         let t = try XCTUnwrap(
             CoreTerminal(command: ["/usr/bin/seq", "1", "200000"], cols: 120, lines: 40) { event in
@@ -144,7 +146,8 @@ final class SwiftTermTests: XCTestCase {
         t.feed(text: "hello \u{1b}[31mred\u{1b}[0m 日本x e\u{301}\r\n")
         let text = line(t, 0)
         XCTAssertTrue(text.hasPrefix("hello red"), text)
-        XCTAssertTrue(text.contains("日本x"), text)
+        // translateToString keeps the spacer cell after a wide character.
+        XCTAssertTrue(text.replacingOccurrences(of: " ", with: "").contains("日本x"), text)
     }
 
     func testThroughputFeed() {
@@ -183,6 +186,10 @@ final class SwiftTermTests: XCTestCase {
     func testRenderSpeed() throws {
         let view = TerminalView(frame: CGRect(x: 0, y: 0, width: 1000, height: 700))
         view.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        // SwiftTerm only draws inside a window.
+        let window = NSWindow(
+            contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
         let demo = try String(contentsOfFile: Bundle(for: Self.self).path(forResource: "demo", ofType: "sh")!, encoding: .utf8)
         // Feed what the demo prints (run it through bash once).
         let p = Process()
@@ -200,6 +207,7 @@ final class SwiftTermTests: XCTestCase {
         for _ in 0..<n { view.cacheDisplay(in: view.bounds, to: rep) }
         let drawTime = Date().timeIntervalSince(start) / Double(n)
         Report.add("A SwiftTerm", "Bildschirm zeichnen (TerminalView.draw), 1000×700 pt", Report.ms(drawTime))
+        _ = window
         if let png = rep.representation(using: .png, properties: [:]),
             let out = ProcessInfo.processInfo.environment["ATLAS_CI_OUT"]
         {

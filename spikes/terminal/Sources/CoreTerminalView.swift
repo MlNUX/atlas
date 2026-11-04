@@ -19,8 +19,10 @@ final class CoreTerminalNSView: NSView {
     init(font: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular)) {
         self.font = font
         boldFont = NSFont.monospacedSystemFont(ofSize: font.pointSize, weight: .bold)
+        // Exact advance (not rounded up): ASCII runs are drawn as one string,
+        // so the cell width must equal the glyph advance or words drift apart.
         let advance = ("M" as NSString).size(withAttributes: [.font: font]).width
-        cellSize = CGSize(width: ceil(advance), height: ceil(font.ascender - font.descender + font.leading))
+        cellSize = CGSize(width: advance, height: ceil(font.ascender - font.descender))
         super.init(frame: .zero)
     }
 

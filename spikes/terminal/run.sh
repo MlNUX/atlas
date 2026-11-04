@@ -33,6 +33,7 @@ rc=0
 TEST_RUNNER_ATLAS_CI_OUT="$out" xcodebuild \
   -project "$here/TerminalSpike.xcodeproj" \
   -scheme TerminalSpike \
+  -configuration Release \
   -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$derived" \
   -resultBundlePath "$out/TerminalSpike.xcresult" \
@@ -49,7 +50,7 @@ if (( rc != 0 )); then
 fi
 
 say "Screenshot"
-app="$derived/Build/Products/Debug/TerminalSpike.app"
+app="$derived/Build/Products/Release/TerminalSpike.app"
 if [[ -d "$app" ]] && open "$app"; then
   sleep 10
   screencapture -x "$out/app-window.png" || echo "screencapture failed (non-fatal)"

@@ -26,6 +26,8 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_OBJC_BRIDGING_HEADER: Sources/TerminalSpike-Bridging-Header.h
     LIBRARY_SEARCH_PATHS: $(PROJECT_DIR)/lib
+    # Tests run in Release so both variants are measured optimised.
+    ENABLE_TESTABILITY: YES
 targets:
   TerminalSpike:
     type: application
