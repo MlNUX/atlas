@@ -223,7 +223,7 @@ impl Project {
     }
 
     pub fn notes(&self) -> Arc<crate::notes::Notes> {
-        todo_task!("P2.3")
+        Arc::new(crate::notes::Notes::new(self.shared.clone()))
     }
 
     pub fn search(&self) -> Arc<crate::search::Search> {
