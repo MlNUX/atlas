@@ -8,7 +8,8 @@
 #
 # The command gets:
 #   ATLAS_CI_OUT    directory for logs, screenshots, .xcresult (uploaded as artifact);
-#                   a summary.md in it is shown on the run's summary page
+#                   a summary.md in it is shown on the run's summary page and
+#                   *.png screenshots are also printed into the log (see below)
 #   ATLAS_RG_BIN    path to rg
 #   ORT_DYLIB_PATH  path to libonnxruntime.dylib
 #
@@ -121,6 +122,24 @@ jobs:
         run: |
           set -o pipefail
           bash -euo pipefail -c "$ATLAS_CI_RUN" 2>&1 | tee "$ATLAS_CI_OUT/run.log"
+
+      # Artifacts cannot be downloaded from every agent environment, so
+      # screenshots also go into the log (downscaled JPEG, base64).
+      # Extract them with apps/macos/scripts/ci-screenshots.sh <job-log>.
+      - name: Screenshots to log
+        if: always()
+        run: |
+          shopt -s nullglob
+          for f in "$ATLAS_CI_OUT"/*.png; do
+            name="$(basename "$f" .png)"
+            jpg="$RUNNER_TEMP/$name.jpg"
+            sips -s format jpeg -s formatOptions 70 -Z 1400 "$f" --out "$jpg" >/dev/null
+            echo "::group::screenshot $name"
+            echo "ATLAS-SCREENSHOT-BEGIN $name.jpg"
+            base64 -i "$jpg" | fold -w 4000
+            echo "ATLAS-SCREENSHOT-END"
+            echo "::endgroup::"
+          done
 
       - name: Summary
         if: always()

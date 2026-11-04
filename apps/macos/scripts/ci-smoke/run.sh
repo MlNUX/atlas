@@ -70,7 +70,7 @@ rust_check() {
   local log="$out/cargo-$name.log"
   say "cargo $*"
   local rc=0
-  cargo "$@" >"$log" 2>&1 || rc=$?
+  CARGO_TERM_COLOR=never cargo "$@" >"$log" 2>&1 || rc=$?
   tail -n 40 "$log"
   {
     echo

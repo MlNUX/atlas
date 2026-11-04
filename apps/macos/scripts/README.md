@@ -11,6 +11,7 @@ Gehört zum macOS-Port (`docs/porting/macos-swiftui.md`, Aufgabe P0.3).
 |---|---|
 | `Brewfile` | Homebrew-Pakete (rg, onnxruntime, xcodegen) – einzige Quelle für CI und echten Mac |
 | `bootstrap.sh` | richtet einen Mac ein (prüft arm64, macOS 26, Xcode 26; Brewfile; Rust-Target); läuft auch in der CI |
+| `ci-screenshots.sh` | holt die Bildschirmfotos aus einem Job-Log (für Agents, die keine Artefakte laden können) |
 | `ci-smoke/` | leere SwiftUI-App (XcodeGen) + `run.sh`: Xcode-Build/-Test, Bildschirmfoto, Rust-Bericht |
 
 ## In der CI
