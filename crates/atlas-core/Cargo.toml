@@ -35,6 +35,8 @@ glib = { version = "0.22", optional = true }
 cairo-rs = { version = "0.22", features = ["pdf", "png", "v1_16"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Syntax highlighting (pure Rust regex engine, default syntaxes only).
+syntect = { version = "5.3", default-features = false, features = ["parsing", "default-syntaxes", "regex-fancy"] }
 thiserror = "2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 toml = "1.1.8"

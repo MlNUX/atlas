@@ -18,6 +18,7 @@ pub mod extensions;
 pub mod fileops;
 pub mod finder;
 pub mod fs_tree;
+pub mod highlight;
 pub mod identity;
 pub mod latex_ocr;
 pub mod listing;
