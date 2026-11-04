@@ -57,7 +57,9 @@ func waitFor(_ events: Events, timeout: Double = 15, _ ok: (Event) -> Bool) asyn
     let done = await waitFor(events) { if case .searchFinished(let sid, _) = $0 { sid == id } else { false } }
     #expect(done)
     let hits = events.all.compactMap { if case .searchMatches(_, let m) = $0 { m } else { nil } }.flatMap { $0 }
-    #expect(hits.contains { $0.relative == "docs/Zweite.md" })
+    let summary = events.all.compactMap { if case .searchFinished(_, let s) = $0 { s } else { nil } }.first
+    #expect(summary?.error == nil, "\(String(describing: summary))")
+    #expect(hits.contains { $0.relative == "docs/Zweite.md" }, "\(hits) \(String(describing: summary)) rg=\(ProcessInfo.processInfo.environment["ATLAS_RG_BIN"] ?? "-")")
 }
 
 @MainActor

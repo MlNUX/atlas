@@ -19,6 +19,10 @@ gen=target/atlas-ffi-gen
 flag=$([[ "$profile" == release ]] && echo --release || true)
 out="target/$target/$profile"
 
+# The app's minimum (E3); C parts (sqlite, ring) otherwise target the
+# runner's macOS and the linker warns.
+export MACOSX_DEPLOYMENT_TARGET=26.0
+
 # Only atlas-ffi: no poppler (feature pdf-poppler stays off, P1.1).
 cargo build --locked $flag --target "$target" -p atlas-ffi --lib
 cargo run --locked $flag -p atlas-ffi --features cli --bin uniffi-bindgen -- \
