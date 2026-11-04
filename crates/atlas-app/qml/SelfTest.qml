@@ -1117,6 +1117,23 @@ Item {
                       && f.selectedPaths().length === 1, f.activeView.currentIndex)
                 const state = f.viewState()
                 check("Ordner: Ansicht im Sitzungszustand", state.viewMode === "details" && state.iconSize === f.iconSize)
+                // Selection rectangle: from the empty area below the rows up
+                // into the second row.
+                const last = f.activeView.itemAtIndex(f.folderModel.count - 1)
+                const from = last.mapToItem(null, last.width - 40, last.height + 12)
+                const second = f.activeView.itemAtIndex(1)
+                const to = second.mapToItem(null, second.width / 2, second.height / 2)
+                app.postMouse(window, 0, from.x, from.y, 20)
+                app.postMouse(window, 1, from.x - 10, from.y - 10, 60)
+                app.postMouse(window, 1, to.x, to.y, 100)
+                app.postMouse(window, 2, to.x, to.y, 140)
+            },
+            () => {
+                const f = editor.activeTab.viewerItem
+                const n = f.folderModel.count
+                if (waitFor(() => f.selectedPaths().length === n - 1)) return
+                check("Ordner: Markierungsrechteck wählt die Zeilen darin", f.selectedPaths().length === n - 1
+                      && f.selectedPaths()[0] === f.folderModel.pathAt(1) && !f.rubberBanding, f.selectedPaths().length + " von " + n)
             },
             () => {
                 // Nextcloud app password from a command (never stored).
