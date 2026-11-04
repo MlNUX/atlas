@@ -52,6 +52,11 @@ CSV-Datei „Anzeigen mit → bnki-Karten“).
   wird sofort gespeichert; ein gelöschter Stapel liegt im Papierkorb.
 - Vorschau wie in der App: Formeln `$…$` und `$$…$$` (KaTeX von Atlas,
   ohne Internet), Codeblöcke mit ` ``` `.
+- Bilder für Vorderseite, Rückseite und Tipp (je eins): „Bild…“, Strg+V im
+  Textfeld oder ein Bild aufs Feld ziehen. Große Bilder werden auf 1600 Pixel
+  verkleinert und stehen als `data:`-URL in den zusätzlichen Spalten
+  `frontImage;backImage;hintImage` – der Stapel bleibt eine einzige Datei.
+  Ohne Bilder bleibt die CSV wie bisher vierspaltig.
 - Aufs Handy: „Im Explorer“ zeigt die Datei; in bnki „Stapel öffnen →
   CSV importieren“.
 - Rechte: nur Dateien im Projekt, kein Netzwerk, keine Programme.

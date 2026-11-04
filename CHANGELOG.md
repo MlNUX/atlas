@@ -11,6 +11,9 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 ## [Unveröffentlicht]
 
 ### Hinzugefügt
+- **bnki-Karten 1.1**: Bilder auf Vorderseite, Rückseite und im Tipp –
+  über „Bild…“, Strg+V oder Ziehen aufs Feld, mit Vorschau. Sie stehen
+  verkleinert in den neuen CSV-Spalten `frontImage;backImage;hintImage`.
 - **Helles Farbschema** für die ganze App: Hauptfenster, alle Dialoge und
   Menüs, Kalender, Kontextleiste und Graph, Suche, ILIAS-Anmeldung,
   Markdown-Vorschau (mit hellem Code-Highlighting und Diagrammen) und
