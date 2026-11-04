@@ -35,6 +35,8 @@ pub(crate) struct Shared {
     pub notes: Mutex<Option<NoteIndex>>,
     pub notes_revision: AtomicU32,
     pub watcher: Mutex<Option<atlas_core::watcher::DirWatcher>>,
+    /// The project's calendar, made on first use (P2.5).
+    pub calendar: std::sync::OnceLock<Arc<crate::calendar::Calendar>>,
     next_id: AtomicU64,
 }
 
@@ -73,6 +75,7 @@ impl Shared {
             notes: Mutex::new(None),
             notes_revision: AtomicU32::new(0),
             watcher: Mutex::new(None),
+            calendar: std::sync::OnceLock::new(),
             next_id: AtomicU64::new(1),
         });
         let mut state = atlas_core::session::AppState::load();

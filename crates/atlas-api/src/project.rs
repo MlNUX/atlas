@@ -231,7 +231,14 @@ impl Project {
     }
 
     pub fn calendar(&self) -> Arc<crate::calendar::Calendar> {
-        todo_task!("P2.5")
+        let shared = &self.shared;
+        shared
+            .calendar
+            .get_or_init(|| {
+                let atlas = shared.project.as_ref().map(|p| p.atlas_dir());
+                Arc::new(crate::calendar::Calendar::new(&shared.root, atlas.as_deref(), shared.sink.clone()))
+            })
+            .clone()
     }
 
     /// PDF data (annotations, text, citations) of one document.
