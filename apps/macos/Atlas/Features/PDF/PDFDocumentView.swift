@@ -34,6 +34,14 @@ private enum SidebarTab: String, CaseIterable {
     case thumbnails = "Miniaturen"
     case outline = "Gliederung"
     case bookmarks = "Lesezeichen"
+
+    var symbol: String {
+        switch self {
+        case .thumbnails: "square.grid.2x2"
+        case .outline: "list.bullet.indent"
+        case .bookmarks: "bookmark"
+        }
+    }
 }
 
 private struct PDFContent: View {
@@ -113,7 +121,9 @@ private struct PDFContent: View {
     private var sidebarView: some View {
         VStack(spacing: 0) {
             Picker("", selection: $sidebar) {
-                ForEach(SidebarTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                ForEach(SidebarTab.allCases, id: \.self) { tab in
+                    Image(systemName: tab.symbol).tag(tab).help(tab.rawValue).accessibilityLabel(tab.rawValue)
+                }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
