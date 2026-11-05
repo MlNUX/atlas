@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P3.3 (macOS port): Markdown editor and preview – build, unit tests,
+# sample project opened on a note (screenshots in the log, ci-screenshots.sh).
+name: mac-P3.3
+
+on:
+  push:
+    branches: ["port/macos/P3.3-*"]
+    paths:
+      - ".github/workflows/mac-P3.3.yml"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-app/web/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P3.3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: "ATLAS_CI_OPEN_FILE=Notizen/Analysis.md apps/macos/scripts/ci-app.sh"
+      artifact-name: mac-P3.3
+      cache-key: P3.3
