@@ -305,7 +305,7 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
         guard found.location != NSNotFound else { return false }
         textView.setSelectedRange(found)
         textView.scrollRangeToVisible(found)
-        textView.showFindIndicator(for: found)
+        if textView.window != nil { textView.showFindIndicator(for: found) }
         return true
     }
 
