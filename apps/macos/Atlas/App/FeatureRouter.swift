@@ -9,6 +9,18 @@ import SwiftUI
 enum FeatureRouter {
     @MainActor @ViewBuilder
     static func view(for tab: EditorTab, project: ProjectModel) -> some View {
+        let processor = tab.processor
+        if processor.hasPrefix("view:") {
+            ExtensionPageView(project: project, viewId: processor, source: tab.path)
+        } else if !processor.isEmpty, !processor.hasPrefix("atlas:") {
+            ProcessedView(project: project, processor: processor, path: tab.path)
+        } else {
+            kindView(for: tab, project: project)
+        }
+    }
+
+    @MainActor @ViewBuilder
+    private static func kindView(for tab: EditorTab, project: ProjectModel) -> some View {
         switch project.core.files().fileKind(path: tab.path) {
         case "pdf":
             PDFDocumentView(project: project, path: tab.path)
@@ -24,9 +36,12 @@ enum FeatureRouter {
             IliasTabView(project: project)
         case "dir", "trash":
             FolderView(project: project, path: tab.path)
-        default:
-            // image, atlasnote, binary, missing
+        case "missing":
             OtherDocumentView(project: project, path: tab.path)
+        default:
+            // image, atlasnote, binary: an automatic processor of an
+            // extension if one fits (P3.10), else the viewer
+            ProcessedOrOtherView(project: project, path: tab.path)
         }
     }
 
@@ -34,7 +49,8 @@ enum FeatureRouter {
         if tab.path.hasPrefix("terminal:") { return "Terminal" }
         if tab.path.hasPrefix("calendar:") { return "Kalender" }
         if tab.path.hasPrefix("ilias:") { return "ILIAS" }
-        return (tab.path as NSString).lastPathComponent
+        let name = (tab.path as NSString).lastPathComponent
+        return tab.processor.hasPrefix("view:") ? "\(name) · Ansicht" : name
     }
 }
 

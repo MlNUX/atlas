@@ -35,19 +35,23 @@ final class EditorAreaModel {
         return g.tabs.indices.contains(g.current) ? g.tabs[g.current] : nil
     }
 
-    func open(path: String, line: Int = 0, mode: OpenMode = .tab) {
+    /// Opens `path`; with `processor` (an extension's view or processor) in
+    /// a tab of its own next to the plain one.
+    func open(path: String, line: Int = 0, mode: OpenMode = .tab, processor: String = "") {
+        var new = EditorTab(path: path, line: line)
+        if !processor.isEmpty { new.extra["processor"] = .string(processor) }
         if mode == .split, layout.groups.count < Self.maxGroups, !layout.groups[layout.active].tabs.isEmpty {
-            layout.groups.insert(EditorGroup(tabs: [EditorTab(path: path, line: line)]), at: layout.active + 1)
+            layout.groups.insert(EditorGroup(tabs: [new]), at: layout.active + 1)
             layout.active += 1
             changed()
             return
         }
         var g = layout.groups[layout.active]
-        if let i = g.tabs.firstIndex(where: { $0.path == path }) {
+        if let i = g.tabs.firstIndex(where: { $0.path == path && $0.processor == processor }) {
             g.current = i
             if line > 0 { g.tabs[i].line = line }
         } else {
-            g.tabs.insert(EditorTab(path: path, line: line), at: g.tabs.isEmpty ? 0 : g.current + 1)
+            g.tabs.insert(new, at: g.tabs.isEmpty ? 0 : g.current + 1)
             g.current = g.tabs.count == 1 ? 0 : g.current + 1
         }
         layout.groups[layout.active] = g

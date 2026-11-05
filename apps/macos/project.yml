@@ -32,7 +32,14 @@ targets:
   Atlas:
     type: application
     platform: macOS
-    sources: [Atlas]
+    sources:
+      - Atlas
+      # The web pages shared with Linux (bridge of extension views, Markdown
+      # preview, KaTeX, Mermaid, highlight.js) as Resources/web, served as
+      # atlas://app/web/… (P3.10, P3.3).
+      - path: ../../crates/atlas-app/web
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: AtlasKit
         product: AtlasKit
