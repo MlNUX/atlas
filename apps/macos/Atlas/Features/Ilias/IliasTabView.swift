@@ -58,8 +58,10 @@ private struct IliasContent: View {
                 } actions: {
                     Button("Einlesen") { Task { await model.scan() } }
                 }
+                .frame(maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .fileImporter(isPresented: $choosingDir, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setDownloadDir(url.path) }
         }
