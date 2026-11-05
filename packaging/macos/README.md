@@ -26,9 +26,12 @@ packaging/macos/bundle.sh                        # ad hoc → target/macos-dist/
 
 Solange der Apple-Developer-Account fehlt (E5), signiert `bundle.sh` **ad hoc**
 (`Atlas-adhoc.entitlements`: ohne Team-ID muss die Bibliotheksprüfung für ONNX
-Runtime aus sein). Gatekeeper lehnt solche Builds ab: nach dem Kopieren in den
-Programme-Ordner einmal per Rechtsklick → „Öffnen“ starten oder
-`xattr -dr com.apple.quarantine /Applications/Atlas.app`.
+Runtime aus sein). Gatekeeper lehnt solche Builds beim ersten Start ab: einmal
+öffnen, dann Systemeinstellungen → Datenschutz & Sicherheit → „Dennoch öffnen“
+(oder `xattr -dr com.apple.quarantine /Applications/Atlas.app`). Releases hängen
+das ad hoc signierte DMG trotzdem an und ergänzen diesen Hinweis
+(`release-note-adhoc.md`). Updates über Sparkle gehen auch ohne Developer ID:
+Sparkle prüft die EdDSA-Signatur.
 
 Mit Account fehlen nur das Zertifikat und die Zugangsdaten:
 
@@ -52,3 +55,44 @@ mitgelieferte `rg`. Das DMG liegt im Artefakt unter `dist/`.
 
 `AppIcon.svg` ist das Logo aus `data/atlas.svg` im macOS-Raster (824 px Fläche in
 1024 px). `render-icon.js` erzeugt daraus `Assets.xcassets/AppIcon.appiconset`.
+
+## Updates (Sparkle, P4.4)
+
+Die App sucht mit [Sparkle](https://sparkle-project.org) 2.10.1 nach Updates
+(Menü Atlas → „Nach Updates suchen …“, sonst automatisch täglich). Sie liest
+`appcast.xml` der neuesten GitHub-Release
+(`releases/latest/download/appcast.xml`, `ATLAS_FEED_URL` in
+`apps/macos/project.yml`). Jedes Update ist mit dem EdDSA-Schlüssel des
+Projekts signiert; ohne öffentlichen Schlüssel (`ATLAS_SPARKLE_PUBLIC_KEY`, leer
+in lokalen Builds) hat die App keinen Updater.
+
+Einmalig (Mensch), auf Linux oder macOS (nur `openssl`, kein Mac nötig):
+
+```sh
+packaging/macos/sparkle-keygen.sh sparkle.key   # zeigt den öffentlichen Schlüssel
+# Inhalt von sparkle.key → Secret ATLAS_SPARKLE_PRIVATE_KEY, Kopie in den Passwortmanager, Datei löschen
+```
+
+Dasselbe Format erzeugt Sparkles `generate_keys` (`-x` exportiert den privaten
+Schlüssel); `ci-update.sh` testet mit einem so erzeugten Schlüssel.
+
+Den öffentlichen Schlüssel als Repository-Variable `ATLAS_SPARKLE_PUBLIC_KEY`
+eintragen. **Der private Schlüssel darf nicht verloren gehen:** ohne ihn
+findet keine installierte Version mehr ein Update.
+
+`.github/workflows/macos-release.yml` läuft bei jeder veröffentlichten Release:
+
+1. DMG bauen
+2. mit der Developer ID signieren und notarisieren
+3. `appcast.sh` schreibt `appcast.xml` mit der Download-Adresse der Release
+4. DMG, Prüfsumme und Appcast an die Release hängen
+
+Ohne Zertifikat wird das DMG ad hoc signiert, nicht notarisiert, und trotzdem
+angehängt; die Release-Notiz bekommt einmal den Hinweis zum ersten Öffnen.
+
+`ci-update.sh` (Workflow `mac-P4.4`) prüft den Weg mit einem Wegwerf-Schlüssel:
+
+1. Version 1 und 2 bauen.
+2. Version 2 als Appcast auf `localhost` bereitstellen.
+3. Version 1 installieren und suchen lassen.
+4. Beim Beenden ersetzt Sparkle die App; danach muss Version 2 installiert sein.
