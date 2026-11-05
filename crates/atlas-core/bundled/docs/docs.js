@@ -344,6 +344,15 @@ function mark(text, terms) {
     return html;
 }
 
+/** reST markup as plain text (for the list): :func:`~a.b` → b, ``x`` → x. */
+function plainRst(text) {
+    return String(text || "")
+        .replace(/(?::[\w.-]+)+:`~?([^`<]*?)(?:\s*<[^>]+>)?`/g, (_, n) => n.includes(".") && !/\s/.test(n) ? n.split(".").pop() : n)
+        .replace(/``([^`]+)``/g, "$1")
+        .replace(/`([^`]+)`_?/g, "$1")
+        .replace(/\*\*([^*]+)\*\*/g, "$1");
+}
+
 function shortType(text) {
     // `~matplotlib.collections.PolyCollection` → PolyCollection
     const t = String(text || "").replace(/^['"]|['"]$/g, "").replace(/:\w+:/g, "").replace(/`~?([\w.]+)`/g, (_, n) => n.split(".").pop()).replace(/`/g, "");
@@ -374,14 +383,18 @@ function render() {
     els.count.textContent = (result.total ? `${result.total.toLocaleString("de-DE")} Treffer` : "Keine Treffer")
         + (result.total > LIMIT ? `, die ersten ${LIMIT}` : "")
         + (result.hidden ? ` · ${result.hidden} veraltete ausgeblendet` : "");
-    const many = state.packages.length > 1 && !result.q.pkgs.length;
     els.results.innerHTML = shown.map((e, i) => {
-        const ret = e.k === "class" ? "" : (e.r && e.r[0] && e.r[0].t) || e.ra || "";
-        const matched = state.matchedParams.get(e.id) || [];
+        const ret = e.k === "class" || e.k === "exception" ? "" : (e.r && e.r[0] && e.r[0].t) || e.ra || "";
+        const matched = new Set(state.matchedParams.get(e.id) || []);
+        const params = shownParams(e);
+        const preview = params.length && e.k !== "property" && e.k !== "module"
+            ? `<div class="pprev">(${params.slice(0, 6).map((p) => `<span class="${matched.has(p.n) ? "pm" : isRequired(p) ? "preq" : ""}">${esc(p.n)}</span>`).join(", ")}${params.length > 6 ? ", …" : ""})</div>`
+            : "";
         return `<div class="hit" data-i="${i}">
-  <div class="top"><span class="name">${mark(e.short, terms)}</span><span class="path">${esc(e.parent)}</span></div>
-  ${e.sum ? `<div class="sum">${mark(e.sum, terms)}</div>` : ""}
-  <div class="meta"><span class="badge k-${e.k}">${KIND_LABEL[e.k] || e.k}</span>${ret ? `<span class="badge ret" title="${esc(ret)}">→ ${esc(shortType(ret))}</span>` : ""}${matched.map((n) => `<span class="badge pmatch">${esc(n)}</span>`).join("")}${many ? `<span class="badge">${esc(e.pkg)}</span>` : ""}${e.dep ? `<span class="badge dep">veraltet</span>` : ""}</div>
+  <div class="top">${pkgChip(e.pkg)}<span class="name">${mark(e.short, terms)}</span><span class="path">${e.parent && e.parent !== e.pkg ? "in " + esc(e.parent) : ""}</span></div>
+  ${e.sum ? `<div class="sum">${mark(plainRst(e.sum), terms)}</div>` : ""}
+  ${preview}
+  <div class="meta"><span class="badge k-${e.k}">${KIND_LABEL[e.k] || e.k}</span>${ret ? `<span class="badge ret" title="Rückgabe: ${esc(ret)}">→ ${esc(shortType(ret))}</span>` : ""}${e.dep ? `<span class="badge dep">veraltet</span>` : ""}</div>
 </div>`;
     }).join("") || `<div class="empty"><p>Nichts gefunden. Filter lockern oder „Volltext“ einschalten.</p></div>`;
     const keep = state.shown ? shown.indexOf(state.shown) : -1;
@@ -475,7 +488,7 @@ function renderRst(text, from) {
         if (/^§/.test(trimmed)) {
             section = trimmed.slice(1);
             const title = section.startsWith("x:") ? section.slice(2) : SECTION_TITLES[section] || section;
-            out.push(`<h3>${esc(title)}</h3>`);
+            out.push(`<h3 id="s-${esc(section.replace(/[^\w-]/g, ""))}">${esc(title)}</h3>`);
             i++;
             continue;
         }
@@ -603,24 +616,145 @@ function renderSignature(e) {
     return `<pre class="sig"><b>${esc(e.short)}</b>${body}${ret ? ` → <span class="ret">${esc(ret)}</span>` : ""}</pre>`;
 }
 
+// Usual import names (how the docs and most code write it).
+const PKG_ALIAS = { pandas: "pd", numpy: "np", "matplotlib.pyplot": "plt", matplotlib: "mpl", seaborn: "sns" };
+// Usual variable names for objects of a class.
+const VAR_NAME = {
+    DataFrame: "df", Series: "s", Index: "idx", MultiIndex: "mi", DatetimeIndex: "idx", Timestamp: "ts", Timedelta: "td",
+    Axes: "ax", Figure: "fig", Line2D: "line", ndarray: "arr", Generator: "rng", RandomState: "rs", GroupBy: "gb",
+    DataFrameGroupBy: "gb", SeriesGroupBy: "gb", Rolling: "r", Resampler: "r",
+};
+const PKG_HUE = { pandas: 222, numpy: 192, matplotlib: 28, scipy: 268, seaborn: 150, sklearn: 330, json: 60 };
+
+function pkgHue(pkg) {
+    if (pkg in PKG_HUE) return PKG_HUE[pkg];
+    let h = 0;
+    for (const c of pkg) h = (h * 31 + c.charCodeAt(0)) % 360;
+    return h;
+}
+function pkgChip(pkg, version) {
+    return `<span class="pkg" style="--h:${pkgHue(pkg)}" title="Bibliothek ${esc(pkg)}${version ? " " + esc(version) : ""}">${esc(pkg)}${version ? `<span class="v">${esc(version)}</span>` : ""}</span>`;
+}
+
+/** Parameters worth listing (no `*` and `/` markers). */
+function shownParams(e) { return (e.p || []).filter((p) => !["/", "*"].includes(p.n)); }
+function isVariadic(p) { return p.n.startsWith("*"); }
+function isRequired(p) { return p.d === undefined && !p.doc && !p.other && !isVariadic(p) && !/\boptional\b/.test(p.t || ""); }
+
+/** "bool, default True" → type "bool", default "True"; "int, optional" → optional. */
+function typeAndDefault(p) {
+    let type = String(p.t || "").trim();
+    let def = p.d;
+    const m = /,?\s*default(?:\s*[:=]\s*|\s+)(.+)$/i.exec(type);
+    if (m) {
+        type = type.slice(0, m.index).trim();
+        if (def === undefined) def = m[1].trim();
+    }
+    const optional = /,?\s*optional\s*$/i.test(type);
+    if (optional) type = type.replace(/,?\s*optional\s*$/i, "").trim();
+    return { type, def, optional };
+}
+
+/** The entry's owner (class or module) as an entry, if it has one. */
+function ownerOf(e) { return e.parent ? state.byId.get(e.parent) : null; }
+
+/** How it is usually written in code: `df.sum(axis)`, `pd.read_csv(filepath_or_buffer)`. */
+function usage(e) {
+    const aliased = (id) => {
+        for (const [pkg, alias] of Object.entries(PKG_ALIAS).sort((a, b) => b[0].length - a[0].length)) {
+            if (id === pkg) return alias;
+            if (id.startsWith(pkg + ".")) return alias + id.slice(pkg.length);
+        }
+        return id;
+    };
+    const varOf = (cls) => VAR_NAME[cls] || (cls ? cls.replace(/^_+/, "").replace(/[A-Z]/g, (c, i) => (i ? "_" : "") + c.toLowerCase()).replace(/_+/g, "_") : "obj");
+    let target;
+    const owner = ownerOf(e);
+    if (e.k === "module") return `import ${e.id}` + (PKG_ALIAS[e.id] ? ` as ${PKG_ALIAS[e.id]}` : "");
+    if ((e.k === "method" || e.k === "property") && owner) {
+        // An accessor in between: s.str.contains(…)
+        const grand = ownerOf(owner);
+        target = owner.k === "property" && grand ? `${varOf(grand.short)}.${owner.short}.${e.short}` : `${varOf(owner.short)}.${e.short}`;
+    } else {
+        target = aliased(e.id);
+    }
+    if (e.k === "property") return target;
+    const params = shownParams(e).filter((p) => !p.doc && !p.other);
+    const required = params.filter(isRequired).map((p) => p.n);
+    const more = params.length > required.length ? (required.length ? ", …" : "…") : "";
+    return `${target}(${required.join(", ")}${more})`;
+}
+
+/** Parameters: one card each – name, type, default, kind, then the text. */
 function renderParams(e) {
-    const params = (e.p || []).filter((p) => !["/", "*"].includes(p.n));
+    const params = shownParams(e);
     if (!params.length) return "";
     const hl = new Set(state.matchedParams.get(e.id) || []);
-    const rows = params.map((p) => {
-        const type = p.t ? `<span class="ptype">${esc(p.t)}</span>` : "";
-        const def = p.d !== undefined && !(p.t || "").includes("default") ? `<span class="pdef">= ${esc(p.d)}</span>` : "";
-        const note = p.kw ? "nur als Schlüsselwort" : p.other ? "weiterer Parameter" : p.doc ? "über **kwargs" : "";
-        return `<tr class="${hl.has(p.n) ? "hl" : ""}"><td class="pname">${esc(p.n)}${note ? `<span class="kw">${note}</span>` : ""}</td>
-<td>${type}${def}${p.desc ? `<div class="pdesc">${renderRst(p.desc, e)}</div>` : ""}</td></tr>`;
+    const cards = params.map((p) => {
+        const { type, def, optional } = typeAndDefault(p);
+        const tags = [];
+        if (isRequired(p)) tags.push(`<span class="tag req">Pflicht</span>`);
+        else if (isVariadic(p)) tags.push(`<span class="tag">${p.n.startsWith("**") ? "beliebige Schlüsselwörter" : "beliebig viele Werte"}</span>`);
+        else if (p.doc || p.other) tags.push(`<span class="tag">über **kwargs</span>`);
+        else tags.push(`<span class="tag">optional</span>`);
+        if (p.kw) tags.push(`<span class="tag">nur als Schlüsselwort</span>`);
+        if (optional && !tags.some((t) => t.includes("optional"))) tags.push(`<span class="tag">optional</span>`);
+        const paras = String(p.desc || "").split(/\n\s*\n/);
+        const first = paras[0] ? renderRst(paras[0], e) : "";
+        const rest = paras.slice(1).join("\n\n").trim();
+        return `<div class="pcard${hl.has(p.n) ? " hl" : ""}" id="p-${esc(p.n.replace(/^\*+/, ""))}">
+  <div class="phead"><span class="pname">${esc(p.n)}</span>${type ? `<span class="ptype" title="Typ">${esc(type)}</span>` : ""}${def !== undefined ? `<span class="pdef" title="Standardwert">= ${esc(def)}</span>` : ""}<span class="tags">${tags.join("")}</span></div>
+  ${first ? `<div class="pdesc">${first}${rest ? `<details><summary>mehr</summary>${renderRst(rest, e)}</details>` : ""}</div>` : ""}
+</div>`;
     });
-    return `<h3>Parameter</h3><table class="params">${rows.join("")}</table>`;
+    return `<section id="s-params"><h3>Parameter <span class="n">${params.length}</span></h3>${cards.join("")}</section>`;
 }
 
 function renderReturns(e) {
-    if (e.k === "class" || !e.r || !e.r.length) return "";
-    const rows = e.r.map((r) => `<tr><td class="pname">${esc(r.n || "")}</td><td><span class="ptype">${esc(r.t || "")}</span>${r.desc ? `<div class="pdesc">${renderRst(r.desc, e)}</div>` : ""}</td></tr>`);
-    return `<h3>Rückgabe</h3><table class="params">${rows.join("")}</table>`;
+    if (e.k === "class" || e.k === "exception" || e.k === "module" || !e.r || !e.r.length) return "";
+    const cards = e.r.map((r) => `<div class="pcard ret">
+  <div class="phead">${r.n ? `<span class="pname">${esc(r.n)}</span>` : ""}<span class="ptype big">${esc(shortType(r.t || "") || "–")}</span></div>
+  ${r.desc ? `<div class="pdesc">${renderRst(r.desc, e)}</div>` : ""}
+</div>`);
+    return `<section id="s-ret"><h3>Rückgabe</h3>${cards.join("")}</section>`;
+}
+
+/** The overview at the top: library, owner, kind, call, return, parameters. */
+function renderFacts(e) {
+    const owner = ownerOf(e);
+    const rows = [];
+    rows.push(["Bibliothek", `${pkgChip(e.pkg, e.ver)}`]);
+    if (e.parent && e.parent !== e.pkg || owner) {
+        const label = owner && (owner.k === "class" || owner.k === "exception") ? "Klasse" : owner && owner.k === "property" ? "Accessor" : "Modul";
+        rows.push([label, owner ? `<a class="ref" data-ref="${esc(owner.id)}">${esc(owner.id)}</a>` : `<code>${esc(e.parent)}</code>`]);
+    }
+    if (e.from) rows.push(["Geerbt von", refLink(e.from, e.from, e)]);
+    rows.push(["Art", `<span class="badge k-${e.k}">${KIND_LABEL[e.k] || e.k}</span>${e.dep ? ' <span class="badge dep">veraltet</span>' : ""}`]);
+    if (e.k !== "module") rows.push(["Aufruf", `<code class="call">${esc(usage(e))}</code> <button class="mini" data-act="copy-call" title="In die Zwischenablage">kopieren</button>`]);
+    const ret = (e.r || []).filter((r) => r.t).map((r) => shortType(r.t));
+    if (ret.length && e.k !== "class" && e.k !== "exception" && e.k !== "module") {
+        rows.push(["Rückgabe", ret.map((t) => `<span class="ptype big">${esc(t)}</span>`).join(" ")
+            + (e.r[0].desc ? `<span class="rsum">${inline(e.r[0].desc.split(/\n\s*\n/)[0].replace(/\s+/g, " ").slice(0, 160), e)}</span>` : "")]);
+    }
+    const params = shownParams(e);
+    if (params.length && e.k !== "property") {
+        const hl = new Set(state.matchedParams.get(e.id) || []);
+        const FEW = 16;
+        rows.push([`Parameter`, `<div class="pchips${params.length > FEW + 4 ? " folded" : ""}">${params.map((p, i) => {
+            const { def } = typeAndDefault(p);
+            const cls = [isRequired(p) ? "req" : "", hl.has(p.n) ? "hl" : "", p.doc || p.other ? "kw" : ""].join(" ");
+            const extra = i >= FEW && params.length > FEW + 4 ? " extra" : "";
+            return `<a class="pchip ${cls}${extra}" data-jump="p-${esc(p.n.replace(/^\*+/, ""))}" title="${isRequired(p) ? "Pflicht" : def !== undefined ? "Standard: " + esc(def) : "optional"}">${esc(p.n)}</a>`;
+        }).join("")}${params.length > FEW + 4 ? `<a class="pchip more" data-act="more-params">+ ${params.length - FEW} weitere</a>` : ""}</div>`]);
+    }
+    return `<div class="facts">${rows.map(([k, v]) => `<div class="fk">${k}</div><div class="fv">${v}</div>`).join("")}</div>`;
+}
+
+/** The text before the first section, and the sections. */
+function splitDoc(e) {
+    const doc = stripSummary(e);
+    const i = doc.search(/^§/m);
+    return i < 0 ? { head: doc, rest: "" } : { head: doc.slice(0, i), rest: doc.slice(i) };
 }
 
 function show(e, push = true) {
@@ -633,23 +767,37 @@ function show(e, push = true) {
         return `<a data-crumb="${esc(id)}" title="${state.byId.has(id) ? "Anzeigen" : "Als Filter „In“"}">${esc(p)}</a>`;
     }).join(".");
     const online = ONLINE[e.pkg] ? ONLINE[e.pkg](e) : null;
+    const { head, rest } = splitDoc(e);
+    const desc = head.trim() ? `<section id="s-desc"><h3>Beschreibung</h3>${renderRst(head, e)}</section>` : "";
+    const params = renderParams(e);
+    const returns = renderReturns(e);
+    const sections = renderRst(rest, e);
+    const sig = e.sig ? `<section id="s-sig"><h3>Signatur</h3>${renderSignature(e)}</section>` : "";
+    const toc = [
+        desc && ["s-desc", "Beschreibung"],
+        params && ["s-params", `Parameter (${shownParams(e).length})`],
+        returns && ["s-ret", "Rückgabe"],
+        ...[...rest.matchAll(/^§(\S+)/gm)].map((m) => [`s-${m[1].replace(/[^\w-]/g, "")}`, m[1].startsWith("x:") ? m[1].slice(2) : SECTION_TITLES[m[1]] || m[1]]),
+        sig && ["s-sig", "Signatur"],
+    ].filter(Boolean);
     els.detail.innerHTML = `
 <div class="crumbs">${crumbs}${crumbs ? "." : ""}</div>
-<h1>${esc(e.short)} <span class="badge k-${e.k}">${KIND_LABEL[e.k] || e.k}</span> <span class="badge">${esc(e.pkg)} ${esc(e.ver)}</span>${e.dep ? ' <span class="badge dep">veraltet</span>' : ""}</h1>
+<h1>${esc(e.short)}</h1>
+${e.sum ? `<p class="summary">${inline(e.sum, e)}</p>` : `<p class="summary none">Keine Beschreibung im Paket.</p>`}
+${renderFacts(e)}
 <div class="tools">
-  ${state.history.length ? '<button data-act="back" title="Zurück zum vorigen Eintrag">← Zurück</button>' : ""}
+  ${state.history.length ? '<button data-act="back" title="Zurück zum vorigen Eintrag (Rücktaste)">← Zurück</button>' : ""}
   <button data-act="copy-name" title="${esc(e.id)}">Name kopieren</button>
-  ${e.sig ? '<button data-act="copy-call">Aufruf kopieren</button>' : ""}
   ${e.k === "class" || e.k === "module" ? `<button data-act="members" title="Alle Einträge darin">Inhalt zeigen</button>` : ""}
   <span class="spacer"></span><span id="copied" class="copied"></span>
   ${online ? `<a class="ext" href="${esc(online)}" target="_blank" title="${esc(online)}">Online-Doku ↗</a>` : ""}
 </div>
-${renderSignature(e)}
-${e.sum ? `<p class="summary">${inline(e.sum, e)}</p>` : ""}
-${e.from ? `<p class="inherited">Geerbt von ${refLink(e.from, e.from, e)}</p>` : ""}
-${renderParams(e)}
-${renderReturns(e)}
-${renderRst(stripSummary(e), e)}`;
+${toc.length > 1 ? `<nav class="toc">${toc.map(([id, label]) => `<a data-jump="${id}">${esc(label)}</a>`).join("")}</nav>` : ""}
+${desc}
+${params}
+${returns}
+${sections}
+${sig}`;
     els.detail.scrollTop = 0;
 }
 
@@ -778,6 +926,16 @@ els.results.addEventListener("click", (ev) => {
 els.detail.addEventListener("click", async (ev) => {
     const ref = ev.target.closest("[data-ref]");
     if (ref) { show(state.byId.get(ref.dataset.ref)); return; }
+    const jump = ev.target.closest("[data-jump]");
+    if (jump) {
+        const target = document.getElementById(jump.dataset.jump);
+        if (target) {
+            target.scrollIntoView({ block: "start", behavior: "smooth" });
+            target.classList.add("flash");
+            setTimeout(() => target.classList.remove("flash"), 900);
+        }
+        return;
+    }
     const crumb = ev.target.closest("[data-crumb]");
     if (crumb) {
         const id = crumb.dataset.crumb;
@@ -790,13 +948,12 @@ els.detail.addEventListener("click", async (ev) => {
     const act = ev.target.closest("[data-act]")?.dataset.act;
     const e = state.shown;
     const done = (text) => { const el = $("copied"); if (el) { el.textContent = text; setTimeout(() => { el.textContent = ""; }, 1500); } };
+    if (act === "more-params") { ev.target.closest(".pchips").classList.remove("folded"); return; }
     if (act === "rebuild") rebuild();
     else if (act === "back" && state.history.length) show(state.history.pop(), false);
     else if (act === "copy-name" && e) { if (await copy(e.id)) done("kopiert"); }
     else if (act === "copy-call" && e) {
-        const required = (e.p || []).filter((p) => p.d === undefined && !p.doc && !p.other && !p.n.startsWith("*") && !["/", "*"].includes(p.n)).map((p) => p.n);
-        const name = e.k === "method" || e.k === "property" ? e.short : e.id;
-        if (await copy(`${name}(${required.join(", ")})`)) done("kopiert");
+        if (await copy(usage(e).replace(/, …\)$|…\)$/, ")"))) done("kopiert");
     } else if (act === "members" && e) {
         els.within.value = e.id;
         els.query.value = "";
@@ -806,8 +963,16 @@ els.detail.addEventListener("click", async (ev) => {
 
 window.addEventListener("atlas-show", () => { els.query.focus(); els.query.select(); });
 
+/** Dark theme (for the package colours): from the background. */
+function detectTheme() {
+    const m = /(\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(document.body).backgroundColor);
+    const dark = m ? (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) < 128 : false;
+    document.documentElement.classList.toggle("dark", dark);
+}
+
 atlas.ready.then(async (ctx) => {
     state.ctx = ctx;
+    detectTheme();
     renderChips();
     els.query.focus();
     const ok = await loadIndex();

@@ -11,7 +11,7 @@
 atlas_api: 2
 name: docs
 title: Doku-Suche
-version: 2.0.0
+version: 2.1.0
 description: Dokumentation von pandas, numpy, matplotlib & Co. lokal durchsuchen – mit Filtern für Rückgabetyp, Parameter, Klasse und Art.
 context: true                 # als Karte in der Kontextleiste (abschaltbar)
 

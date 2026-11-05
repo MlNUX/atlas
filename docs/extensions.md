@@ -204,13 +204,21 @@ passend zu den Versionen, mit denen das Projekt arbeitet.
 
   Veraltete Einträge (deprecated) sind ausgeblendet, bis „Veraltete“
   angehakt ist.
-- **Text:** Signatur (lange mit einem Parameter je Zeile), Kurzbeschreibung,
-  Tabelle der Parameter mit Typ, Standardwert und Beschreibung (die
-  gefilterten markiert), Rückgabe, Hinweise und Beispiele mit Syntaxfarben.
-  Namen im Text und unter „Siehe auch“ führen zum Eintrag; ← Zurück oder
-  Rücktaste geht zurück. „Name kopieren“, „Aufruf kopieren“
-  (`read_csv(filepath_or_buffer)`), „Inhalt zeigen“ bei Klassen und Modulen,
-  „Online-Doku ↗“ öffnet die Seite des Projekts im Browser.
+- **Trefferliste:** je Treffer die Bibliothek (farbig), Name, Klasse oder
+  Modul, Kurzbeschreibung, die Parameter in Kurzform (Pflicht fett, die
+  gefilterten hervorgehoben), Art und Rückgabetyp.
+- **Text:** oben ein Steckbrief – Bibliothek mit Version, Klasse/Modul (ein
+  Klick zeigt sie), Art, der **Aufruf** in üblicher Schreibweise
+  (`pd.read_csv(filepath_or_buffer, …)`, `df.sum(…)`, `s.str.contains(pat, …)`,
+  `ax.hist(x, …)`; „kopieren“), die **Rückgabe** und alle **Parameter** als
+  Chips (Pflicht hervorgehoben; ein Klick springt zur Beschreibung). Darunter
+  eine Sprungleiste und die Abschnitte Beschreibung, Parameter (je Parameter
+  Typ, Standardwert, Pflicht/optional/nur als Schlüsselwort, lange Texte zum
+  Aufklappen), Rückgabe, Hinweise, Beispiele mit Syntaxfarben, Siehe auch
+  und die vollständige Signatur. Namen im Text führen zum Eintrag; ←
+  Zurück oder Rücktaste geht zurück. „Name kopieren“, „Inhalt zeigen“ bei
+  Klassen und Modulen, „Online-Doku ↗“ öffnet die Seite des Projekts im
+  Browser.
 - **Tasten:** ↑/↓ wählen, Enter springt in den Text, Esc leert die Suche
   und schließt beim zweiten Mal das Fenster. Das Fenster merkt sich die
   letzte Suche.
