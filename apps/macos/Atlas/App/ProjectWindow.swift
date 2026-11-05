@@ -67,8 +67,9 @@ struct ProjectWindow: View {
             try? await Task.sleep(for: .milliseconds(500))
             guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible),
                   let screen = window.screen ?? NSScreen.main else { return }
-            let top = screen.visibleFrame.maxY
-            window.setFrame(NSRect(x: screen.visibleFrame.minX, y: top - h, width: w, height: h), display: true)
+            let visible = screen.visibleFrame
+            let width = min(w, visible.width), height = min(h, visible.height)
+            window.setFrame(NSRect(x: visible.minX, y: visible.maxY - height, width: width, height: height), display: true)
             // What limits the size (read by ci-app.sh).
             let info = "frame \(window.frame) minSize \(window.minSize) contentMinSize \(window.contentMinSize) "
                 + "fitting \(window.contentView?.fittingSize ?? .zero) screen \(screen.visibleFrame)\n"
