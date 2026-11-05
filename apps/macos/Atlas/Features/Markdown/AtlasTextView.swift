@@ -34,8 +34,12 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
     init(editor: Editor, language: String?, markdown: Bool) {
         self.editor = editor
         self.markdown = markdown
-        scrollView = NSScrollView()
+        // Created with a size: a text view that starts at width 0 lays its
+        // text out in a container of width 0 (nothing visible).
+        let start = NSRect(x: 0, y: 0, width: 600, height: 400)
+        scrollView = NSScrollView(frame: start)
         textView = AtlasTextView(usingTextLayoutManager: false)
+        textView.frame = start
         super.init()
         if let language { highlighter = editor.highlighter(language: language) }
         textView.controller = self
@@ -62,7 +66,7 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(width: start.width, height: CGFloat.greatestFiniteMagnitude)
         textView.setAccessibilityLabel(markdown ? "Markdown-Editor" : "Texteditor")
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true

@@ -62,6 +62,11 @@ struct MarkdownModelTests {
         editor.text = "# Titel\n\nText mit **fett**\n"
         let heading = editor.textView.textStorage?.attribute(.foregroundColor, at: 2, effectiveRange: nil) as? NSColor
         #expect(heading == NSColor.controlAccentColor)
+        // The text is laid out with a width (not in a container of width 0).
+        let lm = try #require(editor.textView.layoutManager)
+        let container = try #require(editor.textView.textContainer)
+        lm.ensureLayout(for: container)
+        #expect(lm.usedRect(for: container).width > 50)
         editor.go(toLine: 3)
         #expect(editor.textView.selectedRange().location == 9)
     }
