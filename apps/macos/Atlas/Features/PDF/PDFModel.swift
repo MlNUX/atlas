@@ -303,11 +303,10 @@ final class PDFModel {
               let data = image.dataProvider?.data as Data?
         else { return }
         // Rows may be padded: copy them without.
+        let raw = [UInt8](data)
         var pixels = [UInt8](repeating: 255, count: image.width * image.height)
-        data.withUnsafeBytes { raw in
-            for y in 0..<image.height {
-                for x in 0..<image.width { pixels[y * image.width + x] = raw[y * image.bytesPerRow + x] }
-            }
+        for y in 0..<image.height {
+            for x in 0..<image.width { pixels[y * image.width + x] = raw[y * image.bytesPerRow + x] }
         }
         latexBusy = true
         latex = nil
