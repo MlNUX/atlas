@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-api"
-version = "1.1.4"
+version = "1.1.5-rc1"
 dependencies = [
  "anyhow",
  "atlas-core",
@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-app"
-version = "1.1.4"
+version = "1.1.5-rc1"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -227,7 +227,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-core"
-version = "1.1.4"
+version = "1.1.5-rc1"
 dependencies = [
  "anyhow",
  "blake3",
@@ -269,7 +269,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-ffi"
-version = "1.1.4"
+version = "1.1.5-rc1"
 dependencies = [
  "atlas-api",
  "uniffi",
@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-ilias"
-version = "1.1.4"
+version = "1.1.5-rc1"
 dependencies = [
  "anyhow",
  "atlas-core",
@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-spell"
-version = "1.1.4"
+version = "1.1.5-rc1"
 dependencies = [
  "anyhow",
  "log",
@@ -307,7 +307,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-terminal"
-version = "1.1.4"
+version = "1.1.5-rc1"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
