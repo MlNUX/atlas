@@ -68,4 +68,24 @@ struct PDFModelTests {
         #expect(PDFDocument(url: out)?.page(at: 0)?.annotations.isEmpty == false)
         #expect(!model.export(to: URL(fileURLWithPath: path)))
     }
+
+    @Test func areaAsPictureIntoANote() throws {
+        let (project, path) = try makeProject()
+        let model = PDFModel(project: project, path: path)
+        // The title "Seite 1" sits near the top left (72, 760).
+        let area = PDFArea(page: 0, rect: CGRect(x: 60, y: 740, width: 200, height: 60), tool: .figure)
+        let gray = try #require(model.render(page: 0, rect: area.rect, scale: 2, gray: true))
+        #expect(gray.width == 400 && gray.height == 120)
+        // Some dark pixels: the text is in the box.
+        let data = try #require(gray.dataProvider?.data as Data?)
+        #expect(data.contains { $0 < 128 })
+
+        let note = project.core.absolutePath(relative: "Zitate.md")
+        try model.figure(area, into: note, notes: project.core.notes())
+        let text = try String(contentsOfFile: note, encoding: .utf8)
+        #expect(text.contains("Skript.pdf, S. 1"))
+        let link = try #require(text.firstMatch(of: /!\[[^\]]*\]\(([^)]+)\)/)?.1)
+        let picture = URL(filePath: note).deletingLastPathComponent().appending(path: String(link).removingPercentEncoding ?? String(link))
+        #expect(FileManager.default.fileExists(atPath: picture.path))
+    }
 }
