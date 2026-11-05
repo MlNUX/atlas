@@ -49,11 +49,15 @@ rm -f /tmp/atlas-window.txt
 sleep 10
 screencapture -x "$out/atlas-window.png" || echo "screencapture failed (non-fatal)"
 cat /tmp/atlas-window.txt 2>/dev/null || true
-pgrep -x Atlas >/dev/null || echo "::warning::Atlas is not running any more"
-# Crash reports of this run, if any.
-for report in $(ls -t ~/Library/Logs/DiagnosticReports/Atlas* 2>/dev/null | head -n 1); do
-  echo "crash report: $report"; head -n 80 "$report"
-done
+if ! pgrep -x Atlas >/dev/null; then
+  echo "::warning::Atlas is not running any more"
+  log show --last 2m --style compact --predicate 'process == "Atlas" AND (messageType == error OR messageType == fault)' 2>/dev/null | tail -n 40 || true
+  # The crash report appears a little later.
+  sleep 15
+  for report in $(ls -t ~/Library/Logs/DiagnosticReports/Atlas* 2>/dev/null | head -n 1); do
+    echo "crash report: $report"; head -c 6000 "$report"; echo
+  done
+fi
 # The whole window, also beyond the screen edge.
 wid="$(xcrun swift - 2>/dev/null <<'SWIFT' || true
 import CoreGraphics
