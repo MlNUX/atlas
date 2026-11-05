@@ -268,17 +268,19 @@ pub struct ContextOptions {
 /// extensions (`ext:…`), which this object takes from the extension
 /// settings. Moving by places follows the *visible* order.
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
-pub struct Context {}
+pub struct Context {
+    shared: std::sync::Arc<crate::inner::Shared>,
+}
 
 impl Context {
-    pub(crate) fn new() -> Self {
-        Self {}
+    pub(crate) fn new(shared: std::sync::Arc<crate::inner::Shared>) -> Self {
+        Self { shared }
     }
 
-    /// Extension cards as the bar sees them. P2.7 replaces this with the
-    /// active extensions that offer a card.
-    fn extensions(config: &atlas_core::config::ContextConfig) -> Vec<cp::Extension> {
-        config.extensions.iter().map(|(name, shown)| cp::Extension { name: name.clone(), shown: *shown }).collect()
+    /// Extension cards as the bar sees them: the active extensions with
+    /// views or palette commands (P2.7).
+    fn extensions(&self, config: &atlas_core::config::ContextConfig) -> Vec<cp::Extension> {
+        crate::extensions::bar_extensions(&self.shared, config)
     }
 
     /// Applies `change` to the lists of the target profiles and stores the result.
@@ -359,7 +361,7 @@ impl Context {
 
     pub fn layout(&self, profile: String) -> ContextLayout {
         let config = Config::load().context;
-        layout_of(cp::layout(&config, &profile, &Self::extensions(&config)))
+        layout_of(cp::layout(&config, &profile, &self.extensions(&config)))
     }
 
     pub fn options(&self) -> ContextOptions {
@@ -397,7 +399,7 @@ impl Context {
     /// Moves `block` within its area by `delta` visible places.
     pub fn move_by(&self, target: ContextTarget, area: ContextArea, block: String, delta: i64) -> Result<()> {
         let config = Config::load().context;
-        let extensions = Self::extensions(&config);
+        let extensions = self.extensions(&config);
         self.edit(&target, |l| {
             // What the bar shows there, in order (cards missing from the stored list included).
             let name = match &target {

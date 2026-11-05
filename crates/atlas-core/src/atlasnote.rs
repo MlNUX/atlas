@@ -31,6 +31,9 @@ use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
 
 pub const PAGE_WIDTH: f64 = 1000.0;
+/// This build can render pages ([`NoteFile::render`]); otherwise the UI
+/// draws them itself from the [`Notebook`].
+pub const CAN_RENDER: bool = cfg!(feature = "pdf-poppler");
 const ARCHIVE_LIMIT: u64 = 500 * 1024 * 1024;
 const JSON_LIMIT: u64 = 20 * 1024 * 1024;
 
@@ -200,6 +203,12 @@ impl NoteFile {
             ensure!(dir.join(&name).is_file(), "Eine Quelle fehlt im Notizarchiv: {name}");
         }
         Ok(Self { notebook, dir })
+    }
+
+    /// Extracted file of a source (`pdf/<name>`, `images/<name>`, as in
+    /// [`Page::sources`]), for UIs that draw the notebook themselves.
+    pub fn source_path(&self, name: &str) -> PathBuf {
+        self.dir.join(name)
     }
 
     /// PNG of page `index` at `width_px` pixels, rendered once and cached.
