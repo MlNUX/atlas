@@ -3,9 +3,15 @@
 
 import SwiftUI
 
-/// Menu items of P3.8 (empty until the task adds them).
+/// „Im Projekt suchen …“ (P3.8): ⇧⌘F, as in Xcode and most Mac editors (E10).
 struct SearchCommands: Commands {
+    @FocusedValue(\.project) private var project
+
     var body: some Commands {
-        EmptyCommands()
+        CommandGroup(after: .textEditing) {
+            Button("Im Projekt suchen …") { project?.searchVisible = true }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(project == nil)
+        }
     }
 }
