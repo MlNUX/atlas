@@ -64,8 +64,21 @@ struct ProjectWindow: View {
             // What limits the size (read by ci-app.sh).
             let info = "frame \(window.frame) minSize \(window.minSize) contentMinSize \(window.contentMinSize) "
                 + "fitting \(window.contentView?.fittingSize ?? .zero) screen \(screen.visibleFrame)\n"
+                + "parts: sidebar \(Self.minimum(FilesSidebar(project: project))) "
+                + "editor \(Self.minimum(EditorAreaView(project: project))) "
+                + "context \(Self.minimum(ContextBar(project: project)))\n"
             try? info.write(toFile: "/tmp/atlas-window.txt", atomically: true, encoding: .utf8)
         }
+    }
+}
+
+extension ProjectWindow {
+    /// Smallest size SwiftUI lays `view` out in (CI diagnostics).
+    static func minimum(_ view: some View) -> CGSize {
+        let host = NSHostingView(rootView: view)
+        host.frame = NSRect(x: 0, y: 0, width: 10, height: 10)
+        host.layoutSubtreeIfNeeded()
+        return host.fittingSize
     }
 }
 
