@@ -72,12 +72,26 @@ struct ProjectWindow: View {
                 + "editor \(Self.minimum(EditorAreaView(project: project))) "
                 + "context \(Self.minimum(ContextBar(project: project)))\n"
                 + "window \(Self.minimum(ProjectWindow(project: project)))\n"
+                + "toolbar \(window.toolbar?.items.map { "\($0.itemIdentifier.rawValue) \($0.view?.fittingSize ?? .zero)" } ?? [])\n"
+                + Self.wide(window.contentView?.superview ?? window.contentView, depth: 0)
             try? info.write(toFile: "/tmp/atlas-window.txt", atomically: true, encoding: .utf8)
         }
     }
 }
 
 extension ProjectWindow {
+    /// Views at least 1000 pt wide with their intrinsic and fitting size (CI diagnostics).
+    static func wide(_ view: NSView?, depth: Int) -> String {
+        guard let view, depth < 40 else { return "" }
+        var out = ""
+        let w = view.frame.width, i = view.intrinsicContentSize.width
+        if w >= 1000 || i >= 1000 || view.fittingSize.width >= 1000 {
+            out += String(repeating: " ", count: depth) + "\(type(of: view)) frame \(Int(w)) intrinsic \(Int(i)) fitting \(Int(view.fittingSize.width))\n"
+        }
+        for sub in view.subviews { out += wide(sub, depth: depth + 1) }
+        return out
+    }
+
     /// Smallest size SwiftUI lays `view` out in (CI diagnostics).
     static func minimum(_ view: some View) -> CGSize {
         let host = NSHostingView(rootView: view)
