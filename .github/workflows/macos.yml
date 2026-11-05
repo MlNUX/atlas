@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Permanent macOS CI (task P4.2): core → AtlasKit, the app with its tests
+# (unit tests; UI tests from P4.1 once they are in the scheme), start with a
+# sample project and screenshots, AtlasKit tests. Runs for pull requests to the
+# integration branch and for pushes to it and to main. Setup and installations:
+# macos-setup.yml (integrator). The Linux jobs (ci.yml, build-check.yml) are
+# separate and unchanged.
+name: macOS
+
+on:
+  push:
+    branches: ["release-*", "main"]
+    paths:
+      - ".github/workflows/macos.yml"
+      - ".github/workflows/macos-setup.yml"
+      - "apps/macos/**"
+      - "crates/atlas-core/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-ffi/**"
+      - "crates/atlas-spell/**"
+      - "crates/atlas-ilias/**"
+      - "crates/atlas-terminal/**"
+      - "crates/atlas-app/web/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: ["release-*", "main"]
+    paths:
+      - ".github/workflows/macos.yml"
+      - ".github/workflows/macos-setup.yml"
+      - "apps/macos/**"
+      - "crates/atlas-core/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-ffi/**"
+      - "crates/atlas-spell/**"
+      - "crates/atlas-ilias/**"
+      - "crates/atlas-terminal/**"
+      - "crates/atlas-app/web/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: apps/macos/scripts/ci-macos.sh
+      artifact-name: macos
+      cache-key: macos
