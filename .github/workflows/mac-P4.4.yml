@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P4.4 (macOS port): updates with Sparkle – version 1 finds version 2
+# in a test appcast on localhost, downloads it and installs it on quit
+# (packaging/macos/ci-update.sh).
+name: mac-P4.4
+
+on:
+  push:
+    branches: ["port/macos/P4.4-*"]
+    paths:
+      - ".github/workflows/mac-P4.4.yml"
+      - "packaging/macos/**"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-ffi/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P4.4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: packaging/macos/ci-update.sh
+      artifact-name: mac-P4.4
+      cache-key: P4.4

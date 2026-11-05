@@ -2,3 +2,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Generated from project.yml (xcodegen)
 /Atlas.xcodeproj
+/Atlas/Info.plist

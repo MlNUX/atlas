@@ -28,6 +28,10 @@ settings:
 packages:
   AtlasKit:
     path: AtlasKit
+  # Updates (P4.4); the binary package brings its XPC services and helpers.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
 targets:
   Atlas:
     type: application
@@ -43,8 +47,21 @@ targets:
     dependencies:
       - package: AtlasKit
         product: AtlasKit
+      - package: Sparkle
+        product: Sparkle
+    # Merged with the generated Info.plist (GENERATE_INFOPLIST_FILE).
+    info:
+      path: Atlas/Info.plist
+      properties:
+        SUFeedURL: $(ATLAS_FEED_URL)
+        SUPublicEDKey: $(ATLAS_SPARKLE_PUBLIC_KEY)
+        SUEnableAutomaticChecks: true
     settings:
       base:
+        # The appcast of the releases; the public EdDSA key of the release
+        # signature (packaging/macos/README.md, „Updates“). Empty: no updater.
+        ATLAS_FEED_URL: https://github.com/MlNUX/atlas/releases/latest/download/appcast.xml
+        ATLAS_SPARKLE_PUBLIC_KEY: ""
         PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas
         PRODUCT_NAME: Atlas
         INFOPLIST_KEY_CFBundleDisplayName: Atlas

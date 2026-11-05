@@ -52,3 +52,42 @@ mitgelieferte `rg`. Das DMG liegt im Artefakt unter `dist/`.
 
 `AppIcon.svg` ist das Logo aus `data/atlas.svg` im macOS-Raster (824 px Fläche in
 1024 px). `render-icon.js` erzeugt daraus `Assets.xcassets/AppIcon.appiconset`.
+
+## Updates (Sparkle, P4.4)
+
+Die App sucht mit [Sparkle](https://sparkle-project.org) 2.10.1 nach Updates
+(Menü Atlas → „Nach Updates suchen …“, sonst automatisch täglich). Sie liest
+`appcast.xml` der neuesten GitHub-Release
+(`releases/latest/download/appcast.xml`, `ATLAS_FEED_URL` in
+`apps/macos/project.yml`). Jedes Update ist mit dem EdDSA-Schlüssel des
+Projekts signiert; ohne öffentlichen Schlüssel (`ATLAS_SPARKLE_PUBLIC_KEY`, leer
+in lokalen Builds) hat die App keinen Updater.
+
+Einmalig (Mensch), auf einem Mac:
+
+```sh
+bin="$(packaging/macos/sparkle-tools.sh)"
+"$bin/generate_keys"                 # legt den Schlüssel im Schlüsselbund an, zeigt den öffentlichen
+"$bin/generate_keys" -x sparkle.key  # privater Schlüssel → Secret ATLAS_SPARKLE_PRIVATE_KEY, Datei danach löschen
+```
+
+Den öffentlichen Schlüssel als Repository-Variable `ATLAS_SPARKLE_PUBLIC_KEY`
+eintragen. **Der private Schlüssel darf nicht verloren gehen:** ohne ihn
+findet keine installierte Version mehr ein Update.
+
+`.github/workflows/macos-release.yml` läuft bei jeder veröffentlichten Release:
+
+1. DMG bauen
+2. mit der Developer ID signieren und notarisieren
+3. `appcast.sh` schreibt `appcast.xml` mit der Download-Adresse der Release
+4. DMG, Prüfsumme und Appcast an die Release hängen
+
+Ohne Zertifikat entsteht nur ein ad hoc signiertes DMG im Artefakt (von Hand:
+`attach-adhoc`).
+
+`ci-update.sh` (Workflow `mac-P4.4`) prüft den Weg mit einem Wegwerf-Schlüssel:
+
+1. Version 1 und 2 bauen.
+2. Version 2 als Appcast auf `localhost` bereitstellen.
+3. Version 1 installieren und suchen lassen.
+4. Beim Beenden ersetzt Sparkle die App; danach muss Version 2 installiert sein.
