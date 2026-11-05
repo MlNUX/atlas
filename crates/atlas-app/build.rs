@@ -67,7 +67,6 @@ const QML_FILES: &[&str] = &[
     "qml/TouchpadFling.qml",
     "qml/TrashView.qml",
     "qml/WebRepaint.qml",
-    "qml/WebScrollbars.qml",
 ];
 
 const RUST_BRIDGES: &[&str] = &[

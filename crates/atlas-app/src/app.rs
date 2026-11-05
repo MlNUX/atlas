@@ -251,16 +251,15 @@ pub mod qobject {
         /// Page `index` of an `.atlasnote` rendered `width` pixels wide, as a
         /// `file://` URL into the cache. Never blocks: "" while the page is
         /// rendered on a background thread (ask again a moment later).
-        /// `light`: dark pages on white paper with darkened ink (light theme).
         #[qinvokable]
         #[cxx_name = "atlasNotePage"]
-        fn atlas_note_page(self: &AppController, path: &QString, index: i32, width: i32, light: bool) -> QString;
+        fn atlas_note_page(self: &AppController, path: &QString, index: i32, width: i32) -> QString;
 
         /// Any rendering of page `index` that exists already, at another size
         /// ("" if none): shown scaled until `atlasNotePage` has the right one.
         #[qinvokable]
         #[cxx_name = "atlasNotePreview"]
-        fn atlas_note_preview(self: &AppController, path: &QString, index: i32, light: bool) -> QString;
+        fn atlas_note_preview(self: &AppController, path: &QString, index: i32) -> QString;
 
         /// Layout JSON of this device's session ("" if none).
         #[qinvokable]
@@ -955,11 +954,6 @@ impl NoteTexts {
     }
 }
 
-/// How Atlas notes are drawn in the current theme.
-fn note_look(light: bool) -> atlas_core::atlasnote::Look {
-    if light { atlas_core::atlasnote::Look::Light } else { atlas_core::atlasnote::Look::AsWritten }
-}
-
 fn path_of(s: &QString) -> PathBuf {
     PathBuf::from(s.to_string())
 }
@@ -1203,23 +1197,22 @@ impl qobject::AppController {
         qs(info.to_string())
     }
 
-    pub fn atlas_note_page(&self, path: &QString, index: i32, width: i32, light: bool) -> QString {
+    pub fn atlas_note_page(&self, path: &QString, index: i32, width: i32) -> QString {
         let Ok(note) = atlas_core::atlasnote::NoteFile::open_cached(&path_of(path)) else { return QString::default() };
         let (index, width) = (index.max(0) as usize, width.max(1) as u32);
-        let look = note_look(light);
-        match note.rendered_look(index, width, look) {
+        match note.rendered(index, width) {
             Some(file) => qs(format!("file://{}", file.display())),
             None => {
-                note.render_in_background_look(index, width, look);
+                note.render_in_background(index, width);
                 QString::default()
             }
         }
     }
 
-    pub fn atlas_note_preview(&self, path: &QString, index: i32, light: bool) -> QString {
+    pub fn atlas_note_preview(&self, path: &QString, index: i32) -> QString {
         atlas_core::atlasnote::NoteFile::open_cached(&path_of(path))
             .ok()
-            .and_then(|note| note.any_rendered_look(index.max(0) as usize, note_look(light)))
+            .and_then(|note| note.any_rendered(index.max(0) as usize))
             .map_or_else(QString::default, |file| qs(format!("file://{}", file.display())))
     }
 

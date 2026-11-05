@@ -105,8 +105,7 @@ Rectangle {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: root.pageWidth
                     height: parent.height
-                    // Dark pages are drawn on white in the light theme.
-                    color: Theme.light ? "#ffffff" : "#242528"
+                    color: "#242528"
                     border.color: Theme.border
                     // Pages render on background threads; until the right size is
                     // there, an existing rendering is shown scaled (or the plain page).
@@ -121,18 +120,14 @@ Rectangle {
                         function load() {
                             if (!root.app) return
                             attempts++
-                            exact = root.app.atlasNotePage(root.source, index, root.renderWidth, Theme.light)
-                            if (!exact) preview = root.app.atlasNotePreview(root.source, index, Theme.light)
+                            exact = root.app.atlasNotePage(root.source, index, root.renderWidth)
+                            if (!exact) preview = root.app.atlasNotePreview(root.source, index)
                         }
                         Component.onCompleted: load()
                         Connections {
                             target: root
                             function onRenderWidthChanged() { picture.attempts = 0; picture.load() }
                             function onRevisionChanged() { picture.attempts = 0; picture.load() }
-                        }
-                        Connections {
-                            target: Theme
-                            function onLightChanged() { picture.exact = ""; picture.preview = ""; picture.attempts = 0; picture.load() }
                         }
                         Timer {
                             interval: 120
