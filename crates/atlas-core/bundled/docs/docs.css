@@ -204,3 +204,15 @@ button.mini { font-size: 11px; padding: 1px 7px; margin-left: 4px; }
 .pchips.folded .pchip.extra { display: none; }
 .pchips:not(.folded) .pchip.more { display: none; }
 .pchip.more { color: var(--accent); border-style: dashed; }
+/* Examples with pictures from the online docs; pictures on white (they are drawn for it). */
+#ex-online .ex-text { margin: 10px 0 4px; }
+#ex-online .ex-text ul, #ex-online .ex-text ol { margin: 4px 0; padding-left: 20px; }
+img.ex-img {
+  display: block; max-width: 100%; height: auto; margin: 6px 0 12px; background: #ffffff;
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px;
+}
+.ex-note { color: var(--muted); font-size: 12px; }
+.ex-note button { margin-left: 6px; }
+.ex-source { color: var(--faint); font-size: 11.5px; margin-top: 4px; }
+details.ex-local { margin: 10px 0; }
+details.ex-local summary { cursor: pointer; color: var(--accent); font-size: 12px; }

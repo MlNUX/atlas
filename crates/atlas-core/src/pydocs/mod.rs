@@ -14,6 +14,7 @@
 
 pub mod api;
 pub mod envs;
+pub mod examples;
 pub mod lexer;
 pub mod numpydoc;
 pub mod outline;

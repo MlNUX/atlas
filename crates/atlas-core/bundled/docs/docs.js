@@ -799,6 +799,125 @@ ${returns}
 ${sections}
 ${sig}`;
     els.detail.scrollTop = 0;
+    loadExamples(e);
+}
+
+// ---------------------------------------------------------------- online examples
+
+/** Whether examples with pictures are fetched from the online docs (setting). */
+function examplesOnline(e) {
+    const on = state.ctx?.settings?.beispiele_online;
+    return on !== false && !!ONLINE[e.pkg] && e.k !== "module";
+}
+
+/**
+ * Examples with pictures from the online documentation (Atlas fetches them
+ * once into the cache, crate pydocs::examples). They replace the package's
+ * own examples when they have pictures or the package has none (seaborn
+ * keeps its examples outside the package); those stay below, folded.
+ */
+async function loadExamples(e, retry = false) {
+    if (!examplesOnline(e)) return;
+    let box = null;
+    for (let tries = 0; state.shown === e && tries < 120; tries++) {
+        let r;
+        try {
+            r = await atlas.call("docsExamples", { package: e.pkg, id: e.id, kind: e.k, parent: e.parent, version: e.ver || "", retry: retry && tries === 0 });
+        } catch (err) {
+            return;
+        }
+        if (state.shown !== e) return;
+        if (r.state === "loading") {
+            box = box || examplesBox(e);
+            if (box) box.innerHTML = '<p class="ex-note">Beispiele mit Bildern werden aus der Online-Doku geladen …</p>';
+            await new Promise((done) => setTimeout(done, 500));
+            continue;
+        }
+        if (r.state === "error") {
+            box = box || examplesBox(e);
+            if (box) {
+                box.innerHTML = `<p class="ex-note">Beispiele aus der Online-Doku nicht geladen: ${esc(r.message)} <button data-act="examples-retry">Nochmal</button></p>`;
+            }
+            return;
+        }
+        const blocks = r.state === "ready" ? r.blocks || [] : [];
+        const pictures = blocks.filter((b) => b.image).length;
+        const local = localExamples();
+        if (!blocks.length || (!pictures && local.length)) {
+            // Nothing to add: the package's examples are as good.
+            if (box) box.remove();
+            dropEmptyExamples();
+            return;
+        }
+        box = box || examplesBox(e);
+        if (!box) return;
+        box.innerHTML = blocks.map(renderExampleBlock).join("\n")
+            + `<p class="ex-source">Aus der <a class="ext" href="${esc(r.url)}" target="_blank" title="${esc(r.url)}">Online-Doku</a> · im Cache gespeichert</p>`;
+        if (local.length) {
+            const fold = document.createElement("details");
+            fold.className = "ex-local";
+            fold.innerHTML = "<summary>Beispiele aus dem Paket (ohne Bilder)</summary>";
+            for (const node of local) fold.appendChild(node);
+            box.after(fold);
+        }
+        return;
+    }
+}
+
+function renderExampleBlock(b) {
+    if (b.text !== undefined) return `<div class="ex-text">${b.text}</div>`;
+    if (b.code !== undefined) return /^\s*>>>/.test(b.code) ? doctest(b.code.split("\n")) : `<pre class="code">${highlight(b.code)}</pre>`;
+    if (b.image !== undefined) return `<img class="ex-img" loading="lazy" alt="" src="atlas://file${b.image.split("/").map(encodeURIComponent).join("/")}">`;
+    return "";
+}
+
+/** The heading of the examples section (made, with its jump link, if missing). */
+function examplesHeading() {
+    let h = $("s-examples");
+    if (h) return h;
+    h = document.createElement("h3");
+    h.id = "s-examples";
+    h.textContent = SECTION_TITLES.examples;
+    const sig = $("s-sig");
+    if (sig) sig.before(h); else els.detail.appendChild(h);
+    const toc = els.detail.querySelector(".toc");
+    if (toc) {
+        const a = document.createElement("a");
+        a.dataset.jump = "s-examples";
+        a.textContent = SECTION_TITLES.examples;
+        const sigLink = toc.querySelector('[data-jump="s-sig"]');
+        if (sigLink) sigLink.before(a); else toc.appendChild(a);
+    }
+    return h;
+}
+
+function examplesBox(e) {
+    if (state.shown !== e) return null;
+    let box = $("ex-online");
+    if (box) return box;
+    box = document.createElement("div");
+    box.id = "ex-online";
+    examplesHeading().after(box);
+    return box;
+}
+
+/** The package's own example nodes (after the heading, up to the next one). */
+function localExamples() {
+    const h = $("s-examples");
+    const nodes = [];
+    if (!h) return nodes;
+    for (let n = h.nextElementSibling; n && n.tagName !== "H3" && n.tagName !== "SECTION"; n = n.nextElementSibling) {
+        if (n.id !== "ex-online" && !n.classList.contains("ex-local")) nodes.push(n);
+    }
+    return nodes;
+}
+
+/** Removes an examples heading with nothing below it. */
+function dropEmptyExamples() {
+    const h = $("s-examples");
+    if (!h || localExamples().length) return;
+    h.remove();
+    els.detail.querySelector('.toc [data-jump="s-examples"]')?.remove();
 }
 
 /** The text without the summary shown above it. */
@@ -951,6 +1070,7 @@ els.detail.addEventListener("click", async (ev) => {
     if (act === "more-params") { ev.target.closest(".pchips").classList.remove("folded"); return; }
     if (act === "rebuild") rebuild();
     else if (act === "back" && state.history.length) show(state.history.pop(), false);
+    else if (act === "examples-retry" && state.shown) loadExamples(state.shown, true);
     else if (act === "copy-name" && e) { if (await copy(e.id)) done("kopiert"); }
     else if (act === "copy-call" && e) {
         if (await copy(usage(e).replace(/, …\)$|…\)$/, ")"))) done("kopiert");
@@ -962,6 +1082,8 @@ els.detail.addEventListener("click", async (ev) => {
 });
 
 window.addEventListener("atlas-show", () => { els.query.focus(); els.query.select(); });
+// The colour scheme changed in Atlas (the colours are already set).
+window.addEventListener("atlas-theme", detectTheme);
 
 /** Dark theme (for the package colours): from the background. */
 function detectTheme() {

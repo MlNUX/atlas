@@ -15,16 +15,22 @@
 //   atlas.commandStatus(id) · atlas.stopCommand(id)   // its background job
 //   atlas.close()                      // the window of a `window: true` view
 //   window "atlas-show" event          // that window was opened again
+//   window "atlas-theme" event         // the colour scheme changed (variables set)
 //
 // Requests go to Atlas as console messages, answers come back through
 // `atlas._reply`. Atlas checks every path against the extension's
-// permissions. The theme arrives as CSS variables (--atlas-…) on <html>.
+// permissions. The theme arrives as CSS variables (--atlas-…) on <html>,
+// again whenever the colour scheme changes.
 "use strict";
 (() => {
     let next = 1;
     const pending = new Map();
     let started;
     const ready = new Promise((resolve) => { started = resolve; });
+    const setTheme = (theme) => {
+        const root = document.documentElement;
+        for (const [name, color] of Object.entries(theme || {})) root.style.setProperty("--atlas-" + name, color);
+    };
     const send = (id, method, params) => console.log("atlas-ext:" + JSON.stringify({ id, method, params: params || {} }));
 
     window.atlas = {
@@ -61,9 +67,12 @@
             else p.reject(new Error(value));
         },
         _start(context) {
-            const root = document.documentElement;
-            for (const [name, color] of Object.entries(context.theme || {})) root.style.setProperty("--atlas-" + name, color);
+            setTheme(context.theme);
             started(context);
+        },
+        _theme(theme) {
+            setTheme(theme);
+            window.dispatchEvent(new CustomEvent("atlas-theme", { detail: theme }));
         },
     };
 })();

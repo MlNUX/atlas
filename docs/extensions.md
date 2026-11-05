@@ -158,7 +158,8 @@ Die Dokumentation von Python-Paketen – pandas, numpy, matplotlib, scipy,
 seaborn, scikit-learn oder beliebige andere – lokal durchsuchen, in einem
 eigenen Fenster wie die Projektsuche (**F1**, „Öffnen: Doku-Suche“ in der
 Arbeitsleiste oder die Karte in der Kontextleiste). Ohne Internet und
-passend zu den Versionen, mit denen das Projekt arbeitet.
+passend zu den Versionen, mit denen das Projekt arbeitet – nur Beispiele mit
+Bildern kommen auf Wunsch einmal aus der Online-Doku (siehe unten).
 
 - **Index:** Beim ersten Öffnen baut die Suche ihn selbst (später: „Index
   neu bauen“ unten rechts). Atlas liest dafür **nur die Dateien** der
@@ -219,10 +220,26 @@ passend zu den Versionen, mit denen das Projekt arbeitet.
   Zurück oder Rücktaste geht zurück. „Name kopieren“, „Inhalt zeigen“ bei
   Klassen und Modulen, „Online-Doku ↗“ öffnet die Seite des Projekts im
   Browser.
+- **Beispiele mit Bildern:** Die Bilder der Online-Doku (seaborn,
+  matplotlib, scipy …) liegen nicht in den installierten Paketen – sie
+  entstehen erst beim Bauen der Website, seaborn hält dort sogar den
+  Beispielcode. Beim ersten Öffnen eines Eintrags holt Atlas deshalb den
+  Abschnitt „Examples“ seiner offiziellen Seite – die der installierten
+  Version, sonst die aktuelle – mit Text, Code und Bildern und legt ihn im
+  Cache ab (`examples/<paket>/<version>/<eintrag>/`); danach geht es ohne
+  Internet. Hat die Online-Doku Bilder oder das Paket keine eigenen
+  Beispiele, stehen sie unter „Beispiele“, die Beispiele aus dem Paket
+  darunter zum Aufklappen. Atlas fragt dafür nur die Doku-Seiten der
+  bekannten Pakete (seaborn.pydata.org, matplotlib.org, pandas.pydata.org,
+  numpy.org, docs.scipy.org, scikit-learn.org) und übernimmt nur Text, Code
+  und Bilder, nie die Seite selbst. Abschalten: Einstellung „Beispiele aus
+  der Online-Doku“.
 - **Tasten:** ↑/↓ wählen, Enter springt in den Text, Esc leert die Suche
   und schließt beim zweiten Mal das Fenster. Das Fenster merkt sich die
   letzte Suche.
-- Rechte: nur der eigene Cache-Ordner, kein Netzwerk, keine Programme.
+- Rechte: nur der eigene Cache-Ordner, keine Programme; die Seite selbst
+  geht nicht ins Netz (die Beispiele holt Atlas).
+- Wechselt das Farbschema, wechselt die Suche sofort mit.
 
 ## Format (API 2)
 
@@ -342,7 +359,9 @@ Pfade sind absolut oder relativ zum Projekt. Atlas prüft **jeden** Pfad
 gegen `permissions: files` – `project` heißt nur im Projekt (auch nicht
 über symbolische Links oder `..` hinaus), `home` im persönlichen Ordner,
 `none` gar nicht. Die Farben von Atlas stehen als CSS-Variablen bereit
-(`--atlas-editor`, `--atlas-text`, `--atlas-accent`, …), KaTeX unter
+(`--atlas-editor`, `--atlas-text`, `--atlas-accent`, …); wechselt das
+Farbschema, setzt Atlas sie neu und schickt der Seite das Ereignis
+`atlas-theme` (`window.addEventListener("atlas-theme", …)`). KaTeX unter
 `atlas://app/web/vendor/katex/`.
 
 ### Rechte

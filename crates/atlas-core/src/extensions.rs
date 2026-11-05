@@ -1557,7 +1557,10 @@ fn resolved(path: &Path) -> Result<PathBuf> {
 ///   folders), `exists {path}`
 /// - `renameFile {path, name}` → new path, `trashFile {path}`
 /// - `docsBuild`, `docsStatus` (only the docs search): build its index in
-///   the background ([`crate::pydocs`]) and how far it got
+///   the background ([`crate::pydocs`]) and how far it got;
+///   `docsExamples {package, id, kind, parent, version, retry?}`: examples
+///   with pictures from the online documentation
+///   ([`crate::pydocs::examples::get`])
 ///
 /// Paths are checked with [`scoped_path`]. Opening files, messages and the
 /// theme are answered by the user interface.
@@ -1672,6 +1675,27 @@ pub fn call(
                     .map(|s| serde_json::to_value(s).unwrap_or_default())
                     .unwrap_or_else(|| json!({}))
             )
+        }
+        // Examples with pictures from the online documentation, fetched once
+        // in the background into the cache (crate::pydocs::examples).
+        "docsExamples" if ext.name == "docs" => {
+            let online = ext
+                .setting_values(settings)
+                .into_iter()
+                .find(|(s, _)| s.key == "beispiele_online")
+                .is_none_or(|(_, v)| v.as_bool() != Some(false));
+            if !online {
+                bail!("Beispiele aus der Online-Doku sind in den Einstellungen ausgeschaltet");
+            }
+            let field = |key: &str| params[key].as_str().unwrap_or_default().to_owned();
+            let entry = crate::pydocs::examples::Entry {
+                package: field("package"),
+                id: field("id"),
+                kind: field("kind"),
+                parent: field("parent"),
+                version: field("version"),
+            };
+            crate::pydocs::examples::get(&cache_dir(&ext.name), &entry, params["retry"].as_bool() == Some(true))
         }
         "renderMarkdown" => {
             let source = text("text")?;

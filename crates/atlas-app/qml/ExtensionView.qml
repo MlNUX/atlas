@@ -53,6 +53,9 @@ Rectangle {
         ok: String(Theme.ok), warn: String(Theme.warn), error: String(Theme.error),
     })
 
+    // A new colour scheme reaches the page at once (not only on reload).
+    onThemeChanged: if (root.started) web.runJavaScript("window.atlas && atlas._theme && atlas._theme(" + JSON.stringify(root.theme) + ")")
+
     function reply(id, ok, value) {
         if (id) web.runJavaScript("window.atlas && atlas._reply(" + id + "," + ok + "," + JSON.stringify(value === undefined ? null : value) + ")")
     }

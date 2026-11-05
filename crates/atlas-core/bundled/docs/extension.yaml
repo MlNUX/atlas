@@ -6,12 +6,14 @@
 # Klasse/Modul, Art und Paket – in einem eigenen Fenster wie die
 # Projektsuche. Den Index baut Atlas selbst (in Rust, crates/atlas-core/
 # src/pydocs) aus den Quelltexten der installierten Pakete: Es startet kein
-# Python, führt nichts aus und lädt nichts herunter. Er liegt im
-# Cache-Ordner der Erweiterung.
+# Python und führt nichts aus. Er liegt im Cache-Ordner der Erweiterung.
+# Nur die Beispiele mit Bildern holt Atlas auf Wunsch einmal aus der
+# Online-Doku in denselben Ordner (src/pydocs/examples.rs); die Seite selbst
+# geht nicht ins Netz.
 atlas_api: 2
 name: docs
 title: Doku-Suche
-version: 2.1.0
+version: 2.2.0
 description: Dokumentation von pandas, numpy, matplotlib & Co. lokal durchsuchen – mit Filtern für Rückgabetyp, Parameter, Klasse und Art.
 context: true                 # als Karte in der Kontextleiste (abschaltbar)
 
@@ -31,6 +33,11 @@ settings:
     description: Leer – automatisch (Umgebungen im Projekt, Jupyter-Kernel, Conda, pyenv, System). Sonst die Umgebung mit den Paketen – ihr Ordner, ihr Python (…/.venv/bin/python) oder ihr site-packages-Ordner.
     type: path
     default: ""
+  - key: beispiele_online
+    title: Beispiele aus der Online-Doku
+    description: Beispiele mit Bildern (seaborn, matplotlib, scipy …) beim ersten Öffnen eines Eintrags einmal von der offiziellen Doku-Seite holen und im Cache behalten.
+    type: bool
+    default: true
 
 views:
   - id: search

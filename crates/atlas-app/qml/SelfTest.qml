@@ -74,6 +74,9 @@ Item {
     property int docsTabs: 0
     property bool docsReady: false
     property var docsSearch: null
+    property var docsExamples: null
+    property var docsDark: null
+    property var docsDarkAfter: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -679,6 +682,38 @@ Item {
                       && r[1].indexOf("json.loads") < 0 && r[1].indexOf("json.JSONDecoder") < 0, JSON.stringify(r))
                 check("Doku-Suche: Filter In und Art Klasse", !!r && r[2] === true && r[3] === true, JSON.stringify(r))
                 check("Doku-Suche: Text des Treffers gezeigt", !!r && r[4] === "loads", JSON.stringify(r))
+                // Online examples, already in the cache (no network here): a
+                // seaborn entry whose package keeps its examples outside.
+                const dir = test.docsCache + "/examples/seaborn/0.13.2/seaborn.heatmap"
+                const svg = dir + "/01-heatmap.svg"
+                app.extensionCall("docs", "writeFile", JSON.stringify({ path: svg,
+                    text: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="red"/></svg>' }))
+                app.extensionCall("docs", "writeFile", JSON.stringify({ path: dir + "/examples.json", text: JSON.stringify({ format: 1,
+                    url: "https://seaborn.pydata.org/generated/seaborn.heatmap.html",
+                    blocks: [{ text: "Pass a <code>DataFrame</code>:" }, { code: "sns.heatmap(glue)" }, { image: svg }] }) }))
+                extensionWindow.page.webItem.runJavaScript(
+                    "(() => { const e = { id: 'seaborn.heatmap', k: 'function', sum: 'Plot rectangular data.',"
+                    + " doc: 'Plot rectangular data.\\n\\n§examples\\n.. include:: ../docstrings/heatmap.rst\\n', p: [] };"
+                    + " prepare(e, 'seaborn', '0.13.2'); show(e); return true })()")
+            },
+            () => {
+                const page = extensionWindow.page
+                page.webItem.runJavaScript("(() => { const img = document.querySelector('#ex-online img.ex-img');"
+                    + " return [!!img && img.complete && img.naturalWidth > 0, document.querySelector('#ex-online pre.code')?.textContent,"
+                    + " document.querySelector('#ex-online .ex-text')?.innerHTML, !!document.querySelector('.toc [data-jump=\"s-examples\"]') || !document.querySelector('.toc'),"
+                    + " document.documentElement.classList.contains('dark')] })()", (r) => { test.docsExamples = r })
+                const r = test.docsExamples
+                if (waitFor(() => !!r && r[0] === true)) return
+                check("Doku-Suche: Beispiele mit Bild aus dem Cache", !!r && r[0] === true && r[1] === "sns.heatmap(glue)"
+                      && r[2] === "Pass a <code>DataFrame</code>:" && r[3] === true, JSON.stringify(r))
+                test.docsDark = !!r && r[4]
+                app.theme = test.docsDark ? "light" : "dark"
+            },
+            () => {
+                extensionWindow.page.webItem.runJavaScript("document.documentElement.classList.contains('dark')", (d) => { test.docsDarkAfter = d })
+                if (waitFor(() => test.docsDarkAfter === !test.docsDark)) return
+                check("Doku-Suche: Farbschema wechselt sofort", test.docsDarkAfter === !test.docsDark, test.docsDark + " → " + test.docsDarkAfter)
+                app.theme = test.docsDark ? "dark" : "light"
                 // Esc with an empty search closes the window (atlas.close()).
                 extensionWindow.page.webItem.runJavaScript("clearAll(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))")
             },
