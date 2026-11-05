@@ -4,6 +4,7 @@
 import AppKit
 import AtlasKit
 import Foundation
+import PDFKit
 import Testing
 
 @testable import Atlas
@@ -111,5 +112,27 @@ struct MarkdownModelTests {
         #expect(PreviewSchemeHandler.picture(for: URL(string: "atlas://file/tmp/Bild%201.png")!)?.path == "/tmp/Bild 1.png")
         #expect(PreviewSchemeHandler.picture(for: URL(string: "atlas://file/etc/passwd")!) == nil, "only pictures")
         #expect(MarkdownPreview.jsString("a\"b\n") == "\"a\\\"b\\n\"")
+    }
+
+    @Test func searchHitsAndLineNumbers() throws {
+        let (project, _) = try makeProject()
+        let editor = TextEditorController(editor: project.core.editor(), language: "Markdown", markdown: true)
+        editor.text = "Eins\nzwei Wort\ndrei\nvier Wort\n"
+        #expect(editor.select(term: "wort", caseSensitive: false, fromLine: 3))
+        #expect(editor.textView.selectedRange() == NSRange(location: 25, length: 4), "the hit at or after line 3")
+        #expect(!editor.select(term: "wort", caseSensitive: true, fromLine: 1))
+        #expect(editor.scrollView.verticalRulerView is LineNumberRuler)
+    }
+
+    @Test func exportsPDF() async throws {
+        let (project, note) = try makeProject()
+        let model = MarkdownModel(project: project, path: note, line: 0)
+        await model.load()
+        let output = FileManager.default.temporaryDirectory.appending(path: "atlas-md-\(UUID().uuidString).pdf")
+        #expect(await model.exportPDF(to: output))
+        let pdf = try #require(PDFDocument(url: output))
+        #expect(pdf.pageCount >= 1)
+        #expect(pdf.string?.contains("Analysis") == true, "the note's text is in the PDF")
+        model.close()
     }
 }

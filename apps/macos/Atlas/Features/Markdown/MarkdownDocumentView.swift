@@ -93,6 +93,10 @@ private struct MarkdownContent: View {
                     .font(.callout)
                     .help("Links, deren Ziel es nicht gibt (in der Vorschau markiert)")
             }
+            if model.exporting {
+                ProgressView().controlSize(.small)
+                Text("PDF wird erstellt …").font(.caption).foregroundStyle(.secondary)
+            }
             if model.modified {
                 Text("geändert").font(.caption).foregroundStyle(.secondary)
             }

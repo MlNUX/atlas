@@ -48,6 +48,9 @@ final class MarkdownModel {
     /// The editor moved because the preview scrolled (no echo back).
     @ObservationIgnored private var followingPreview = Date.distantPast
     @ObservationIgnored private var startLine: Int
+    /// A hit of the project search to mark (Linux: `find` in the tab state).
+    @ObservationIgnored private var find: (text: String, caseSensitive: Bool, line: Int)?
+    private(set) var exporting = false
 
     /// Mermaid templates of „Diagramm einfügen“ (as on Linux).
     static let diagrams: [(name: String, code: String)] = [
@@ -68,7 +71,13 @@ final class MarkdownModel {
         startLine = line
         // The mode of the tab as the session has it (Linux writes it too).
         let tab = project.editor.groups.flatMap(\.tabs).first { $0.path == path }
-        mode = tab?.extra["mode"]?.string.flatMap(Mode.init(rawValue:)) ?? (line > 0 ? .edit : .preview)
+        // CI and screenshots: `-AtlasMarkdownMode split` (or `defaults write`).
+        let forced = UserDefaults.standard.string(forKey: "AtlasMarkdownMode").flatMap(Mode.init(rawValue:))
+        mode = forced ?? tab?.extra["mode"]?.string.flatMap(Mode.init(rawValue:)) ?? (line > 0 ? .edit : .preview)
+        if let f = tab?.extra["find"]?.object, let text = f["text"]?.string, !text.isEmpty {
+            let line = f["line"]?.int ?? line
+            find = (text, f["caseSensitive"]?.bool ?? false, line)
+        }
         editor = TextEditorController(editor: project.core.editor(), language: "Markdown", markdown: true)
         editor.onChange = { [weak self] text in self?.changed(text) }
         editor.onScroll = { [weak self] in self?.editorScrolled() }
@@ -97,11 +106,14 @@ final class MarkdownModel {
             loaded = true
             error = nil
             render()
-            if startLine > 0 {
+            if let find {
+                markHits(find.text, caseSensitive: find.caseSensitive, line: find.line)
+                self.find = nil
+            } else if startLine > 0 {
                 editor.go(toLine: startLine)
                 preview?.scroll(toLine: startLine)
-                startLine = 0
             }
+            startLine = 0
         } catch {
             self.error = atlasMessage(error)
         }
@@ -229,6 +241,36 @@ final class MarkdownModel {
         case .rendered:
             break
         }
+    }
+
+    /// Marks a hit of the project search: selected in the editor on its
+    /// line, all occurrences marked in the preview (as on Linux).
+    func markHits(_ term: String, caseSensitive: Bool, line: Int) {
+        editor.select(term: term, caseSensitive: caseSensitive, fromLine: line)
+        preview?.markHits(term, caseSensitive: caseSensitive, line: line)
+    }
+
+    // MARK: - PDF
+
+    /// „Als PDF exportieren …“: next to the note by default.
+    func exportPDF() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        let url = URL(filePath: path)
+        panel.directoryURL = url.deletingLastPathComponent()
+        panel.nameFieldStringValue = url.deletingPathExtension().lastPathComponent + ".pdf"
+        guard panel.runModal() == .OK, let output = panel.url else { return }
+        Task { await exportPDF(to: output) }
+    }
+
+    @discardableResult
+    func exportPDF(to output: URL) async -> Bool {
+        exporting = true
+        defer { exporting = false }
+        let html = project.core.editor().renderMarkdown(text: editor.text, path: path).html
+        let ok = await MarkdownPDFExport(root: project.root).export(html: html, to: output)
+        project.show(notice: ok ? "Als PDF exportiert: \(output.lastPathComponent)" : "PDF-Export fehlgeschlagen")
+        return ok
     }
 
     // MARK: - inserting

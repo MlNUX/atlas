@@ -66,6 +66,11 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
         textView.setAccessibilityLabel(markdown ? "Markdown-Editor" : "Texteditor")
         scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
+        // Line numbers (as on Linux).
+        let ruler = LineNumberRuler(textView: textView)
+        scrollView.verticalRulerView = ruler
+        scrollView.hasVerticalRuler = true
+        scrollView.rulersVisible = true
         scrollView.drawsBackground = false
         scrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
@@ -74,7 +79,10 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
 
     static let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
 
-    @objc private func scrolled() { onScroll?() }
+    @objc private func scrolled() {
+        scrollView.verticalRulerView?.needsDisplay = true
+        onScroll?()
+    }
 
     var text: String {
         get { textView.string }
@@ -83,6 +91,7 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
             textView.string = newValue
             applyingCore = false
             highlight()
+            scrollView.verticalRulerView?.needsDisplay = true
         }
     }
 
@@ -226,6 +235,7 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
     // MARK: - NSTextViewDelegate
 
     func textDidChange(_ notification: Notification) {
+        scrollView.verticalRulerView?.needsDisplay = true
         guard !applyingCore else { return }
         highlight()
         onChange?(textView.string)
@@ -281,6 +291,22 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
         let maxY = max(0, textView.frame.height - scrollView.contentView.bounds.height)
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: min(maxY, max(0, target))))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    /// Selects the first occurrence of `term` at or after `line` (else the
+    /// first one) and shows it; `false` if there is none.
+    @discardableResult
+    func select(term: String, caseSensitive: Bool, fromLine line: Int) -> Bool {
+        let text = textView.string as NSString
+        let options: NSString.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+        let start = offset(ofLine: max(1, line)) ?? 0
+        var found = text.range(of: term, options: options, range: NSRange(location: start, length: text.length - start))
+        if found.location == NSNotFound { found = text.range(of: term, options: options) }
+        guard found.location != NSNotFound else { return false }
+        textView.setSelectedRange(found)
+        textView.scrollRangeToVisible(found)
+        textView.showFindIndicator(for: found)
+        return true
     }
 
     /// Moves the cursor to the start of `line` (1-based) and shows it.
@@ -368,6 +394,66 @@ final class AtlasTextView: NSTextView {
         guard flag, movement != NSTextMovement.cancel.rawValue else { return }
         if controller?.acceptCompletion(label: word) == true { return }
         super.insertCompletion(word, forPartialWordRange: charRange, movement: movement, isFinal: flag)
+    }
+}
+
+/// Line numbers beside the editor: one per source line (wrapped lines
+/// show it on their first part).
+final class LineNumberRuler: NSRulerView {
+    private weak var textView: NSTextView?
+
+    init(textView: NSTextView) {
+        self.textView = textView
+        super.init(scrollView: nil, orientation: .verticalRuler)
+        clientView = textView
+        ruleThickness = 40
+        setAccessibilityElement(false)
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    private static let attributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+        .foregroundColor: NSColor.tertiaryLabelColor,
+    ]
+
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        guard let textView, let lm = textView.layoutManager, let tc = textView.textContainer else { return }
+        NSColor.textBackgroundColor.setFill()
+        rect.fill()
+        let text = textView.string as NSString
+        let visible = textView.visibleRect
+        let glyphs = lm.glyphRange(forBoundingRect: visible, in: tc)
+        let chars = lm.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        // Number of the first visible line.
+        var line = 1
+        for i in 0..<min(chars.location, text.length) where text.character(at: i) == 10 { line += 1 }
+        let inset = textView.textContainerOrigin.y
+        let offset = convert(NSPoint.zero, from: textView).y
+        var index = chars.location
+        let needed = max(40, CGFloat(String(max(1, line + 200)).count) * 7.5 + 14)
+        if abs(ruleThickness - needed) > 0.5 { ruleThickness = needed }
+        while index <= NSMaxRange(chars), index <= text.length {
+            let y: CGFloat
+            if index < text.length || text.length == 0 {
+                let glyph = lm.glyphIndexForCharacter(at: min(index, max(0, text.length - 1)))
+                y = text.length == 0 ? 0 : lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY
+            } else {
+                y = lm.extraLineFragmentRect.minY
+            }
+            let label = "\(line)" as NSString
+            let size = label.size(withAttributes: Self.attributes)
+            label.draw(at: NSPoint(x: ruleThickness - size.width - 6, y: y + inset + offset + 1), withAttributes: Self.attributes)
+            let next = text.lineRange(for: NSRange(location: min(index, text.length), length: 0))
+            if NSMaxRange(next) <= index { break }
+            // The last line ends with a newline: one more (empty) line.
+            if NSMaxRange(next) == text.length, text.length > 0, text.character(at: text.length - 1) != 10 { break }
+            index = NSMaxRange(next)
+            line += 1
+        }
     }
 }
 

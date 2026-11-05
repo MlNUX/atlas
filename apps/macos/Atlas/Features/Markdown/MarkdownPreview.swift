@@ -31,6 +31,7 @@ final class MarkdownPreview: NSObject, @preconcurrency WKNavigationDelegate, @pr
     private(set) var ready = false
     private var pending: (html: String, light: Bool)?
     private var pendingLine = 0
+    private var pendingFind: (term: String, caseSensitive: Bool, line: Int)?
 
     /// `root`: the project (images in it are served); others are refused.
     init(root: String) {
@@ -72,6 +73,15 @@ final class MarkdownPreview: NSObject, @preconcurrency WKNavigationDelegate, @pr
         run("atlas.follow(\(line), \(at))")
     }
 
+    /// Marks every occurrence of `term` and shows the one at or after `line`.
+    func markHits(_ term: String, caseSensitive: Bool, line: Int) {
+        guard ready else {
+            pendingFind = (term, caseSensitive, line)
+            return
+        }
+        run("atlas.markHits(\(Self.jsString(term)), \(caseSensitive), \(line))")
+    }
+
     func scroll(toLine line: Int) {
         guard ready else {
             pendingLine = line
@@ -98,10 +108,13 @@ final class MarkdownPreview: NSObject, @preconcurrency WKNavigationDelegate, @pr
             pending = nil
             show(html: p.html, light: p.light)
         }
-        if pendingLine > 1 {
+        if let f = pendingFind {
+            pendingFind = nil
+            markHits(f.term, caseSensitive: f.caseSensitive, line: f.line)
+        } else if pendingLine > 1 {
             scroll(toLine: pendingLine)
-            pendingLine = 0
         }
+        pendingLine = 0
     }
 
     /// Links inside the page never navigate it (the app opens them).

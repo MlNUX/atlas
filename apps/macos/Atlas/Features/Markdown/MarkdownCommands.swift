@@ -31,6 +31,9 @@ struct MarkdownCommands: Commands {
             }
             Button("Tabellen ausrichten") { markdown?.alignTables() }
                 .disabled(markdown == nil)
+            Divider()
+            Button("Als PDF exportieren …") { markdown?.exportPDF() }
+                .disabled(markdown == nil || markdown?.exporting == true)
         }
     }
 }
