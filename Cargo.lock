@@ -190,6 +190,8 @@ dependencies = [
  "atlas-ilias",
  "atlas-spell",
  "atlas-terminal",
+ "chrono",
+ "chrono-tz",
  "futures-channel",
  "ignore",
  "libc",
