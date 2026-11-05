@@ -47,9 +47,8 @@ app="$derived/Build/Products/Debug/Atlas.app"
 open -n "$app" --args -AtlasOpenProject "$sample" -AtlasOpenFile "${ATLAS_CI_OPEN_FILE:-Notizen/Analysis.md}" ${ATLAS_CI_SEARCH:+-AtlasSearch "$ATLAS_CI_SEARCH"} ${ATLAS_CI_EXTENSION:+-AtlasExtension "$ATLAS_CI_EXTENSION"}
 sleep 8
 # Fit the window onto the runner's screen (it is wider than the default size, the inspector was cut off).
-osascript -e 'tell application "Finder" to set b to bounds of window of desktop' \
-  -e 'tell application "System Events" to tell process "Atlas" to tell window 1' \
-  -e 'set position to {0, 25}' -e 'set size to {(item 3 of b), (item 4 of b) - 25}' -e 'end tell' 2>/dev/null \
+osascript -e 'tell application "System Events" to tell process "Atlas" to tell window 1' \
+  -e 'set position to {0, 25}' -e 'set size to {1280, 780}' -e 'get size' -e 'end tell' \
   || echo "window not resized (non-fatal)"
 sleep 2
 screencapture -x "$out/atlas-window.png" || echo "screencapture failed (non-fatal)"
