@@ -140,4 +140,32 @@ struct MarkdownModelTests {
         #expect(pdf.string?.contains("Analysis") == true, "the note's text is in the PDF")
         model.close()
     }
+
+    /// The editor draws its text in a window (CI showed line numbers but no
+    /// text): counts dark pixels right of the line numbers.
+    @Test func drawsTextInAWindow() throws {
+        let (project, _) = try makeProject()
+        let editor = TextEditorController(editor: project.core.editor(), language: "Markdown", markdown: true)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .aqua)
+        editor.scrollView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        window.contentView = editor.scrollView
+        editor.text = "# Überschrift\n\nText Text Text Text Text\nMehr Text hier\n"
+        window.layoutIfNeeded()
+        window.displayIfNeeded()
+        let view = editor.scrollView
+        let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let ruler = editor.scrollView.verticalRulerView?.frame.width ?? 0
+        var dark = 0
+        for y in stride(from: 0, to: rep.pixelsHigh, by: 2) {
+            for x in stride(from: Int(ruler * rep.size.width / max(1, view.bounds.width)) + 4, to: rep.pixelsWide, by: 2) {
+                if let c = rep.colorAt(x: x, y: y), c.brightnessComponent < 0.5 { dark += 1 }
+            }
+        }
+        let info = "text view \(editor.textView.frame), clip \(editor.scrollView.contentView.frame), ruler \(ruler), "
+            + "container \(editor.textView.textContainer?.size ?? .zero), color \(String(describing: editor.textView.textStorage?.attribute(.foregroundColor, at: 3, effectiveRange: nil)))"
+        #expect(dark > 50, "dark pixels: \(dark); \(info)")
+    }
 }
