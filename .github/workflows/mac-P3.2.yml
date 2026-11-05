@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P3.2 (macOS port): the PDF viewer – build, unit tests, open the sample PDF,
+# screenshots in the log (apps/macos/scripts/ci-screenshots.sh), PDF tab open.
+name: mac-P3.2
+
+on:
+  push:
+    branches: ["port/macos/P3.2-*"]
+    paths:
+      - ".github/workflows/mac-P3.2.yml"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-ffi/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P3.2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: ATLAS_CI_OPEN_FILE=Skript.pdf apps/macos/scripts/ci-app.sh
+      artifact-name: mac-P3.2
+      cache-key: P3.2
