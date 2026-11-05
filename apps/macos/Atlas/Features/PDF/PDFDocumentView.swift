@@ -114,14 +114,14 @@ private struct PDFContent: View {
 private struct PDFThumbnails: NSViewRepresentable {
     let model: PDFModel
 
-    func makeNSView(context: Context) -> PDFThumbnailView {
+    func makeNSView(context: NSViewRepresentableContext<Self>) -> PDFThumbnailView {
         let view = PDFThumbnailView()
         view.thumbnailSize = CGSize(width: 110, height: 140)
         view.backgroundColor = .clear
         return view
     }
 
-    func updateNSView(_ view: PDFThumbnailView, context: Context) {
+    func updateNSView(_ view: PDFThumbnailView, context: NSViewRepresentableContext<Self>) {
         view.pdfView = PDFKitView.registry[ObjectIdentifier(model)]
     }
 }
@@ -136,7 +136,7 @@ struct PDFKitView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(annotationClicked: annotationClicked) }
 
-    func makeNSView(context: Context) -> PDFView {
+    func makeNSView(context: NSViewRepresentableContext<Self>) -> PDFView {
         let view = PDFView()
         view.document = model.document
         view.autoScales = true
@@ -151,7 +151,7 @@ struct PDFKitView: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: PDFView, context: Context) {
+    func updateNSView(_ view: PDFView, context: NSViewRepresentableContext<Self>) {
         _ = model.revision  // redraw after annotation changes
         view.highlightedSelections = model.searchHits.isEmpty ? nil : model.searchHits
         if let first = model.searchHits.first, context.coordinator.lastSearch != model.searchText {
