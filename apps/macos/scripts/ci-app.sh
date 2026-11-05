@@ -21,6 +21,12 @@ say "Xcode project"
 xcodegen generate --quiet
 
 say "xcodebuild test"
+# Swift packages (Sparkle) come from GitHub: retry when a download fails (504 …).
+for attempt in 1 2 3 4; do
+  xcodebuild -resolvePackageDependencies -project Atlas.xcodeproj -scheme Atlas >"$out/resolve.log" 2>&1 && break
+  [[ $attempt == 4 ]] && { tail -n 20 "$out/resolve.log"; exit 1; }
+  echo "package download failed, retry $attempt"; sleep $((attempt * 15))
+done
 xcodebuild -project Atlas.xcodeproj -scheme Atlas -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$derived" -resultBundlePath "$out/Atlas.xcresult" -skipPackagePluginValidation \
   test >"$out/xcodebuild.log" 2>&1 || { grep -E "error:|✘|failed" "$out/xcodebuild.log" | head -n 60; exit 1; }
@@ -38,9 +44,30 @@ cp "$root/spikes/pdfkit/fixtures/spike.pdf" "$sample/Skript.pdf" 2>/dev/null || 
 say "Launch + screenshots"
 app="$derived/Build/Products/Debug/Atlas.app"
 # `open` brings the app to the front (a directly started binary stays behind Finder).
-open -n "$app" --args -AtlasOpenProject "$sample" -AtlasOpenFile "${ATLAS_CI_OPEN_FILE:-Notizen/Analysis.md}" ${ATLAS_CI_SEARCH:+-AtlasSearch "$ATLAS_CI_SEARCH"} ${ATLAS_CI_EXTENSION:+-AtlasExtension "$ATLAS_CI_EXTENSION"}
-sleep 8
+open -n "$app" --args -AtlasWindowSize 1280x780 -AtlasOpenProject "$sample" -AtlasOpenFile "${ATLAS_CI_OPEN_FILE:-Notizen/Analysis.md}" ${ATLAS_CI_SEARCH:+-AtlasSearch "$ATLAS_CI_SEARCH"} ${ATLAS_CI_EXTENSION:+-AtlasExtension "$ATLAS_CI_EXTENSION"}
+rm -f /tmp/atlas-window.txt
+sleep 10
 screencapture -x "$out/atlas-window.png" || echo "screencapture failed (non-fatal)"
+cat /tmp/atlas-window.txt 2>/dev/null || true
+if ! pgrep -x Atlas >/dev/null; then
+  echo "::warning::Atlas is not running any more"
+  log show --last 2m --style compact --predicate 'process == "Atlas" AND (messageType == error OR messageType == fault)' 2>/dev/null | tail -n 40 || true
+  # The crash report appears a little later.
+  sleep 15
+  for report in $(ls -t ~/Library/Logs/DiagnosticReports/Atlas* 2>/dev/null | head -n 1); do
+    echo "crash report: $report"; head -c 6000 "$report"; echo
+  done
+fi
+# The whole window, also beyond the screen edge.
+wid="$(xcrun swift - 2>/dev/null <<'SWIFT' || true
+import CoreGraphics
+let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+if let w = list.first(where: { ($0[kCGWindowOwnerName as String] as? String) == "Atlas" && ($0[kCGWindowLayer as String] as? Int) == 0 }) {
+    print(w[kCGWindowNumber as String] ?? "")
+}
+SWIFT
+)"
+[[ -n "$wid" ]] && screencapture -x -o -l "$wid" "$out/atlas-window-full.png" || echo "no window capture (non-fatal)"
 osascript -e 'tell application "Atlas" to activate' \
   -e 'tell application "System Events" to keystroke "p" using command down' 2>/dev/null || echo "no accessibility for keystrokes (non-fatal)"
 sleep 2

@@ -43,6 +43,10 @@ final class ProjectModel {
     /// SwiftUI observes `lastEvent`).
     @ObservationIgnored private var listeners: [UUID: (Event) -> Void] = [:]
     var searchVisible = false
+    /// Opens the search with this pattern (tags of the context bar, …).
+    var searchPrefill: String?
+    /// Edit mode of the context bar (menu Darstellung, P3.6).
+    var contextEditing = false
 
     /// Calls `listener` with every event of this window until `stopListening(_:)`.
     func listen(_ listener: @escaping (Event) -> Void) -> UUID {

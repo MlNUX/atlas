@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import AppKit
 import AtlasKit
 import SwiftUI
 
@@ -16,7 +17,11 @@ struct ProjectWindow: View {
             EditorAreaView(project: project)
         }
         .inspector(isPresented: $project.inspectorVisible) {
+            // Width 0 allowed: content wider than the column is clipped
+            // instead of making the whole window wider (min 1676 pt before).
             ContextBar(project: project)
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .clipped()
                 .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
         }
         .toolbar {
@@ -51,6 +56,21 @@ struct ProjectWindow: View {
         }
         .animation(.default, value: project.notice)
         .onDisappear { project.close() }
+        .task {
+            // CI: `-AtlasWindowSize 1280x780` fits the window onto the runner's screen.
+            guard let size = UserDefaults.standard.string(forKey: "AtlasWindowSize")?.split(separator: "x"),
+                  size.count == 2, let w = Double(size[0]), let h = Double(size[1]) else { return }
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible),
+                  let screen = window.screen ?? NSScreen.main else { return }
+            let visible = screen.visibleFrame
+            let width = min(w, visible.width), height = min(h, visible.height)
+            window.setFrame(NSRect(x: visible.minX, y: visible.maxY - height, width: width, height: height), display: true)
+            // What limits the size (read by ci-app.sh).
+            let info = "frame \(window.frame) minSize \(window.minSize) contentMinSize \(window.contentMinSize) "
+                + "fitting \(window.contentView?.fittingSize ?? .zero) screen \(screen.visibleFrame)\n"
+            try? info.write(toFile: "/tmp/atlas-window.txt", atomically: true, encoding: .utf8)
+        }
     }
 }
 
@@ -90,7 +110,8 @@ struct EditorGroupView: View {
             Divider()
             if group.tabs.indices.contains(group.current) {
                 FeatureRouter.view(for: group.tabs[group.current], project: project)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    .clipped()
             } else {
                 ContentUnavailableView("Keine Datei geöffnet", systemImage: "doc",
                                        description: Text("Datei in der Seitenleiste wählen oder ⌘P drücken"))

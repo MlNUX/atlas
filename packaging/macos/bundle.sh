@@ -66,6 +66,12 @@ fi
 say "App (Release $version)"
 cd "$root/apps/macos"
 xcodegen generate --quiet
+# Swift packages (Sparkle) come from GitHub: retry when a download fails (504 …).
+for attempt in 1 2 3 4; do
+  xcodebuild -resolvePackageDependencies -project Atlas.xcodeproj -scheme Atlas >"$out/resolve.log" 2>&1 && break
+  [[ $attempt == 4 ]] && { tail -n 20 "$out/resolve.log"; exit 1; }
+  echo "package download failed, retry $attempt"; sleep $((attempt * 15))
+done
 xcodebuild -project Atlas.xcodeproj -scheme Atlas -configuration Release \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath "$derived" -skipPackagePluginValidation \
   CODE_SIGNING_ALLOWED=NO \
