@@ -55,3 +55,8 @@ pub fn end_with_parent() {
 
 /// Whether [`end_with_parent`] does anything here.
 pub const ENDS_WITH_PARENT: bool = cfg!(target_os = "linux");
+
+/// ONNX Runtime looked up by the loader when neither `ORT_DYLIB_PATH` nor
+/// the build (`ATLAS_ORT_DYLIB`) names one; the Mac app sets the path to
+/// its bundled copy (P4.3).
+pub const ONNX_RUNTIME: &str = if cfg!(target_os = "macos") { "libonnxruntime.dylib" } else { "libonnxruntime.so" };

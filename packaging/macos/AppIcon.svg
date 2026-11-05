@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Minux -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- The Atlas logo (data/atlas.svg) on the macOS icon grid: 824 px body
+     in a 1024 px canvas. packaging/macos/icon.sh renders the AppIcon set. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16213a"/>
+      <stop offset="1" stop-color="#0a101c"/>
+    </linearGradient>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6aa8ff"/>
+      <stop offset="1" stop-color="#3d8bfd"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#shadow)"/>
+  <rect x="105" y="105" width="814" height="814" rx="180" fill="none" stroke="#3d8bfd" stroke-opacity="0.35" stroke-width="10"/>
+  <g transform="translate(171 178) scale(28.4)">
+    <path fill="url(#a)" d="M12 2.5 22 21h-4.4L12 10.6 6.4 21H2z"/>
+    <path fill="#3d8bfd" opacity=".55" d="M12 13.6 15.4 21H8.6z"/>
+  </g>
+</svg>

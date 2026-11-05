@@ -195,7 +195,7 @@ fn environment() -> Result<&'static ort::environment::Environment> {
             .ok()
             .filter(|p| !p.is_empty())
             .or_else(|| option_env!("ATLAS_ORT_DYLIB").map(str::to_owned))
-            .unwrap_or_else(|| "libonnxruntime.so".into());
+            .unwrap_or_else(|| crate::platform::ONNX_RUNTIME.into());
         ort::init_from(&lib)
             .map_err(|e| format!("ONNX Runtime ({lib}) lässt sich nicht laden: {e}"))?
             .with_name("atlas")
