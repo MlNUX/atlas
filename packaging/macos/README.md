@@ -66,13 +66,15 @@ Die App sucht mit [Sparkle](https://sparkle-project.org) 2.10.1 nach Updates
 Projekts signiert; ohne öffentlichen Schlüssel (`ATLAS_SPARKLE_PUBLIC_KEY`, leer
 in lokalen Builds) hat die App keinen Updater.
 
-Einmalig (Mensch), auf einem Mac:
+Einmalig (Mensch), auf Linux oder macOS (nur `openssl`, kein Mac nötig):
 
 ```sh
-bin="$(packaging/macos/sparkle-tools.sh)"
-"$bin/generate_keys"                 # legt den Schlüssel im Schlüsselbund an, zeigt den öffentlichen
-"$bin/generate_keys" -x sparkle.key  # privater Schlüssel → Secret ATLAS_SPARKLE_PRIVATE_KEY, Datei danach löschen
+packaging/macos/sparkle-keygen.sh sparkle.key   # zeigt den öffentlichen Schlüssel
+# Inhalt von sparkle.key → Secret ATLAS_SPARKLE_PRIVATE_KEY, Kopie in den Passwortmanager, Datei löschen
 ```
+
+Dasselbe Format erzeugt Sparkles `generate_keys` (`-x` exportiert den privaten
+Schlüssel); `ci-update.sh` testet mit einem so erzeugten Schlüssel.
 
 Den öffentlichen Schlüssel als Repository-Variable `ATLAS_SPARKLE_PUBLIC_KEY`
 eintragen. **Der private Schlüssel darf nicht verloren gehen:** ohne ihn

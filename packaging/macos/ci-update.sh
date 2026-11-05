@@ -14,14 +14,9 @@ mkdir -p "$out"
 say() { printf '\n==> %s\n' "$*"; }
 port=8765
 
-say "Throwaway EdDSA key"
-tools="$("$here/sparkle-tools.sh")"
-account="atlas-ci-$$"
-"$tools/generate_keys" --account "$account" >/dev/null
-public="$("$tools/generate_keys" --account "$account" -p)"
-keyfile="$(mktemp)"
-rm -f "$keyfile"
-"$tools/generate_keys" --account "$account" -x "$keyfile"
+say "Throwaway EdDSA key (sparkle-keygen.sh, as for the real one)"
+keyfile="$(mktemp -u)"
+public="$("$here/sparkle-keygen.sh" "$keyfile")"
 private="$(cat "$keyfile")"
 rm -f "$keyfile"
 echo "public key: $public"
