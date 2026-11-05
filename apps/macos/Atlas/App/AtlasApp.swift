@@ -9,6 +9,10 @@ import SwiftUI
 struct AtlasApp: App {
     @State private var app = AppModel()
 
+    init() {
+        _ = Updates.shared
+    }
+
     var body: some Scene {
         // The value is the project root; `nil` shows the welcome window.
         WindowGroup(id: "project", for: String.self) { $root in
@@ -19,6 +23,7 @@ struct AtlasApp: App {
             AtlasCommands(app: app)
             DocumentFeatureCommands()
             ToolFeatureCommands()
+            UpdateCommands()
         }
 
         Settings {

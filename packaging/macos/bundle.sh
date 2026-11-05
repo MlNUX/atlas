@@ -15,6 +15,9 @@
 #   ATLAS_SIGN_IDENTITY  "Developer ID Application: … (TEAMID)"; unset or "-"
 #                        signs ad hoc (test builds until the account exists, E5)
 #   ATLAS_KEYCHAIN       keychain holding the identity (import-certificate.sh)
+#   ATLAS_BUILD_NUMBER   CFBundleVersion (Sparkle compares it; default: from project.yml)
+#   ATLAS_SPARKLE_PUBLIC_KEY  public EdDSA key of the updates; empty: no updater
+#   ATLAS_FEED_URL       appcast (default: latest GitHub release)
 #   ATLAS_SKIP_CORE=1    use the AtlasKit already built (it must not have
 #                        ATLAS_RG_BIN/ATLAS_ORT_DYLIB baked in)
 # Notarisation of the DMG: packaging/macos/notarize.sh.
@@ -65,7 +68,11 @@ cd "$root/apps/macos"
 xcodegen generate --quiet
 xcodebuild -project Atlas.xcodeproj -scheme Atlas -configuration Release \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath "$derived" -skipPackagePluginValidation \
-  CODE_SIGNING_ALLOWED=NO build >"$out/xcodebuild-release.log" 2>&1 \
+  CODE_SIGNING_ALLOWED=NO \
+  ${ATLAS_BUILD_NUMBER:+CURRENT_PROJECT_VERSION="$ATLAS_BUILD_NUMBER"} \
+  ${ATLAS_SPARKLE_PUBLIC_KEY:+ATLAS_SPARKLE_PUBLIC_KEY="$ATLAS_SPARKLE_PUBLIC_KEY"} \
+  ${ATLAS_FEED_URL:+ATLAS_FEED_URL="$ATLAS_FEED_URL"} \
+  build >"$out/xcodebuild-release.log" 2>&1 \
   || { grep -E "error:" "$out/xcodebuild-release.log" | head -n 40; exit 1; }
 app="$out/Atlas.app"
 rm -rf "$app"
@@ -100,6 +107,15 @@ fi
 # Inside out: helpers first, the app last (no --deep).
 "${sign[@]}" "$app/Contents/Helpers/rg"
 "${sign[@]}" "$app/Contents/Frameworks/libonnxruntime.dylib"
+sparkle="$app/Contents/Frameworks/Sparkle.framework"
+if [[ -d "$sparkle" ]]; then
+  # The order of Sparkle's documentation (Developer ID, no sandbox).
+  "${sign[@]}" "$sparkle/Versions/B/XPCServices/Installer.xpc"
+  "${sign[@]}" --preserve-metadata=entitlements "$sparkle/Versions/B/XPCServices/Downloader.xpc"
+  "${sign[@]}" "$sparkle/Versions/B/Autoupdate"
+  "${sign[@]}" "$sparkle/Versions/B/Updater.app"
+  "${sign[@]}" "$sparkle"
+fi
 "${sign[@]}" --entitlements "$entitlements" "$app"
 codesign --verify --strict --verbose=2 "$app"
 codesign --display --entitlements - --verbose=2 "$app" 2>&1 | grep -E "Identifier|Authority|Signature|flags|TeamIdentifier|key" || true

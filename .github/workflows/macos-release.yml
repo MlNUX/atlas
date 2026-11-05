@@ -1,0 +1,125 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The Mac app of a release (P4.3, P4.4, E15): DMG signed with the Developer
+# ID and notarised, appcast.xml for Sparkle, both attached to the GitHub
+# release. Runs when a release is published, or by hand for a tag.
+#
+# Secrets (packaging/macos/README.md): ATLAS_CERT_P12_BASE64,
+# ATLAS_CERT_PASSWORD, ATLAS_NOTARY_KEY_P8 (contents of the .p8),
+# ATLAS_NOTARY_KEY_ID, ATLAS_NOTARY_ISSUER, ATLAS_SPARKLE_PRIVATE_KEY; the
+# public key as repository variable ATLAS_SPARKLE_PUBLIC_KEY. Without the
+# certificate (no Apple Developer account yet, E5) the DMG is signed ad hoc
+# and attached all the same, with a note how to open it the first time.
+name: macos-release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (e.g. v1.1.5)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  dmg:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Select Xcode 26
+        run: |
+          set -euo pipefail
+          app="$(ls -d /Applications/Xcode_26*.app | grep -viE 'beta|release_candidate|_rc' | sort -V | tail -n 1)"
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Bootstrap
+        run: apps/macos/scripts/bootstrap.sh
+
+      - name: Developer ID certificate
+        env:
+          ATLAS_CERT_P12_BASE64: ${{ secrets.ATLAS_CERT_P12_BASE64 }}
+          ATLAS_CERT_PASSWORD: ${{ secrets.ATLAS_CERT_PASSWORD }}
+        run: packaging/macos/import-certificate.sh >>"$GITHUB_ENV"
+
+      - name: DMG
+        env:
+          ATLAS_SPARKLE_PUBLIC_KEY: ${{ vars.ATLAS_SPARKLE_PUBLIC_KEY }}
+        run: packaging/macos/bundle.sh "$RUNNER_TEMP/dist"
+
+      - name: Notarisation
+        if: env.ATLAS_SIGN_IDENTITY != ''
+        env:
+          ATLAS_NOTARY_KEY_P8: ${{ secrets.ATLAS_NOTARY_KEY_P8 }}
+          ATLAS_NOTARY_KEY_ID: ${{ secrets.ATLAS_NOTARY_KEY_ID }}
+          ATLAS_NOTARY_ISSUER: ${{ secrets.ATLAS_NOTARY_ISSUER }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/notary.p8"
+          printf '%s' "$ATLAS_NOTARY_KEY_P8" >"$key"
+          ATLAS_NOTARY_KEY="$key" packaging/macos/notarize.sh "$RUNNER_TEMP"/dist/Atlas-*.dmg
+          rm -f "$key"
+
+      - name: Appcast
+        env:
+          ATLAS_SPARKLE_PRIVATE_KEY: ${{ secrets.ATLAS_SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ATLAS_SPARKLE_PRIVATE_KEY" ]]; then
+            echo "::warning::ATLAS_SPARKLE_PRIVATE_KEY missing – no appcast, the app finds no update"
+            exit 0
+          fi
+          feed="$RUNNER_TEMP/feed"
+          mkdir -p "$feed"
+          cp "$RUNNER_TEMP"/dist/Atlas-*.dmg "$feed/"
+          packaging/macos/appcast.sh "$feed" "https://github.com/${{ github.repository }}/releases/download/$TAG/"
+          cp "$feed/appcast.xml" "$RUNNER_TEMP/dist/appcast.xml"
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          files=("$RUNNER_TEMP"/dist/Atlas-*.dmg "$RUNNER_TEMP"/dist/Atlas-*.dmg.sha256)
+          [[ -f "$RUNNER_TEMP/dist/appcast.xml" ]] && files+=("$RUNNER_TEMP/dist/appcast.xml")
+          gh release upload "$TAG" "${files[@]}" --clobber -R "${{ github.repository }}"
+
+      - name: Note for ad hoc builds
+        if: env.ATLAS_SIGN_IDENTITY == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Once per release: how to open a DMG without notarisation.
+          notes="$(gh release view "$TAG" --json body -q .body -R "${{ github.repository }}")"
+          marker="<!-- atlas-macos-adhoc -->"
+          [[ "$notes" == *"$marker"* ]] && exit 0
+          printf '%s\n\n%s\n%s\n' "$notes" "$marker" "$(cat packaging/macos/release-note-adhoc.md)" >"$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" -R "${{ github.repository }}"
+          echo "::notice::No Developer ID: the DMG is signed ad hoc, not notarised."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-release-${{ env.TAG }}
+          path: ${{ runner.temp }}/dist/Atlas-*
+          if-no-files-found: ignore
