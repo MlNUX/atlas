@@ -13,6 +13,8 @@
 //   atlas.open(path) · atlas.reveal(path) · atlas.message(text)
 //   atlas.runCommand(id, path?)        // a command of this extension
 //   atlas.commandStatus(id) · atlas.stopCommand(id)   // its background job
+//   atlas.close()                      // the window of a `window: true` view
+//   window "atlas-show" event          // that window was opened again
 //
 // Requests go to Atlas as console messages, answers come back through
 // `atlas._reply`. Atlas checks every path against the extension's
@@ -48,6 +50,8 @@
         commandStatus(id) { return atlas.call("commandStatus", { id }); },
         /** Ends background command `id`; false if it does not run. */
         stopCommand(id) { return atlas.call("stopCommand", { id }); },
+        /** Closes the window of a view with `window: true` (false in a tab). */
+        close() { return atlas.call("close"); },
 
         _reply(id, ok, value) {
             const p = pending.get(id);

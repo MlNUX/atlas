@@ -69,6 +69,11 @@ Item {
     property var bnkiView: null
     property var bnkiPage: null
     property var jupyterPage: null
+    property var extensionWindow
+    property string docsCache: ""
+    property int docsTabs: 0
+    property bool docsReady: false
+    property var docsSearch: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -633,6 +638,53 @@ Item {
             () => {
                 const tab = editor.activeTab
                 check("Jupyter: „Datei selbst“ zeigt das JSON", !!tab && tab.shownProcessor === "" && tab.kind === "text", tab ? tab.kind + " " + tab.shownProcessor : "kein Tab")
+                // ---- Docs search: a view in its own window, index from Python's json module
+                check("Doku-Suche installiert", app.installBundled("docs") === "")
+                check("Doku-Suche: Fenster mit F1", JSON.parse(app.keybindings()).some(k => k.sequence === "F1" && k.id === "view:docs/search"), app.keybindings())
+                app.setExtensionSetting("docs", "pakete", JSON.stringify("json"))
+                const ctx = JSON.parse(app.extensionCall("docs", "context", "{}"))
+                test.docsCache = ctx.ok ? ctx.value.cache : ""
+                check("Doku-Suche: eigener Cache-Ordner im Kontext", test.docsCache.indexOf("/extensions/docs") > 0, JSON.stringify(ctx))
+                const own = JSON.parse(app.extensionCall("docs", "writeFile", JSON.stringify({ path: test.docsCache + "/probe.txt", text: "x" })))
+                const foreign = JSON.parse(app.extensionCall("docs", "readFile", JSON.stringify({ path: path("notes/idee.md") })))
+                check("Doku-Suche: Cache-Ordner offen, Projekt zu (files: none)", own.ok && !foreign.ok, JSON.stringify([own, foreign]))
+                test.docsTabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                window.openExtensionView("view:docs/search", "")
+            },
+            () => {
+                const w = extensionWindow
+                if (waitFor(() => w.visible)) return
+                check("Doku-Suche: eigenes Fenster statt Tab", w.visible && w.viewId === "view:docs/search"
+                      && editor.groups.reduce((n, g) => n + g.tabs.length, 0) === test.docsTabs, w.viewId + " " + w.visible)
+            },
+            () => {
+                const page = extensionWindow.page
+                if (waitFor(() => !!page && page.started === true && !!test.docsReady)) {
+                    if (page && page.started) page.webItem.runJavaScript("state.entries.length", (n) => { test.docsReady = n > 0 })
+                    return
+                }
+                check("Doku-Suche: Index aus dem installierten Paket gebaut", !!test.docsReady && app.exists(test.docsCache + "/json.json"),
+                      page ? JSON.stringify(page.pageErrors) : "keine Seite")
+                if (page) page.webItem.runJavaScript(
+                    "const ids = (q) => { els.query.value = q; render(); return state.results.map(e => e.id) };"
+                    + "[ids('loads')[0], ids('p:fp k:funktion'), ids('in:JSONEncoder').indexOf('json.JSONEncoder.encode') >= 0, ids('pkg:json k:klasse').indexOf('json.JSONDecoder') >= 0,"
+                    + " (ids('loads'), document.querySelector('#detail h1').textContent.trim().split(' ')[0])]",
+                    (r) => { test.docsSearch = r })
+            },
+            () => {
+                const r = test.docsSearch
+                if (waitFor(() => !!r)) return
+                check("Doku-Suche: Name zuerst", !!r && r[0] === "json.loads", JSON.stringify(r))
+                check("Doku-Suche: Filter Parameter und Art", !!r && r[1].indexOf("json.dump") >= 0 && r[1].indexOf("json.load") >= 0
+                      && r[1].indexOf("json.loads") < 0 && r[1].indexOf("json.JSONDecoder") < 0, JSON.stringify(r))
+                check("Doku-Suche: Filter In und Art Klasse", !!r && r[2] === true && r[3] === true, JSON.stringify(r))
+                check("Doku-Suche: Text des Treffers gezeigt", !!r && r[4] === "loads", JSON.stringify(r))
+                // Esc with an empty search closes the window (atlas.close()).
+                extensionWindow.page.webItem.runJavaScript("clearAll(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))")
+            },
+            () => {
+                if (waitFor(() => !extensionWindow.visible)) return
+                check("Doku-Suche: Esc schließt das Fenster", !extensionWindow.visible)
                 // ---- Phase 2: project calendar
                 window.openCalendar({ mode: "week", date: "2026-10-19" })
             },

@@ -229,6 +229,9 @@ pub struct View {
     /// Opened automatically for matching files.
     pub auto: bool,
     pub keybinding: Option<String>,
+    /// Shown in its own large window in front of Atlas (like the project
+    /// search) instead of a tab (`window: true`).
+    pub window: bool,
     globs: Option<globset::GlobSet>,
 }
 
@@ -656,6 +659,7 @@ fn parse_view(entry: &Yaml, ext: &str, dir: &Path) -> Result<View> {
         applies_to,
         auto: entry["auto"].as_bool().unwrap_or(false),
         keybinding,
+        window: entry["window"].as_bool().unwrap_or(false),
     })
 }
 
@@ -772,6 +776,7 @@ pub fn load(dir: &Path, location: Location) -> Extension {
     ext.errors.extend(errors.into_iter().map(|e: LoadError| e.message));
     for action in &mut ext.actions {
         action.base_dir = Some(dir.to_path_buf());
+        action.extra = vec![cache_placeholder(&name)];
     }
     for (i, entry) in doc["processors"].as_vec().into_iter().flatten().enumerate() {
         match parse_processor(entry, &name, dir) {
@@ -910,7 +915,7 @@ impl Extension {
 
     /// Hands the setting values to every command of the extension.
     pub fn apply_settings(&mut self, all: &toml::Table) {
-        let mut applied = Applied::default();
+        let mut applied = Applied { extra: vec![cache_placeholder(&self.name)], ..Applied::default() };
         for (setting, value) in self.setting_values(all) {
             if setting.kind == SettingKind::Secret {
                 applied.secrets.push((setting.env_name(), secret_store(&self.name, &setting.key)));
@@ -1058,6 +1063,19 @@ pub const BUNDLED: &[Bundled] = &[
             ("job.sh", include_str!("../bundled/jupyter/job.sh"), true),
         ],
     },
+    Bundled {
+        name: "docs",
+        title: "Doku-Suche",
+        description: "Dokumentation von pandas, numpy, matplotlib & Co. lokal durchsuchen – nach Rückgabetyp, Parametern und Klasse.",
+        files: &[
+            (MANIFEST, include_str!("../bundled/docs/extension.yaml"), false),
+            ("docs.html", include_str!("../bundled/docs/docs.html"), false),
+            ("docs.css", include_str!("../bundled/docs/docs.css"), false),
+            ("docs.js", include_str!("../bundled/docs/docs.js"), false),
+            ("index.sh", include_str!("../bundled/docs/index.sh"), true),
+            ("index.py", include_str!("../bundled/docs/index.py"), false),
+        ],
+    },
 ];
 
 /// Installs (or updates) the bundled extension `name` among the user's
@@ -1108,6 +1126,22 @@ pub fn update_bundled(user_root: &Path) -> Vec<String> {
         }
     }
     updated
+}
+
+/// The cache folder of extension `name`
+/// (`$XDG_CACHE_HOME/atlas/extensions/<name>/`): its commands get it as
+/// `{cache}`, its views as `cache` in the context, and the bridge lets the
+/// view read and write in it whatever `permissions: files` says. Not
+/// created here.
+pub fn cache_dir(name: &str) -> PathBuf {
+    let base = std::env::var_os("ATLAS_CACHE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("atlas"));
+    base.join(DIR).join(name)
+}
+
+fn cache_placeholder(name: &str) -> (String, String) {
+    ("{cache}".to_owned(), cache_dir(name).to_string_lossy().into_owned())
 }
 
 pub fn user_root(config_dir: &Path) -> PathBuf {
@@ -1468,16 +1502,11 @@ const MAX_BRIDGE_FILE: u64 = 32 * 1024 * 1024;
 
 /// `path` (absolute, or relative to the project) if the extension may use
 /// it: inside the project (`files: project`), the home folder (`home`) or
-/// anywhere (`all`). Links are followed before checking, so a link in the
-/// project cannot lead outside.
+/// anywhere (`all`), and always in its cache folder ([`cache_dir`]). Links
+/// are followed before checking, so a link in the project cannot lead
+/// outside.
 pub fn scoped_path(ext: &Extension, project: Option<&Path>, path: &str) -> Result<PathBuf> {
     let access = ext.permissions.as_ref().map(|p| p.files).unwrap_or(FileAccess::None);
-    let root = match access {
-        FileAccess::None => bail!("„{}“ hat keinen Dateizugriff angemeldet", ext.title),
-        FileAccess::Project => project.context("kein Projekt geöffnet")?.to_path_buf(),
-        FileAccess::Home => dirs::home_dir().context("kein persönlicher Ordner")?,
-        FileAccess::All => PathBuf::from("/"),
-    };
     let wanted = Path::new(path);
     let joined = if wanted.is_absolute() {
         wanted.to_path_buf()
@@ -1487,8 +1516,28 @@ pub fn scoped_path(ext: &Extension, project: Option<&Path>, path: &str) -> Resul
     if joined.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
         bail!("„..“ ist in Pfaden nicht erlaubt");
     }
-    // The nearest existing folder decides (the file may not exist yet).
-    let mut existing = joined.as_path();
+    let real = resolved(&joined)?;
+    // Its own cache folder is always open to the extension.
+    if resolved(&cache_dir(&ext.name)).is_ok_and(|cache| real.starts_with(cache)) {
+        return Ok(real);
+    }
+    let root = match access {
+        FileAccess::None => bail!("„{}“ hat keinen Dateizugriff angemeldet", ext.title),
+        FileAccess::Project => project.context("kein Projekt geöffnet")?.to_path_buf(),
+        FileAccess::Home => dirs::home_dir().context("kein persönlicher Ordner")?,
+        FileAccess::All => PathBuf::from("/"),
+    };
+    let root = root.canonicalize().unwrap_or(root);
+    if !real.starts_with(&root) {
+        bail!("„{}“ liegt außerhalb dessen, was „{}“ angemeldet hat ({})", path, ext.title, access.as_str());
+    }
+    Ok(real)
+}
+
+/// `path` with links followed; the nearest existing folder decides (the
+/// file may not exist yet).
+fn resolved(path: &Path) -> Result<PathBuf> {
+    let mut existing = path;
     let mut rest = Vec::new();
     while !existing.exists() {
         rest.push(existing.file_name().context("ungültiger Pfad")?.to_owned());
@@ -1498,16 +1547,13 @@ pub fn scoped_path(ext: &Extension, project: Option<&Path>, path: &str) -> Resul
     for part in rest.into_iter().rev() {
         real.push(part);
     }
-    let root = root.canonicalize().unwrap_or(root);
-    if !real.starts_with(&root) {
-        bail!("„{}“ liegt außerhalb dessen, was „{}“ angemeldet hat ({})", path, ext.title, access.as_str());
-    }
     Ok(real)
 }
 
 /// Answers a request of a view's page (`atlas.call(method, params)`):
 ///
-/// - `context`: project, settings (without secrets), permissions
+/// - `context`: project, settings (without secrets), permissions, the
+///   cache folder ([`cache_dir`])
 /// - `listFiles {dir, pattern?}`: entries of a folder
 /// - `readFile {path}` → text, `writeFile {path, text}` (atomic, creates
 ///   folders), `exists {path}`
@@ -1538,6 +1584,7 @@ pub fn call(
                 "project": project.map(|p| p.to_string_lossy().into_owned()),
                 "settings": values,
                 "files": ext.permissions.as_ref().map(|p| p.files.as_str()).unwrap_or("none"),
+                "cache": cache_dir(&ext.name).to_string_lossy(),
             })
         }
         "listFiles" => {
@@ -1714,6 +1761,40 @@ mod tests {
         install_bundled(&root, "bnki").unwrap();
         let again = load(&ext_dir, Location::User);
         assert_eq!(again.setting_values(&load_settings(&config))[0].1.as_str(), Some("bnki"));
+    }
+
+    #[test]
+    fn docs_search_has_a_window_and_its_own_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = install_bundled(&dir.path().join("extensions"), "docs").unwrap();
+        let mut ext = load(&ext_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        assert_eq!(ext.permissions.as_ref().unwrap().files, FileAccess::None);
+        let view = &ext.views[0];
+        assert!(view.window && view.id == "view:docs/search" && view.keybinding.as_deref() == Some("F1"));
+        // The command gets the cache folder, the settings and the project.
+        ext.apply_settings(&toml::Table::new());
+        let project = dir.path().join("projekt");
+        std::fs::create_dir_all(&project).unwrap();
+        let ctx = Context { project: Some(project.clone()), paths: Vec::new(), line: 0 };
+        let index = ext.actions.iter().find(|a| a.id == "docs/index").unwrap();
+        let argv = index.prepare(&ctx).unwrap().argv;
+        let cache = cache_dir("docs");
+        assert_eq!(
+            argv[argv.len() - 4..],
+            [
+                cache.to_string_lossy().into_owned(),
+                project.to_string_lossy().into_owned(),
+                String::new(),
+                "numpy, pandas, matplotlib, scipy, seaborn, sklearn".to_owned()
+            ]
+        );
+        // The bridge: the cache folder yes, anything else no (files: none).
+        let inside = cache.join("pandas.json");
+        assert_eq!(scoped_path(&ext, Some(&project), &inside.to_string_lossy()).unwrap(), resolved(&inside).unwrap());
+        assert!(scoped_path(&ext, Some(&project), "notiz.md").is_err());
+        let context = call(&ext, Some(&project), &toml::Table::new(), "context", &serde_json::json!({})).unwrap();
+        assert_eq!(context["cache"], serde_json::json!(cache.to_string_lossy()));
     }
 
     #[test]

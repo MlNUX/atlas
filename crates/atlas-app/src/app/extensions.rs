@@ -216,7 +216,7 @@ impl qobject::AppController {
             .active_extensions()
             .iter()
             .flat_map(|e| e.views.iter())
-            .map(|v| serde_json::json!({ "id": v.id, "name": v.name, "extension": v.extension, "keybinding": v.keybinding }))
+            .map(|v| serde_json::json!({ "id": v.id, "name": v.name, "extension": v.extension, "keybinding": v.keybinding, "window": v.window }))
             .collect();
         qs(serde_json::Value::from(list).to_string())
     }
@@ -239,6 +239,7 @@ impl qobject::AppController {
                     "name": view.name,
                     "extension": ext.name,
                     "network": ext.permissions.as_ref().is_some_and(|p| !p.network.is_empty()),
+                    "window": view.window,
                 })
             }
         };

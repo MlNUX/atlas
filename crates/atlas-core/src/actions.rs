@@ -607,6 +607,7 @@ const KNOWN: &[&str] = &[
     "{line}",
     "{output}",
     "{extension}",
+    "{cache}",
 ];
 
 fn substitute(text: &str, values: &Values, quote: bool) -> Result<String> {

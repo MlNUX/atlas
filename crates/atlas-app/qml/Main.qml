@@ -365,6 +365,12 @@ ApplicationWindow {
         onOpenRequested: (path, line, newPane, state) => editor.open(path, line, newPane ? "split" : "tab", state)
     }
 
+    ExtensionWindow {
+        id: extensionWindow
+        app: app
+        actions: fileActions
+    }
+
     SettingsDialog {
         id: settingsDialog
         app: app
@@ -647,6 +653,7 @@ ApplicationWindow {
                 searchPanel: searchDialog, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
                 sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, relateDialog: relateDialog, settingsDialog: settingsDialog,
                 projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector, placesList: placesList,
+                extensionWindow: extensionWindow,
             })
             item.start()
         }
@@ -673,8 +680,12 @@ ApplicationWindow {
         }
     }
     /// Opens view `id` of an extension on `path` if it fits, otherwise on
-    /// the project.
+    /// the project (in a tab, or in its window with `window: true`).
     function openExtensionView(id, path) {
+        // Views with `window: true` (the docs search) get their own window.
+        let views = []
+        try { views = JSON.parse(app.extensionViews()) } catch (e) {}
+        if (views.some(v => v.id === id && v.window)) return extensionWindow.show(id, path || app.projectRoot)
         const fits = path && fileActions.processorsFor(path).some(p => p.id === id)
         const target = fits ? path : app.projectRoot
         if (target) editor.open(target, 0, "tab", { processor: id })

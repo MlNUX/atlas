@@ -182,7 +182,7 @@ echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"
 
-export ATLAS_STATE_DIR="$work/state" ATLAS_CONFIG_DIR="$work/config"
+export ATLAS_STATE_DIR="$work/state" ATLAS_CONFIG_DIR="$work/config" ATLAS_CACHE_DIR="$work/cache"
 
 # A stand-in for ILIAS on a free port (scripts/ilias-mock.py).
 ilias_port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')

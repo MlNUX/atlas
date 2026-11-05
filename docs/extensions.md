@@ -152,6 +152,55 @@ Tracebacks. Ausführen lassen sich einzelne Zellen und alle.
 - Rechte: Dateien im Projekt, die Programme `jupyter` und `python3`,
   Netzwerk nur zu 127.0.0.1.
 
+### Doku-Suche
+
+Die Dokumentation von Python-Paketen – pandas, numpy, matplotlib, scipy,
+seaborn, scikit-learn oder beliebige andere – lokal durchsuchen, in einem
+eigenen Fenster wie die Projektsuche (**F1**, „Öffnen: Doku-Suche“ in der
+Arbeitsleiste oder die Karte in der Kontextleiste). Ohne Internet und
+passend zu den Versionen, mit denen das Projekt arbeitet.
+
+- **Index:** Beim ersten Öffnen baut die Suche ihn selbst (später: „Index
+  neu bauen“ unten rechts oder „Doku-Index neu bauen“ in der
+  Arbeitsleiste). Ein Python-Skript importiert jedes Paket aus der
+  Einstellung „Pakete“, liest dessen öffentliche Funktionen, Klassen,
+  Methoden und Eigenschaften mit Signatur und Docstring und zerlegt die
+  Docstrings (numpydoc-Format) in Parameter, Rückgabe, Beispiele usw. Das
+  dauert wenige Sekunden. Abgelegt unter `~/.cache/atlas/extensions/docs/`
+  (eine JSON-Datei je Paket).
+- **Python:** Einstellung „Python“, sonst automatisch die `.venv`, `venv`
+  oder `env` des Projekts, die aktive Conda-Umgebung oder `python3` – die
+  erste, in der eines der Pakete installiert ist. Unten steht, mit welchem
+  Python und wann der Index gebaut wurde; fehlende Pakete stehen dabei.
+- **Suchen:** Alle Wörter müssen im Namen, im Pfad, in der Kurzbeschreibung
+  oder in den Parameternamen vorkommen; „Volltext“ sucht im ganzen Text.
+  Mehrere Wörter finden auch Namen mit Unterstrich (`read csv` →
+  `read_csv`), `pd.`, `np.`, `plt.` stehen für pandas, numpy und pyplot.
+- **Filter** (Felder unter der Suche oder im Suchfeld selbst):
+
+  | Filter | Feld | Im Suchfeld | Beispiel |
+  |---|---|---|---|
+  | Rückgabetyp | Rückgabe | `->Typ`, `r:Typ` | `merge -> DataFrame`, `->Axes`, `r:Series\|DataFrame` |
+  | Parameter (alle müssen da sein) | Parameter | `p:name` | `p:axis p:inplace`, `p:bins:int` (mit Typ), `p::bool` (nur Typ), `p:sort*` (Präfix) |
+  | Klasse oder Modul | In | `in:Name` | `in:DataFrame`, `in:pyplot`, `in:Axes` |
+  | Art | Knöpfe | `k:art` | `k:funktion`, `k:methode`, `k:klasse`, `k:eigenschaft`, `k:modul` |
+  | Paket | Knöpfe | `pkg:name` | `pkg:numpy` |
+
+  Veraltete Einträge (deprecated) sind ausgeblendet, bis „Veraltete“
+  angehakt ist.
+- **Text:** Signatur (lange mit einem Parameter je Zeile), Kurzbeschreibung,
+  Tabelle der Parameter mit Typ, Standardwert und Beschreibung (die
+  gefilterten markiert), Rückgabe, Hinweise und Beispiele mit Syntaxfarben.
+  Namen im Text und unter „Siehe auch“ führen zum Eintrag; ← Zurück oder
+  Rücktaste geht zurück. „Name kopieren“, „Aufruf kopieren“
+  (`read_csv(filepath_or_buffer)`), „Inhalt zeigen“ bei Klassen und Modulen,
+  „Online-Doku ↗“ öffnet die Seite des Projekts im Browser.
+- **Tasten:** ↑/↓ wählen, Enter springt in den Text, Esc leert die Suche
+  und schließt beim zweiten Mal das Fenster. Das Fenster merkt sich die
+  letzte Suche.
+- Rechte: nur der eigene Cache-Ordner, kein Netzwerk; der Befehl startet
+  das gewählte Python.
+
 ## Format (API 2)
 
 ```yaml
@@ -229,6 +278,7 @@ views:
     applies_to: "*.csv"         # optional: „Anzeigen mit“ für solche Dateien
     auto: false                 # true: passende Dateien gleich so öffnen
     keybinding: Ctrl+Alt+B      # optional
+    window: false               # true: eigenes Fenster statt Tab (wie die Projektsuche)
 ```
 
 Geöffnet wird sie über die Arbeitsleiste („Öffnen: …“) oder das Kürzel
@@ -263,6 +313,7 @@ die Brücke:
 | `atlas.open(path)`, `atlas.reveal(path)`, `atlas.message(text)` | Datei in Atlas öffnen, im Explorer zeigen, Meldung |
 | `atlas.runCommand(id, path?)` | einen Befehl dieser Erweiterung starten (wie aus der Arbeitsleiste) |
 | `atlas.commandStatus(id)`, `atlas.stopCommand(id)` | Zustand und Ende eines Hintergrundbefehls (`terminal: background`) |
+| `atlas.close()` | das Fenster einer Ansicht mit `window: true` schließen |
 
 Pfade sind absolut oder relativ zum Projekt. Atlas prüft **jeden** Pfad
 gegen `permissions: files` – `project` heißt nur im Projekt (auch nicht
@@ -324,6 +375,7 @@ eingesetzt. Zusätzlich gibt es
 |---|---|
 | `{output}` | Datei, in die das Ergebnis geschrieben wird (Verarbeitung: optional, Export: Pflicht) |
 | `{extension}` | Ordner der Erweiterung, z. B. `["{extension}/konvert.sh", "{file}"]` |
+| `{cache}` | Cache-Ordner der Erweiterung (`~/.cache/atlas/extensions/<name>/`); Ansichten erreichen ihn immer, auch mit `files: none` |
 | `{setting:schlüssel}` | Wert einer Einstellung (API 2) |
 
 ## Dateiverarbeitung

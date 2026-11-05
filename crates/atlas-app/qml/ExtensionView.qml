@@ -36,10 +36,15 @@ Rectangle {
     property bool started: false
     readonly property alias webItem: web
 
+    /// The page asked to be closed (`atlas.close()`); only a window does.
+    signal closeRequested()
+
     color: Theme.editor
 
     function viewState() { return { processor: root.viewId } }
     function focusContent() { web.forceActiveFocus() }
+    /// Tells the page it is shown again (a window that was closed).
+    function notifyShown() { web.runJavaScript("window.dispatchEvent(new Event('atlas-show'))") }
 
     readonly property var theme: ({
         window: String(Theme.window), editor: String(Theme.editor), header: String(Theme.header), raised: String(Theme.raised),
@@ -74,6 +79,9 @@ Rectangle {
             return root.reply(request.id, true, JSON.parse(root.app.backgroundStatus(root.info.extension + "/" + String(p.id || ""))))
         case "stopCommand":
             return root.reply(request.id, true, root.app.stopBackground(root.info.extension + "/" + String(p.id || "")))
+        case "close":
+            root.closeRequested()
+            return root.reply(request.id, true, !!root.info.window)
         }
         const r = JSON.parse(root.app.extensionCall(root.info.extension || "", request.method, JSON.stringify(p)))
         root.reply(request.id, r.ok, r.ok ? r.value : r.error)
