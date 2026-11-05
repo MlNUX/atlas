@@ -31,6 +31,21 @@ final class ProjectModel {
     /// Every event, for features that listen themselves (search, calendar …).
     private(set) var lastEvent: Event?
     private var saveTask: Task<Void, Never>?
+    /// Features that need every event (search batches arrive faster than
+    /// SwiftUI observes `lastEvent`).
+    @ObservationIgnored private var listeners: [UUID: (Event) -> Void] = [:]
+    var searchVisible = false
+
+    /// Calls `listener` with every event of this window until `stopListening(_:)`.
+    func listen(_ listener: @escaping (Event) -> Void) -> UUID {
+        let id = UUID()
+        listeners[id] = listener
+        return id
+    }
+
+    func stopListening(_ id: UUID) {
+        listeners[id] = nil
+    }
 
     init(app: AppModel, root: String) throws {
         self.app = app
@@ -45,6 +60,7 @@ final class ProjectModel {
         indexText = state.text
         box.value = self
         editor.onChange = { [weak self] in self?.scheduleSave() }
+        if UserDefaults.standard.string(forKey: "AtlasSearch") != nil { searchVisible = true }
         if let path = UserDefaults.standard.string(forKey: "AtlasOpenFile") {
             // Virtual tabs (`ilias:`, `calendar:` …) stay as they are.
             let virtual = path.hasSuffix(":") && !path.contains("/")
@@ -54,6 +70,7 @@ final class ProjectModel {
 
     private func handle(_ event: Event) {
         lastEvent = event
+        for listener in listeners.values { listener(event) }
         switch event {
         case let .indexStatus(ready, text):
             indexReady = ready
