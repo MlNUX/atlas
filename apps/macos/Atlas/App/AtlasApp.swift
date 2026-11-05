@@ -14,7 +14,7 @@ struct AtlasApp: App {
         WindowGroup(id: "project", for: String.self) { $root in
             RootView(app: app, root: $root)
         }
-        .defaultSize(width: 1180, height: 740)
+        .defaultSize(width: 1000, height: 680)
         .commands {
             AtlasCommands(app: app)
             DocumentFeatureCommands()
