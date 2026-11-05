@@ -175,6 +175,37 @@ pub struct Exported {
     pub open: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Enum))]
+pub enum CardEntryKind {
+    /// Opens [`Extensions::view`].
+    View,
+    /// Runs the action (`Actions::prepare`).
+    Command,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct CardEntry {
+    pub id: String,
+    pub name: String,
+    pub kind: CardEntryKind,
+    pub keybinding: String,
+}
+
+/// An active extension's card in the context bar: its views and palette
+/// commands. The bar lists it as block `ext:<name>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct ExtensionCard {
+    pub name: String,
+    pub title: String,
+    pub description: String,
+    /// Shown as a card (the user's choice, else what the extension asks for).
+    pub shown: bool,
+    pub entries: Vec<CardEntry>,
+}
+
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
 pub struct Extensions {
     shared: Arc<Shared>,
@@ -458,6 +489,46 @@ impl Extensions {
         .await
     }
 
+    /// Cards of the active extensions for the context bar (those with views
+    /// or palette commands).
+    pub fn context_cards(&self) -> Vec<ExtensionCard> {
+        let config = Config::load().context;
+        active_extensions(&self.shared)
+            .iter()
+            .filter(|e| offers_card(e))
+            .map(|e| {
+                let views = e.views.iter().map(|v| CardEntry {
+                    id: v.id.clone(),
+                    name: v.name.clone(),
+                    kind: CardEntryKind::View,
+                    keybinding: v.keybinding.clone().unwrap_or_default(),
+                });
+                let commands = e.actions.iter().filter(|a| a.in_palette).map(|a| CardEntry {
+                    id: a.id.clone(),
+                    name: a.name.clone(),
+                    kind: CardEntryKind::Command,
+                    keybinding: a.keybinding.clone().unwrap_or_default(),
+                });
+                ExtensionCard {
+                    name: e.name.clone(),
+                    title: e.title.clone(),
+                    description: e.description.clone(),
+                    shown: config.extensions.get(&e.name).copied().unwrap_or(e.context),
+                    entries: views.chain(commands).collect(),
+                }
+            })
+            .collect()
+    }
+
+    /// Shows or hides an extension's card in the context bar (all profiles).
+    pub fn set_card_shown(&self, name: String, shown: bool) -> Result<()> {
+        let mut config = Config::load().context;
+        config.extensions.insert(name, shown);
+        Config::save_context(&config).map_err(|e| failed("Einstellungen können nicht gespeichert werden", e))?;
+        self.shared.emit(Event::SettingsChanged);
+        Ok(())
+    }
+
     /// Reads the extensions again (after changes on disk).
     pub fn reload(&self) {
         self.changed();
@@ -545,6 +616,26 @@ pub(crate) fn extension_list(shared: &Shared) -> Vec<(Extension, Status)> {
             }
             e.errors.extend(errors);
             (e, status)
+        })
+        .collect()
+}
+
+/// An extension that can show a card: it has views or palette commands.
+fn offers_card(e: &Extension) -> bool {
+    !e.views.is_empty() || e.actions.iter().any(|a| a.in_palette)
+}
+
+/// The extensions as the context bar sees them (`ext:<name>` blocks).
+pub(crate) fn bar_extensions(
+    shared: &Shared,
+    config: &atlas_core::config::ContextConfig,
+) -> Vec<atlas_core::context_profiles::Extension> {
+    active_extensions(shared)
+        .iter()
+        .filter(|e| offers_card(e))
+        .map(|e| atlas_core::context_profiles::Extension {
+            name: e.name.clone(),
+            shown: config.extensions.get(&e.name).copied().unwrap_or(e.context),
         })
         .collect()
 }

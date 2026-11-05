@@ -211,3 +211,46 @@ fn futures_lite_block_on<F: std::future::Future>(future: F) -> F::Output {
         std::thread::park();
     }
 }
+
+fn run(text: &str, x: f64, y: f64, font: &str, size: f64) -> Vec<atlas_api::pdf::PdfGlyph> {
+    let w = 0.5 * size;
+    text.chars()
+        .enumerate()
+        .map(|(i, ch)| atlas_api::pdf::PdfGlyph {
+            text: ch.to_string(),
+            rect: Rect { x: x + i as f64 * w, y, width: w, height: size },
+            font: font.into(),
+            size,
+        })
+        .collect()
+}
+
+#[test]
+fn formulas_in_page_text_and_selections() {
+    let f = fixture();
+    let pdf = f.project.pdf("docs/paper.pdf".into()).unwrap();
+    // "Fläche x = y2 und mehr", x and y in CMMI, = and 2 in CMR (as the core's test).
+    let mut g = run("Fläche ", 0.0, 0.0, "Helvetica", 10.0);
+    g.extend(run("x", 35.0, 0.0, "ABCDEF+CMMI10", 10.0));
+    g.extend(run(" ", 40.0, 0.0, "", 10.0));
+    g.extend(run("=", 42.0, 0.0, "ABCDEF+CMR10", 10.0));
+    g.extend(run(" ", 47.0, 0.0, "", 10.0));
+    g.extend(run("y", 49.0, 0.0, "ABCDEF+CMMI10", 10.0));
+    g.extend(run("2", 54.0, -2.0, "ABCDEF+CMR7", 7.0));
+    g.extend(run(" und mehr.", 58.0, 0.0, "Helvetica", 10.0));
+
+    let clips = pdf.formula_clips(g.clone(), Vec::new());
+    assert_eq!(clips.len(), 1, "{clips:?}");
+    assert!(!clips[0].display && clips[0].scale > 0.0);
+    let a = clips[0].area;
+    assert!(a.x <= 35.0 && a.x + a.width >= 57.0, "the clip covers the formula: {a:?}");
+    assert_eq!(
+        pdf.text_with_latex(g.clone(), Vec::new(), vec![Some("x = y^2.".into())]),
+        "Fläche $x = y^2$ und mehr.",
+        "recognised LaTeX is tidied"
+    );
+    assert_eq!(pdf.text_with_latex(g.clone(), Vec::new(), vec![None]), "Fläche x = y2 und mehr.");
+    // A selection without the formula finds none.
+    let words = vec![Rect { x: 0.0, y: 0.0, width: 30.0, height: 10.0 }];
+    assert!(pdf.formula_clips(g, words).is_empty());
+}
