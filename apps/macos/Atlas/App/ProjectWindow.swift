@@ -17,7 +17,11 @@ struct ProjectWindow: View {
             EditorAreaView(project: project)
         }
         .inspector(isPresented: $project.inspectorVisible) {
+            // Width 0 allowed: content wider than the column is clipped
+            // instead of making the whole window wider (min 1676 pt before).
             ContextBar(project: project)
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .clipped()
                 .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
         }
         .toolbar {
@@ -67,6 +71,7 @@ struct ProjectWindow: View {
                 + "parts: sidebar \(Self.minimum(FilesSidebar(project: project))) "
                 + "editor \(Self.minimum(EditorAreaView(project: project))) "
                 + "context \(Self.minimum(ContextBar(project: project)))\n"
+                + "window \(Self.minimum(ProjectWindow(project: project)))\n"
             try? info.write(toFile: "/tmp/atlas-window.txt", atomically: true, encoding: .utf8)
         }
     }
@@ -118,7 +123,8 @@ struct EditorGroupView: View {
             Divider()
             if group.tabs.indices.contains(group.current) {
                 FeatureRouter.view(for: group.tabs[group.current], project: project)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    .clipped()
             } else {
                 ContentUnavailableView("Keine Datei geöffnet", systemImage: "doc",
                                        description: Text("Datei in der Seitenleiste wählen oder ⌘P drücken"))
