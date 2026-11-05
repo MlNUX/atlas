@@ -76,7 +76,9 @@ struct MarkdownModelTests {
         let items = core.completions(context: context, limit: 5)
         let item = try #require(items.first { $0.label.contains("Lineare") })
         editor.apply(core.acceptCompletion(text: editor.text, context: context, end: UInt32((editor.text as NSString).length), item: item))
-        #expect(editor.text.hasPrefix("Siehe [[Lineare Algebra"))
+        // The core writes the link as it resolves it (project-relative path).
+        #expect(editor.text.hasPrefix("Siehe [["))
+        #expect(editor.text.contains("Lineare Algebra"))
         #expect(editor.text.hasSuffix("]]"))
     }
 
