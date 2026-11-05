@@ -1069,12 +1069,15 @@ Item {
                 // … covers it at once when coming back, until Chromium painted.
                 const r = editor.activeTab.viewerItem.previewRepaint
                 check("Vorschau: Momentaufnahme beim Verlassen", r.hasSnapshot)
+                test.repaints = r.painted
                 r.showCover()
                 check("Zurück: Momentaufnahme sofort sichtbar statt Schwarz", r.covering)
             },
             () => {
                 const r = editor.activeTab.viewerItem.previewRepaint
-                check("… und danach wieder die echte Vorschau", !r.covering)
+                // (Gone because the page reported its frame: the fallback takes 2 s.)
+                check("… und danach wieder die echte Vorschau, sobald sie gezeichnet ist", !r.covering && r.painted > test.repaints,
+                      r.covering + " " + test.repaints + " → " + r.painted)
             },
             () => {
                 // A single click opens a file for good: no preview tab that the
