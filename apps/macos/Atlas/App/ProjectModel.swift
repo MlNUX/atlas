@@ -10,6 +10,7 @@ import Observation
 @MainActor
 @Observable
 final class ProjectModel {
+    let app: AppModel
     let core: Project
     let root: String
     let name: String
@@ -47,6 +48,7 @@ final class ProjectModel {
     }
 
     init(app: AppModel, root: String) throws {
+        self.app = app
         let box = WeakBox<ProjectModel>()
         core = try app.core.openProject(root: root, sink: MainActorEventSink { event in box.value?.handle(event) })
         self.root = core.root()
@@ -60,7 +62,9 @@ final class ProjectModel {
         editor.onChange = { [weak self] in self?.scheduleSave() }
         if UserDefaults.standard.string(forKey: "AtlasSearch") != nil { searchVisible = true }
         if let path = UserDefaults.standard.string(forKey: "AtlasOpenFile") {
-            editor.open(path: core.absolutePath(relative: path), mode: .tab)
+            // Virtual tabs (`ilias:`, `calendar:` …) stay as they are.
+            let virtual = path.hasSuffix(":") && !path.contains("/")
+            editor.open(path: virtual ? path : core.absolutePath(relative: path), mode: .tab)
         }
     }
 

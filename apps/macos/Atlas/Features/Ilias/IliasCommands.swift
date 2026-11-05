@@ -3,9 +3,15 @@
 
 import SwiftUI
 
-/// Menu items of P3.11 (empty until the task adds them).
+/// „ILIAS öffnen“ (P3.11): the `ilias:` tab, as on Linux.
 struct IliasCommands: Commands {
+    @FocusedValue(\.project) private var project
+
     var body: some Commands {
-        EmptyCommands()
+        CommandGroup(after: .sidebar) {
+            Button("ILIAS") { project?.editor.open(path: "ilias:", mode: .tab) }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(project == nil)
+        }
     }
 }
