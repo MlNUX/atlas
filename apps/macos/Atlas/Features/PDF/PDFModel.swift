@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import AppKit
 import AtlasKit
 import Foundation
 import Observation
@@ -14,6 +15,18 @@ enum PDFTool: String, CaseIterable, Sendable {
     case ink
     /// Pin a comment.
     case note
+    /// Drag a box: the area as picture into a note (Linux: `figure`).
+    case figure
+    /// Drag a box over a formula: LaTeX (Linux: `latex`).
+    case latex
+}
+
+/// A box dragged with `figure` or `latex`: page index, PDFKit page space.
+struct PDFArea: Equatable {
+    let id = UUID()
+    let page: Int
+    let rect: CGRect
+    let tool: PDFTool
 }
 
 /// Entry of the outline (table of contents) of a PDF.
@@ -50,6 +63,12 @@ final class PDFModel {
     private(set) var searchHits: [PDFSelection] = []
     /// Bumped whenever the shown annotations must be rebuilt.
     private(set) var revision = 0
+    /// The box just dragged (the view takes it as picture or formula).
+    var chosenArea: PDFArea?
+    /// Formula recognition: running, its LaTeX or its problem.
+    private(set) var latexBusy = false
+    var latex: String?
+    var latexError: String?
     /// Set by the view: the PDFView's current text selection.
     @ObservationIgnored var currentSelection: () -> PDFSelection? = { nil }
 
@@ -234,5 +253,73 @@ final class PDFModel {
     func quoteSelected(into note: String) -> String? {
         guard let id = selectedAnnotation else { return nil }
         return try? core?.quoteMarkdown(id: id, note: note)
+    }
+
+    // MARK: areas (picture, formula)
+
+    /// `rect` of page `index` (PDFKit page space) drawn at `scale` pixels per
+    /// point on white; grey (one byte per pixel) or RGB.
+    func render(page index: Int, rect: CGRect, scale: CGFloat, gray: Bool) -> CGImage? {
+        guard let page = document?.page(at: index), rect.width > 1, rect.height > 1 else { return nil }
+        // Page space → the drawing space of `draw(with:to:)` (rotation, crop box).
+        let box = rect.applying(page.transform(for: .cropBox)).standardized
+        let width = Int((box.width * scale).rounded(.up)), height = Int((box.height * scale).rounded(.up))
+        let context = gray
+            ? CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+                        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+            : CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        guard let context else { return nil }
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.scaleBy(x: scale, y: scale)
+        context.translateBy(x: -box.minX, y: -box.minY)
+        page.draw(with: .cropBox, to: context)
+        return context.makeImage()
+    }
+
+    /// The area as PNG in the note's assets and the picture with its source
+    /// appended to `note` (Linux: `pdfAreaToNote`).
+    func figure(_ area: PDFArea, into note: String, notes: Notes) throws {
+        guard let image = render(page: area.page, rect: area.rect, scale: 2, gray: false) else {
+            throw AtlasError.Invalid(message: "Der Bereich ist leer.")
+        }
+        let page = UInt32(area.page + 1)
+        let target = try notes.imageTarget(note: note, pdf: path, page: page)
+        guard let destination = CGImageDestinationCreateWithURL(URL(filePath: target) as CFURL, "public.png" as CFString, 1, nil)
+        else { throw AtlasError.Failed(message: "\(target) kann nicht geschrieben werden.") }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw AtlasError.Failed(message: "\(target) kann nicht geschrieben werden.")
+        }
+        _ = try notes.append(path: note, block: notes.imageQuote(note: note, image: target, pdf: path, page: page))
+    }
+
+    /// LaTeX of the formula in the area (pix2tex in the core, on this Mac),
+    /// copied as `$…$` (Linux: `recognizeLatex`).
+    func recognize(_ area: PDFArea) async {
+        // A little margin, as on Linux; about 2× of 72 dpi on white.
+        guard let image = render(page: area.page, rect: area.rect.insetBy(dx: -3, dy: -3), scale: 2, gray: true),
+              let data = image.dataProvider?.data as Data?
+        else { return }
+        // Rows may be padded: copy them without.
+        var pixels = [UInt8](repeating: 255, count: image.width * image.height)
+        data.withUnsafeBytes { raw in
+            for y in 0..<image.height {
+                for x in 0..<image.width { pixels[y * image.width + x] = raw[y * image.bytesPerRow + x] }
+            }
+        }
+        latexBusy = true
+        latex = nil
+        latexError = nil
+        defer { latexBusy = false }
+        do {
+            let text = try await LatexOcr().recognize(image: GrayImage(width: UInt32(image.width), height: UInt32(image.height), pixels: Data(pixels)))
+            latex = text
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString("$\(text)$", forType: .string)
+        } catch {
+            latexError = atlasMessage(error)
+        }
     }
 }

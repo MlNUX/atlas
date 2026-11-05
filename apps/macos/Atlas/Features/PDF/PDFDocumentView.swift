@@ -96,6 +96,21 @@ private struct PDFContent: View {
             }
             .padding(12)
         }
+        .onChange(of: model.chosenArea) {
+            guard let area = model.chosenArea else { return }
+            model.chosenArea = nil
+            if area.tool == .latex {
+                Task { await model.recognize(area) }
+            } else {
+                figure(area)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { model.latexBusy || model.latex != nil || model.latexError != nil },
+            set: { if !$0 { model.latex = nil; model.latexError = nil } }
+        )) {
+            LatexResultView(model: model)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .atlasPDFNoteAdded)) { note in
             if let id = note.object as? String { openComment(id) }
         }
@@ -105,6 +120,32 @@ private struct PDFContent: View {
         model.selectedAnnotation = id
         comment = model.core?.annotation(id: id)?.comment ?? ""
         editing = id
+    }
+
+    /// The area as picture into a note: the first open note, else one to
+    /// choose (Linux asks with the last note preselected).
+    private func figure(_ area: PDFArea) {
+        let open = project.editor.groups.flatMap(\.tabs).first { $0.path.hasSuffix(".md") }?.path
+        guard let note = open ?? chooseNote() else { return }
+        do {
+            try model.figure(area, into: note, notes: project.core.notes())
+            project.show(notice: "Bild von Seite \(area.page + 1) in \((note as NSString).lastPathComponent) übernommen")
+        } catch {
+            model.error = atlasMessage(error)
+        }
+    }
+
+    private func chooseNote() -> String? {
+        let panel = NSSavePanel()
+        panel.title = "Bild übernehmen in"
+        panel.message = "Notiz wählen oder neu anlegen; das Bild wird angehängt."
+        panel.prompt = "Übernehmen"
+        panel.directoryURL = URL(filePath: project.root, directoryHint: .isDirectory)
+        panel.nameFieldStringValue = "Zitate.md"
+        panel.allowedContentTypes = [.init(filenameExtension: "md")!]
+        // Appending, not replacing: no "replace?" question for an existing note.
+        panel.canCreateDirectories = true
+        return panel.runModal() == .OK ? panel.url?.path : nil
     }
 
     /// Markdown quote of the selected annotation, linking back from the first
@@ -177,10 +218,12 @@ private struct PDFContent: View {
                 Image(systemName: "character.cursor.ibeam").tag(PDFTool.select).help("Text auswählen")
                 Image(systemName: "pencil.tip").tag(PDFTool.ink).help("Freihand")
                 Image(systemName: "text.bubble").tag(PDFTool.note).help("Kommentar setzen")
+                Image(systemName: "photo.badge.plus").tag(PDFTool.figure).help("Bereich als Bild in eine Notiz")
+                Image(systemName: "function").tag(PDFTool.latex).help("Formel als LaTeX erkennen")
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 110)
+            .frame(width: 180)
             ForEach(PDFModel.colors, id: \.self) { hex in
                 Circle()
                     .fill(Color(nsColor: NSColor(atlasHex: hex)))
@@ -349,6 +392,8 @@ final class PDFDrawingOverlay: NSView {
     let model: PDFModel
     private var stroke: [CGPoint] = []
     private var strokePage: PDFPage?
+    /// Start of the box of `figure`/`latex` (page space).
+    private var boxStart: CGPoint?
     private let shape = CAShapeLayer()
 
     init(pdfView: PDFView, model: PDFModel) {
@@ -384,6 +429,15 @@ final class PDFDrawingOverlay: NSView {
             stroke = [onPage]
             shape.strokeColor = NSColor(atlasHex: model.color).cgColor
             shape.lineWidth = CGFloat(model.inkWidth) * pdfView.scaleFactor
+            shape.lineDashPattern = nil
+            redraw()
+        case .figure, .latex:
+            strokePage = page
+            boxStart = onPage
+            stroke = [onPage, onPage]
+            shape.strokeColor = NSColor.controlAccentColor.cgColor
+            shape.lineWidth = 1.5
+            shape.lineDashPattern = [5, 3]
             redraw()
         case .select:
             break
@@ -391,13 +445,34 @@ final class PDFDrawingOverlay: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard model.tool == .ink, let pdfView, let page = strokePage else { return }
+        guard let pdfView, let page = strokePage else { return }
         let inView = pdfView.convert(event.locationInWindow, from: nil)
-        stroke.append(pdfView.convert(inView, to: page))
+        let onPage = pdfView.convert(inView, to: page)
+        switch model.tool {
+        case .ink:
+            stroke.append(onPage)
+        case .figure, .latex:
+            if let start = boxStart {
+                stroke = [start, CGPoint(x: onPage.x, y: start.y), onPage, CGPoint(x: start.x, y: onPage.y), start]
+            }
+        default:
+            return
+        }
         redraw()
     }
 
     override func mouseUp(with event: NSEvent) {
+        if model.tool == .figure || model.tool == .latex {
+            defer { boxStart = nil; strokePage = nil; stroke = []; shape.path = nil }
+            guard let start = boxStart, let page = strokePage, let document = pdfView?.document, stroke.count > 2 else { return }
+            let end = stroke[2]
+            let rect = CGRect(x: min(start.x, end.x), y: min(start.y, end.y),
+                              width: abs(end.x - start.x), height: abs(end.y - start.y))
+            if rect.width > 4, rect.height > 4 {
+                model.chosenArea = PDFArea(page: document.index(for: page), rect: rect, tool: model.tool)
+            }
+            return
+        }
         guard model.tool == .ink, let page = strokePage, let document = pdfView?.document else { return }
         if stroke.count > 1 { model.addInk(page: document.index(for: page), strokes: [stroke]) }
         stroke = []
@@ -468,5 +543,46 @@ enum PDFPresentation {
             return false
         }
         return true
+    }
+}
+
+/// The recognised formula: check, edit, copy (Linux: the LaTeX popup).
+private struct LatexResultView: View {
+    @Bindable var model: PDFModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Formel als LaTeX").font(.headline)
+            if model.latexBusy {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("Erkenne … Beim ersten Mal lädt Atlas das Formelmodell (etwa 170 MB).")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+            } else if let error = model.latexError {
+                Text("Formel nicht erkannt: \(error)").foregroundStyle(.red)
+            } else {
+                TextEditor(text: $text)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(minHeight: 80)
+                Text("Als $…$ kopiert – bitte prüfen.").font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Spacer()
+                if model.latex != nil {
+                    Button("Kopieren") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString("$\(text)$", forType: .string)
+                        dismiss()
+                    }
+                }
+                Button("Schließen") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(16)
+        .frame(width: 460)
+        .onChange(of: model.latex, initial: true) { text = model.latex ?? "" }
     }
 }
