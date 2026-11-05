@@ -39,7 +39,8 @@ final class ContextModel {
         self.project = project
         let context = project.core.context()
         layout = context.layout(profile: "default")
-        options = context.options()
+        let options = context.options()
+        self.options = options
         pomodoro = Pomodoro(options: options)
         catalog = Dictionary(context.catalog().map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         token = project.listen { [weak self] event in
