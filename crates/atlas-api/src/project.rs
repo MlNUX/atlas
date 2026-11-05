@@ -254,7 +254,7 @@ impl Project {
 
     /// Context bar profiles of this project (falls back to the user's).
     pub fn context(&self) -> Arc<crate::settings::Context> {
-        Arc::new(crate::settings::Context::new())
+        Arc::new(crate::settings::Context::new(self.shared.clone()))
     }
 }
 
