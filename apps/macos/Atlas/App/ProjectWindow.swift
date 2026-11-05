@@ -14,7 +14,11 @@ struct ProjectWindow: View {
             FilesSidebar(project: project)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 260)
         } detail: {
+            // The split views take the columns' ideal widths as the window's
+            // minimum; without this the content's (Markdown preview, …) made
+            // it 1676 pt wide – more than a MacBook Air's screen.
             EditorAreaView(project: project)
+                .frame(minWidth: 300, idealWidth: 300, maxWidth: .infinity)
         }
         .inspector(isPresented: $project.inspectorVisible) {
             // Width 0 allowed: content wider than the column is clipped
@@ -68,36 +72,8 @@ struct ProjectWindow: View {
             // What limits the size (read by ci-app.sh).
             let info = "frame \(window.frame) minSize \(window.minSize) contentMinSize \(window.contentMinSize) "
                 + "fitting \(window.contentView?.fittingSize ?? .zero) screen \(screen.visibleFrame)\n"
-                + "parts: sidebar \(Self.minimum(FilesSidebar(project: project))) "
-                + "editor \(Self.minimum(EditorAreaView(project: project))) "
-                + "context \(Self.minimum(ContextBar(project: project)))\n"
-                + "window \(Self.minimum(ProjectWindow(project: project)))\n"
-                + "toolbar \(window.toolbar?.items.map { "\($0.itemIdentifier.rawValue) \($0.view?.fittingSize ?? .zero)" } ?? [])\n"
-                + Self.wide(window.contentView?.superview ?? window.contentView, depth: 0)
             try? info.write(toFile: "/tmp/atlas-window.txt", atomically: true, encoding: .utf8)
         }
-    }
-}
-
-extension ProjectWindow {
-    /// Views at least 1000 pt wide with their intrinsic and fitting size (CI diagnostics).
-    static func wide(_ view: NSView?, depth: Int) -> String {
-        guard let view, depth < 40 else { return "" }
-        var out = ""
-        let w = view.frame.width, i = view.intrinsicContentSize.width
-        if w >= 1000 || i >= 1000 || view.fittingSize.width >= 1000 {
-            out += String(repeating: " ", count: depth) + "\(type(of: view)) frame \(Int(w)) intrinsic \(Int(i)) fitting \(Int(view.fittingSize.width))\n"
-        }
-        for sub in view.subviews { out += wide(sub, depth: depth + 1) }
-        return out
-    }
-
-    /// Smallest size SwiftUI lays `view` out in (CI diagnostics).
-    static func minimum(_ view: some View) -> CGSize {
-        let host = NSHostingView(rootView: view)
-        host.frame = NSRect(x: 0, y: 0, width: 10, height: 10)
-        host.layoutSubtreeIfNeeded()
-        return host.fittingSize
     }
 }
 
