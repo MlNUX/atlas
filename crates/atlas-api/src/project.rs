@@ -243,8 +243,12 @@ impl Project {
 
     /// PDF data (annotations, text, citations) of one document.
     pub fn pdf(&self, path: String) -> Result<Arc<crate::pdf::PdfDocument>> {
-        let _ = path;
-        todo_task!("P2.6")
+        let shared = &self.shared;
+        let atlas = shared.project.as_ref().map(|p| p.atlas_dir());
+        let path = shared
+            .absolute(Path::new(&path))
+            .ok_or_else(|| crate::AtlasError::Invalid { message: format!("Pfad außerhalb des Projekts: {path}") })?;
+        Ok(Arc::new(crate::pdf::PdfDocument::new(&shared.root, atlas.as_deref(), shared.sink.clone(), &path)?))
     }
 
     pub fn actions(&self) -> Arc<crate::actions::Actions> {
