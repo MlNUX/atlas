@@ -26,6 +26,6 @@ jobs:
   app:
     uses: ./.github/workflows/macos-setup.yml
     with:
-      run: ATLAS_CI_OPEN_FILE=ilias: apps/macos/scripts/ci-app.sh
+      run: "ATLAS_CI_OPEN_FILE=ilias: apps/macos/scripts/ci-app.sh"
       artifact-name: mac-P3.11
       cache-key: P3.11
