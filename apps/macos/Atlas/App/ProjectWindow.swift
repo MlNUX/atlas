@@ -36,6 +36,9 @@ struct ProjectWindow: View {
         .sheet(isPresented: $project.quickOpenVisible) {
             QuickOpenView(project: project)
         }
+        .sheet(isPresented: $project.searchVisible) {
+            SearchWindowView(project: project)
+        }
         .onDisappear { project.close() }
     }
 }

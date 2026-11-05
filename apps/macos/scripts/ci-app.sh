@@ -38,7 +38,7 @@ cp "$root/spikes/pdfkit/fixtures/spike.pdf" "$sample/Skript.pdf" 2>/dev/null || 
 say "Launch + screenshots"
 app="$derived/Build/Products/Debug/Atlas.app"
 # `open` brings the app to the front (a directly started binary stays behind Finder).
-open -n "$app" --args -AtlasOpenProject "$sample" -AtlasOpenFile "${ATLAS_CI_OPEN_FILE:-Notizen/Analysis.md}"
+open -n "$app" --args -AtlasOpenProject "$sample" -AtlasOpenFile "${ATLAS_CI_OPEN_FILE:-Notizen/Analysis.md}" ${ATLAS_CI_SEARCH:+-AtlasSearch "$ATLAS_CI_SEARCH"}
 sleep 8
 screencapture -x "$out/atlas-window.png" || echo "screencapture failed (non-fatal)"
 osascript -e 'tell application "Atlas" to activate' \
