@@ -45,9 +45,20 @@ say "Launch + screenshots"
 app="$derived/Build/Products/Debug/Atlas.app"
 # `open` brings the app to the front (a directly started binary stays behind Finder).
 open -n "$app" --args -AtlasWindowSize 1280x780 -AtlasOpenProject "$sample" -AtlasOpenFile "${ATLAS_CI_OPEN_FILE:-Notizen/Analysis.md}" ${ATLAS_CI_SEARCH:+-AtlasSearch "$ATLAS_CI_SEARCH"} ${ATLAS_CI_EXTENSION:+-AtlasExtension "$ATLAS_CI_EXTENSION"}
-sleep 8
-sleep 2
+rm -f /tmp/atlas-window.txt
+sleep 10
 screencapture -x "$out/atlas-window.png" || echo "screencapture failed (non-fatal)"
+cat /tmp/atlas-window.txt 2>/dev/null || true
+# The whole window, also beyond the screen edge.
+wid="$(xcrun swift - 2>/dev/null <<'SWIFT' || true
+import CoreGraphics
+let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+if let w = list.first(where: { ($0[kCGWindowOwnerName as String] as? String) == "Atlas" && ($0[kCGWindowLayer as String] as? Int) == 0 }) {
+    print(w[kCGWindowNumber as String] ?? "")
+}
+SWIFT
+)"
+[[ -n "$wid" ]] && screencapture -x -o -l "$wid" "$out/atlas-window-full.png" || echo "no window capture (non-fatal)"
 osascript -e 'tell application "Atlas" to activate' \
   -e 'tell application "System Events" to keystroke "p" using command down' 2>/dev/null || echo "no accessibility for keystrokes (non-fatal)"
 sleep 2

@@ -61,6 +61,10 @@ struct ProjectWindow: View {
                   let screen = window.screen ?? NSScreen.main else { return }
             let top = screen.visibleFrame.maxY
             window.setFrame(NSRect(x: screen.visibleFrame.minX, y: top - h, width: w, height: h), display: true)
+            // What limits the size (read by ci-app.sh).
+            let info = "frame \(window.frame) minSize \(window.minSize) contentMinSize \(window.contentMinSize) "
+                + "fitting \(window.contentView?.fittingSize ?? .zero) screen \(screen.visibleFrame)\n"
+            try? info.write(toFile: "/tmp/atlas-window.txt", atomically: true, encoding: .utf8)
         }
     }
 }
