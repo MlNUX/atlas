@@ -141,31 +141,54 @@ struct MarkdownModelTests {
         model.close()
     }
 
-    /// The editor draws its text in a window (CI showed line numbers but no
-    /// text): counts dark pixels right of the line numbers.
-    @Test func drawsTextInAWindow() throws {
-        let (project, _) = try makeProject()
-        let editor = TextEditorController(editor: project.core.editor(), language: "Markdown", markdown: true)
+    /// Dark pixels right of `skip` points of `view` drawn in a window.
+    func darkPixels(_ view: NSView, skip: CGFloat) throws -> Int {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
                               styleMask: [.titled], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: .aqua)
-        editor.scrollView.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
-        window.contentView = editor.scrollView
-        editor.text = "# Überschrift\n\nText Text Text Text Text\nMehr Text hier\n"
+        view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        window.contentView = view
         window.layoutIfNeeded()
         window.displayIfNeeded()
-        let view = editor.scrollView
         let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: rep)
-        let ruler = editor.scrollView.verticalRulerView?.frame.width ?? 0
+        let scale = CGFloat(rep.pixelsWide) / max(1, view.bounds.width)
         var dark = 0
         for y in stride(from: 0, to: rep.pixelsHigh, by: 2) {
-            for x in stride(from: Int(ruler * rep.size.width / max(1, view.bounds.width)) + 4, to: rep.pixelsWide, by: 2) {
+            for x in stride(from: Int(skip * scale) + 4, to: rep.pixelsWide, by: 2) {
                 if let c = rep.colorAt(x: x, y: y), c.brightnessComponent < 0.5 { dark += 1 }
             }
         }
-        let info = "text view \(editor.textView.frame), clip \(editor.scrollView.contentView.frame), ruler \(ruler), "
-            + "container \(editor.textView.textContainer?.size ?? .zero), color \(String(describing: editor.textView.textStorage?.attribute(.foregroundColor, at: 3, effectiveRange: nil)))"
-        #expect(dark > 50, "dark pixels: \(dark); \(info)")
+        return dark
+    }
+
+    /// The editor draws its text in a window (CI showed line numbers but no
+    /// text). Variants narrow down where it goes missing.
+    @Test func drawsTextInAWindow() throws {
+        let (project, _) = try makeProject()
+        let text = "# Überschrift\n\nText Text Text Text Text\nMehr Text hier\n"
+        let full = TextEditorController(editor: project.core.editor(), language: "Markdown", markdown: true)
+        full.text = text
+        let a = try darkPixels(full.scrollView, skip: full.scrollView.verticalRulerView?.frame.width ?? 0)
+        let frames = "text \(full.textView.frame) clip \(full.scrollView.contentView.frame) "
+            + "ruler \(full.scrollView.verticalRulerView?.frame ?? .zero) container \(full.textView.textContainer?.size ?? .zero)"
+
+        let noRuler = TextEditorController(editor: project.core.editor(), language: "Markdown", markdown: true)
+        noRuler.scrollView.rulersVisible = false
+        noRuler.text = text
+        let b = try darkPixels(noRuler.scrollView, skip: 0)
+
+        let plain = TextEditorController(editor: project.core.editor(), language: nil, markdown: false)
+        plain.scrollView.rulersVisible = false
+        plain.text = text
+        let c = try darkPixels(plain.scrollView, skip: 0)
+
+        let bare = NSTextView.scrollableTextView()
+        (bare.documentView as? NSTextView)?.string = text
+        let d = try darkPixels(bare, skip: 0)
+
+        if a < 50 {
+            Issue.record("dark pixels – editor: \(a), without ruler: \(b), without colours: \(c), bare NSTextView: \(d); \(frames)")
+        }
     }
 }
