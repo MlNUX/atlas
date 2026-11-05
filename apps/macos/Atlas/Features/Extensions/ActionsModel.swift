@@ -42,9 +42,13 @@ final class ActionsModel {
         }
         refreshJobs()
         // CI: `-AtlasExtension <bundled name>` installs it and opens its view.
+        // Opened after the window's own start file, so it is in front.
         if let name = UserDefaults.standard.string(forKey: "AtlasExtension") {
-            try? project.core.extensions().installBundled(name: name)
-            if let view = views().first(where: { $0.extension == name }) { openView(view.id) }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? project.core.extensions().installBundled(name: name)
+                if let view = views().first(where: { $0.extension == name }) { openView(view.id) }
+            }
         }
     }
 
