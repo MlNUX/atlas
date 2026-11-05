@@ -24,6 +24,9 @@ final class ProjectModel {
     private(set) var filesRevision = 0
     private(set) var changedDirs: [String] = []
     private(set) var notesRevision: UInt32 = 0
+    /// Annotations of these PDFs changed (another window, sync); bumped per event.
+    private(set) var annotationsRevision = 0
+    private(set) var annotationsChangedPath = ""
     /// Every event, for features that listen themselves (search, calendar …).
     private(set) var lastEvent: Event?
     private var saveTask: Task<Void, Never>?
@@ -56,6 +59,9 @@ final class ProjectModel {
             filesRevision += 1
         case let .notesChanged(revision):
             notesRevision = revision
+        case let .annotationsChanged(path):
+            annotationsChangedPath = path
+            annotationsRevision += 1
         default:
             break
         }
