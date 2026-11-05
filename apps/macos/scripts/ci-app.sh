@@ -37,21 +37,28 @@ cp "$root/spikes/pdfkit/fixtures/spike.pdf" "$sample/Skript.pdf" 2>/dev/null || 
 
 say "Launch + screenshots"
 app="$derived/Build/Products/Debug/Atlas.app"
-"$app/Contents/MacOS/Atlas" -AtlasOpenProject "$sample" -AtlasOpenFile "Notizen/Analysis.md" \
-  >"$out/app.log" 2>&1 &
-pid=$!
+# `open` brings the app to the front (a directly started binary stays behind Finder).
+open -n "$app" --args -AtlasOpenProject "$sample" -AtlasOpenFile "Notizen/Analysis.md"
 sleep 8
 screencapture -x "$out/atlas-window.png" || echo "screencapture failed (non-fatal)"
-osascript -e 'tell application "System Events" to keystroke "p" using command down' 2>/dev/null || true
+osascript -e 'tell application "Atlas" to activate' \
+  -e 'tell application "System Events" to keystroke "p" using command down' 2>/dev/null || echo "no accessibility for keystrokes (non-fatal)"
 sleep 2
 osascript -e 'tell application "System Events" to keystroke "lin"' 2>/dev/null || true
 sleep 2
 screencapture -x "$out/atlas-quickopen.png" || true
-kill "$pid" 2>/dev/null || true
-sleep 1
+osascript -e 'tell application "Atlas" to quit' 2>/dev/null || pkill -x Atlas || true
+sleep 2
 say "Session written for Linux (E12)"
-ls "$sample/.atlas/sessions" 2>/dev/null && cat "$sample/.atlas/sessions/"*.json 2>/dev/null | head -c 2000 | tee "$out/session.json"
-echo
+session="$(find "$sample/.atlas" -name '*.json' -path '*session*' 2>/dev/null | head -n 1 || true)"
+if [[ -n "$session" ]]; then
+  echo "$session"
+  head -c 2000 "$session" | tee "$out/session.json"
+  echo
+else
+  echo "no session file found (non-fatal)"
+  find "$sample/.atlas" -maxdepth 3 2>/dev/null | head -n 30 || true
+fi
 
 {
   echo "# Atlas.app (P3.0)"
