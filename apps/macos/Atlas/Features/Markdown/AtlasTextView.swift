@@ -415,6 +415,9 @@ final class LineNumberRuler: NSRulerView {
         super.init(scrollView: nil, orientation: .verticalRuler)
         clientView = textView
         ruleThickness = 40
+        // Since macOS 14 views draw beyond their bounds unless told not to:
+        // the background of the numbers covered the text.
+        clipsToBounds = true
         setAccessibilityElement(false)
     }
 
@@ -431,7 +434,7 @@ final class LineNumberRuler: NSRulerView {
     override func drawHashMarksAndLabels(in rect: NSRect) {
         guard let textView, let lm = textView.layoutManager, let tc = textView.textContainer else { return }
         NSColor.textBackgroundColor.setFill()
-        rect.fill()
+        bounds.intersection(rect).fill()
         let text = textView.string as NSString
         let visible = textView.visibleRect
         let glyphs = lm.glyphRange(forBoundingRect: visible, in: tc)
