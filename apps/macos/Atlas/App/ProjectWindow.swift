@@ -14,11 +14,7 @@ struct ProjectWindow: View {
             FilesSidebar(project: project)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 260)
         } detail: {
-            // The split views take the columns' ideal widths as the window's
-            // minimum; without this the content's (Markdown preview, …) made
-            // it 1676 pt wide – more than a MacBook Air's screen.
             EditorAreaView(project: project)
-                .frame(minWidth: 300, idealWidth: 300, maxWidth: .infinity)
         }
         .inspector(isPresented: $project.inspectorVisible) {
             // Width 0 allowed: content wider than the column is clipped

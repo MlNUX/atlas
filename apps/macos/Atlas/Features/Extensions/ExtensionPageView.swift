@@ -69,6 +69,11 @@ private struct ExtensionWebView: NSViewRepresentable {
     let webView: WKWebView
     func makeNSView(context: NSViewRepresentableContext<Self>) -> WKWebView { webView }
     func updateNSView(_ view: WKWebView, context: NSViewRepresentableContext<Self>) {}
+    /// Any size: a web view's page width must not become the window's
+    /// minimum (the split views take ideal widths as minimum).
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: WKWebView, context: NSViewRepresentableContext<Self>) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 300, height: 300))
+    }
 }
 
 /// The page, its bridge and its requests.
