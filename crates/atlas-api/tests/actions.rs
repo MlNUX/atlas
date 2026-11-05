@@ -13,7 +13,7 @@ use atlas_api::AtlasError;
 use atlas_api::actions::{ActionSource, Placement};
 use atlas_api::app::Atlas;
 use atlas_api::events::{Event, EventSink};
-use atlas_api::extensions::{ExtensionLocation, ExtensionStatus, ProcessedKind, SettingKind};
+use atlas_api::extensions::{CardEntryKind, ExtensionLocation, ExtensionStatus, ProcessedKind, SettingKind};
 use atlas_api::project::Project;
 
 struct Collect(Mutex<Sender<Event>>);
@@ -303,4 +303,29 @@ fn project_extensions_need_trust() {
     // Changed after trusting: asks again.
     write(f.path(".atlas/extensions/projektzaehler/tafel.html"), "<p>neu</p>");
     assert_eq!(ext.untrusted(), vec!["projektzaehler"]);
+}
+
+#[test]
+fn extension_cards_in_the_context_bar() {
+    let f = fixture();
+    write(config_dir().join("extensions/zaehler/extension.yaml"), MANIFEST);
+    write(config_dir().join("extensions/zaehler/tafel.html"), "<p>Tafel</p>");
+    let ext = f.project.extensions();
+    let cards = ext.context_cards();
+    let card = cards.iter().find(|c| c.name == "zaehler").expect("card");
+    assert_eq!(card.title, "Zähler");
+    assert!(!card.shown, "not asked for (`context:`) and not chosen");
+    assert!(card.entries.iter().any(|e| e.kind == CardEntryKind::View && e.id == "view:zaehler/tafel"));
+    assert!(card.entries.iter().any(|e| e.kind == CardEntryKind::Command && e.name == "Zählen (Erweiterung)"));
+
+    ext.set_card_shown("zaehler".into(), true).unwrap();
+    assert!(ext.context_cards().iter().find(|c| c.name == "zaehler").unwrap().shown);
+    // The bar knows the card as block `ext:zaehler`.
+    let ctx = f.project.context();
+    let layout = format!("{:?}", ctx.layout("default".into()));
+    assert!(layout.contains("ext:zaehler"), "{layout}");
+
+    ext.set_enabled("zaehler".into(), false).unwrap();
+    assert!(ext.context_cards().is_empty());
+    assert!(!format!("{:?}", ctx.layout("default".into())).contains("ext:zaehler"));
 }
