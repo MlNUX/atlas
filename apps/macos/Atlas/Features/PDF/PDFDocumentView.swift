@@ -410,46 +410,53 @@ final class PDFDrawingOverlay: NSView {
 @MainActor
 enum PDFPresentation {
     private static var window: NSWindow?
+    private static var view: PDFView?
     private static var monitor: Any?
 
     static func show(_ model: PDFModel) {
         guard let document = model.document else { return }
-        let view = PDFView()
-        view.document = document
-        view.displayMode = .singlePage
-        view.autoScales = true
-        view.backgroundColor = .black
-        if let current = PDFKitView.registry[ObjectIdentifier(model)]?.currentPage { view.go(to: current) }
+        let v = PDFView()
+        v.document = document
+        v.displayMode = .singlePage
+        v.autoScales = true
+        v.backgroundColor = .black
+        if let current = PDFKitView.registry[ObjectIdentifier(model)]?.currentPage { v.go(to: current) }
         let w = NSWindow(contentRect: NSScreen.main?.frame ?? .zero, styleMask: [.titled, .closable, .resizable],
                          backing: .buffered, defer: false)
         w.title = "Präsentation"
-        w.contentView = view
+        w.contentView = v
         w.isReleasedWhenClosed = false
         w.makeKeyAndOrderFront(nil)
         w.toggleFullScreen(nil)
         window = w
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Local monitors run on the main thread.
-            MainActor.assumeIsolated { handleKey(event, view: view) }
+        view = v
+        if monitor == nil {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                // Only plain values cross into the main actor (NSEvent is not Sendable);
+                // local monitors run on the main thread anyway.
+                let code = event.keyCode
+                let number = event.window?.windowNumber
+                let consumed = MainActor.assumeIsolated { handleKey(code, window: number) }
+                return consumed ? nil : event
+            }
         }
     }
 
-    private static func handleKey(_ event: NSEvent, view: PDFView) -> NSEvent? {
-            guard let w = window, event.window === w else { return event }
-            switch event.keyCode {
-            case 53:  // Esc
-                w.close()
-                window = nil
-                return nil
-            case 124, 125, 49:  // →, ↓, space
-                view.goToNextPage(nil)
-                return nil
-            case 123, 126:  // ←, ↑
-                view.goToPreviousPage(nil)
-                return nil
-            default:
-                return event
-            }
+    /// Whether the key was handled (then it does not reach the window).
+    private static func handleKey(_ code: UInt16, window number: Int?) -> Bool {
+        guard let w = window, let v = view, number == w.windowNumber else { return false }
+        switch code {
+        case 53:  // Esc
+            w.close()
+            window = nil
+            view = nil
+        case 124, 125, 49:  // →, ↓, space
+            v.goToNextPage(nil)
+        case 123, 126:  // ←, ↑
+            v.goToPreviousPage(nil)
+        default:
+            return false
+        }
+        return true
     }
 }
