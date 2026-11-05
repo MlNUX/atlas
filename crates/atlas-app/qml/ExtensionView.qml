@@ -148,6 +148,8 @@ Rectangle {
                 if (event.key === Qt.Key_F5) { web.reload(); event.accepted = true }
             }
             WebRepaint {}
+            // Scrollbars in Atlas' colours (not Chromium's light ones in the dark scheme).
+            WebScrollbars { view: web }
         }
     }
 }
