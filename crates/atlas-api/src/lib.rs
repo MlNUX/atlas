@@ -16,6 +16,7 @@
 uniffi::setup_scaffolding!("atlas");
 
 pub mod actions;
+pub mod atlasnote;
 pub mod app;
 pub mod calendar;
 pub mod editor;

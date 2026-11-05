@@ -13,7 +13,7 @@ use atlas_core::session::ProjectSession;
 
 use crate::inner::Shared;
 use crate::util::{path, string};
-use crate::{AtlasError, Result, todo_task};
+use crate::{AtlasError, Result};
 
 /// Short form of a session for menus („3 Tabs · 2 Splits“).
 #[derive(Debug, Clone, PartialEq, Eq)]

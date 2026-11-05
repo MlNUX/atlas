@@ -38,6 +38,8 @@ fn serial() -> MutexGuard<'static, ()> {
         unsafe {
             std::env::set_var("ATLAS_STATE_DIR", dir.path().join("state"));
             std::env::set_var("ATLAS_CONFIG_DIR", dir.path().join("config"));
+            // Logs of background jobs go to the cache folder (the Nix sandbox has no writable home).
+            std::env::set_var("XDG_CACHE_HOME", dir.path().join("cache"));
         }
         dir
     });
