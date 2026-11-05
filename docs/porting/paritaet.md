@@ -40,7 +40,7 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 | Leeres Fenster ohne Schließen-Knopf | `EditorGroup.qml` | – | `App/EditorArea` (P3.0) | 🟦 | ⬜ |
 | Zurück / vor (Alt+←/→) | `EditorGroup.qml` | – | `App/` (P3.0) | 🟦 | ⬜ |
 | Seitenleiste ein/aus (Strg+B), Explorer (Strg+Umschalt+E) | `Main.qml` | – | `App/` (P3.0), `NavigationSplitView` | 🟦 | ⬜ |
-| Arbeitsleiste (Strg+P): Dateien, `>` Aktionen, `#` Tags, `@` Zitate/Anmerkungen, `!` Termine, `:` Zeile, `?` Volltext, `pfad:42` | `CommandPalette.qml`, `quick_open`, `fuzzy_score` | `Files::quick_open`, `Actions::actions_for`, `Notes::tags`, `Search::annotations`, `Calendar::search`, `Search::start` | `App/CommandPalette` (P3.0) | ✅ (Kalender 🔶 #79, Aktionen 🔶 #82) | ⬜ |
+| Arbeitsleiste (Strg+P): Dateien, `>` Aktionen, `#` Tags, `@` Zitate/Anmerkungen, `!` Termine, `:` Zeile, `?` Volltext, `pfad:42` | `CommandPalette.qml`, `quick_open`, `fuzzy_score` | `Files::quick_open`, `Actions::actions_for`, `Notes::tags`, `Search::annotations`, `Calendar::search`, `Search::start` | `App/CommandPalette` (P3.0) | ✅ (Aktionen 🔶 #82) | ⬜ |
 | Arbeitsleiste mit Aktionen (Strg+Umschalt+P) | `CommandPalette.qml` | `Actions::actions_for` | `App/CommandPalette` (P3.0) | 🔶 #82 | ⬜ |
 | Farbschema dunkel/hell/System für alle Fenster | `Theme.qml`, `SettingsDialog.qml` | `Settings::get`/`save` | `Settings/` (P3.9), Asset-Farben | ✅ | ⬜ |
 | Datei-Ereignisse: geänderte Ordner neu lesen, geänderte Dateien neu laden | `qt_helpers.rs` (Watcher) | `Files::watch`, `Event::FilesChanged`, `Event::FileModified` | `App/` (P3.0) | ✅ | ⬜ |
@@ -65,7 +65,7 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 | Schnellansicht (Leertaste, Strg+Klick; ←/→, Enter) | `QuickLook.qml`, `PreviewPool.qml` | – | `Files/` (P3.1), `QLPreviewPanel` | 🟦 | ⬜ |
 | PDF-Vorschau in der Ordneransicht | `FolderView.qml` | – | `Files/` (P3.1), QuickLook-Miniaturen | 🟦 | ⬜ |
 | Orte (wie Dolphin), Laufwerksbelegung | `PlacesList.qml`, `refresh_places`, `disk_usage` | `Atlas::places`, `Files::disk_space` | `Files/` (P3.1); auf dem Mac Finder-Seitenleiste statt Dolphin | ✅ | ⬜ |
-| Kontextmenü Datei: Öffnen, im Split, im Editor, Terminal hier, Pfad kopieren, Verknüpfen, Aktionen, Ausführen, Als Aufgabe einplanen, Checkliste als Aufgaben, Exporter, „Anzeigen mit“ | `FileActions.qml` | `Files::file_kind`, `Actions`, `Extensions::exporters_for`/`processors_for`, `Calendar::task_for_file`/`checklist_of` | `Files/` (P3.1) | ✅ (🔶 #79, #82) | ⬜ |
+| Kontextmenü Datei: Öffnen, im Split, im Editor, Terminal hier, Pfad kopieren, Verknüpfen, Aktionen, Ausführen, Als Aufgabe einplanen, Checkliste als Aufgaben, Exporter, „Anzeigen mit“ | `FileActions.qml` | `Files::file_kind`, `Actions`, `Extensions::exporters_for`/`processors_for`, `Calendar::task_for_file`/`checklist_of` | `Files/` (P3.1) | ✅ (🔶 #82) | ⬜ |
 | Im externen Editor öffnen (auch im Terminal: vim, helix …) | `open_in_editor`, `editor_in_terminal` | `Editor::external_launch`, `set_external_editor` | `Files/` (P3.1), `NSWorkspace`/SwiftTerm | ✅ | ⬜ |
 | Viewer-Art einer Datei | `file_kind` | `Files::file_kind` | `App/` (P3.0) | ✅ | ⬜ |
 | Datei-Links `atlas:`/`file:` in Pfade auflösen | `url_to_path` | `Atlas::url_to_path` | `App/` (P3.0) | ✅ | ⬜ |
@@ -82,15 +82,15 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 | Kommentar, Farbe, Art wechseln, Link kopieren, Löschen | `PdfAnnotationPopup.qml` | `PdfDocument::update`, `link` | `PDF/` (P3.2) | 🔶 #81 | ⬜ |
 | Lesezeichen (Strg+D), Notiz-Symbol | `PdfToolbar.qml` | `PdfDocument::add` | `PDF/` (P3.2) | 🔶 #81 | ⬜ |
 | Stift und Radierer (ganze Striche), Rückgängig/Wiederholen | `PdfViewer.qml` | `PdfDocument::snapshot`, `restore` | `PDF/` (P3.2), `UndoManager` | 🔶 #81 | ⬜ |
-| Zitat in Notiz (Strg+Q), Zitat-Link öffnet die Stelle | `quote_markdown`, `SendToNoteDialog.qml` | `PdfDocument::quote_markdown`, `Notes::append` | `PDF/` (P3.2) | 🔶 #81, ✅ | ⬜ |
-| Bereich als Bild zitieren (PNG in `assets/`, Bildunterschrift mit Link) | `pdf_area_to_note` | – | `PDF/` (P3.2) | ⚠️ L2 | ⬜ |
+| Zitat in Notiz (Strg+Q), Zitat-Link öffnet die Stelle | `quote_markdown`, `SendToNoteDialog.qml` | `PdfDocument::quote_markdown`, `Notes::append` | `PDF/` (P3.2) | 🔶 #81 | ⬜ |
+| Bereich als Bild zitieren (PNG in `assets/`, Bildunterschrift mit Link) | `pdf_area_to_note` | `Notes::image_target`, `image_quote` | `PDF/` (P3.2) | 🔶 #87 (L2) | ⬜ |
 | Seitenleiste: Miniaturen, Gliederung, Anmerkungen | `PdfSidebar.qml` | `PdfDocument::annotations` | `PDF/` (P3.2), `PDFThumbnailView`, `PDFOutline` | 🔶 #81 | ⬜ |
 | PDF-Links (intern, extern) | `pdf_items.rs` | – | `PDF/` (P3.2) | 🟦 | ⬜ |
 | Präsentation (F5): Vollbild, Pfeile, Klick, Zahl+Enter, B schwarz, Esc | `PdfViewer.qml` | – | `PDF/` (P3.2) | 🟦 | ⬜ |
 | Dunkelmodus der Seiten | `PdfViewer.qml` | – | `PDF/` (P3.2), Core-Image-Filter | 🟦 | ⬜ |
 | Export als Kopie mit Anmerkungen (Original bleibt) | `export_copy` | `PdfDocument::default_export_path`, `annotations` | `PDF/` (P3.2), PDFKit-Annotationen | 🔶 #81 | ⬜ |
 | Formel als LaTeX: Rahmen aufziehen | `PdfLatexPopup.qml`, `formula_ocr.rs` | `LatexOcr::recognize`, `status`, `warm_up` | `PDF/` (P3.2), Bild aus `PDFPage.thumbnail` | 🔶 #81 | ⬜ |
-| Formeln im Seitentext und in Zitaten als LaTeX | `pdf_items.rs` (`selection_latex`, Glyphen) | – | `PDF/` (P3.2) | ⚠️ L6 | ⬜ |
+| Formeln im Seitentext und in Zitaten als LaTeX | `pdf_items.rs` (`selection_latex`, Glyphen) | `PdfDocument::formula_clips`, `text_with_latex`, `LatexOcr::recognize` | `PDF/` (P3.2) | 🔶 #81 (L6) | ⬜ |
 | Pfeiltasten ohne Klick, Fokus beim Tab-Wechsel | `PdfViewer.qml` | – | `PDF/` (P3.2) | 🟦 | ⬜ |
 | Anmerkungen anderer Geräte (Sync) erscheinen | `reload` | `PdfDocument::reload`, `Event::AnnotationsChanged` | `PDF/` (P3.2) | 🔶 #81 | ⬜ |
 
@@ -108,26 +108,26 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 | Vorschau: Kopieren-Knopf, „Ausführen“ bei bash, Abschnitte einklappen, defekte Links markiert | `web/preview.html` | `Editor::render_markdown`, `code_block` | `Markdown/` (P3.3) | ✅ | ⬜ |
 | Geteilt (Editor + Vorschau) mit Scroll-Sync | `MarkdownView.qml` | – | `Markdown/` (P3.3) | 🟦 | ⬜ |
 | Bild vergrößern im eigenen Fenster | `ImageWindow.qml` | – | `Viewers/` (P3.12) | 🟦 | ⬜ |
-| Einfügen: Bild aus der Zwischenablage, Dateien (in `assets/`) | `paste_into_note`, `import_into_note` | – | `Markdown/` (P3.3) | ⚠️ L3 | ⬜ |
-| Einfügen: Ordnerbaum, Tabelle, Diagramm-Vorlage | `folder_tree`, `MarkdownView.qml` | `Editor::format_table` | `Markdown/` (P3.3) | ⚠️ L4 (Ordnerbaum) | ⬜ |
+| Einfügen: Bild aus der Zwischenablage, Dateien (in `assets/`) | `paste_into_note`, `import_into_note` | `Notes::new_image_path`, `image_markdown`, `import_files` | `Markdown/` (P3.3) | 🔶 #87 (L3) | ⬜ |
+| Einfügen: Ordnerbaum, Tabelle, Diagramm-Vorlage | `folder_tree`, `MarkdownView.qml` | `Editor::folder_tree`, `format_table` | `Markdown/` (P3.3) | 🔶 #87 (L4) | ⬜ |
 | Rechtschreibprüfung Deutsch/Englisch, eigenes Wörterbuch | `spelling.rs` | `Spelling::available`, `check`, `suggest`, `add` (sonst `NSSpellChecker`) | `Markdown/` (P3.3) | ✅ | ⬜ |
 | Markdown als PDF exportieren | `MarkdownPdfExport.qml` | `Editor::render_markdown` | `Markdown/` (P3.3), `WKWebView.createPDF` | ✅ | ⬜ |
 | Gliederung (Überschriften), Sprung zur Überschrift | `ContextPanel.qml` | `Editor::render_markdown`, `Notes::heading_line` | `Markdown/` (P3.3), `Context/` (P3.6) | ✅ | ⬜ |
-| Notiz-Fristen aus dem Front Matter | `note_deadlines` | `Notes::deadlines` | `Context/` (P3.6), `Calendar/` (P3.7) | 🔶 #78 | ⬜ |
+| Notiz-Fristen aus dem Front Matter | `note_deadlines` | `Notes::deadlines` | `Context/` (P3.6), `Calendar/` (P3.7) | ✅ | ⬜ |
 
 ## Notizen, Links, Graph
 
 | Funktion | Linux | API | Swift (Aufgabe) | API | Mac |
 |---|---|---|---|---|---|
-| Rückverweise mit Art, Kontext und Filtern | `backlinks`, `ContextPanel.qml` | `Notes::backlinks` | `Context/` (P3.6) | 🔶 #78 | ⬜ |
-| Tags (hierarchisch), Notizen mit Tag | `note_tags`, `notes_with_tag`, `tags_of_note` | `Notes::tags`, `notes_with_tag`, `tags_of` | `Context/` (P3.6) | 🔶 #78 | ⬜ |
-| Zitate in einer Notiz | `ContextPanel.qml` | `Notes::quotes` | `Context/` (P3.6) | 🔶 #78 | ⬜ |
-| Zitate im Projekt, nach PDF gruppiert | `project_quotes` | – | `Context/` (P3.6) | ⚠️ L1 | ⬜ |
-| Graph der Umgebung und des ganzen Projekts, eigenes Fenster | `GraphDialog.qml`, `context_graph` | `Notes::graph` | `Context/` (P3.6), Canvas | 🔶 #78 | ⬜ |
-| Dateien von Hand verknüpfen, Ordner-Knoten | `RelateDialog.qml`, `relate_files`, `set_folder_node` | `Notes::related`, `relate`, `unrelate`, `set_folder_node` | `Context/` (P3.6) | 🔶 #78 | ⬜ |
-| Links, Zitate, Verknüpfungen und Anmerkungen folgen Umbenennungen | `files_moved` | `Notes::files_moved`, `Calendar::files_moved` | `Files/` (P3.1) | 🔶 #78, #79 | ⬜ |
-| Links reparieren nach Verschieben außerhalb von Atlas | `find_link_repairs`, `apply_link_repairs` | `Notes::find_link_repairs`, `Event::LinkRepairsFound` | `App/` (P3.0) | 🔶 #78 | ⬜ |
-| Text an Notiz anhängen (Terminal-Ausgabe, Zitat) | `append_to_note`, `SendToNoteDialog.qml` | `Notes::append` | `App/` (P3.0) | 🔶 #78 | ⬜ |
+| Rückverweise mit Art, Kontext und Filtern | `backlinks`, `ContextPanel.qml` | `Notes::backlinks` | `Context/` (P3.6) | ✅ | ⬜ |
+| Tags (hierarchisch), Notizen mit Tag | `note_tags`, `notes_with_tag`, `tags_of_note` | `Notes::tags`, `notes_with_tag`, `tags_of` | `Context/` (P3.6) | ✅ | ⬜ |
+| Zitate in einer Notiz | `ContextPanel.qml` | `Notes::quotes` | `Context/` (P3.6) | ✅ | ⬜ |
+| Zitate im Projekt, nach PDF gruppiert | `project_quotes` | `Notes::marked_passages` | `Context/` (P3.6) | 🔶 #87 (L1) | ⬜ |
+| Graph der Umgebung und des ganzen Projekts, eigenes Fenster | `GraphDialog.qml`, `context_graph` | `Notes::graph` | `Context/` (P3.6), Canvas | ✅ | ⬜ |
+| Dateien von Hand verknüpfen, Ordner-Knoten | `RelateDialog.qml`, `relate_files`, `set_folder_node` | `Notes::related`, `relate`, `unrelate`, `set_folder_node` | `Context/` (P3.6) | ✅ | ⬜ |
+| Links, Zitate, Verknüpfungen und Anmerkungen folgen Umbenennungen | `files_moved` | `Notes::files_moved`, `Calendar::files_moved` | `Files/` (P3.1) | ✅ | ⬜ |
+| Links reparieren nach Verschieben außerhalb von Atlas | `find_link_repairs`, `apply_link_repairs` | `Notes::find_link_repairs`, `Event::LinkRepairsFound` | `App/` (P3.0) | ✅ | ⬜ |
+| Text an Notiz anhängen (Terminal-Ausgabe, Zitat) | `append_to_note`, `SendToNoteDialog.qml` | `Notes::append` | `App/` (P3.0) | ✅ | ⬜ |
 
 ## Text und Code
 
@@ -157,7 +157,7 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 | Panel nebeneinander/untereinander teilen, als Baum in der Sitzung | `TerminalGroup.qml` | `Project::save_session` | `Terminal/` (P3.5) | ✅ | ⬜ |
 | Startordner, aktueller Ordner des Prozesses | `terminal_item.rs` | `Terminal::process_cwd` | `Terminal/` (P3.5) | ✅ | ⬜ |
 | Farben passend zum Schema | `set_terminal_light` | `Terminal::palette` | `Terminal/` (P3.5) | ✅ | ⬜ |
-| Kopieren/Einfügen, Ausgabe in Notiz übernehmen | `TerminalPane.qml` | `Notes::append` | `Terminal/` (P3.5) | 🔶 #78 | ⬜ |
+| Kopieren/Einfügen, Ausgabe in Notiz übernehmen | `TerminalPane.qml` | `Notes::append` | `Terminal/` (P3.5) | ✅ | ⬜ |
 | Terminal läuft weiter, wenn der Tab gezogen wird | `EditorArea.qml` | – | `Terminal/` (P3.5) | 🟦 | ⬜ |
 
 ## Kontextleiste
@@ -168,7 +168,7 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 | Reiterseiten, schmal als Symbole, breit ausgeschrieben | `ContextPanel.qml` | `Context::options`, `new_page`, `rename_page`, `remove_tab` | `Context/` (P3.6) | ✅ | ⬜ |
 | Bearbeitungsmodus: einklappen, verschieben (Alt+↑), ausblenden, anheften, Galerie | `ContextEditor.qml` | `Context::move_block`, `move_by`, `set_hidden`, `set_collapsed`, `unplace` | `Context/` (P3.6) | ✅ | ⬜ |
 | Profile nach Dateityp, „Gilt für“, Rückgängig, zurücksetzen | `ContextProfiles.qml` (P1.3) | `Context::profiles`, `profile_for`, `snapshot`, `restore`, `reset` | `Context/` (P3.6) | ✅ | ⬜ |
-| Karten der Erweiterungen (Ansichten, Befehle) | `context_extensions`, `ExtensionCards.qml` | – | `Context/` (P3.6) | ⚠️ L5 | ⬜ |
+| Karten der Erweiterungen (Ansichten, Befehle) | `context_extensions`, `ExtensionCards.qml` | `Extensions::context_cards`, `set_card_shown` | `Context/` (P3.6) | 🔶 #82 (L5) | ⬜ |
 | Pomodoro (Lernzeit, Pause) | `PomodoroTimer.qml` | `Context::options` | `Context/` (P3.6) | ✅ | ⬜ |
 | Inspector (Datei-Aktionen der Leiste) | `Inspector.qml` | `Actions`, `Extensions` | `Context/` (P3.6) | 🔶 #82 | ⬜ |
 
@@ -176,17 +176,17 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 
 | Funktion | Linux | API | Swift (Aufgabe) | API | Mac |
 |---|---|---|---|---|---|
-| Kalender als Tab, Monat, Woche, Agenda; Heute (T), blättern | `CalendarView.qml`, `CalendarMonth.qml`, `CalendarWeek.qml` | `Calendar::occurrences`, `view_state` | `Calendar/` (P3.7) | 🔶 #79 | ⬜ |
-| Einträge: Termin, Arbeitsblock, Frist, Aufgabe; Dialog mit Wiederholung, Erinnerungen, Checkliste, Tags | `EntryDialog.qml`, `calendar_model/edit.rs` | `Calendar::save`, `entry`, `remove`, `Recurrence` | `Calendar/` (P3.7) | 🔶 #79 | ⬜ |
-| Ziehen: verschieben (15-min-Raster), Dauer ändern, neue Zeit aufziehen | `CalendarWeek.qml` | `Calendar::move_occurrence`, `save` | `Calendar/` (P3.7) | 🔶 #79 | ⬜ |
-| Aufgaben ohne Zeit, einplanen und zurück | `CalendarView.qml` | `Calendar::tasks`, `schedule` | `Calendar/` (P3.7) | 🔶 #79 | ⬜ |
-| Dateien verknüpfen, Datei auf freie Zeit → Arbeitsblock, Checkliste als Aufgaben | `link_file`, `block_for_file`, `add_tasks` | `Calendar::link_file`, `block_for_file`, `task_for_file`, `checklist_of`, `add_tasks` | `Calendar/` (P3.7) | 🔶 #79 | ⬜ |
-| Erinnerungen | `due_reminders` | `Calendar::due_reminders` | `Calendar/` (P3.7), `UNUserNotificationCenter` | 🔶 #79 | ⬜ |
-| Kalenderauswahl, nur in diesem Projekt, Standardkalender | `CalendarSync.qml` | `Calendar::calendars`, `set_calendar_visible`, `set_calendar_project_only`, `set_default_calendar` | `Calendar/` (P3.7) | 🔶 #79 | ⬜ |
-| Nextcloud/CalDAV: Verbindung testen, Konto, Kalender anlegen | `CalendarSync.qml`, `calendar_model/account.rs` | `Calendar::test_connection`, `save_account`, `create_remote_calendar` | `Calendar/` (P3.7) | 🔶 #79 | ⬜ |
-| Google-Anmeldung im Browser | `google_sign_in` | `Calendar::google_sign_in`, `google_sign_in_finished` | `Calendar/` (P3.7), `NSWorkspace.open` | 🔶 #79 | ⬜ |
-| Passwort: eingeben, merken, Passwort-Befehl | `CalendarSync.qml` | `Calendar::set_password`, `forget_password`, `retry_password_command` | `Calendar/` (P3.7), Schlüsselbund | 🔶 #79 | ⬜ |
-| Synchronisieren, Status, Konflikte lösen, Cache leeren, trennen | `calendar_model/remote.rs` | `Calendar::sync_now`, `sync_state`, `conflicts`, `resolve_conflict`, `clear_cache`, `disconnect` | `Calendar/` (P3.7) | 🔶 #79 | ⬜ |
+| Kalender als Tab, Monat, Woche, Agenda; Heute (T), blättern | `CalendarView.qml`, `CalendarMonth.qml`, `CalendarWeek.qml` | `Calendar::occurrences`, `view_state` | `Calendar/` (P3.7) | ✅ | ⬜ |
+| Einträge: Termin, Arbeitsblock, Frist, Aufgabe; Dialog mit Wiederholung, Erinnerungen, Checkliste, Tags | `EntryDialog.qml`, `calendar_model/edit.rs` | `Calendar::save`, `entry`, `remove`, `Recurrence` | `Calendar/` (P3.7) | ✅ | ⬜ |
+| Ziehen: verschieben (15-min-Raster), Dauer ändern, neue Zeit aufziehen | `CalendarWeek.qml` | `Calendar::move_occurrence`, `save` | `Calendar/` (P3.7) | ✅ | ⬜ |
+| Aufgaben ohne Zeit, einplanen und zurück | `CalendarView.qml` | `Calendar::tasks`, `schedule` | `Calendar/` (P3.7) | ✅ | ⬜ |
+| Dateien verknüpfen, Datei auf freie Zeit → Arbeitsblock, Checkliste als Aufgaben | `link_file`, `block_for_file`, `add_tasks` | `Calendar::link_file`, `block_for_file`, `task_for_file`, `checklist_of`, `add_tasks` | `Calendar/` (P3.7) | ✅ | ⬜ |
+| Erinnerungen | `due_reminders` | `Calendar::due_reminders` | `Calendar/` (P3.7), `UNUserNotificationCenter` | ✅ | ⬜ |
+| Kalenderauswahl, nur in diesem Projekt, Standardkalender | `CalendarSync.qml` | `Calendar::calendars`, `set_calendar_visible`, `set_calendar_project_only`, `set_default_calendar` | `Calendar/` (P3.7) | ✅ | ⬜ |
+| Nextcloud/CalDAV: Verbindung testen, Konto, Kalender anlegen | `CalendarSync.qml`, `calendar_model/account.rs` | `Calendar::test_connection`, `save_account`, `create_remote_calendar` | `Calendar/` (P3.7) | ✅ | ⬜ |
+| Google-Anmeldung im Browser | `google_sign_in` | `Calendar::google_sign_in`, `google_sign_in_finished` | `Calendar/` (P3.7), `NSWorkspace.open` | ✅ | ⬜ |
+| Passwort: eingeben, merken, Passwort-Befehl | `CalendarSync.qml` | `Calendar::set_password`, `forget_password`, `retry_password_command` | `Calendar/` (P3.7), Schlüsselbund | ✅ | ⬜ |
+| Synchronisieren, Status, Konflikte lösen, Cache leeren, trennen | `calendar_model/remote.rs` | `Calendar::sync_now`, `sync_state`, `conflicts`, `resolve_conflict`, `clear_cache`, `disconnect` | `Calendar/` (P3.7) | ✅ | ⬜ |
 | macOS-Kalender (EventKit) neben den Atlas-Einträgen | – (neu) | – | `Calendar/EventKit/` (P3.13) | 🟦 | ⬜ |
 
 ## Aktionen und Erweiterungen
@@ -207,7 +207,7 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 
 | Funktion | Linux | API | Swift (Aufgabe) | API | Mac |
 |---|---|---|---|---|---|
-| Atlas-Notizen vom Tablet (`.atlasnote`): Seiten, Vorschau | `AtlasNoteView.qml`, `atlas_note_info`/`page`/`preview` | – | `Viewers/` (P3.12) | ⚠️ L7 | ⬜ |
+| Atlas-Notizen vom Tablet (`.atlasnote`): Seiten, Vorschau | `AtlasNoteView.qml`, `atlas_note_info`/`page`/`preview` | `AtlasNote::open`, `pages`, `render_png`, `preview` | `Viewers/` (P3.12) | 🔶 #87 (L7) | ⬜ |
 | HTML-Ansicht: gerendert und Quelltext, lädt beim Speichern neu, Hinweis bei Web-Inhalten | `HtmlView.qml` | `Files::read_text` | `Viewers/` (P3.12), `WKWebView` | ✅ | ⬜ |
 | Bilder (Formate des Systems) | `DocumentView.qml`, `ImageWindow.qml` | – | `Viewers/` (P3.12) | 🟦 | ⬜ |
 | ILIAS: Anmeldung, Favoriten als Ordner, Download mit Zielordner, neue Versionen | `IliasView.qml`, `IliasService.qml`, `ilias_backend.rs` | `Ilias::*` | `Ilias/` (P3.11), `WKWebView` + `WKHTTPCookieStore` | ✅ | ⬜ |
@@ -221,7 +221,7 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 | ILIAS (Adresse, Anmeldung merken/vergessen, abmelden) | `SettingsDialog.qml` | `Ilias::config`, `save_config`, `remember_login`, `forget_login`, `logout` | `Settings/` (P3.9) | ✅ | ⬜ |
 | Kontextleiste (Profile, leere Bausteine, Reiter, Lernzeit, zurücksetzen) | `SettingsDialog.qml` | `Context::options`, `set_options`, `reset` | `Settings/` (P3.9) | ✅ | ⬜ |
 | Programme: externer Editor | `SettingsDialog.qml` | `Editor::external_editor`, `set_external_editor` | `Settings/` (P3.9) | ✅ | ⬜ |
-| Kalender: Konto, neue Termine in … | `SettingsDialog.qml`, `CalendarSync.qml` | `Calendar::account`, `set_default_calendar` | `Settings/` (P3.9) | 🔶 #79 | ⬜ |
+| Kalender: Konto, neue Termine in … | `SettingsDialog.qml`, `CalendarSync.qml` | `Calendar::account`, `set_default_calendar` | `Settings/` (P3.9) | ✅ | ⬜ |
 | Erweiterungen und Aktionen (Projekt/global) | `SettingsDialog.qml` | `Extensions`, `Actions::actions_file` | `Settings/` (P3.9) | 🔶 #82 | ⬜ |
 | Version | `SettingsDialog.qml` | `Atlas::version` | `Settings/` (P3.9) | ✅ | ⬜ |
 
@@ -237,15 +237,16 @@ Dienste werden kurz geschrieben: `Files::quick_open` heißt `Project::files()` �
 
 ## Lücken
 
-Funktionen der Linux-Version ohne Dienst in `atlas-api`. Vorschlag: eine kleine Aufgabe
-**P2.13 „Restliche Brücke“** (LLM2), bevor die betroffenen Phase-3-Aufgaben beginnen.
+Funktionen der Linux-Version, die beim ersten Abgleich keinen Dienst in `atlas-api` hatten.
+Sie werden mit **P2.13 „Restliche Brücke“** (#87) sowie in #81 (L6) und #82 (L5)
+geschlossen.
 
-| Nr. | Funktion | Linux | Vorschlag für `atlas-api` | gebraucht von |
+| Nr. | Funktion | Linux | in `atlas-api` | gebraucht von |
 |---|---|---|---|---|
-| L1 | Zitate im Projekt nach PDF gruppiert | `project_quotes` | `Notes::marked_passages() -> Vec<MarkedPassage>` (PDF, Seite, Text, Kommentar, Farbe, zitierende Notizen) | P3.6 |
-| L2 | Bereich einer PDF als Bild zitieren | `pdf_area_to_note` | `Notes::image_target(note, pdf, page) -> ImageTarget` (Pfad in `assets/`) und `Notes::image_quote(note, image, pdf, page) -> String` (Markdown mit Bildunterschrift); das PNG rendert PDFKit | P3.2 |
-| L3 | Bild aus der Zwischenablage, Dateien in eine Notiz einfügen | `paste_into_note`, `import_into_note` | `Notes::new_image_path(note) -> String`, `Notes::import_files(note, paths) -> String` (über `atlas_core::assets`); die Zwischenablage liest `NSPasteboard` | P3.3 |
-| L4 | Ordnerbaum einfügen | `folder_tree` | `Editor::folder_tree(path) -> String` (`atlas_core::text_tree`) | P3.3 |
-| L5 | Karten der Erweiterungen in der Kontextleiste | `context_extensions` | `Extensions::context_cards() -> Vec<ExtensionCard>` (Ansichten und Palettenbefehle, „gezeigt“ aus `Config.context`) | P3.6 |
-| L6 | Formeln im Seitentext und in Zitaten als LaTeX | `selection_latex`, Glyphen aus poppler | `PdfDocument::formula_regions(page, glyphs)`: PDFKit liefert Zeichen mit Rahmen und Schrift (`PDFSelection` je Zeichen), der Kern findet Formeln (`pdf::formulas`) | P3.2 |
-| L7 | `.atlasnote`-Seiten | `atlas_note_info`, `atlas_note_page`, `atlas_note_preview` | `AtlasNote` (Objekt): `info() -> Vec<PageInfo>`, `async page(index, width) -> String` (PNG-Pfad aus `atlasnote::NoteFile::rendered`), `preview(index)` | P3.12 |
+| L1 | Zitate im Projekt nach PDF gruppiert | `project_quotes` | `Notes::marked_passages() -> Vec<MarkedPassage>` (PDF, Seite, Text, Kommentar, Farbe, zitierende Notizen) – #87 | P3.6 |
+| L2 | Bereich einer PDF als Bild zitieren | `pdf_area_to_note` | `Notes::image_target(note, pdf, page)` (Pfad in `assets/`) und `Notes::image_quote(note, image, pdf, page)` (Markdown mit Bildunterschrift); das PNG rendert PDFKit – #87 | P3.2 |
+| L3 | Bild aus der Zwischenablage, Dateien in eine Notiz einfügen | `paste_into_note`, `import_into_note` | `Notes::new_image_path(note, ext)`, `Notes::image_markdown`, `Notes::import_files(note, paths)`; die Zwischenablage liest `NSPasteboard` – #87 | P3.3 |
+| L4 | Ordnerbaum einfügen | `folder_tree` | `Editor::folder_tree(path)` – #87 | P3.3 |
+| L5 | Karten der Erweiterungen in der Kontextleiste | `context_extensions` | `Extensions::context_cards()`, `set_card_shown`; `Context` nimmt die `ext:`-Bausteine aus den aktiven Erweiterungen – #82 | P3.6 |
+| L6 | Formeln im Seitentext und in Zitaten als LaTeX | `selection_latex`, Glyphen aus poppler | `PdfDocument::formula_clips(glyphs, within)` und `text_with_latex(glyphs, within, latex)`; die Zeichen liefert PDFKit, erkannt wird mit `LatexOcr` – #81 | P3.2 |
+| L7 | `.atlasnote`-Seiten | `atlas_note_info`, `atlas_note_page`, `atlas_note_preview` | `AtlasNote`: `open`, `pages`/`page` (Seiten als Daten zum Zeichnen), `render_png`/`preview` wo der Kern zeichnet (Linux) – #87 | P3.12 |
