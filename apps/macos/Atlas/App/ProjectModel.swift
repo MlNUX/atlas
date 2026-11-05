@@ -10,6 +10,7 @@ import Observation
 @MainActor
 @Observable
 final class ProjectModel {
+    let app: AppModel
     let core: Project
     let root: String
     let name: String
@@ -30,6 +31,14 @@ final class ProjectModel {
     /// Every event, for features that listen themselves (search, calendar …).
     private(set) var lastEvent: Event?
     private var saveTask: Task<Void, Never>?
+    /// Actions, background jobs and extension dialogs of this window (P3.10).
+    let actions = ActionsModel()
+    /// Short note at the bottom of the window (actions, exports, core messages).
+    private(set) var notice = ""
+    @ObservationIgnored private var noticeTask: Task<Void, Never>?
+    /// Set by the terminal (P3.5): runs a prepared command in the terminal
+    /// panel or (`ownTab`) in a terminal tab of its own.
+    @ObservationIgnored var runInTerminal: ((_ prepared: Prepared, _ ownTab: Bool) -> Void)?
     /// Features that need every event (search batches arrive faster than
     /// SwiftUI observes `lastEvent`).
     @ObservationIgnored private var listeners: [UUID: (Event) -> Void] = [:]
@@ -47,6 +56,7 @@ final class ProjectModel {
     }
 
     init(app: AppModel, root: String) throws {
+        self.app = app
         let box = WeakBox<ProjectModel>()
         core = try app.core.openProject(root: root, sink: MainActorEventSink { event in box.value?.handle(event) })
         self.root = core.root()
@@ -57,6 +67,7 @@ final class ProjectModel {
         indexReady = state.ready
         indexText = state.text
         box.value = self
+        actions.attach(self)
         editor.onChange = { [weak self] in self?.scheduleSave() }
         if UserDefaults.standard.string(forKey: "AtlasSearch") != nil { searchVisible = true }
         if let path = UserDefaults.standard.string(forKey: "AtlasOpenFile") {
@@ -79,6 +90,8 @@ final class ProjectModel {
         case let .annotationsChanged(path):
             annotationsChangedPath = path
             annotationsRevision += 1
+        case let .message(_, text):
+            show(notice: text)
         default:
             break
         }
@@ -99,6 +112,16 @@ final class ProjectModel {
         let layout = editor.layout
         try? core.saveSession(
             layout: layout.json(root: root), expanded: expandedDirs, documents: layout.documents(root: root))
+    }
+
+    func show(notice text: String) {
+        notice = text
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.notice = ""
+        }
     }
 
     func close() {

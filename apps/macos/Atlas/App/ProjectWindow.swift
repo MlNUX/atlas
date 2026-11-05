@@ -39,6 +39,17 @@ struct ProjectWindow: View {
         .sheet(isPresented: $project.searchVisible) {
             SearchWindowView(project: project)
         }
+        .modifier(ActionsWindowModifier(project: project))
+        .overlay(alignment: .bottom) {
+            if !project.notice.isEmpty {
+                Text(project.notice)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .glassEffect()
+                    .padding(.bottom, 14)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.default, value: project.notice)
         .onDisappear { project.close() }
     }
 }

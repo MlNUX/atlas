@@ -62,6 +62,10 @@ struct EditorTab: Identifiable, Equatable, Sendable {
         a.path == b.path && a.line == b.line && a.preview == b.preview && a.extra == b.extra
     }
 
+    /// Shown through an extension: `view:<ext>/<id>` or a processor id
+    /// (Linux: `processor` in the tab state).
+    var processor: String { extra["processor"]?.string ?? "" }
+
     var isVirtual: Bool {
         path.hasPrefix("terminal:") || path.hasPrefix("calendar:") || path.hasPrefix("ilias:")
     }
