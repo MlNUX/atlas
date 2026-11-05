@@ -34,12 +34,24 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
     init(editor: Editor, language: String?, markdown: Bool) {
         self.editor = editor
         self.markdown = markdown
-        // Created with a size: a text view that starts at width 0 lays its
-        // text out in a container of width 0 (nothing visible).
-        let start = NSRect(x: 0, y: 0, width: 600, height: 400)
-        scrollView = NSScrollView(frame: start)
-        textView = AtlasTextView(usingTextLayoutManager: false)
-        textView.frame = start
+        // AppKit's own setup of scroll view and text view (the receiving
+        // class makes the text view an AtlasTextView); asking for the
+        // layout manager switches it to TextKit 1.
+        let scroll = AtlasTextView.scrollableTextView()
+        if let view = scroll.documentView as? AtlasTextView {
+            textView = view
+        } else {
+            // (Should not happen.) The same setup by hand.
+            let view = AtlasTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
+            view.isVerticallyResizable = true
+            view.autoresizingMask = [.width]
+            view.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            view.textContainer?.widthTracksTextView = true
+            scroll.documentView = view
+            textView = view
+        }
+        scrollView = scroll
+        _ = textView.layoutManager
         super.init()
         if let language { highlighter = editor.highlighter(language: language) }
         textView.controller = self
@@ -60,15 +72,7 @@ final class TextEditorController: NSObject, NSTextViewDelegate {
         textView.backgroundColor = .textBackgroundColor
         textView.drawsBackground = true
         textView.textContainerInset = NSSize(width: 12, height: 10)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: start.width, height: CGFloat.greatestFiniteMagnitude)
         textView.setAccessibilityLabel(markdown ? "Markdown-Editor" : "Texteditor")
-        scrollView.documentView = textView
         scrollView.hasVerticalScroller = true
         // Line numbers (as on Linux).
         let ruler = LineNumberRuler(textView: textView)
