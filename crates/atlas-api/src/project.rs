@@ -13,7 +13,7 @@ use atlas_core::session::ProjectSession;
 
 use crate::inner::Shared;
 use crate::util::{path, string};
-use crate::{AtlasError, Result, todo_task};
+use crate::{AtlasError, Result};
 
 /// Short form of a session for menus („3 Tabs · 2 Splits“).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -223,7 +223,7 @@ impl Project {
     }
 
     pub fn notes(&self) -> Arc<crate::notes::Notes> {
-        todo_task!("P2.3")
+        Arc::new(crate::notes::Notes::new(self.shared.clone()))
     }
 
     pub fn search(&self) -> Arc<crate::search::Search> {
@@ -231,21 +231,32 @@ impl Project {
     }
 
     pub fn calendar(&self) -> Arc<crate::calendar::Calendar> {
-        todo_task!("P2.5")
+        let shared = &self.shared;
+        shared
+            .calendar
+            .get_or_init(|| {
+                let atlas = shared.project.as_ref().map(|p| p.atlas_dir());
+                Arc::new(crate::calendar::Calendar::new(&shared.root, atlas.as_deref(), shared.sink.clone()))
+            })
+            .clone()
     }
 
     /// PDF data (annotations, text, citations) of one document.
     pub fn pdf(&self, path: String) -> Result<Arc<crate::pdf::PdfDocument>> {
-        let _ = path;
-        todo_task!("P2.6")
+        let shared = &self.shared;
+        let atlas = shared.project.as_ref().map(|p| p.atlas_dir());
+        let path = shared
+            .absolute(Path::new(&path))
+            .ok_or_else(|| crate::AtlasError::Invalid { message: format!("Pfad außerhalb des Projekts: {path}") })?;
+        Ok(Arc::new(crate::pdf::PdfDocument::new(&shared.root, atlas.as_deref(), shared.sink.clone(), &path)?))
     }
 
     pub fn actions(&self) -> Arc<crate::actions::Actions> {
-        todo_task!("P2.7")
+        Arc::new(crate::actions::Actions::new(self.shared.clone()))
     }
 
     pub fn extensions(&self) -> Arc<crate::extensions::Extensions> {
-        todo_task!("P2.7")
+        Arc::new(crate::extensions::Extensions::new(self.shared.clone()))
     }
 
     pub fn editor(&self) -> Arc<crate::editor::Editor> {

@@ -136,11 +136,17 @@ Fehler: 15 657 Zeilen, rund 440 öffentliche Typen und Methoden.
 | P2.8 | `Editor::external_launch` → `ExternalLaunch` (System/losgelöst/Terminal) statt den Editor selbst zu starten | Prozesse startet die Oberfläche (NSWorkspace, `Process`, SwiftTerm) |
 | P2.8 | `AppSettings` ohne `spell_languages`/`other`/Editor-Befehl; Ordner-Sortierung ist eine (global), `ContextOptions` neu | so speichert es `config.toml`; Editor-Befehl über `Editor::set_external_editor` |
 | P2.8 | `Spelling::available`, `add` gibt `Result` | ohne Wörterbücher prüft der Kern nichts (macOS: siehe unten) |
+| P2.5 | `EntryKind` mit Termin, Arbeitsblock, Frist, Aufgabe; `EntryStatus` mit den vier Status des Kerns | so kennt es der Kern (`calendar::Kind`, `Status`) |
+| P2.5 | `Entry.recurrence: Option<Recurrence>` statt RRULE-Text; neu `read_only`, `pending` | der Dialog bearbeitet Rhythmus, Intervall, Anzahl, Ende; nicht bearbeitbare Regeln bleiben unverändert |
+| P2.5 | `NoteTask`, `SearchHit`, `Account` mit Server/DAV-URL/Google-Client, `test_connection(account, password)`, `ConflictChoice::KeepBoth`, `SyncState.problem`; neu `revision`, `reload`, `default_calendar`, `retry_password_command` | Funktionen des Linux-Kalenders, die gefehlt haben |
+| P2.6 | `Rect` als `x`, `y`, `width`, `height`; `AnnotationPatch.kind`; `MatchState::Loading` | wie das Dateiformat (`[x, y, w, h]`); Art wechseln wie unter Linux |
+| P2.7 | neu: `Extensions::processors_for`, `process`, `exporters_for`, `export` | „Anzeigen mit“ und Exporter fehlten |
+| P2.7 | Einstellungen der Erweiterungen als JSON statt TOML; `ActionInfo` mit `in_menu`, `in_palette`, `keybinding`; `ViewPage.dir` | der Kern speichert über `save_setting_json`; das WebView begrenzt den Zugriff auf den Ordner |
+| P2.10 | `Ilias::set_session(cookies, user_agent)` statt `set_cookies`; `Cookie` nur `name`/`value`/`domain` | der Kern sendet die Cookies passend zum Host (wie Linux mit dem Web-Profil); WKWebView liefert sie über `WKHTTPCookieStore` |
+| P2.10 | `scan` → `IliasIndex` (mit Zeitpunkt), `last_index` → `Option<IliasIndex>`, `download(…, download: Option<String>, …)`, neu `logout` | wie der gespeicherte Index unter Linux (`index.json`) |
 
 **Rechtschreibung unter macOS (Entscheidung nach E16):** Der Kern nutzt Hunspell-Wörterbücher
 (`atlas_spell::dictionary_dirs`). Auf dem Mac gibt es die nur über Homebrew oder
 mitgelieferte Dateien. P3.3 nimmt deshalb `NSSpellChecker`, solange
 `Spelling::available()` `false` ist; das eigene Wörterbuch (`dictionary.txt`) bleibt
 gemeinsam.
-| P2.10 | `Ilias::set_session(cookies, user_agent)` statt `set_cookies`; `Cookie` nur `name`/`value`/`domain` | der Kern sendet die Cookies passend zum Host (wie Linux mit dem Web-Profil); WKWebView liefert sie über `WKHTTPCookieStore` |
-| P2.10 | `scan` → `IliasIndex` (mit Zeitpunkt), `last_index` → `Option<IliasIndex>`, `download(…, download: Option<String>, …)`, neu `logout` | wie der gespeicherte Index unter Linux (`index.json`) |
