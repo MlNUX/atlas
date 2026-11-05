@@ -9,8 +9,8 @@
 # ATLAS_CERT_PASSWORD, ATLAS_NOTARY_KEY_P8 (contents of the .p8),
 # ATLAS_NOTARY_KEY_ID, ATLAS_NOTARY_ISSUER, ATLAS_SPARKLE_PRIVATE_KEY; the
 # public key as repository variable ATLAS_SPARKLE_PUBLIC_KEY. Without the
-# certificate the DMG is only built (ad hoc) and kept as artifact, not
-# attached – unless asked for by hand.
+# certificate (no Apple Developer account yet, E5) the DMG is signed ad hoc
+# and attached all the same, with a note how to open it the first time.
 name: macos-release
 
 on:
@@ -21,10 +21,6 @@ on:
       tag:
         description: Release tag (e.g. v1.1.5)
         required: true
-      attach-adhoc:
-        description: Attach an ad hoc signed DMG (test builds, no notarisation)
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -84,7 +80,6 @@ jobs:
           rm -f "$key"
 
       - name: Appcast
-        if: env.ATLAS_SIGN_IDENTITY != '' || inputs.attach-adhoc
         env:
           ATLAS_SPARKLE_PRIVATE_KEY: ${{ secrets.ATLAS_SPARKLE_PRIVATE_KEY }}
         run: |
@@ -100,7 +95,6 @@ jobs:
           cp "$feed/appcast.xml" "$RUNNER_TEMP/dist/appcast.xml"
 
       - name: Attach to the release
-        if: env.ATLAS_SIGN_IDENTITY != '' || inputs.attach-adhoc
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -109,9 +103,19 @@ jobs:
           [[ -f "$RUNNER_TEMP/dist/appcast.xml" ]] && files+=("$RUNNER_TEMP/dist/appcast.xml")
           gh release upload "$TAG" "${files[@]}" --clobber -R "${{ github.repository }}"
 
-      - name: No Developer ID
-        if: env.ATLAS_SIGN_IDENTITY == '' && !inputs.attach-adhoc
-        run: echo "::notice::No Developer ID certificate – the ad hoc DMG is only in the artifact, not in the release."
+      - name: Note for ad hoc builds
+        if: env.ATLAS_SIGN_IDENTITY == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Once per release: how to open a DMG without notarisation.
+          notes="$(gh release view "$TAG" --json body -q .body -R "${{ github.repository }}")"
+          marker="<!-- atlas-macos-adhoc -->"
+          [[ "$notes" == *"$marker"* ]] && exit 0
+          printf '%s\n\n%s\n%s\n' "$notes" "$marker" "$(cat packaging/macos/release-note-adhoc.md)" >"$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" -R "${{ github.repository }}"
+          echo "::notice::No Developer ID: the DMG is signed ad hoc, not notarised."
 
       - uses: actions/upload-artifact@v4
         if: always()

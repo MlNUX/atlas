@@ -26,9 +26,12 @@ packaging/macos/bundle.sh                        # ad hoc → target/macos-dist/
 
 Solange der Apple-Developer-Account fehlt (E5), signiert `bundle.sh` **ad hoc**
 (`Atlas-adhoc.entitlements`: ohne Team-ID muss die Bibliotheksprüfung für ONNX
-Runtime aus sein). Gatekeeper lehnt solche Builds ab: nach dem Kopieren in den
-Programme-Ordner einmal per Rechtsklick → „Öffnen“ starten oder
-`xattr -dr com.apple.quarantine /Applications/Atlas.app`.
+Runtime aus sein). Gatekeeper lehnt solche Builds beim ersten Start ab: einmal
+öffnen, dann Systemeinstellungen → Datenschutz & Sicherheit → „Dennoch öffnen“
+(oder `xattr -dr com.apple.quarantine /Applications/Atlas.app`). Releases hängen
+das ad hoc signierte DMG trotzdem an und ergänzen diesen Hinweis
+(`release-note-adhoc.md`). Updates über Sparkle gehen auch ohne Developer ID:
+Sparkle prüft die EdDSA-Signatur.
 
 Mit Account fehlen nur das Zertifikat und die Zugangsdaten:
 
@@ -82,8 +85,8 @@ findet keine installierte Version mehr ein Update.
 3. `appcast.sh` schreibt `appcast.xml` mit der Download-Adresse der Release
 4. DMG, Prüfsumme und Appcast an die Release hängen
 
-Ohne Zertifikat entsteht nur ein ad hoc signiertes DMG im Artefakt (von Hand:
-`attach-adhoc`).
+Ohne Zertifikat wird das DMG ad hoc signiert, nicht notarisiert, und trotzdem
+angehängt; die Release-Notiz bekommt einmal den Hinweis zum ersten Öffnen.
 
 `ci-update.sh` (Workflow `mac-P4.4`) prüft den Weg mit einem Wegwerf-Schlüssel:
 
