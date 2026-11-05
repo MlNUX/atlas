@@ -31,7 +31,7 @@ jobs:
       run: |
         defaults write de.minux.atlas AtlasMarkdownMode split
         ATLAS_CI_OPEN_FILE=Notizen/Analysis.md apps/macos/scripts/ci-app.sh || {
-          grep -aE "◇ Test|✘|✔|rash|Fatal|Restart|signal|unexpected|Assertion|Thread [0-9]+ Crashed" \
+          grep -aE -A2 "ATLAS-DIAG|✘|rash|Fatal|Restart|signal|unexpected|Assertion|Thread [0-9]+ Crashed" \
             "$ATLAS_CI_OUT/xcodebuild.log" | grep -v "Connection\]" | tail -n 120
           report="$(ls -t ~/Library/Logs/DiagnosticReports/Atlas* 2>/dev/null | head -n 1 || true)"
           if [[ -n "$report" ]]; then echo "== $report"; head -c 6000 "$report"; fi

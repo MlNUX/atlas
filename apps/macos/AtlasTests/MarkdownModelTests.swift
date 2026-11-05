@@ -187,6 +187,7 @@ struct MarkdownModelTests {
         (bare.documentView as? NSTextView)?.string = text
         let d = try darkPixels(bare, skip: 0)
 
+        print("ATLAS-DIAG dark pixels – editor: \(a), without ruler: \(b), without colours: \(c), bare NSTextView: \(d); \(frames)")
         if a < 50 {
             Issue.record("dark pixels – editor: \(a), without ruler: \(b), without colours: \(c), bare NSTextView: \(d); \(frames)")
         }
