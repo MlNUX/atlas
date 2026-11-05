@@ -379,6 +379,13 @@ impl Editor {
         markdown::code_block(&text, &language)
     }
 
+    /// The tree of folder `path` as text (three levels, at most 300
+    /// entries, hidden files and build folders left out), for „Ordnerbaum
+    /// einfügen“; the preview draws it with lines.
+    pub fn folder_tree(&self, path: String) -> String {
+        atlas_core::text_tree::of_folder(std::path::Path::new(&path), 3, 300)
+    }
+
     pub fn external_editor(&self) -> ExternalEditor {
         let editor = atlas_core::config::Config::load().editor;
         ExternalEditor { command: editor.command, in_terminal: editor.terminal.unwrap_or(false) }
