@@ -83,8 +83,11 @@ final class MarkdownPDFExport: NSObject {
 }
 
 extension MarkdownPDFExport {
-    /// Called by the print operation when it ended.
-    @objc func printOperationDidRun(_ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?) {
-        didRun()
+    /// Called by the print operation when it ended – not necessarily on the
+    /// main thread (Swift 6 would trap there), so it hops over.
+    @objc nonisolated func printOperationDidRun(
+        _ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        Task { @MainActor in self.didRun() }
     }
 }
