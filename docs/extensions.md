@@ -168,10 +168,15 @@ passend zu den Versionen, mit denen das Projekt arbeitet.
   Docstrings (numpydoc-Format) in Parameter, Rückgabe, Beispiele usw. Das
   dauert wenige Sekunden. Abgelegt unter `~/.cache/atlas/extensions/docs/`
   (eine JSON-Datei je Paket).
-- **Python:** Einstellung „Python“, sonst automatisch die `.venv`, `venv`
-  oder `env` des Projekts, die aktive Conda-Umgebung oder `python3` – die
-  erste, in der eines der Pakete installiert ist. Unten steht, mit welchem
-  Python und wann der Index gebaut wurde; fehlende Pakete stehen dabei.
+- **Python:** Einstellung „Python“, sonst sucht die Doku-Suche selbst:
+  `.venv`, `venv`, `env` im Projekt (auch in Unterordnern), die Pythons
+  der angemeldeten Jupyter-Kernel, die Umgebungen der Jupyter-Ansicht
+  (`~/.local/share/atlas/envs`), Conda-Umgebungen (`~/.conda/environments.txt`,
+  miniforge, miniconda, anaconda, micromamba), pyenv und zuletzt `python3`
+  im `PATH` und an den üblichen Orten. Jedes Paket kommt aus dem ersten
+  Python, das es hat – Atlas braucht dafür selbst kein Python im `PATH`.
+  Unten steht, mit welchem Python und wann der Index gebaut wurde; klappt
+  es nicht, zeigt das Fenster, wo gesucht wurde und was fehlt.
 - **Suchen:** Alle Wörter müssen im Namen, im Pfad, in der Kurzbeschreibung
   oder in den Parameternamen vorkommen; „Volltext“ sucht im ganzen Text.
   Mehrere Wörter finden auch Namen mit Unterstrich (`read csv` →

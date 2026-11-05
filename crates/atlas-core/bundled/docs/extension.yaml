@@ -9,7 +9,7 @@
 atlas_api: 2
 name: docs
 title: Doku-Suche
-version: 1.0.0
+version: 1.0.1
 description: Dokumentation von pandas, numpy, matplotlib & Co. lokal durchsuchen – mit Filtern für Rückgabetyp, Parameter, Klasse und Art.
 context: true                 # als Karte in der Kontextleiste (abschaltbar)
 
@@ -26,7 +26,7 @@ settings:
     default: numpy, pandas, matplotlib, scipy, seaborn, sklearn
   - key: python
     title: Python
-    description: Leer – automatisch (.venv/venv/env des Projekts, aktive Conda-Umgebung, python3). Sonst der Pfad zum Python der Umgebung mit den Paketen.
+    description: Leer – automatisch (Umgebungen im Projekt, Jupyter-Kernel, Conda, pyenv, python3; je Paket das erste Python, das es hat). Sonst der Pfad zum Python der Umgebung mit den Paketen.
     type: path
     default: ""
 

@@ -181,7 +181,9 @@ async function loadIndex() {
     const missing = wanted.filter((p) => !summary.packages[p]);
     const parts = [state.packages.map((p) => `${p.name} ${p.version}`).join(" · ") || "leer",
                    `${state.entries.length.toLocaleString("de-DE")} Einträge`];
-    if (summary.python) parts.push(`Python ${summary.pythonVersion || ""} (${summary.python})`);
+    // Packages may come from different Pythons (each from the first that has it).
+    const pythons = [...new Set(Object.values(summary.packages).filter((i) => !i.error && i.python).map((i) => i.python))];
+    if (pythons.length) parts.push(`Python: ${pythons.join(", ")}`);
     if (summary.built) parts.push(`gebaut ${dateText(summary.built)}`);
     if (problems.length) parts.push(problems.join(", "));
     if (missing.length) parts.push(`noch nicht im Index: ${missing.join(", ")} – „Index neu bauen“`);
@@ -216,9 +218,13 @@ async function rebuild() {
         }
         state.building = false;
         els.rebuild.disabled = false;
+        // Settings may have changed since the page was opened.
+        try { state.ctx.settings = (await atlas.call("context")).settings || state.ctx.settings; } catch (e) { /* keep */ }
+        state.buildLog = s.code !== 0 ? lines : null;
         const ok = await loadIndex();
         if (s.code !== 0 || !ok) {
-            setStatus("Index nicht gebaut: " + (lines.slice(-3).join(" · ") || `Exit-Code ${s.code}`), "error");
+            const reason = lines.filter((l) => !/^\s/.test(l) && l !== "Gesucht in:").slice(-2).join(" · ");
+            setStatus("Index nicht gebaut: " + (reason || `Exit-Code ${s.code}`), "error");
             render();
         }
     };
@@ -654,6 +660,18 @@ function stripSummary(e) {
     return paras.join("\n\n");
 }
 
+/** Why the index could not be built: the message and where Python was looked for. */
+function buildProblem(lines) {
+    const searched = lines.filter((l) => /^\s/.test(l)).map((l) => l.trim());
+    const messages = lines.filter((l) => !/^\s/.test(l) && l !== "Gesucht in:" && !/wird gelesen|^Python \d/.test(l));
+    return `<div class="admonition warning" style="text-align:left">
+<div class="atitle">Index nicht gebaut</div>
+${messages.slice(-4).map((m) => `<p>${esc(m)}</p>`).join("")}
+${searched.length ? `<p>Gesucht in (Python: gefundene Pakete):</p><pre class="code">${esc(searched.join("\n"))}</pre>` : ""}
+<p>Abhilfe: In den Einstellungen der Doku-Suche bei <b>Python</b> den Pfad zum Python der Umgebung eintragen, in der pandas & Co. installiert sind – z. B. <code>/home/…/projekt/.venv/bin/python</code> oder <code>~/miniforge3/envs/daten/bin/python</code>.
+Im Terminal dieser Umgebung zeigt <code>python -c "import sys; print(sys.executable)"</code> den Pfad.</p></div>`;
+}
+
 function renderWelcome() {
     const s = state.summary;
     const settings = state.ctx?.settings || {};
@@ -662,8 +680,9 @@ function renderWelcome() {
 <h2>Doku-Suche</h2>
 <p>Die Dokumentation kommt aus den Paketen, die in deiner Python-Umgebung installiert sind – passend zu deren Versionen und ohne Internet.</p>
 <p>Pakete: <code>${esc(settings.pakete || "numpy, pandas, matplotlib")}</code><br>
-Python: <code>${esc(settings.python || "automatisch (.venv des Projekts, Conda, python3)")}</code></p>
-<p>${state.building ? "Der Index wird gerade gebaut …" : '<button data-act="rebuild">Index jetzt bauen</button>'}</p>
+Python: <code>${esc(settings.python || "automatisch (Umgebungen im Projekt, Jupyter-Kernel, Conda, python3)")}</code></p>
+${state.buildLog && !state.building ? buildProblem(state.buildLog) : ""}
+<p>${state.building ? "Der Index wird gerade gebaut …" : `<button data-act="rebuild">${state.buildLog ? "Erneut versuchen" : "Index jetzt bauen"}</button>`}</p>
 <p class="inherited">Ändern unter Einstellungen → Erweiterungen → Doku-Suche.</p></div>`;
         return;
     }
