@@ -17,6 +17,7 @@ final class AppModel {
     private(set) var settingsRevision = 0
 
     init() {
+        Self.useBundledHelpers()
         let box = WeakBox<AppModel>()
         core = Atlas(sink: MainActorEventSink { event in box.value?.handle(event) })
         box.value = self
@@ -25,6 +26,20 @@ final class AppModel {
         ) { [core] _ in
             // macOS has no parent-death signal (P1.2): end background jobs here.
             core.stopAllBackgroundJobs()
+        }
+    }
+
+    /// The packaged app brings ripgrep (`Contents/Helpers/rg`) and ONNX
+    /// Runtime (`Contents/Frameworks/libonnxruntime.dylib`, P4.3); a Finder
+    /// start has no Homebrew in `PATH`. Set ones are kept (tests, debugging).
+    static func useBundledHelpers(bundle: Bundle = .main) {
+        let contents = bundle.bundleURL.appending(path: "Contents")
+        let helpers: [(String, URL)] = [
+            ("ATLAS_RG_BIN", contents.appending(path: "Helpers/rg")),
+            ("ORT_DYLIB_PATH", contents.appending(path: "Frameworks/libonnxruntime.dylib")),
+        ]
+        for (name, url) in helpers where FileManager.default.fileExists(atPath: url.path) {
+            setenv(name, url.path, 0)
         }
     }
 

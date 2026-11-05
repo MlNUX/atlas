@@ -51,6 +51,7 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Minux · GPL-3.0-or-later"
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   AtlasTests:
     type: bundle.unit-test
     platform: macOS

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Minux -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Hardened Runtime, no sandbox (terminal, any project folder). The
+     bundled helpers (rg, libonnxruntime) are signed with the app's
+     identity, so library validation stays on. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- macOS calendars next to the Atlas entries (P3.13, EventKit). -->
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+</dict>
+</plist>
