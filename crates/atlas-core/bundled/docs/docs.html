@@ -5,9 +5,10 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 Doku-Suche: die Dokumentation von Python-Paketen (pandas, numpy,
 matplotlib …) lokal durchsuchen, mit Filtern für Rückgabetyp, Parameter,
-Klasse/Modul, Art und Paket. Der Index entsteht aus den installierten
-Paketen selbst (index.py, Befehl „index“) und liegt im Cache-Ordner der
-Erweiterung. Läuft ohne Internet.
+Klasse/Modul, Art und Paket. Den Index baut Atlas aus den Quelltexten der
+installierten Pakete (atlas-core, pydocs; Anfrage „docsBuild“), ohne
+Python zu starten; er liegt im Cache-Ordner der Erweiterung. Läuft ohne
+Internet.
 -->
 <html lang="de">
 <head>
@@ -63,7 +64,7 @@ Erweiterung. Läuft ohne Internet.
 <footer>
   <span id="status" class="status">Index wird geladen …</span>
   <span class="spacer"></span>
-  <button id="rebuild" title="Index aus den installierten Paketen neu bauen (Einstellungen: Pakete, Python)">Index neu bauen</button>
+  <button id="rebuild" title="Index aus den installierten Paketen neu bauen (Einstellungen: Pakete, Umgebung)">Index neu bauen</button>
 </footer>
 <script src="docs.js"></script>
 </body>

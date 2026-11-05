@@ -411,6 +411,7 @@ Jede Anfrage liefert ein Ergebnis oder wird mit einem `Error` abgelehnt
 | `atlas.reveal(path)` | | zeigt sie im Explorer |
 | `atlas.message(text)` | | kurze Meldung unten im Fenster |
 | `atlas.close()` | | schließt das Fenster einer Ansicht mit `window: true`; im Tab `false` |
+| `docsBuild`, `docsStatus` | – | nur für die mitgelieferte Doku-Suche (`docs`): baut ihren Index im Hintergrund in Atlas und meldet `{running, code, log}` |
 
 **Pfade** sind absolut oder relativ zum Projekt. Atlas prüft **jeden** Pfad
 gegen `permissions: files`: `..` ist verboten, symbolische Links werden vor

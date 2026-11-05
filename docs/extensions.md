@@ -161,22 +161,33 @@ Arbeitsleiste oder die Karte in der Kontextleiste). Ohne Internet und
 passend zu den Versionen, mit denen das Projekt arbeitet.
 
 - **Index:** Beim ersten Öffnen baut die Suche ihn selbst (später: „Index
-  neu bauen“ unten rechts oder „Doku-Index neu bauen“ in der
-  Arbeitsleiste). Ein Python-Skript importiert jedes Paket aus der
-  Einstellung „Pakete“, liest dessen öffentliche Funktionen, Klassen,
-  Methoden und Eigenschaften mit Signatur und Docstring und zerlegt die
-  Docstrings (numpydoc-Format) in Parameter, Rückgabe, Beispiele usw. Das
-  dauert wenige Sekunden. Abgelegt unter `~/.cache/atlas/extensions/docs/`
-  (eine JSON-Datei je Paket).
-- **Python:** Einstellung „Python“, sonst sucht die Doku-Suche selbst:
-  `.venv`, `venv`, `env` im Projekt (auch in Unterordnern), die Pythons
-  der angemeldeten Jupyter-Kernel, die Umgebungen der Jupyter-Ansicht
-  (`~/.local/share/atlas/envs`), Conda-Umgebungen (`~/.conda/environments.txt`,
-  miniforge, miniconda, anaconda, micromamba), pyenv und zuletzt `python3`
-  im `PATH` und an den üblichen Orten. Jedes Paket kommt aus dem ersten
-  Python, das es hat – Atlas braucht dafür selbst kein Python im `PATH`.
-  Unten steht, mit welchem Python und wann der Index gebaut wurde; klappt
-  es nicht, zeigt das Fenster, wo gesucht wurde und was fehlt.
+  neu bauen“ unten rechts). Atlas liest dafür **nur die Dateien** der
+  installierten Pakete aus der Einstellung „Pakete“ – es startet kein
+  Python, führt keinen Code der Pakete aus und lädt nichts herunter
+  (`crates/atlas-core/src/pydocs`, in Rust). Es folgt den Importen,
+  `__all__` und den Typ-Stubs (`.pyi`) zur öffentlichen API, liest
+  Signaturen und Docstrings und zerlegt diese (numpydoc-Format) in
+  Parameter, Rückgabe, Beispiele usw. Dazu kommen Texte, die die Pakete
+  sonst erst beim Import zusammensetzen: numpys `add_newdoc(…)`,
+  matplotlibs von `Axes` übernommene `pyplot`-Texte und
+  `%(…)s`-Bausteine, Texte geerbter Methoden, und Docstrings aus
+  kompilierten Modulen (`.so`, z. B. `np.sin`, `numpy.random`). Das dauert
+  wenige Sekunden. Abgelegt unter `~/.cache/atlas/extensions/docs/` (eine
+  JSON-Datei je Paket).
+- **Grenzen:** Was nur im kompilierten Code steht und sich nicht sicher
+  zuordnen lässt, bleibt ohne Text (lieber keiner als ein falscher) – etwa
+  die Klassentexte von `pd.Timestamp`, `pd.Timedelta`, `pd.Period`. Texte,
+  die ein Paket beim Import erst berechnet, fehlen ebenso (z. B.
+  `Axes.fill_between`). Signatur und Parameter sind dann trotzdem da.
+- **Umgebung:** Einstellung „Umgebung“ (ihr Ordner, ihr Python oder ein
+  Ordner mit Paketen), sonst sucht die Doku-Suche selbst: `.venv`, `venv`,
+  `env` im Projekt (auch in Unterordnern), die Umgebungen der angemeldeten
+  Jupyter-Kernel, die der Jupyter-Ansicht (`~/.local/share/atlas/envs`),
+  Conda-Umgebungen (`~/.conda/environments.txt`, miniforge, miniconda,
+  anaconda, micromamba), pyenv, `~/.local/lib/python3.*` und zuletzt die
+  System-Pythons mit ihrer Standardbibliothek. Jedes Paket kommt aus dem
+  ersten Ordner, der es hat. Unten steht, woher und wann der Index gebaut
+  wurde; klappt es nicht, zeigt das Fenster, wo gesucht wurde.
 - **Suchen:** Alle Wörter müssen im Namen, im Pfad, in der Kurzbeschreibung
   oder in den Parameternamen vorkommen; „Volltext“ sucht im ganzen Text.
   Mehrere Wörter finden auch Namen mit Unterstrich (`read csv` →
@@ -203,8 +214,7 @@ passend zu den Versionen, mit denen das Projekt arbeitet.
 - **Tasten:** ↑/↓ wählen, Enter springt in den Text, Esc leert die Suche
   und schließt beim zweiten Mal das Fenster. Das Fenster merkt sich die
   letzte Suche.
-- Rechte: nur der eigene Cache-Ordner, kein Netzwerk; der Befehl startet
-  das gewählte Python.
+- Rechte: nur der eigene Cache-Ordner, kein Netzwerk, keine Programme.
 
 ## Format (API 2)
 

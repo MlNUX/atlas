@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Minux
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Docs search: loads the index of the packages (written by index.py into
+// Docs search: loads the index of the packages (written by Atlas, pydocs, into
 // the extension's cache folder), filters it by text, return type,
 // parameters, class/module, kind and package, and shows the docstring of
 // the selected entry (numpydoc/reST, rendered here).
@@ -181,9 +181,9 @@ async function loadIndex() {
     const missing = wanted.filter((p) => !summary.packages[p]);
     const parts = [state.packages.map((p) => `${p.name} ${p.version}`).join(" · ") || "leer",
                    `${state.entries.length.toLocaleString("de-DE")} Einträge`];
-    // Packages may come from different Pythons (each from the first that has it).
-    const pythons = [...new Set(Object.values(summary.packages).filter((i) => !i.error && i.python).map((i) => i.python))];
-    if (pythons.length) parts.push(`Python: ${pythons.join(", ")}`);
+    // Packages may come from different environments (each from the first that has it).
+    const sources = [...new Set(Object.values(summary.packages).filter((i) => !i.error && i.source).map((i) => i.source))];
+    if (sources.length) parts.push(`aus ${sources.join(", ")}`);
     if (summary.built) parts.push(`gebaut ${dateText(summary.built)}`);
     if (problems.length) parts.push(problems.join(", "));
     if (missing.length) parts.push(`noch nicht im Index: ${missing.join(", ")} – „Index neu bauen“`);
@@ -199,7 +199,7 @@ async function rebuild() {
     els.rebuild.disabled = true;
     setStatus("Index wird gebaut …", "busy");
     try {
-        await atlas.runCommand("index");
+        await atlas.call("docsBuild");
     } catch (err) {
         state.building = false;
         els.rebuild.disabled = false;
@@ -209,7 +209,7 @@ async function rebuild() {
     const started = Date.now();
     const poll = async () => {
         let s = {};
-        try { s = await atlas.commandStatus("index"); } catch (e) { /* older Atlas */ }
+        try { s = await atlas.call("docsStatus"); } catch (e) { /* older Atlas */ }
         const lines = String(s.log || "").trim().split("\n").filter(Boolean);
         if (s.running || (!("running" in s) && Date.now() - started < 3000)) {
             setStatus(`Index wird gebaut … ${lines[lines.length - 1] || ""}`, "busy");
@@ -455,7 +455,7 @@ function doctest(lines) {
 
 function indentOf(line) { return line.length - line.trimStart().length; }
 
-/** Body text of a docstring (numpydoc sections marked with §key by index.py). */
+/** Body text of a docstring (numpydoc sections marked with §key by pydocs). */
 function renderRst(text, from) {
     const lines = String(text || "").split("\n");
     const out = [];
@@ -660,16 +660,16 @@ function stripSummary(e) {
     return paras.join("\n\n");
 }
 
-/** Why the index could not be built: the message and where Python was looked for. */
+/** Why the index could not be built: the message and the folders searched. */
 function buildProblem(lines) {
     const searched = lines.filter((l) => /^\s/.test(l)).map((l) => l.trim());
-    const messages = lines.filter((l) => !/^\s/.test(l) && l !== "Gesucht in:" && !/wird gelesen|^Python \d/.test(l));
+    const messages = lines.filter((l) => !/^\s/.test(l) && !/wird gelesen|^fertig$|Gesucht in:$/.test(l));
     return `<div class="admonition warning" style="text-align:left">
 <div class="atitle">Index nicht gebaut</div>
 ${messages.slice(-4).map((m) => `<p>${esc(m)}</p>`).join("")}
-${searched.length ? `<p>Gesucht in (Python: gefundene Pakete):</p><pre class="code">${esc(searched.join("\n"))}</pre>` : ""}
-<p>Abhilfe: In den Einstellungen der Doku-Suche bei <b>Python</b> den Pfad zum Python der Umgebung eintragen, in der pandas & Co. installiert sind – z. B. <code>/home/…/projekt/.venv/bin/python</code> oder <code>~/miniforge3/envs/daten/bin/python</code>.
-Im Terminal dieser Umgebung zeigt <code>python -c "import sys; print(sys.executable)"</code> den Pfad.</p></div>`;
+${searched.length ? `<p>Gesucht in diesen Ordnern:</p><pre class="code">${esc(searched.join("\n"))}</pre>` : ""}
+<p>Abhilfe: In den Einstellungen der Doku-Suche bei <b>Umgebung</b> die Umgebung eintragen, in der pandas & Co. installiert sind – ihren Ordner (<code>~/projekt/.venv</code>, <code>~/miniforge3/envs/daten</code>) oder ihr Python (<code>…/.venv/bin/python</code>).
+Im Terminal dieser Umgebung zeigt <code>python -c "import pandas; print(pandas.__file__)"</code>, wo ein Paket liegt.</p></div>`;
 }
 
 function renderWelcome() {
@@ -678,9 +678,9 @@ function renderWelcome() {
     if (!s || !state.entries.length) {
         els.detail.innerHTML = `<div class="empty">
 <h2>Doku-Suche</h2>
-<p>Die Dokumentation kommt aus den Paketen, die in deiner Python-Umgebung installiert sind – passend zu deren Versionen und ohne Internet.</p>
+<p>Die Dokumentation kommt aus den Paketen, die in deiner Python-Umgebung installiert sind – passend zu deren Versionen. Atlas liest dafür nur ihre Dateien: kein Python, kein Internet.</p>
 <p>Pakete: <code>${esc(settings.pakete || "numpy, pandas, matplotlib")}</code><br>
-Python: <code>${esc(settings.python || "automatisch (Umgebungen im Projekt, Jupyter-Kernel, Conda, python3)")}</code></p>
+Umgebung: <code>${esc(settings.python || "automatisch (Umgebungen im Projekt, Jupyter-Kernel, Conda, System)")}</code></p>
 ${state.buildLog && !state.building ? buildProblem(state.buildLog) : ""}
 <p>${state.building ? "Der Index wird gerade gebaut …" : `<button data-act="rebuild">${state.buildLog ? "Erneut versuchen" : "Index jetzt bauen"}</button>`}</p>
 <p class="inherited">Ändern unter Einstellungen → Erweiterungen → Doku-Suche.</p></div>`;

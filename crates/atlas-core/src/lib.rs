@@ -32,6 +32,7 @@ pub mod perms;
 pub mod places;
 pub mod platform;
 pub mod project;
+pub mod pydocs;
 pub mod relations;
 pub mod search;
 pub mod secret;

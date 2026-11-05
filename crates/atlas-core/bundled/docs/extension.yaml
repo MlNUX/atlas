@@ -4,17 +4,19 @@
 # Doku-Suche: die Dokumentation von Python-Paketen (pandas, numpy,
 # matplotlib …) lokal durchsuchen – nach Namen, Rückgabetyp, Parametern,
 # Klasse/Modul, Art und Paket – in einem eigenen Fenster wie die
-# Projektsuche. Der Index entsteht aus den installierten Paketen (Befehl
-# „index“, index.py) und liegt im Cache-Ordner der Erweiterung.
+# Projektsuche. Den Index baut Atlas selbst (in Rust, crates/atlas-core/
+# src/pydocs) aus den Quelltexten der installierten Pakete: Es startet kein
+# Python, führt nichts aus und lädt nichts herunter. Er liegt im
+# Cache-Ordner der Erweiterung.
 atlas_api: 2
 name: docs
 title: Doku-Suche
-version: 1.0.1
+version: 2.0.0
 description: Dokumentation von pandas, numpy, matplotlib & Co. lokal durchsuchen – mit Filtern für Rückgabetyp, Parameter, Klasse und Art.
 context: true                 # als Karte in der Kontextleiste (abschaltbar)
 
 permissions:
-  run: [python3]              # index.sh startet das Python der Umgebung
+  run: []                     # startet keine Programme
   files: none                 # nur der eigene Cache-Ordner
   network: false
 
@@ -25,18 +27,10 @@ settings:
     type: string
     default: numpy, pandas, matplotlib, scipy, seaborn, sklearn
   - key: python
-    title: Python
-    description: Leer – automatisch (Umgebungen im Projekt, Jupyter-Kernel, Conda, pyenv, python3; je Paket das erste Python, das es hat). Sonst der Pfad zum Python der Umgebung mit den Paketen.
+    title: Umgebung
+    description: Leer – automatisch (Umgebungen im Projekt, Jupyter-Kernel, Conda, pyenv, System). Sonst die Umgebung mit den Paketen – ihr Ordner, ihr Python (…/.venv/bin/python) oder ihr site-packages-Ordner.
     type: path
     default: ""
-
-commands:
-  - id: index
-    name: Doku-Index neu bauen
-    description: Liest die Dokumentation der Pakete aus der Python-Umgebung und baut den Index der Doku-Suche.
-    command: ["{extension}/index.sh", "{cache}", "{project}", "{setting:python}", "{setting:pakete}"]
-    terminal: background
-    menu: [palette]
 
 views:
   - id: search

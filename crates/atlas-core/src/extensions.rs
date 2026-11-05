@@ -1072,8 +1072,6 @@ pub const BUNDLED: &[Bundled] = &[
             ("docs.html", include_str!("../bundled/docs/docs.html"), false),
             ("docs.css", include_str!("../bundled/docs/docs.css"), false),
             ("docs.js", include_str!("../bundled/docs/docs.js"), false),
-            ("index.sh", include_str!("../bundled/docs/index.sh"), true),
-            ("index.py", include_str!("../bundled/docs/index.py"), false),
         ],
     },
 ];
@@ -1558,6 +1556,8 @@ fn resolved(path: &Path) -> Result<PathBuf> {
 /// - `readFile {path}` → text, `writeFile {path, text}` (atomic, creates
 ///   folders), `exists {path}`
 /// - `renameFile {path, name}` → new path, `trashFile {path}`
+/// - `docsBuild`, `docsStatus` (only the docs search): build its index in
+///   the background ([`crate::pydocs`]) and how far it got
 ///
 /// Paths are checked with [`scoped_path`]. Opening files, messages and the
 /// theme are answered by the user interface.
@@ -1647,6 +1647,31 @@ pub fn call(
         "trashFile" => {
             crate::fileops::trash(&[path("path")?])?;
             json!(true)
+        }
+        // The docs search (bundled extension "docs"): its index is built in
+        // Atlas from the installed packages' sources (crate::pydocs), into
+        // its cache folder.
+        "docsBuild" if ext.name == "docs" => {
+            let values: HashMap<String, toml::Value> =
+                ext.setting_values(settings).into_iter().map(|(s, v)| (s.key.clone(), v)).collect();
+            let text = |key: &str| values.get(key).and_then(toml::Value::as_str).unwrap_or_default().to_owned();
+            let packages = crate::pydocs::package_list(&text("pakete"));
+            if packages.is_empty() {
+                bail!("Keine Pakete eingestellt");
+            }
+            let started =
+                crate::pydocs::start(cache_dir(&ext.name), packages, text("python"), project.map(Path::to_path_buf));
+            if !started {
+                bail!("Der Index wird schon gebaut");
+            }
+            json!(true)
+        }
+        "docsStatus" if ext.name == "docs" => {
+            json!(
+                crate::pydocs::status(&cache_dir(&ext.name))
+                    .map(|s| serde_json::to_value(s).unwrap_or_default())
+                    .unwrap_or_else(|| json!({}))
+            )
         }
         "renderMarkdown" => {
             let source = text("text")?;
@@ -1767,34 +1792,30 @@ mod tests {
     fn docs_search_has_a_window_and_its_own_cache() {
         let dir = tempfile::tempdir().unwrap();
         let ext_dir = install_bundled(&dir.path().join("extensions"), "docs").unwrap();
-        let mut ext = load(&ext_dir, Location::User);
+        let ext = load(&ext_dir, Location::User);
         assert!(ext.errors.is_empty(), "{:?}", ext.errors);
         assert_eq!(ext.permissions.as_ref().unwrap().files, FileAccess::None);
         let view = &ext.views[0];
         assert!(view.window && view.id == "view:docs/search" && view.keybinding.as_deref() == Some("F1"));
-        // The command gets the cache folder, the settings and the project.
-        ext.apply_settings(&toml::Table::new());
+        // No commands: the index is built in Atlas (docsBuild).
+        assert!(ext.actions.is_empty());
         let project = dir.path().join("projekt");
         std::fs::create_dir_all(&project).unwrap();
-        let ctx = Context { project: Some(project.clone()), paths: Vec::new(), line: 0 };
-        let index = ext.actions.iter().find(|a| a.id == "docs/index").unwrap();
-        let argv = index.prepare(&ctx).unwrap().argv;
         let cache = cache_dir("docs");
-        assert_eq!(
-            argv[argv.len() - 4..],
-            [
-                cache.to_string_lossy().into_owned(),
-                project.to_string_lossy().into_owned(),
-                String::new(),
-                "numpy, pandas, matplotlib, scipy, seaborn, sklearn".to_owned()
-            ]
-        );
         // The bridge: the cache folder yes, anything else no (files: none).
         let inside = cache.join("pandas.json");
         assert_eq!(scoped_path(&ext, Some(&project), &inside.to_string_lossy()).unwrap(), resolved(&inside).unwrap());
         assert!(scoped_path(&ext, Some(&project), "notiz.md").is_err());
         let context = call(&ext, Some(&project), &toml::Table::new(), "context", &serde_json::json!({})).unwrap();
         assert_eq!(context["cache"], serde_json::json!(cache.to_string_lossy()));
+        // Only the docs search may build the index.
+        let other = write_ext(dir.path(), "andere", "atlas_api: 2\nname: andere\n");
+        let other = load(&other, Location::User);
+        assert!(call(&other, Some(&project), &toml::Table::new(), "docsBuild", &serde_json::json!({})).is_err());
+        assert_eq!(
+            call(&ext, Some(&project), &toml::Table::new(), "docsStatus", &serde_json::json!({})).unwrap(),
+            serde_json::json!({})
+        );
     }
 
     #[test]
