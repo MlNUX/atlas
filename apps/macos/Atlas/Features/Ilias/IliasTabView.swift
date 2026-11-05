@@ -63,7 +63,7 @@ private struct IliasContent: View {
         .fileImporter(isPresented: $choosingDir, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { model.setDownloadDir(url.path) }
         }
-        .sheet(isPresented: $model.login.visible) {
+        .sheet(isPresented: Bindable(model.login).visible) {
             IliasLoginSheet(login: model.login)
         }
     }
