@@ -44,7 +44,7 @@ fn runtime_library() -> String {
         .ok()
         .filter(|p| !p.is_empty())
         .or_else(|| option_env!("ATLAS_ORT_DYLIB").map(str::to_owned))
-        .unwrap_or_else(|| "libonnxruntime.so".into())
+        .unwrap_or_else(|| atlas_core::platform::ONNX_RUNTIME.into())
 }
 
 #[cfg_attr(feature = "ffi", uniffi::export)]

@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P4.3 (macOS port): the package – Atlas.app with rg and ONNX Runtime,
+# Hardened Runtime, signature (ad hoc until the Developer ID exists), DMG;
+# installed from the DMG and started, screenshot in the log. The DMG is in
+# the artifact (dist/).
+name: mac-P4.3
+
+on:
+  push:
+    branches: ["port/macos/P4.3-*"]
+    paths:
+      - ".github/workflows/mac-P4.3.yml"
+      - "packaging/macos/**"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-ffi/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P4.3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: packaging/macos/ci-package.sh
+      artifact-name: mac-P4.3
+      cache-key: P4.3
