@@ -204,12 +204,17 @@ impl NoteFile {
 
     /// PNG of page `index` at `width_px` pixels, rendered once and cached.
     pub fn render_png(&self, index: usize, width_px: u32) -> Result<PathBuf> {
+        self.render_png_look(index, width_px, Look::AsWritten)
+    }
+
+    /// [`Self::render_png`] in the given [`Look`].
+    pub fn render_png_look(&self, index: usize, width_px: u32, look: Look) -> Result<PathBuf> {
         let width_px = width_px.clamp(100, 4000);
-        let out = self.render_path(index, width_px);
+        let out = self.render_path(index, width_px, look);
         if out.is_file() {
             return Ok(out);
         }
-        let (w, h, rgba) = self.render(index, width_px)?;
+        let (w, h, rgba) = self.render_look(index, width_px, look)?;
         std::fs::create_dir_all(out.parent().context("Pfad ohne Ordner")?)?;
         let partial = out.with_extension("part");
         image::save_buffer_with_format(&partial, &rgba, w, h, image::ColorType::Rgba8, image::ImageFormat::Png)?;
@@ -217,25 +222,45 @@ impl NoteFile {
         Ok(out)
     }
 
-    fn render_path(&self, index: usize, width_px: u32) -> PathBuf {
-        self.dir.join("render").join(format!("{index}-{}.png", width_px.clamp(100, 4000)))
+    /// Whether page `index` looks different in `look` (a dark page on its own
+    /// paper; pages with a PDF or picture background stay as they are).
+    pub fn changes_in(&self, index: usize, look: Look) -> bool {
+        look == Look::Light
+            && self.notebook.pages.get(index).is_some_and(|p| p.dark && p.pdf.is_none() && p.image.is_none())
+    }
+
+    fn render_path(&self, index: usize, width_px: u32, look: Look) -> PathBuf {
+        let suffix = if self.changes_in(index, look) { LIGHT_SUFFIX } else { "" };
+        self.dir.join("render").join(format!("{index}-{}{suffix}.png", width_px.clamp(100, 4000)))
     }
 
     /// The PNG of page `index` at `width_px`, if it was rendered already.
     pub fn rendered(&self, index: usize, width_px: u32) -> Option<PathBuf> {
-        Some(self.render_path(index, width_px)).filter(|p| p.is_file())
+        self.rendered_look(index, width_px, Look::AsWritten)
+    }
+
+    /// [`Self::rendered`] in the given [`Look`].
+    pub fn rendered_look(&self, index: usize, width_px: u32, look: Look) -> Option<PathBuf> {
+        Some(self.render_path(index, width_px, look)).filter(|p| p.is_file())
     }
 
     /// The widest PNG of page `index` rendered so far (a placeholder while the
     /// requested size is rendered, e.g. after zooming).
     pub fn any_rendered(&self, index: usize) -> Option<PathBuf> {
+        self.any_rendered_look(index, Look::AsWritten)
+    }
+
+    /// [`Self::any_rendered`] in the given [`Look`].
+    pub fn any_rendered_look(&self, index: usize, look: Look) -> Option<PathBuf> {
         let prefix = format!("{index}-");
+        let suffix = if self.changes_in(index, look) { format!("{LIGHT_SUFFIX}.png") } else { ".png".to_owned() };
         std::fs::read_dir(self.dir.join("render"))
             .ok()?
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().into_string().ok()?;
-                let width: u32 = name.strip_prefix(&prefix)?.strip_suffix(".png")?.parse().ok()?;
+                // (A width followed by the light suffix does not parse as a number.)
+                let width: u32 = name.strip_prefix(&prefix)?.strip_suffix(suffix.as_str())?.parse().ok()?;
                 Some((width, e.path()))
             })
             .max_by_key(|(width, _)| *width)
@@ -265,49 +290,61 @@ impl NoteFile {
     /// rendered or queued already). The newest request goes first, and only the
     /// last few wait, so fast scrolling renders what is visible now.
     pub fn render_in_background(self: &Arc<Self>, index: usize, width_px: u32) {
+        self.render_in_background_look(index, width_px, Look::AsWritten)
+    }
+
+    /// [`Self::render_in_background`] in the given [`Look`].
+    pub fn render_in_background_look(self: &Arc<Self>, index: usize, width_px: u32, look: Look) {
         let width_px = width_px.clamp(100, 4000);
-        if index >= self.notebook.pages.len() || self.rendered(index, width_px).is_some() {
+        if index >= self.notebook.pages.len() || self.rendered_look(index, width_px, look).is_some() {
             return;
         }
+        let look = if self.changes_in(index, look) { look } else { Look::AsWritten };
         let renderer = renderer();
-        let key = (self.dir.clone(), index, width_px);
+        let key = (self.dir.clone(), index, width_px, look);
         let mut state = renderer.state.lock().unwrap();
         if !state.queued.insert(key) {
             return;
         }
-        state.jobs.push((self.clone(), index, width_px));
+        state.jobs.push((self.clone(), index, width_px, look));
         while state.jobs.len() > MAX_QUEUED {
-            let (note, index, width) = state.jobs.remove(0);
-            state.queued.remove(&(note.dir.clone(), index, width));
+            let (note, index, width, look) = state.jobs.remove(0);
+            state.queued.remove(&(note.dir.clone(), index, width, look));
         }
         renderer.wake.notify_one();
     }
 
     /// Page `index` as RGBA pixels, `width_px` wide.
+    pub fn render(&self, index: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)> {
+        self.render_look(index, width_px, Look::AsWritten)
+    }
+
+    /// Page `index` as RGBA pixels, `width_px` wide, in the given [`Look`].
     #[cfg(not(feature = "pdf-poppler"))]
-    pub fn render(&self, _index: usize, _width_px: u32) -> Result<(u32, u32, Vec<u8>)> {
+    pub fn render_look(&self, _index: usize, _width_px: u32, _look: Look) -> Result<(u32, u32, Vec<u8>)> {
         bail!("Atlas-Notizen können in diesem Build nicht gezeichnet werden (ohne pdf-poppler)")
     }
 
-    /// Page `index` as RGBA pixels, `width_px` wide.
+    /// Page `index` as RGBA pixels, `width_px` wide, in the given [`Look`].
     #[cfg(feature = "pdf-poppler")]
-    pub fn render(&self, index: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)> {
+    pub fn render_look(&self, index: usize, width_px: u32, look: Look) -> Result<(u32, u32, Vec<u8>)> {
         let page = self.notebook.pages.get(index).context("Seite nicht vorhanden")?;
+        let light = self.changes_in(index, look);
         let scale = f64::from(width_px) / PAGE_WIDTH;
         let height_px = (page.height * scale).ceil().max(1.0) as u32;
         let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, width_px as i32, height_px as i32)?;
         {
             let cr = cairo::Context::new(&surface)?;
             cr.scale(scale, scale);
-            self.draw_paper(&cr, page)?;
+            self.draw_paper(&cr, page, light)?;
             for mark in &page.marks {
                 cr.save()?;
                 if mark.image.is_some() {
                     self.draw_image(&cr, mark)?;
                 } else if mark.text.is_some() {
-                    draw_text(&cr, mark)?;
+                    draw_text(&cr, mark, light)?;
                 } else {
-                    draw_stroke(&cr, mark)?;
+                    draw_stroke(&cr, mark, light)?;
                 }
                 cr.restore()?;
             }
@@ -330,8 +367,15 @@ impl NoteFile {
     }
 
     #[cfg(feature = "pdf-poppler")]
-    fn draw_paper(&self, cr: &cairo::Context, page: &Page) -> Result<()> {
-        let (r, g, b) = if page.dark { rgb(0x242528) } else { rgb(0xfffdf7) };
+    /// `light`: a dark page shown on white paper ([`Look::Light`]).
+    fn draw_paper(&self, cr: &cairo::Context, page: &Page, light: bool) -> Result<()> {
+        let (r, g, b) = if light {
+            rgb(LIGHT_PAPER)
+        } else if page.dark {
+            rgb(0x242528)
+        } else {
+            rgb(0xfffdf7)
+        };
         cr.set_source_rgb(r, g, b);
         cr.rectangle(0.0, 0.0, PAGE_WIDTH, page.height);
         cr.fill()?;
@@ -361,7 +405,7 @@ impl NoteFile {
             cr.restore()?;
             return Ok(());
         }
-        let (r, g, b) = if page.dark { rgb(0x424348) } else { rgb(0xd9dfeb) };
+        let (r, g, b) = if page.dark && !light { rgb(0x424348) } else { rgb(0xd9dfeb) };
         cr.set_source_rgb(r, g, b);
         cr.set_line_width(0.65);
         match page.paper.as_str() {
@@ -435,9 +479,9 @@ const RENDER_THREADS: usize = 2;
 
 #[derive(Default)]
 struct RenderState {
-    jobs: Vec<(Arc<NoteFile>, usize, u32)>,
-    /// Queued or being rendered: (cache folder, page, width).
-    queued: HashSet<(PathBuf, usize, u32)>,
+    jobs: Vec<(Arc<NoteFile>, usize, u32, Look)>,
+    /// Queued or being rendered: (cache folder, page, width, look).
+    queued: HashSet<(PathBuf, usize, u32, Look)>,
 }
 
 struct Renderer {
@@ -455,7 +499,7 @@ fn renderer() -> &'static Renderer {
                 .name(format!("atlasnote-render-{i}"))
                 .spawn(move || {
                     loop {
-                        let (note, index, width) = {
+                        let (note, index, width, look) = {
                             let mut state = renderer.state.lock().unwrap();
                             loop {
                                 if let Some(job) = state.jobs.pop() {
@@ -464,10 +508,10 @@ fn renderer() -> &'static Renderer {
                                 state = renderer.wake.wait(state).unwrap();
                             }
                         };
-                        if let Err(err) = note.render_png(index, width) {
+                        if let Err(err) = note.render_png_look(index, width, look) {
                             log::warn!("cannot render page {index} of an .atlasnote: {err:#}");
                         }
-                        renderer.state.lock().unwrap().queued.remove(&(note.dir.clone(), index, width));
+                        renderer.state.lock().unwrap().queued.remove(&(note.dir.clone(), index, width, look));
                     }
                 })
                 .expect("render thread");
@@ -479,6 +523,60 @@ fn renderer() -> &'static Renderer {
 /// First line of a pattern with spacing `step`, centred with at least `margin` at both edges (as on the tablet).
 pub fn paper_start(step: f64, margin: f64) -> f64 {
     (PAGE_WIDTH - ((PAGE_WIDTH - 2.0 * margin) / step).floor() * step) / 2.0
+}
+
+/// How pages are shown: as written on the tablet, or – for a light
+/// interface – dark pages on white paper, strokes and text with their
+/// lightness turned around and their hue kept (white ink becomes black, a
+/// pale red a deep red; highlighters stay). Pictures and PDF backgrounds
+/// stay as they are.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Look {
+    #[default]
+    AsWritten,
+    Light,
+}
+
+/// Paper of a dark page in [`Look::Light`].
+pub const LIGHT_PAPER: u32 = 0xffffff;
+/// File name suffix of renderings in [`Look::Light`].
+const LIGHT_SUFFIX: &str = "-light";
+
+/// A colour of a dark page for white paper: lightness `l` becomes `1 − l`
+/// (HSL), hue and saturation stay (also for UIs that draw notebooks
+/// themselves).
+pub fn light_ink(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    let d = max - min;
+    let l2 = 1.0 - l;
+    if d < 1e-9 {
+        return (l2, l2, l2);
+    }
+    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let h = if max == r {
+        ((g - b) / d).rem_euclid(6.0)
+    } else if max == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    } / 6.0;
+    let q = if l2 < 0.5 { l2 * (1.0 + s) } else { l2 + s - l2 * s };
+    let p = 2.0 * l2 - q;
+    let channel = |t: f64| {
+        let t = t.rem_euclid(1.0);
+        if t < 1.0 / 6.0 {
+            p + (q - p) * 6.0 * t
+        } else if t < 0.5 {
+            q
+        } else if t < 2.0 / 3.0 {
+            p + (q - p) * (2.0 / 3.0 - t) * 6.0
+        } else {
+            p
+        }
+    };
+    (channel(h + 1.0 / 3.0), channel(h), channel(h - 1.0 / 3.0))
 }
 
 /// Red, green and blue of `0xRRGGBB` (alpha bits ignored) in 0…1.
@@ -501,8 +599,10 @@ pub fn stroke_color(style: &Style) -> (f64, f64, f64, f64) {
 }
 
 #[cfg(feature = "pdf-poppler")]
-fn draw_stroke(cr: &cairo::Context, mark: &Mark) -> Result<()> {
+fn draw_stroke(cr: &cairo::Context, mark: &Mark, light: bool) -> Result<()> {
     let (r, g, b, alpha) = stroke_color(&mark.style);
+    // Highlighters are see-through and work on white paper as they are.
+    let (r, g, b) = if light && mark.style.tool != "HIGHLIGHTER" { light_ink(r, g, b) } else { (r, g, b) };
     let width = mark.style.width;
     let pressure = matches!(mark.style.tool.as_str(), "PEN" | "PENCIL");
     let translucent = alpha < 0.999;
@@ -543,11 +643,12 @@ fn draw_stroke(cr: &cairo::Context, mark: &Mark) -> Result<()> {
 }
 
 #[cfg(feature = "pdf-poppler")]
-fn draw_text(cr: &cairo::Context, mark: &Mark) -> Result<()> {
+fn draw_text(cr: &cairo::Context, mark: &Mark, light: bool) -> Result<()> {
     let text = mark.text.as_deref().unwrap_or_default();
     let origin = mark.points.first().context("Textfeld ohne Position")?;
     let size = mark.style.width;
     let (r, g, b, alpha) = stroke_color(&mark.style);
+    let (r, g, b) = if light { light_ink(r, g, b) } else { (r, g, b) };
     cr.translate(origin[1], origin[2]);
     cr.rotate(mark.rotation.to_radians());
     cr.set_source_rgba(r, g, b, alpha);
@@ -680,6 +781,43 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert_eq!(shared.any_rendered(0).map(|p| image::image_dimensions(p).unwrap().0), Some(800));
+    }
+
+    #[test]
+    fn light_ink_turns_lightness_around_and_keeps_the_hue() {
+        let close = |a: (f64, f64, f64), b: (f64, f64, f64)| {
+            (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9 && (a.2 - b.2).abs() < 1e-9
+        };
+        assert!(close(light_ink(1.0, 1.0, 1.0), (0.0, 0.0, 0.0)), "white becomes black");
+        assert!(close(light_ink(0.2, 0.2, 0.2), (0.8, 0.8, 0.8)));
+        assert!(close(light_ink(1.0, 0.0, 0.0), (1.0, 0.0, 0.0)), "pure red stays");
+        // Pale red (L 0.8) becomes deep red (L 0.2).
+        assert!(close(light_ink(1.0, 0.6, 0.6), (0.4, 0.0, 0.0)), "{:?}", light_ink(1.0, 0.6, 0.6));
+    }
+
+    #[test]
+    #[cfg(feature = "pdf-poppler")]
+    fn light_look_puts_dark_pages_on_white() {
+        let dir = tempfile::tempdir().unwrap();
+        test_cache();
+        let json = r#"{"version":3,"pages":[{"id":"p","paper":"BLANK","dark":true,"height":1414,"marks":[
+            {"id":"s","style":{"tool":"PEN","color":-1,"width":6},"rotation":0,"points":[[1,100,100,0,0,-1,-1,-1],[1,400,100,1,0,-1,-1,-1]]}]},
+            {"id":"q","paper":"BLANK","dark":false,"height":1414,"marks":[]}]}"#;
+        let note = NoteFile::open(&archive(dir.path(), json, &[])).unwrap();
+        let px = |rgba: &[u8], x: usize, y: usize| rgba[(y * 1000 + x) * 4..][..4].to_vec();
+        let (_, _, dark) = note.render_look(0, 1000, Look::AsWritten).unwrap();
+        assert_eq!(px(&dark, 900, 900), [0x24, 0x25, 0x28, 255]);
+        assert_eq!(px(&dark, 250, 100), [255, 255, 255, 255], "white ink as written");
+        let (_, _, light) = note.render_look(0, 1000, Look::Light).unwrap();
+        assert_eq!(px(&light, 900, 900), [255, 255, 255, 255], "white paper");
+        assert_eq!(px(&light, 250, 100), [0, 0, 0, 255], "white ink becomes black");
+        // Light pages look the same either way and share one rendering.
+        assert!(note.changes_in(0, Look::Light) && !note.changes_in(1, Look::Light));
+        let light_file = note.render_png_look(0, 400, Look::Light).unwrap();
+        assert!(light_file.to_string_lossy().ends_with("-light.png"));
+        assert_eq!(note.rendered(0, 400), None, "the dark rendering is a file of its own");
+        assert_eq!(note.any_rendered_look(0, Look::Light), Some(light_file));
+        assert_eq!(note.render_png_look(1, 400, Look::Light).unwrap(), note.render_png(1, 400).unwrap());
     }
 
     #[test]
