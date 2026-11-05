@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use atlas_core::annotations::{self as core, AnnotationFile, Fingerprint, Kind, Match, Store};
+use atlas_core::pdf::formulas;
 
 use crate::events::{Event, Sink};
 use crate::{AtlasError, Result};
@@ -129,6 +130,30 @@ pub struct PdfStatus {
 #[cfg_attr(feature = "ffi", derive(uniffi::Record))]
 pub struct Snapshot {
     pub data: String,
+}
+
+/// One character of a page's text layer as PDFKit reads it (rectangle in
+/// Atlas page coordinates, see the module docs), for finding formulas.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct PdfGlyph {
+    /// The character (one Unicode scalar; more are cut).
+    pub text: String,
+    pub rect: Rect,
+    /// Font name (`CMMI10`, `LatinModernMath-Regular` …).
+    pub font: String,
+    pub size: f64,
+}
+
+/// A formula found in the text: the area to cut out for [`crate::ocr::LatexOcr`]
+/// and the pixels per point to render it with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct FormulaClip {
+    pub area: Rect,
+    pub scale: f64,
+    /// Alone on its lines: becomes `$$…$$`.
+    pub display: bool,
 }
 
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
@@ -397,6 +422,30 @@ impl PdfDocument {
         candidate.to_string_lossy().into_owned()
     }
 
+    /// Formulas in the text of a page (`within` empty) or of a selection
+    /// (its rectangles), at most `pdf::formulas::MAX_FORMULAS`. The UI
+    /// renders each clip in greyscale, recognises it with `LatexOcr` and
+    /// passes the results, in the same order, to [`PdfDocument::text_with_latex`].
+    pub fn formula_clips(&self, glyphs: Vec<PdfGlyph>, within: Vec<Rect>) -> Vec<FormulaClip> {
+        let text = page_text(&glyphs, &within);
+        (0..text.formulas.len())
+            .map(|i| FormulaClip {
+                area: rect_out(text.clip_area(i)),
+                scale: text.clip_scale(i),
+                display: text.formulas[i].display,
+            })
+            .collect()
+    }
+
+    /// The text with its formulas as LaTeX (`$…$`, `$$…$$`); `latex[i]`
+    /// belongs to clip `i` of [`PdfDocument::formula_clips`], `None` keeps
+    /// the formula as the PDF has it.
+    pub fn text_with_latex(&self, glyphs: Vec<PdfGlyph>, within: Vec<Rect>, latex: Vec<Option<String>>) -> String {
+        let text = page_text(&glyphs, &within);
+        let latex: Vec<Option<String>> = latex.into_iter().map(|l| l.map(|t| formulas::tidy(&t))).collect();
+        text.with_latex(&latex)
+    }
+
     /// Re-reads the annotation file (changed by sync or another window).
     pub fn reload(&self) -> Result<PdfStatus> {
         let attached = self.lock().attached.clone();
@@ -445,6 +494,36 @@ impl PdfDocument {
 
     fn changed(&self) {
         self.sink.on_event(Event::AnnotationsChanged { path: self.path.to_string_lossy().into_owned() });
+    }
+}
+
+/// `[x0, y0, x1, y1]` of an API rectangle.
+fn corners(r: &Rect) -> [f64; 4] {
+    [r.x, r.y, r.x + r.width, r.y + r.height]
+}
+
+fn rect_out(c: [f64; 4]) -> Rect {
+    Rect { x: c[0].min(c[2]), y: c[1].min(c[3]), width: (c[2] - c[0]).abs(), height: (c[3] - c[1]).abs() }
+}
+
+/// The glyphs (only those inside `within`, if given) with their formulas.
+fn page_text(glyphs: &[PdfGlyph], within: &[Rect]) -> formulas::PageText {
+    let glyphs: Vec<formulas::Glyph> = glyphs
+        .iter()
+        .filter_map(|g| {
+            Some(formulas::Glyph {
+                ch: g.text.chars().next()?,
+                rect: corners(&g.rect),
+                font: g.font.clone(),
+                size: g.size,
+            })
+        })
+        .collect();
+    if within.is_empty() {
+        formulas::PageText::new(glyphs)
+    } else {
+        let rects: Vec<[f64; 4]> = within.iter().map(corners).collect();
+        formulas::PageText::new(formulas::subset(&glyphs, &rects))
     }
 }
 
