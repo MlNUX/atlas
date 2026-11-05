@@ -71,7 +71,9 @@ final class ProjectModel {
         editor.onChange = { [weak self] in self?.scheduleSave() }
         if UserDefaults.standard.string(forKey: "AtlasSearch") != nil { searchVisible = true }
         if let path = UserDefaults.standard.string(forKey: "AtlasOpenFile") {
-            editor.open(path: core.absolutePath(relative: path), mode: .tab)
+            // Virtual tabs (`ilias:`, `calendar:` …) stay as they are.
+            let virtual = path.hasSuffix(":") && !path.contains("/")
+            editor.open(path: virtual ? path : core.absolutePath(relative: path), mode: .tab)
         }
     }
 
