@@ -21,6 +21,12 @@ say "Xcode project"
 xcodegen generate --quiet
 
 say "xcodebuild test"
+# Swift packages (Sparkle) come from GitHub: retry when a download fails (504 …).
+for attempt in 1 2 3 4; do
+  xcodebuild -resolvePackageDependencies -project Atlas.xcodeproj -scheme Atlas >"$out/resolve.log" 2>&1 && break
+  [[ $attempt == 4 ]] && { tail -n 20 "$out/resolve.log"; exit 1; }
+  echo "package download failed, retry $attempt"; sleep $((attempt * 15))
+done
 xcodebuild -project Atlas.xcodeproj -scheme Atlas -destination 'platform=macOS,arch=arm64' \
   -derivedDataPath "$derived" -resultBundlePath "$out/Atlas.xcresult" -skipPackagePluginValidation \
   test >"$out/xcodebuild.log" 2>&1 || { grep -E "error:|✘|failed" "$out/xcodebuild.log" | head -n 60; exit 1; }

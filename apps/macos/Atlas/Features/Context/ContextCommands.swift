@@ -3,9 +3,18 @@
 
 import SwiftUI
 
-/// Menu items of P3.6 (empty until the task adds them).
+/// „Kontextleiste bearbeiten“ (P3.6), next to „Kontextleiste ein/aus“.
 struct ContextCommands: Commands {
+    @FocusedValue(\.project) private var project
+
     var body: some Commands {
-        EmptyCommands()
+        CommandGroup(after: .sidebar) {
+            Button(project?.contextEditing == true ? "Kontextleiste fertig bearbeiten" : "Kontextleiste bearbeiten") {
+                guard let project else { return }
+                project.inspectorVisible = true
+                project.contextEditing.toggle()
+            }
+            .disabled(project == nil)
+        }
     }
 }

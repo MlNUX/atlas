@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P3.6 (macOS port): the context bar – build, unit tests, sample note open,
+# screenshots in the log (apps/macos/scripts/ci-screenshots.sh), context bar with outline, links, tags.
+name: mac-P3.6
+
+on:
+  push:
+    branches: ["port/macos/P3.6-*"]
+    paths:
+      - ".github/workflows/mac-P3.6.yml"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-ffi/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P3.6-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: apps/macos/scripts/ci-app.sh
+      artifact-name: mac-P3.6
+      cache-key: P3.6

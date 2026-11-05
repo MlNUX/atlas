@@ -24,10 +24,11 @@ struct SearchWindowView: View {
         .onAppear {
             let m = SearchModel(project: project)
             // CI and UI tests: `-AtlasSearch <pattern>` searches at once.
-            if let pattern = UserDefaults.standard.string(forKey: "AtlasSearch") {
+            if let pattern = project.searchPrefill ?? UserDefaults.standard.string(forKey: "AtlasSearch") {
                 m.pattern = pattern
                 m.start()
             }
+            project.searchPrefill = nil
             model = m
         }
         .onDisappear { model?.stop() }
