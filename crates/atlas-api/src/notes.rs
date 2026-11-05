@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use atlas_core::markdown;
 use atlas_core::notes::{LinkAnchor, NoteIndex};
 use atlas_core::relations::Relations;
+use atlas_core::{assets, markdown};
 
 use crate::events::{Event, Level};
 use crate::inner::Shared;
@@ -122,6 +122,31 @@ pub struct LinkRepair {
     pub suggestion: String,
 }
 
+/// A note quoting a marked passage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct Citation {
+    pub note: String,
+    pub line: u32,
+    /// Front-matter title of the note, if it has one.
+    pub title: Option<String>,
+}
+
+/// Marked text of a PDF in the project (a mark over several pages is one
+/// passage, its text joined), with the notes that quote it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "ffi", derive(uniffi::Record))]
+pub struct MarkedPassage {
+    pub pdf: String,
+    /// Page of the first part (1-based).
+    pub page: u32,
+    pub annotation_id: String,
+    pub text: String,
+    pub comment: String,
+    pub color: String,
+    pub cited: Vec<Citation>,
+}
+
 #[cfg_attr(feature = "ffi", derive(uniffi::Object))]
 pub struct Notes {
     shared: Arc<Shared>,
@@ -152,6 +177,16 @@ impl Notes {
             message: "Verknüpfungen brauchen den Ordner .atlas/ (nicht beschreibbar).".into(),
         })?;
         Ok(Relations::new(&project.atlas_dir()))
+    }
+
+    /// The project's annotation store (Atlas' state folder without `.atlas/`).
+    fn annotation_store(&self) -> atlas_core::annotations::Store {
+        match &self.shared.project {
+            Some(p) => atlas_core::annotations::Store::for_atlas_dir(&p.atlas_dir()),
+            None => {
+                atlas_core::annotations::Store::new(atlas_core::paths::state_root().join(atlas_core::annotations::DIR))
+            }
+        }
     }
 
     fn message(&self, text: String) {
@@ -590,5 +625,136 @@ impl Notes {
         self.shared.bump_notes();
         self.message(format!("{} Link(s) repariert", fixes.len()));
         Ok(())
+    }
+
+    /// All marked passages of the project's PDFs, sorted by PDF, page and
+    /// file order, with the notes quoting them („Zitate nach PDF
+    /// gruppiert“). A deleted mark is gone, even if a note still quotes it.
+    pub fn marked_passages(&self) -> Vec<MarkedPassage> {
+        let root = &self.shared.root;
+        let mut cited: HashMap<String, Vec<Citation>> = HashMap::new();
+        self.with(|n| {
+            for (_, q) in n.quotes() {
+                let LinkAnchor::Annotation(_, id) = &q.anchor else { continue };
+                let title = n.note(&q.source).and_then(|note| note.title.clone());
+                cited.entry(id.clone()).or_default().push(Citation {
+                    note: string(&q.source),
+                    line: q.line as u32,
+                    title,
+                });
+            }
+        });
+        let mut list: Vec<(String, u32, usize, MarkedPassage)> = Vec::new();
+        for (_, file) in self.annotation_store().all() {
+            let key = &file.document.path;
+            let pdf =
+                if Path::new(key).is_absolute() { PathBuf::from(key) } else { root.join(key.trim_start_matches('/')) };
+            if !pdf.starts_with(root) {
+                continue;
+            }
+            let sort_key = string(&self.relative(&pdf));
+            let mut groups: HashMap<String, usize> = HashMap::new();
+            for a in file.annotations.iter().filter(|a| a.kind.is_text_markup() && !a.text.trim().is_empty()) {
+                if !a.group.is_empty()
+                    && let Some(&i) = groups.get(&a.group)
+                {
+                    let joined = format!("{} {}", list[i].3.text, a.text.trim());
+                    list[i].3.text = joined;
+                    continue;
+                }
+                if !a.group.is_empty() {
+                    groups.insert(a.group.clone(), list.len());
+                }
+                let order = list.len();
+                list.push((
+                    sort_key.clone(),
+                    a.page,
+                    order,
+                    MarkedPassage {
+                        pdf: string(&pdf),
+                        page: a.page,
+                        annotation_id: a.id.clone(),
+                        text: a.text.trim().to_owned(),
+                        comment: a.comment.clone(),
+                        color: a.color.clone(),
+                        cited: cited.get(&a.id).cloned().unwrap_or_default(),
+                    },
+                ));
+            }
+        }
+        list.sort_by(|a, b| (&a.0, a.1, a.2).cmp(&(&b.0, b.1, b.2)));
+        list.into_iter().map(|e| e.3).collect()
+    }
+
+    /// Where a picture cut out of page `page` of `pdf` goes for `note`
+    /// (absolute paths): a free name in the project's `assets/` (next to
+    /// the note outside a project), the folder created. The UI renders the
+    /// PNG there (PDFKit) and then asks for [`Notes::image_quote`].
+    pub fn image_target(&self, note: String, pdf: String, page: u32) -> Result<String> {
+        let (note, pdf) = (path(&note), path(&pdf));
+        let dir = assets::assets_dir(Some(&self.shared.root), &note);
+        std::fs::create_dir_all(&dir)?;
+        let stem = pdf.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "pdf".into());
+        let name = assets::new_image_name(Path::new(&format!("{stem}-s{}.md", page.max(1))), "png");
+        Ok(string(&assets::unique_path(&dir, &name)))
+    }
+
+    /// Markdown for a picture of a PDF page in `note`: the picture and the
+    /// source as caption with a link to the page (as on Linux).
+    pub fn image_quote(&self, note: String, image: String, pdf: String, page: u32) -> String {
+        let (note, image, pdf) = (path(&note), path(&image), path(&pdf));
+        let root = &self.shared.root;
+        let page = page.max(1);
+        let file_name =
+            pdf.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().replace(['[', ']'], "");
+        let source = if pdf.starts_with(root) && note.starts_with(root) {
+            format!("/{}", string(&self.relative(&pdf)))
+        } else {
+            string(&markdown::relative_path(note.parent().unwrap_or(Path::new("/")), &pdf))
+        };
+        let label = format!("{file_name}, S. {page}");
+        format!(
+            "![{label}]({})\n*[{label}]({})*",
+            assets::link_from(&note, &image),
+            atlas_core::annotations::link(&source, page, None)
+        )
+    }
+
+    /// A free path in the assets folder for a picture pasted into `note`
+    /// (`ext` such as `png`), the folder created. The UI writes the
+    /// clipboard's picture there and inserts [`Notes::image_markdown`].
+    pub fn new_image_path(&self, note: String, ext: String) -> Result<String> {
+        let note = path(&note);
+        let dir = assets::assets_dir(Some(&self.shared.root), &note);
+        std::fs::create_dir_all(&dir)?;
+        let ext = if ext.trim().is_empty() { "png".to_owned() } else { ext.trim().trim_start_matches('.').to_owned() };
+        Ok(string(&assets::unique_path(&dir, &assets::new_image_name(&note, &ext))))
+    }
+
+    /// `![name](relative link)` for a picture in `note`.
+    pub fn image_markdown(&self, note: String, image: String) -> String {
+        assets::image_markdown(&path(&note), &path(&image))
+    }
+
+    /// Inserts files dropped or pasted into `note`: pictures and other files
+    /// from outside the project are copied into the assets folder, files of
+    /// the project are linked where they are. Returns the Markdown, one
+    /// line per file (files that cannot be read are skipped).
+    pub fn import_files(&self, note: String, paths: Vec<String>) -> String {
+        let note = path(&note);
+        let root = Some(self.shared.root.as_path());
+        paths
+            .iter()
+            .map(|p| path(p.strip_prefix("file://").map(atlas_core::text::percent_decode).as_deref().unwrap_or(p)))
+            .filter(|f| f.is_file())
+            .filter_map(|f| match assets::import(root, &note, &f) {
+                Ok(markdown) => Some(markdown),
+                Err(err) => {
+                    log::warn!("cannot insert {}: {err:#}", f.display());
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
