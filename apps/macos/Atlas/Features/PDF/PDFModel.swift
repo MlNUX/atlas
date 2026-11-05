@@ -6,6 +6,24 @@ import Foundation
 import Observation
 import PDFKit
 
+/// What a click or drag on the page does.
+enum PDFTool: String, CaseIterable, Sendable {
+    /// Select text (and click annotations).
+    case select
+    /// Freehand strokes.
+    case ink
+    /// Pin a comment.
+    case note
+}
+
+/// Entry of the outline (table of contents) of a PDF.
+struct PDFOutlineEntry: Identifiable {
+    let id = UUID()
+    let title: String
+    let page: Int
+    let level: Int
+}
+
 /// One open PDF: PDFKit document for display, the core's `PdfDocument` for
 /// the Atlas data (annotations in `.atlas/annotations/`, shared with Linux).
 @MainActor
@@ -23,6 +41,11 @@ final class PDFModel {
     /// The Atlas annotation clicked last (for deleting, editing the comment).
     var selectedAnnotation: String?
     var sidebarVisible = true
+    var tool: PDFTool = .select
+    /// Dark mode: pages inverted onto dark paper, colours kept (Linux: `pdf.dark`).
+    var dark = false
+    /// Freehand stroke width in points.
+    var inkWidth: Double = 2
     var searchText = ""
     private(set) var searchHits: [PDFSelection] = []
     /// Bumped whenever the shown annotations must be rebuilt.
@@ -97,6 +120,74 @@ final class PDFModel {
             self.error = "\(error)"
         }
     }
+
+    /// Adds freehand strokes on page `index` (0-based); points in page space.
+    func addInk(page index: Int, strokes: [[CGPoint]]) {
+        guard let core, let document, let page = document.page(at: index), !strokes.isEmpty else { return }
+        let geo = PageGeometry(page: page)
+        let ink = strokes.map { stroke in
+            Stroke(points: stroke.map { p in
+                let a = geo.toAtlas(p)
+                return Point(x: a.x, y: a.y)
+            })
+        }
+        do {
+            _ = try core.add(annotation: Annotation(
+                id: "", kind: .ink, page: UInt32(index + 1), rects: [], text: "", comment: "", color: color,
+                ink: ink, width: inkWidth, title: "", group: "", created: 0, modified: 0))
+            showAnnotations()
+        } catch {
+            self.error = "\(error)"
+        }
+    }
+
+    /// Pins a comment at `point` (page space) on page `index`; returns its id.
+    func addNote(page index: Int, at point: CGPoint) -> String? {
+        guard let core, let document, let page = document.page(at: index) else { return nil }
+        let geo = PageGeometry(page: page)
+        let icon = geo.toAtlasRect(CGRect(x: point.x - 10, y: point.y - 10, width: 20, height: 20))
+        do {
+            let id = try core.add(annotation: Annotation(
+                id: "", kind: .note, page: UInt32(index + 1), rects: [icon], text: "", comment: "", color: color,
+                ink: [], width: nil, title: "", group: "", created: 0, modified: 0))
+            showAnnotations()
+            return id
+        } catch {
+            self.error = "\(error)"
+            return nil
+        }
+    }
+
+    var bookmarks: [Annotation] { annotations.filter { $0.kind == .bookmark }.sorted { $0.page < $1.page } }
+
+    /// The PDF's own table of contents, flattened with levels.
+    var outline: [PDFOutlineEntry] {
+        guard let document, let root = document.outlineRoot else { return [] }
+        var out: [PDFOutlineEntry] = []
+        func walk(_ item: PDFOutline, level: Int) {
+            for i in 0..<item.numberOfChildren {
+                guard let child = item.child(at: i) else { continue }
+                let page = child.destination?.page.map { document.index(for: $0) } ?? 0
+                out.append(PDFOutlineEntry(title: child.label ?? "", page: page, level: level))
+                walk(child, level: level + 1)
+            }
+        }
+        walk(root, level: 0)
+        return out
+    }
+
+    /// Writes a copy with the annotations embedded (PDFKit; the original is
+    /// never written). Bookmarks have no PDF equivalent and are left out.
+    func export(to url: URL) -> Bool {
+        guard let document else { return false }
+        if url.standardizedFileURL == URL(fileURLWithPath: path).standardizedFileURL {
+            error = "Der Export darf die Original-PDF nicht überschreiben."
+            return false
+        }
+        return document.write(to: url)
+    }
+
+    var defaultExportPath: String { core?.defaultExportPath() ?? path }
 
     /// Bookmark for the page `index` (0-based).
     func bookmark(page index: Int, title: String) {
