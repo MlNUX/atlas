@@ -1,18 +1,19 @@
 # Atlas Workspace
 
-**Ein dateizentrierter Arbeitsplatz für Linux:** Projektordner, PDFs,
+**Ein dateizentrierter Arbeitsplatz für Linux und macOS:** Projektordner, PDFs,
 Markdown-Notizen, Code und Terminal in einem Fenster – für Studium,
 Forschung und alle, die mit vielen Dateien in einem Ordner arbeiten.
 
-*A file-centric workspace for Linux (Qt 6, Wayland-first): project folder,
-PDF annotation, linked Markdown notes and a terminal. The interface is
-German for now.*
+*A file-centric workspace for Linux (Qt 6, Wayland-first) and macOS (SwiftUI,
+from 1.1.5): project folder, PDF annotation, linked Markdown notes and a
+terminal. The interface is German for now.*
 
 ![Atlas mit PDF, Markdown-Notiz und Terminal](docs/screenshots/arbeitsbereich.png)
 
 Deine Dateien bleiben gewöhnliche Dateien in deinem Ordner. Atlas legt nur
 einen versteckten Unterordner `.atlas/` an (Sessions, Anmerkungen, Index) und
-verändert weder PDFs noch Notizen ungefragt.
+verändert weder PDFs noch Notizen ungefragt. Linux und Mac lesen dasselbe
+Format: ein Projekt in einem synchronisierten Ordner geht auf beiden.
 
 ## Funktionen
 
@@ -45,7 +46,8 @@ verändert weder PDFs noch Notizen ungefragt.
 ## Installation
 
 Atlas läuft unter Linux (x86_64 und aarch64), entwickelt unter Wayland
-(Hyprland); X11 geht auch.
+(Hyprland); X11 geht auch. Ab Version 1.1.5 gibt es Atlas auch für
+[macOS](#macos).
 
 **Nix** – ausprobieren ohne Installation:
 
@@ -103,6 +105,34 @@ QMAKE=qmake6 cargo build --release -p atlas-app
 meldet Atlas beim Start „Keine Wörterbücher gefunden“ und prüft nicht.
 Eigener Ordner: `ATLAS_HUNSPELL_DIRS=/pfad atlas`.
 
+### macOS
+
+Atlas für den Mac ist eine eigene App (SwiftUI) auf demselben Rust-Kern. Sie
+braucht **macOS 26** oder neuer und einen Mac mit **Apple Silicon** (M1 oder
+neuer).
+
+1. `Atlas-<Version>.dmg` von der [neuesten Release](https://github.com/MlNUX/atlas/releases/latest)
+   laden.
+2. Das DMG öffnen und **Atlas** auf **Programme** ziehen.
+3. Atlas aus dem Programme-Ordner starten und einen Projektordner wählen.
+
+Solange die App nicht mit einer Apple-Developer-ID signiert ist, lehnt macOS
+sie beim ersten Start ab. Dann einmal **Systemeinstellungen → Datenschutz &
+Sicherheit → „Dennoch öffnen“** wählen, oder im Terminal:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Atlas.app
+```
+
+Die Release-Notiz sagt, ob das nötig ist. ripgrep (Suche) und ONNX Runtime
+(Formeln als LaTeX) sind in der App enthalten, Homebrew ist nicht nötig. Die
+Rechtschreibprüfung nimmt die Wörterbücher von macOS. Updates kommen über
+**Atlas → Nach Updates suchen …** (sonst prüft Atlas täglich selbst).
+
+Was auf dem Mac schon geht und was noch fehlt:
+[Paritätstabelle](docs/porting/paritaet.md); Tastenkürzel mit Mac-Spalte:
+[docs/shortcuts.md](docs/shortcuts.md).
+
 ## Erste Schritte
 
 ```sh
@@ -127,18 +157,21 @@ Alle Kürzel: [docs/shortcuts.md](docs/shortcuts.md).
 
 ## Konfiguration und Daten
 
-- Einstellungen im Dialog (Menü oben rechts) oder in
-  `~/.config/atlas/config.toml`.
+- Einstellungen im Dialog (Menü oben rechts, auf dem Mac **Atlas →
+  Einstellungen …**, ⌘,) oder in `~/.config/atlas/config.toml` (Mac:
+  `~/Library/Application Support/Atlas/config.toml`).
 - Eigene Aktionen: [docs/actions.md](docs/actions.md), Erweiterungen:
   [docs/extensions.md](docs/extensions.md); Handbuch zum Entwickeln mit
   Beispiel in Rust: [docs/extensions-guide.md](docs/extensions-guide.md).
 - Projektdaten liegen in `.atlas/` im Projekt, gerätebezogene unter
-  `~/.local/state/atlas`; alle Dateien und Optionen:
+  `~/.local/state/atlas` (Mac: `~/Library/Application Support/atlas`); alle
+  Dateien und Optionen:
   [docs/data-format.md](docs/data-format.md).
 - Passwörter stehen nie in Konfiguration oder Projekt: Atlas speichert sie
   verschlüsselt mit `systemd-creds` oder holt sie von einem Befehl wie
   `pass` (das Nextcloud-Passwort ohne systemd-creds als Datei, die nur du
-  lesen kannst; das ILIAS-Passwort dann gar nicht).
+  lesen kannst; das ILIAS-Passwort dann gar nicht). Auf dem Mac liegen sie im
+  Schlüsselbund.
 
 ## Entwicklung
 
@@ -155,6 +188,11 @@ Anmerkungen, Notizen, Kalender), daneben ebenfalls ohne Qt
 `crates/atlas-terminal` (Terminal-Emulation), `crates/atlas-spell`
 (Rechtschreibung) und `crates/atlas-ilias` (ILIAS); `crates/atlas-app` ist
 die Qt-6/QML-Oberfläche über [cxx-qt](https://github.com/KDAB/cxx-qt).
+Die Mac-App liegt in `apps/macos` (SwiftUI, Swift-Paket `AtlasKit` mit den
+UniFFI-Bindungen von `crates/atlas-api`); Einrichtung und Bauen:
+[apps/macos/scripts/README.md](apps/macos/scripts/README.md), Paket und
+Updates: [packaging/macos/README.md](packaging/macos/README.md), Plan des
+Ports: [docs/porting/macos-swiftui.md](docs/porting/macos-swiftui.md).
 Konzept und Entwicklungsberichte: [docs/README.md](docs/README.md),
 Änderungen: [CHANGELOG.md](CHANGELOG.md).
 
