@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P3.1 (macOS port): file tree, folder view, places, trash – build, unit
+# tests, sample project opened on a folder (screenshots in the log).
+name: mac-P3.1
+
+on:
+  push:
+    branches: ["port/macos/P3.1-*"]
+    paths:
+      - ".github/workflows/mac-P3.1.yml"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P3.1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      # On failure the test lines of xcodebuild and a crash report into the log.
+      run: |
+        ATLAS_CI_OPEN_FILE=Notizen apps/macos/scripts/ci-app.sh || {
+          grep -aE -A2 "ATLAS-DIAG|✘|rash|Fatal|Restart|signal|unexpected|Assertion|Thread [0-9]+ Crashed" \
+            "$ATLAS_CI_OUT/xcodebuild.log" | grep -v "Connection\]" | tail -n 120
+          report="$(ls -t ~/Library/Logs/DiagnosticReports/Atlas* 2>/dev/null | head -n 1 || true)"
+          if [[ -n "$report" ]]; then echo "== $report"; head -c 6000 "$report"; fi
+          exit 1
+        }
+      artifact-name: mac-P3.1
+      cache-key: P3.1
