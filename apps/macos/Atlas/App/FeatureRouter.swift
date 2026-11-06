@@ -12,6 +12,11 @@ enum FeatureRouter {
         let processor = tab.processor
         if processor.hasPrefix("view:") {
             ExtensionPageView(project: project, viewId: processor, source: tab.path)
+        } else if processor == "atlas:html" {
+            HtmlDocumentView(project: project, path: tab.path)
+        } else if processor == "atlas:source" {
+            // The file itself as text (Linux: „Anzeigen mit: Atlas (Datei selbst)“).
+            CodeDocumentView(project: project, path: tab.path, line: tab.line)
         } else if !processor.isEmpty, !processor.hasPrefix("atlas:") {
             ProcessedView(project: project, processor: processor, path: tab.path)
         } else {
@@ -50,7 +55,11 @@ enum FeatureRouter {
         if tab.path.hasPrefix("calendar:") { return "Kalender" }
         if tab.path.hasPrefix("ilias:") { return "ILIAS" }
         let name = (tab.path as NSString).lastPathComponent
-        return tab.processor.hasPrefix("view:") ? "\(name) · Ansicht" : name
+        switch tab.processor {
+        case let p where p.hasPrefix("view:"): return "\(name) · Ansicht"
+        case "atlas:html": return "\(name) · Webseite"
+        default: return name
+        }
     }
 }
 
