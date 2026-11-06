@@ -29,6 +29,10 @@ struct CalendarWeekView: View {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical) {
                         ZStack(alignment: .topLeading) {
+                            // Invisible hour markers to scroll to.
+                            VStack(spacing: 0) {
+                                ForEach(0..<24, id: \.self) { h in Color.clear.frame(height: Self.hourHeight).id(h) }
+                            }
                             grid(column: column)
                             ForEach(Array(days.enumerated()), id: \.offset) { i, day in
                                 ForEach(timed(on: day), id: \.instanceKey) { o in
@@ -39,11 +43,10 @@ struct CalendarWeekView: View {
                             nowLine(column: column)
                         }
                         .frame(height: 24 * Self.hourHeight)
-                        .id("hours")
                     }
                     .onAppear {
-                        // Start of the working day in view.
-                        proxy.scrollTo("hours", anchor: UnitPoint(x: 0, y: 7.5 / 24))
+                        // The working day in view (from 7 o'clock).
+                        proxy.scrollTo(7, anchor: .top)
                     }
                 }
             }
