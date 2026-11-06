@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P4.1 (macOS port): UI tests (XCUITest) with the scenarios and the test
+# project of the Linux self-test; .xcresult and screenshots as artifact.
+name: mac-P4.1
+
+on:
+  push:
+    branches: ["port/macos/P4.1-*"]
+    paths:
+      - ".github/workflows/mac-P4.1.yml"
+      - "apps/macos/**"
+      - "scripts/smoke-test.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P4.1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: apps/macos/scripts/ci-uitests.sh
+      artifact-name: mac-P4.1
+      cache-key: P4.1
