@@ -105,6 +105,8 @@ pdf "$project/docs/quelle.pdf"
 pdf "$project/docs/zweite.pdf" links
 # A workbook (xlsx, two sheets; crates/atlas-core/src/spreadsheet.rs writes it in its tests).
 mkdir -p "$project/tabellen" && cp crates/atlas-core/tests/sheets/Mappe.xlsx "$project/tabellen/Mappe.xlsx" && chmod u+w "$project/tabellen/Mappe.xlsx"
+# A zip archive to extract (an xlsx is one: several files at its top).
+cp crates/atlas-core/tests/sheets/Mappe.xlsx "$project/tabellen/archiv.zip" && chmod u+w "$project/tabellen/archiv.zip"
 printf 'Name;Note;Bemerkung\nMüller;1,7;gut\nSchmidt;2,3;"mit ; Semikolon"\n' > "$project/tabellen/noten.csv"
 
 mkdir -p "$project/.atlas"

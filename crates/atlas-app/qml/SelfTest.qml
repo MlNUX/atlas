@@ -306,6 +306,29 @@ Item {
                 check("CSV: zurück zum Text im selben Tab", tab.path === path("tabellen/noten.csv") && tabs === test.tabsBefore
                       && !tab.viewerItem.model && tab.viewerItem.text !== undefined && tab.viewerItem.text.indexOf("Müller;1,7") >= 0,
                       tab.kind + " " + tabs + "/" + test.tabsBefore)
+                // Zip archives: "Hier entpacken" in the context menu.
+                const entries = (paths) => {
+                    fileActions.showMenu(paths, path("tabellen"))
+                    const e = fileActions.contextMenu.shownEntries()
+                    fileActions.contextMenu.close()
+                    return e
+                }
+                check("Zip: „Hier entpacken“ im Kontextmenü", entries([path("tabellen/archiv.zip")]).indexOf("Hier entpacken") >= 0
+                      && entries([path("tabellen/noten.csv")]).indexOf("Hier entpacken") < 0)
+                fileActions.extractHere([path("tabellen/archiv.zip")])
+            },
+            () => {
+                if (waitFor(() => !fileActions.busy && app.exists(path("tabellen/archiv/xl/workbook.xml")))) return
+                check("Zip entpackt in einen Ordner mit seinem Namen", app.exists(path("tabellen/archiv/xl/worksheets/sheet2.xml"))
+                      && app.exists(path("tabellen/archiv/[Content_Types].xml")) && app.exists(path("tabellen/archiv.zip")),
+                      fileActions.message)
+                check("Zip: Meldung nennt Ziel und Anzahl", fileActions.message.indexOf("entpackt nach „archiv“ (8 Dateien)") >= 0, fileActions.message)
+                // Again: nothing is overwritten.
+                fileActions.extractHere([path("tabellen/archiv.zip")])
+            },
+            () => {
+                if (waitFor(() => !fileActions.busy && app.exists(path("tabellen/archiv (Kopie)/xl/workbook.xml")))) return
+                check("Zip: zweites Entpacken überschreibt nichts", app.exists(path("tabellen/archiv (Kopie)/xl/workbook.xml")), fileActions.message)
                 window.openTerminal(path("src"), "tab")
             },
             () => {

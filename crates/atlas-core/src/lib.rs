@@ -9,6 +9,7 @@
 
 pub mod actions;
 pub mod annotations;
+pub mod archive;
 pub mod assets;
 pub mod atlasnote;
 pub mod background;

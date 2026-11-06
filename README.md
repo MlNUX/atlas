@@ -16,7 +16,8 @@ verändert weder PDFs noch Notizen ungefragt.
 
 ## Funktionen
 
-- **Projektordner** mit Verzeichnisbaum, Dateiansicht wie in Dolphin,
+- **Projektordner** mit Verzeichnisbaum, Dateiansicht wie in Dolphin
+  (Zip-Archive per Rechtsklick „Hier entpacken“),
   Schnellansicht (Leertaste), Tabs und Splits. Jeder Ordner ist eine
   **Session**: Tabs, Splits und Baum werden automatisch gespeichert.
 - **PDFs** markieren, kommentieren und zitieren – die PDF bleibt unverändert.
