@@ -22,17 +22,19 @@ struct FilesCommands: Commands {
                 if let files, let first = files.selection.first { files.showQuickLook(first, among: files.selection) }
             }
             .keyboardShortcut("y")
-            .disabled(files?.selection.isEmpty ?? true)
+            .disabled(!listFocused || (files?.selection.isEmpty ?? true))
             Button("Umbenennen …") { if let files, let first = files.selection.first { files.askRename(first) } }
                 .disabled(files?.selection.count != 1)
             Button("Eigenschaften …") { if let files, let first = files.selection.first { files.showProperties(first) } }
                 .keyboardShortcut("i")
-                .disabled(files?.selection.count != 1)
+                .disabled(!listFocused || files?.selection.count != 1)
             Button("In den Papierkorb") { if let files { files.trash(files.selection) } }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(files?.selection.isEmpty ?? true)
+                .disabled(!listFocused || (files?.selection.isEmpty ?? true))
         }
     }
 
     private var files: FilesModel? { project.map(FilesModel.of) }
+    /// Only with the focus in the sidebar or a folder view (not in an editor).
+    private var listFocused: Bool { files?.hasListFocus ?? false }
 }

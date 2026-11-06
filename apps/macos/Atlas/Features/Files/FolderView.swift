@@ -50,6 +50,7 @@ private struct FolderContent: View {
     let back: () -> Void
     let canGoBack: Bool
     @State private var selection = Set<String>()
+    @FocusState private var focused: Bool
     @State private var sortOrder = [KeyPathComparator(\FileEntry.name)]
     @AppStorage("AtlasFolderIcons") private var icons = false
 
@@ -71,6 +72,9 @@ private struct FolderContent: View {
                 }
             }
             .dropDestination(for: URL.self) { urls, _ in files.drop(urls, into: dir) }
+            .focused($focused)
+            .onChange(of: focused) { files.setFocus("folder:" + dir, focused) }
+            .onDisappear { files.setFocus("folder:" + dir, false) }
             .onKeyPress(.space) {
                 guard let first = selection.sorted().first, files.files?.isDir(path: first) == false else { return .ignored }
                 files.showQuickLook(first, among: entries.filter { !$0.isDir }.map(\.path))

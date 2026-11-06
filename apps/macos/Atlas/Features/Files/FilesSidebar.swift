@@ -13,6 +13,7 @@ import UniformTypeIdentifiers
 struct FilesSidebar: View {
     let project: ProjectModel
     @State private var selection = Set<String>()
+    @FocusState private var focused: Bool
 
     var body: some View {
         let files = FilesModel.of(project)
@@ -24,6 +25,8 @@ struct FilesSidebar: View {
             PlacesSection(files: files, places: project.app.core.places())
         }
         .listStyle(.sidebar)
+        .focused($focused)
+        .onChange(of: focused) { files.setFocus("sidebar", focused) }
         .id(project.filesRevision)
         .contextMenu(forSelectionType: String.self) { items in
             let paths = items.filter { !$0.hasPrefix("place:") }.sorted()

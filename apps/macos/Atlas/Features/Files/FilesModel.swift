@@ -16,6 +16,15 @@ final class FilesModel {
     @ObservationIgnored private(set) weak var project: ProjectModel?
     /// The selected files and folders (sidebar or folder view).
     var selection: [String] = []
+    /// Lists with the keyboard focus („sidebar“, „folder:<dir>“): the menu
+    /// items with shortcuts (⌘⌫, ⌘Y, ⌘I) act only then – in an editor ⌘⌫
+    /// deletes to the start of the line.
+    private(set) var focusedLists: Set<String> = []
+    var hasListFocus: Bool { !focusedLists.isEmpty }
+
+    func setFocus(_ list: String, _ focused: Bool) {
+        if focused { focusedLists.insert(list) } else { focusedLists.remove(list) }
+    }
     /// Folder new files and pasted items go to when nothing else is given.
     var targetDir: String = ""
     /// The file shown with Quick Look (space).

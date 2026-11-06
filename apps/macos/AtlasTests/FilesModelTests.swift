@@ -75,3 +75,21 @@ struct FilesModelTests {
         #expect(p.mode & 0o600 == 0o600)
     }
 }
+
+@MainActor
+struct FilesFocusTests {
+    @Test func shortcutsNeedAFocusedList() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "atlas-focus-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let project = try ProjectModel(app: AppModel(), root: dir.path)
+        let files = FilesModel.of(project)
+        #expect(!files.hasListFocus)
+        files.setFocus("sidebar", true)
+        files.setFocus("folder:/x", true)
+        files.setFocus("sidebar", false)
+        // The folder view still has it: the order of focus events does not matter.
+        #expect(files.hasListFocus)
+        files.setFocus("folder:/x", false)
+        #expect(!files.hasListFocus)
+    }
+}
