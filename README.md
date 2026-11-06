@@ -27,11 +27,15 @@ verändert weder PDFs noch Notizen ungefragt.
   Seiten mit Handschrift, Textfeldern, eingefügten Bildern und
   PDF-Hintergründen. Nur Ansicht – die Datei wird nie verändert; bearbeitet
   wird auf dem Tablet.
+- **Tabellen** (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.ods`) ansehen: Blätter als
+  Reiter, Zahlen, Datum, Prozent und Währung wie in Excel, Formeln zur
+  Zelle, Fett, Farben und Füllung; Suchen im Blatt, Kopieren als Text. Nur
+  Ansicht – die Datei wird nie verändert.
 - **Markdown** mit Live-Vorschau, Formeln (KaTeX), Diagrammen (Mermaid,
   mit Vorlagen), Tabellen, Bildern, Ordnerbäumen, Checklisten, `#Tags`,
   Wiki-Links, Backlinks und Graph; Rechtschreibprüfung Deutsch und Englisch.
-- **Suche** (`Strg+Umschalt+F`) in Notizen, Code und dem Text aller PDFs,
-  mit Typfiltern; der Treffer ist im geöffneten Dokument markiert.
+- **Suche** (`Strg+Umschalt+F`) in Notizen, Code, dem Text aller PDFs und
+  den Zellen aller Tabellen, mit Typfiltern; der Treffer ist im geöffneten Dokument markiert.
   Die **Arbeitsleiste** (`Strg+P`) findet Dateien, Aktionen, Tags, Zitate
   und Termine.
 - **Terminal** im Fenster, **eigene Aktionen** und **Erweiterungen**.

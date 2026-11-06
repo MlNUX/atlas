@@ -147,6 +147,7 @@ Item {
             : view.kind === "markdown" ? markdownComponent
             : view.kind === "text" ? textComponent
             : view.kind === "image" ? imageComponent
+            : view.kind === "sheet" ? sheetComponent
             : view.kind === "missing" ? missingComponent
             : view.path ? unsupportedComponent : emptyComponent
         onLoaded: {
@@ -307,6 +308,14 @@ Item {
                 // smaller ones stay as they are).
                 sourceSize: Qt.size(Screen.width * Screen.devicePixelRatio, Screen.height * Screen.devicePixelRatio)
             }
+        }
+    }
+    Component {
+        id: sheetComponent
+        // Spreadsheet, read-only; sheet and cell are the tab's state.
+        SheetView {
+            source: view.path
+            app: view.app
         }
     }
     Component {

@@ -37,6 +37,7 @@ pub mod relations;
 pub mod search;
 pub mod secret;
 pub mod session;
+pub mod spreadsheet;
 pub mod symbols;
 pub mod text;
 pub mod text_tree;

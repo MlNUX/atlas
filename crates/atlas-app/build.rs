@@ -69,6 +69,7 @@ const QML_FILES: &[&str] = &[
     "qml/TrashView.qml",
     "qml/WebRepaint.qml",
     "qml/WebScrollbars.qml",
+    "qml/SheetView.qml",
 ];
 
 const RUST_BRIDGES: &[&str] = &[
@@ -89,6 +90,7 @@ const RUST_BRIDGES: &[&str] = &[
     "src/test_driver.rs",
     "src/text_document.rs",
     "src/trash_model.rs",
+    "src/sheet_model.rs",
     "src/tree_model.rs",
 ];
 

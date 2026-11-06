@@ -31,6 +31,7 @@ Dialog {
     readonly property var kindList: [
         { key: "markdown", label: qsTr("Markdown"), icon: "file-text" },
         { key: "pdf", label: qsTr("PDF"), icon: "file-pdf" },
+        { key: "sheet", label: qsTr("Tabelle"), icon: "file-table" },
         { key: "latex", label: qsTr("LaTeX"), icon: "file-code" },
         { key: "code", label: qsTr("Code"), icon: "file-code" },
         { key: "text", label: qsTr("Text"), icon: "file-text" }
@@ -144,6 +145,7 @@ Dialog {
         const r = (e.ranges && e.ranges[0]) || [0, 0]
         const found = e.text.slice(r[0], r[1]) || query.text
         const state = e.pdf ? { find: { text: found, page: e.line } }
+            : e.sheet ? { sheet: e.sheet.index, cell: [e.sheet.row, e.sheet.col] }
             : { find: { text: found, line: e.line, start: r[0], end: r[1], caseSensitive: caseSensitive.checked } }
         close()
         openRequested(e.path, e.line, newPane, state)
@@ -220,7 +222,7 @@ Dialog {
     function fileIcon(path, pdf) {
         if (pdf || /\.pdf$/i.test(path)) return "file-pdf"
         if (/\.(md|markdown|txt|org|rst|qmd|rmd)$/i.test(path)) return "file-text"
-        if (/\.(csv|tsv)$/i.test(path)) return "file-table"
+        if (/\.(csv|tsv|xlsx|xlsm|xlsb|xls|ods)$/i.test(path)) return "file-table"
         return "file-code"
     }
 
@@ -541,7 +543,7 @@ Dialog {
                                 height: parent.height
                                 verticalAlignment: Text.AlignVCenter
                                 horizontalAlignment: Text.AlignRight
-                                text: hit.isPdf ? qsTr("S. %1").arg(hit.line) : hit.line
+                                text: hit.isPdf ? qsTr("S. %1").arg(hit.line) : hit.cellName || hit.line
                                 color: Theme.textFaint
                                 font.pixelSize: Theme.smallFontSize
                                 font.family: Theme.monoFont
@@ -642,7 +644,10 @@ Dialog {
                 readonly property var lines: {
                     const e = hitEntry
                     if (!e.path) return []
-                    try { return JSON.parse(dialog.model.context(e.path, e.line, 6, e.pdf)) } catch (err) { return [] }
+                    try {
+                        return JSON.parse(e.sheet ? dialog.model.sheetContext(e.path, e.sheet.index, e.sheet.row)
+                                                  : dialog.model.context(e.path, e.line, 6, e.pdf))
+                    } catch (err) { return [] }
                 }
                 readonly property var re: dialog.previewRegex()
 
@@ -659,7 +664,8 @@ Dialog {
                             Layout.fillWidth: true
                             text: (preview.hitEntry.relative || "")
                                 + (preview.hitEntry.pdf ? qsTr(" · Seite %1").arg(preview.hitEntry.line)
-                                                                    : qsTr(" · Zeile %1").arg(preview.hitEntry.line))
+                                   : preview.hitEntry.sheet ? qsTr(" · Blatt „%1“ · %2").arg(preview.hitEntry.sheet.name).arg(preview.hitEntry.sheet.address)
+                                   : qsTr(" · Zeile %1").arg(preview.hitEntry.line))
                             color: Theme.textStrong
                             font.pixelSize: Theme.smallFontSize
                             elide: Text.ElideMiddle
@@ -696,6 +702,7 @@ Dialog {
                             id: previewLine
                             required property var modelData
                             readonly property bool isHit: !previewLines.hitEntry.pdf && modelData.line === previewLines.hitEntry.line
+                                && (!previewLines.hitEntry.sheet || modelData.text.startsWith(previewLines.hitEntry.sheet.address + "  "))
                             width: ListView.view.width
                             height: Math.max(22, lineText.implicitHeight + 4)
                             color: isHit ? Theme.accentSoft : "transparent"
@@ -726,7 +733,8 @@ Dialog {
                                 font.pixelSize: Theme.fontSize
                                 text: {
                                     const t = previewLine.modelData.text
-                                    const ranges = previewLine.isHit ? previewLines.hitEntry.ranges : dialog.rangesIn(t, previewLines.re)
+                                    // (A cell's line starts with its address: its own ranges would be off.)
+                                    const ranges = previewLine.isHit && !previewLines.hitEntry.sheet ? previewLines.hitEntry.ranges : dialog.rangesIn(t, previewLines.re)
                                     return dialog.marked(t, ranges, 0, t.length, previewLine.isHit)
                                 }
                             }

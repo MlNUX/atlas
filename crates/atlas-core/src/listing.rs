@@ -76,6 +76,8 @@ pub fn viewer_kind(path: &Path) -> &'static str {
         "zip" if path.to_string_lossy().to_lowercase().ends_with(".atlasnote.zip") => "atlasnote",
         "md" | "markdown" | "mdown" | "mkd" => "markdown",
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" => "image",
+        // Spreadsheets (crate::spreadsheet), shown as a table.
+        "xlsx" | "xlsm" | "xlsb" | "xls" | "ods" => "sheet",
         _ => {
             // Treat as text unless the first KiB contains NUL bytes.
             let mut buf = [0u8; 1024];

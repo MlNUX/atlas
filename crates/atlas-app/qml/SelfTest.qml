@@ -78,6 +78,7 @@ Item {
     property var docsDark: null
     property var docsDarkAfter: null
     property var previewBg: null
+    property var sheetHeader: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -231,6 +232,44 @@ Item {
                       editor.activeTab.path + " „" + (md && md.editorItem.selectedText) + "“")
                 md.previewItem.runJavaScript("document.querySelectorAll('mark.search-hit.current').length + ':' + (document.querySelector('mark.search-hit') || {}).textContent",
                     (r) => check("Markdown-Treffer in der Vorschau markiert", r === "1:Ziele", r))
+                // Spreadsheets: the cells are searched (here in a hidden second sheet).
+                searchPanel.applyState({ query: "zweiten blatt", kinds: ["sheet"] })
+            },
+            () => {
+                if (waitFor(() => !searchModel.running && searchModel.count > 0)) return
+                const e = JSON.parse(searchModel.entry(0))
+                check("Suche findet Text in Tabellen (mit Blatt und Zelle)", searchModel.count === 1 && e.relative === "tabellen/Mappe.xlsx"
+                      && !!e.sheet && e.sheet.name === "Zweites" && e.sheet.address === "C3" && e.line === 3, searchModel.count + " " + JSON.stringify(e))
+                const ctx = JSON.parse(searchModel.sheetContext(e.path || "", 1, 2))
+                check("Suche: Vorschau der Tabellenzeile", ctx.length === 1 && ctx[0].text === "C3  Gefunden im zweiten Blatt", JSON.stringify(ctx))
+                searchPanel.openRow(0, false)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => !!v && v.model && v.model.revision > 0 && !v.model.loading && v.model.sheet === 1)) return
+                check("Tabellen-Treffer öffnet das Blatt an der Zelle", editor.activeTab.kind === "sheet" && v.model.sheet === 1
+                      && v.currentRow === 2 && v.currentColumn === 2 && v.model.textAt(2, 2) === "Gefunden im zweiten Blatt",
+                      editor.activeTab.kind + " " + (v && [v.model.sheet, v.currentRow, v.currentColumn]))
+                check("Tabelle: Blätter als Reiter, ausgeblendetes markiert", v.sheetList.length === 2 && v.sheetList[0].name === "Daten"
+                      && !v.sheetList[0].hidden && v.sheetList[1].hidden, JSON.stringify(v.sheetList))
+                v.model.sheet = 0
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.model.sheet === 0 && !v.model.loading && v.model.textAt(1, 1) !== "")) return
+                const m = v.model
+                check("Tabelle: Zahlen, Prozent, Datum, Währung wie in Excel", [1, 2, 3, 7].map(c => m.textAt(1, c)).join("|") === "1.234,50|25%|15.03.2023|-19,90 €",
+                      [1, 2, 3, 7].map(c => m.textAt(1, c)).join("|"))
+                check("Tabelle: Formel zum Wert", m.formulaAt(1, 4) === "B2*2" && m.textAt(1, 4) === "2469" && m.formulaAt(1, 1) === "",
+                      m.formulaAt(1, 4) + " " + m.textAt(1, 4))
+                check("Tabelle: Spalten- und Zellnamen", m.columnName(27) === "AB" && m.cellName(1, 4) === "E2")
+                check("Tabelle: Auswahl als Text mit Tabulatoren", m.copyText(0, 0, 1, 2) === "Name\tWert\t\nAlpha\t1.234,50\t25%", JSON.stringify(m.copyText(0, 0, 1, 2)))
+                const hit = JSON.parse(m.find("wahr", 0, 0, false))
+                check("Tabelle: Suchen im Blatt", hit.row === 1 && hit.column === 5 && hit.count === 1, JSON.stringify(hit))
+                // The header: bold, red on yellow.
+                test.sheetHeader = [m.data(m.index(0, 0), 0x0102), m.data(m.index(0, 0), 0x0106), m.data(m.index(0, 0), 0x0108)]
+                check("Tabelle: Formatierung (fett, Schrift- und Füllfarbe)", test.sheetHeader[0] === true && test.sheetHeader[1] === "#c00000"
+                      && test.sheetHeader[2] === "#ffff00", JSON.stringify(test.sheetHeader))
                 searchPanel.applyState({})
                 window.openTerminal(path("src"), "tab")
             },

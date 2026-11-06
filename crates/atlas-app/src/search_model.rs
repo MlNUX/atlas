@@ -66,6 +66,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn context(self: &SearchModel, path: &QString, line: i32, radius: i32, pdf: bool) -> QString;
+
+        /// Cells of the rows around `row` (0-based) of sheet `sheet` of a
+        /// spreadsheet, as JSON like `context` (`text`: "B5  …").
+        #[qinvokable]
+        #[cxx_name = "sheetContext"]
+        fn sheet_context(self: &SearchModel, path: &QString, sheet: i32, row: i32) -> QString;
     }
 
     unsafe extern "RustQt" {
@@ -117,6 +123,8 @@ const ROLE_RANGES: i32 = 0x0108;
 const ROLE_PDF: i32 = 0x0109;
 const ROLE_FILE_HITS: i32 = 0x010a;
 const ROLE_INDEX_IN_FILE: i32 = 0x010b;
+/// The cell of a spreadsheet match ("B5"), "" otherwise.
+const ROLE_CELL: i32 = 0x010c;
 
 #[derive(Default)]
 pub struct SearchModelRust {
@@ -300,6 +308,10 @@ impl qobject::SearchModel {
             "line": m.line,
             "text": m.text,
             "pdf": m.pdf,
+            "sheet": m.cell.as_ref().map(|c| json!({
+                "index": c.sheet, "name": c.name, "row": c.row, "col": c.col,
+                "address": atlas_core::spreadsheet::cell_name(c.row, c.col),
+            })),
             "ranges": ranges,
             "index": self.index_in_file(row as usize),
             "fileHits": self.file_hits(row as usize),
@@ -311,6 +323,12 @@ impl qobject::SearchModel {
         let path = PathBuf::from(path.to_string());
         let (line, radius) = (line.max(1) as usize, radius.max(0) as usize);
         let lines = if pdf { search::pdf_context(&path, line) } else { search::text_context(&path, line, radius) };
+        let lines: Vec<Value> = lines.into_iter().map(|(line, text)| json!({ "line": line, "text": text })).collect();
+        QString::from(Value::Array(lines).to_string().as_str())
+    }
+
+    pub fn sheet_context(&self, path: &QString, sheet: i32, row: i32) -> QString {
+        let lines = search::sheet_context(&PathBuf::from(path.to_string()), sheet.max(0) as usize, row.max(0) as u32);
         let lines: Vec<Value> = lines.into_iter().map(|(line, text)| json!({ "line": line, "text": text })).collect();
         QString::from(Value::Array(lines).to_string().as_str())
     }
@@ -336,6 +354,9 @@ impl qobject::SearchModel {
                 QVariant::from(&QString::from(ranges.join(",").as_str()))
             }
             ROLE_PDF => QVariant::from(&m.pdf),
+            ROLE_CELL => QVariant::from(&QString::from(
+                m.cell.as_ref().map(|c| atlas_core::spreadsheet::cell_name(c.row, c.col)).unwrap_or_default().as_str(),
+            )),
             ROLE_FILE_HITS => QVariant::from(&(self.file_hits(row) as i32)),
             ROLE_INDEX_IN_FILE => QVariant::from(&(self.index_in_file(row) as i32)),
             _ => QVariant::default(),
@@ -354,6 +375,7 @@ impl qobject::SearchModel {
             (ROLE_FIRST_IN_FILE, "firstInFile"),
             (ROLE_RANGES, "matchRanges"),
             (ROLE_PDF, "isPdf"),
+            (ROLE_CELL, "cellName"),
             (ROLE_FILE_HITS, "fileHits"),
             (ROLE_INDEX_IN_FILE, "indexInFile"),
         ] {

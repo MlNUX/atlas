@@ -16,6 +16,7 @@ mod markdown_edit;
 mod pdf_items;
 mod qt_helpers;
 mod search_model;
+mod sheet_model;
 mod spelling;
 mod terminal_item;
 mod test_driver;
