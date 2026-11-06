@@ -41,8 +41,8 @@ struct ViewersTests {
         let stroke = pixel(image, 175, 150)
         #expect(stroke[2] > 200 && stroke[0] < 40)
         // The width with full pressure: 10 × (0.4 + 0.8).
-        #expect(NoteRenderer.segmentWidth(10, NotePoint(x: 0, y: 0, pressure: 1), NotePoint(x: 1, y: 0, pressure: 1)) == 12)
-        #expect(NoteRenderer.segmentWidth(10, NotePoint(x: 0, y: 0, pressure: -1), NotePoint(x: 1, y: 0, pressure: -1)) == 4)
+        #expect(abs(NoteRenderer.segmentWidth(10, NotePoint(x: 0, y: 0, pressure: 1), NotePoint(x: 1, y: 0, pressure: 1)) - 12) < 1e-9)
+        #expect(abs(NoteRenderer.segmentWidth(10, NotePoint(x: 0, y: 0, pressure: -1), NotePoint(x: 1, y: 0, pressure: -1)) - 4) < 1e-9)
     }
 
     @Test func remoteContentIsRecognised() {
