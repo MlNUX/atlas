@@ -26,7 +26,7 @@ struct FilesSidebar: View {
         .listStyle(.sidebar)
         .id(project.filesRevision)
         .contextMenu(forSelectionType: String.self) { items in
-            let paths = items.filter { !$0.hasPrefix("place:") }
+            let paths = items.filter { !$0.hasPrefix("place:") }.sorted()
             FileContextMenu(files: files, paths: paths, dir: Self.dir(for: paths, files: files, root: project.root))
         } primaryAction: { items in
             guard let item = items.first else { return }
