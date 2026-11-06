@@ -1181,8 +1181,11 @@ Item {
                 const spare = PreviewPool.spare
                 if (spare && spare.ready) spare.runJavaScript("(() => { const bg = () => getComputedStyle(document.body).backgroundColor;"
                     + " const before = bg(); atlas.setLight(true); const after = bg();"
+                    + " const probe = document.createElement('pre'); probe.innerHTML = '<code class=\\'hljs\\'><span class=\\'hljs-string\\'>x</span></code>';"
+                    + " document.body.appendChild(probe); const string = getComputedStyle(probe.querySelector('span')).color; probe.remove();"
+                    + " const langs = !!hljs.getLanguage('matlab') && !!hljs.getLanguage('octave') && !!hljs.getLanguage('latex') && !!hljs.getLanguage('julia');"
                     + " document.documentElement.classList.remove('themed', 'light'); atlas.setLight(false); document.documentElement.classList.remove('themed');"
-                    + " return [before, after] })()", (v) => { test.previewBg = v })
+                    + " return [before, after, string, langs] })()", (v) => { test.previewBg = v })
                 else test.previewBg = ["kein Ersatz"]
             },
             () => {
@@ -1190,6 +1193,8 @@ Item {
                 if (waitFor(() => !!v)) return
                 check("Vorschau lädt im hellen Design weiß statt dunkel (bis zum Inhalt durchsichtig)",
                       !!v && v[0] === "rgba(0, 0, 0, 0)" && v[1] === "rgb(255, 255, 255)", JSON.stringify(v))
+                check("Vorschau: Code im hellen Design farbig (Zeichenketten grün)", !!v && v[2] === "rgb(43, 122, 46)", JSON.stringify(v))
+                check("Vorschau: Code-Hervorhebung auch für MATLAB, Octave, LaTeX, Julia", !!v && v[3] === true, JSON.stringify(v))
             },
             () => {
                 // A single click opens a file for good: no preview tab that the

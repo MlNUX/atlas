@@ -81,6 +81,9 @@ window.atlas = (function () {
     // waits for it).
     let busy = false;
 
+    // Names used in code fences that highlight.js knows by another name.
+    if (window.hljs) hljs.registerAliases(["octave"], { languageName: "matlab" });
+
     function highlight(root) {
         root.querySelectorAll("pre code[class*=language-]").forEach((el) => {
             const lang = el.className.replace(/.*language-(\S+).*/, "$1");
