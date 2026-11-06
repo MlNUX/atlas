@@ -85,7 +85,30 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.tests
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Atlas.app/Contents/MacOS/Atlas"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  # UI tests (P4.1): XCUITest against the app, own scheme (slower than the
+  # unit tests; apps/macos/scripts/ci-uitests.sh). Swift 5 mode: XCTest's
+  # UI API is main-actor bound and XCTestCase is not.
+  AtlasUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources: [AtlasUITests]
+    dependencies:
+      - target: Atlas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.uitests
+        TEST_TARGET_NAME: Atlas
+        SWIFT_VERSION: "5.0"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        ENABLE_HARDENED_RUNTIME: NO
 schemes:
+  AtlasUITests:
+    build:
+      targets:
+        Atlas: all
+        AtlasUITests: [test]
+    test:
+      targets: [AtlasUITests]
   Atlas:
     build:
       targets:
