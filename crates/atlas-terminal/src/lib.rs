@@ -88,9 +88,19 @@ struct Listener {
     callback: Arc<Callback>,
     sender: Arc<Mutex<Option<EventLoopSender>>>,
     size: Arc<Mutex<GridSize>>,
+    /// The end was reported (alacritty sends `ChildExit` and then `Exit`:
+    /// only the first one, with the exit code, becomes `Exited`).
+    exited: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Listener {
+    /// `Exited` once per program, whichever event comes first.
+    fn exited(&self, code: Option<i32>) {
+        if !self.exited.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            (self.callback)(TermEvent::Exited(code));
+        }
+    }
+
     fn write(&self, text: String) {
         if let Some(sender) = self.sender.lock().unwrap().as_ref() {
             let _ = sender.send(Msg::Input(Cow::Owned(text.into_bytes())));
@@ -117,8 +127,8 @@ impl EventListener for Listener {
                 let size = *self.size.lock().unwrap();
                 self.write(format(size.window_size()));
             }
-            Event::ChildExit(status) => (self.callback)(TermEvent::Exited(status.code())),
-            Event::Exit => (self.callback)(TermEvent::Exited(None)),
+            Event::ChildExit(status) => self.exited(status.code()),
+            Event::Exit => self.exited(None),
         }
     }
 }
@@ -138,7 +148,12 @@ impl Terminal {
         on_event: impl Fn(TermEvent) + Send + Sync + 'static,
     ) -> Result<Self> {
         let size_cell = Arc::new(Mutex::new(size));
-        let listener = Listener { callback: Arc::new(on_event), sender: Arc::default(), size: size_cell.clone() };
+        let listener = Listener {
+            callback: Arc::new(on_event),
+            sender: Arc::default(),
+            size: size_cell.clone(),
+            exited: Arc::default(),
+        };
 
         let mut env = HashMap::new();
         env.insert("TERM".to_owned(), "xterm-256color".to_owned());
@@ -589,6 +604,24 @@ mod tests {
         let emoji = frame.lines[0].runs.iter().find(|r| r.text == "😀").unwrap();
         assert_eq!(emoji.cells, 2);
         assert_eq!(emoji.col, 6);
+    }
+
+    #[test]
+    fn reports_the_end_once_with_its_code() {
+        let size = GridSize { cols: 40, lines: 5, cell_width: 8, cell_height: 16 };
+        let options =
+            Options { shell: Some(("/bin/sh".into(), vec!["-c".into(), "exit 3".into()])), ..Default::default() };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let tx = Mutex::new(tx);
+        let _term = Terminal::spawn(options, size, move |e| {
+            if let TermEvent::Exited(code) = e {
+                let _ = tx.lock().unwrap().send(code);
+            }
+        })
+        .unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), Some(3));
+        // alacritty's `Exit` follows `ChildExit`: it must not come as a second end.
+        assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
     }
 
     #[test]
