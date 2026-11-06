@@ -32,6 +32,10 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     exactVersion: 2.10.1
+  # Terminal (P0.5, P3.5); its build plugin needs -skipPackagePluginValidation.
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.99.2
 targets:
   Atlas:
     type: application
@@ -49,6 +53,8 @@ targets:
         product: AtlasKit
       - package: Sparkle
         product: Sparkle
+      - package: SwiftTerm
+        product: SwiftTerm
     # Merged with the generated Info.plist (GENERATE_INFOPLIST_FILE).
     info:
       path: Atlas/Info.plist
@@ -75,6 +81,9 @@ targets:
     sources: [AtlasTests]
     dependencies:
       - target: Atlas
+      - package: SwiftTerm
+        product: SwiftTerm
+        link: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.tests
