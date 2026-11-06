@@ -77,6 +77,12 @@ sleep 2
 osascript -e 'tell application "System Events" to keystroke "lin"' 2>/dev/null || true
 sleep 2
 screencapture -x "$out/atlas-quickopen.png" || true
+if [[ -n "${ATLAS_CI_SETTINGS:-}" ]]; then
+  # The settings window (⌘,) for the screenshot (P3.9).
+  osascript -e 'tell application "System Events" to keystroke "," using command down' 2>/dev/null || true
+  sleep 3
+  screencapture -x "$out/atlas-settings.png" || true
+fi
 osascript -e 'tell application "Atlas" to quit' 2>/dev/null || pkill -x Atlas || true
 sleep 2
 say "Session written for Linux (E12)"
