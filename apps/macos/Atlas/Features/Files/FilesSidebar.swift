@@ -21,13 +21,7 @@ struct FilesSidebar: View {
                 TreeRows(files: files, dir: project.root, depth: 0)
             }
             .dropDestination(for: URL.self) { urls, _ in files.drop(urls, into: project.root) }
-            Section("Orte") {
-                ForEach(project.app.core.places(), id: \.path) { place in
-                    Label(place.name, systemImage: Self.icon(place.icon))
-                        .tag("place:" + place.path)
-                        .dropDestination(for: URL.self) { urls, _ in files.drop(urls, into: place.path) }
-                }
-            }
+            PlacesSection(files: files, places: project.app.core.places())
         }
         .listStyle(.sidebar)
         .id(project.filesRevision)
@@ -131,5 +125,31 @@ private struct Row: View {
         }
         .opacity(entry.isHidden ? 0.6 : 1)
         .draggable(URL(filePath: entry.path))
+    }
+}
+
+/// The places (home, documents, trash, …); drops go there.
+private struct PlacesSection: View {
+    let files: FilesModel
+    let places: [Place]
+
+    var body: some View {
+        Section("Orte") {
+            ForEach(places, id: \.path) { (place: Place) in
+                PlaceRow(files: files, place: place)
+            }
+        }
+    }
+}
+
+private struct PlaceRow: View {
+    let files: FilesModel
+    let place: Place
+
+    var body: some View {
+        let path: String = place.path
+        Label(place.name, systemImage: FilesSidebar.icon(place.icon))
+            .tag("place:" + path)
+            .dropDestination(for: URL.self) { (urls: [URL], _) -> Bool in files.drop(urls, into: path) }
     }
 }

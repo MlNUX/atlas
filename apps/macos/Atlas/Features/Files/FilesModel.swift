@@ -247,7 +247,7 @@ final class FilesModel {
 
     func showProperties(_ path: String) {
         do {
-            properties = try files?.properties(path: path).map { IdentifiableBox(value: $0) }
+            if let p = try files?.properties(path: path) { properties = IdentifiableBox(value: p) }
         } catch {
             project?.show(notice: atlasMessage(error))
         }
