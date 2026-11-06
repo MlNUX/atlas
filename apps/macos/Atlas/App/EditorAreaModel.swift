@@ -108,6 +108,22 @@ final class EditorAreaModel {
         changed()
     }
 
+    /// Viewer state of the plain tabs of `path` (Linux: the tab state in the
+    /// session – `mode`, `symbols`, `find`, …); `nil` removes the key. Saved
+    /// with the session; nothing happens if the value is the same.
+    func setState(path: String, key: String, value: JSONValue?) {
+        var changedAny = false
+        for g in layout.groups.indices {
+            for t in layout.groups[g].tabs.indices {
+                let tab = layout.groups[g].tabs[t]
+                guard tab.path == path, tab.processor.isEmpty, tab.extra[key] != value else { continue }
+                layout.groups[g].tabs[t].extra[key] = value
+                changedAny = true
+            }
+        }
+        if changedAny { changed() }
+    }
+
     /// Tabs follow files and folders that were moved or renamed.
     func pathMoved(from: String, to: String) {
         for g in layout.groups.indices {

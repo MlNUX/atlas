@@ -71,4 +71,24 @@ struct EditorAreaModelTests {
         #expect(model.groups.allSatisfy { $0.tabs.allSatisfy { $0.path.hasPrefix("/q/") } })
         #expect(changes > 0)
     }
+
+    @Test func tabStateIsSavedAndOnlyOnChange() throws {
+        let model = EditorAreaModel(layout: SessionLayout())
+        var changes = 0
+        model.onChange = { changes += 1 }
+        model.open(path: "/p/a.md")
+        model.open(path: "/p/a.md", processor: "view:x/y")
+        changes = 0
+        model.setState(path: "/p/a.md", key: "mode", value: .string("split"))
+        model.setState(path: "/p/a.md", key: "mode", value: .string("split"))
+        #expect(changes == 1)
+        let plain = try #require(model.groups[0].tabs.first { $0.processor.isEmpty })
+        #expect(plain.extra["mode"] == .string("split"))
+        // The tab through an extension keeps its own state.
+        #expect(model.groups[0].tabs.first { !$0.processor.isEmpty }?.extra["mode"] == nil)
+        let json = model.layout.json(root: "/p")
+        #expect(json.contains("\"mode\""))
+        model.setState(path: "/p/a.md", key: "mode", value: nil)
+        #expect(model.groups[0].tabs.first { $0.processor.isEmpty }?.extra["mode"] == nil)
+    }
 }
