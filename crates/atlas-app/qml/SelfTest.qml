@@ -77,6 +77,7 @@ Item {
     property var docsExamples: null
     property var docsDark: null
     property var docsDarkAfter: null
+    property var previewBg: null
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -1078,6 +1079,20 @@ Item {
                 // (Gone because the page reported its frame: the fallback takes 2 s.)
                 check("… und danach wieder die echte Vorschau, sobald sie gezeichnet ist", !r.covering && r.painted > test.repaints,
                       r.covering + " " + test.repaints + " → " + r.painted)
+                // The spare preview loaded ahead has no colours of its own yet: it
+                // shows the view's (white in the light design), never navy.
+                const spare = PreviewPool.spare
+                if (spare && spare.ready) spare.runJavaScript("(() => { const bg = () => getComputedStyle(document.body).backgroundColor;"
+                    + " const before = bg(); atlas.setLight(true); const after = bg();"
+                    + " document.documentElement.classList.remove('themed', 'light'); atlas.setLight(false); document.documentElement.classList.remove('themed');"
+                    + " return [before, after] })()", (v) => { test.previewBg = v })
+                else test.previewBg = ["kein Ersatz"]
+            },
+            () => {
+                const v = test.previewBg
+                if (waitFor(() => !!v)) return
+                check("Vorschau lädt im hellen Design weiß statt dunkel (bis zum Inhalt durchsichtig)",
+                      !!v && v[0] === "rgba(0, 0, 0, 0)" && v[1] === "rgb(255, 255, 255)", JSON.stringify(v))
             },
             () => {
                 // A single click opens a file for good: no preview tab that the

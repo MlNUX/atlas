@@ -377,6 +377,7 @@ window.atlas = (function () {
         setPrintMode(on) { printMode = !!on; },
         /// Light colours for the page and later diagrams (call before `set`).
         setLight(on) {
+            document.documentElement.classList.add("themed");
             if (light === !!on) return;
             light = !!on;
             document.documentElement.classList.toggle("light", light);

@@ -15,6 +15,12 @@
   --code-bg: #f6f8fb; --row-alt: #f7f9fc; --check-border: #9aa7ba; --zoom-bg: rgba(255, 255, 255, 0.85);
   --selection: #c8dbfa; --scroll-thumb: #c3ccd9;
 }
+/* Until Atlas has said which design (`setLight`): no background of its own,
+   so the view's (the editor colour of the current design) shows – a preview
+   still loading in the light design is white, not navy. */
+@media screen {
+  :root:not(.themed) { color-scheme: normal; --bg: transparent; }
+}
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 /* No automatic scroll corrections when content grows (images, diagrams):
    they were reported as scrolling and moved the editor in the split view. */
