@@ -3,9 +3,15 @@
 
 import SwiftUI
 
-/// Menu items of P3.7 (empty until the task adds them).
+/// „Kalender“ (P3.7): the `calendar:` tab, as on Linux.
 struct CalendarCommands: Commands {
+    @FocusedValue(\.project) private var project
+
     var body: some Commands {
-        EmptyCommands()
+        CommandGroup(after: .sidebar) {
+            Button("Kalender") { project?.editor.open(path: "calendar:", mode: .tab) }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(project == nil)
+        }
     }
 }

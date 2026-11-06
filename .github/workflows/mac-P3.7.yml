@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P3.7 (macOS port): the Atlas calendar – build, unit tests, calendar tab open,
+# screenshots in the log (apps/macos/scripts/ci-screenshots.sh), calendar tab open.
+name: mac-P3.7
+
+on:
+  push:
+    branches: ["port/macos/P3.7-*"]
+    paths:
+      - ".github/workflows/mac-P3.7.yml"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+      - "crates/atlas-ffi/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P3.7-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      run: "ATLAS_CI_OPEN_FILE=calendar: apps/macos/scripts/ci-app.sh"
+      artifact-name: mac-P3.7
+      cache-key: P3.7
