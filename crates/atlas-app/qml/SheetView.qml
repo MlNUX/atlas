@@ -15,7 +15,30 @@ Rectangle {
     id: root
     required property string source
     property var app: null
+    property var actions: null
     color: Theme.editor
+    /// A text table (CSV …) shown as a table: it can go back to the text.
+    readonly property bool delimited: /\.(csv|tsv|tab)$/i.test(source)
+    signal showSourceRequested()
+
+    // Saved elsewhere (Excel, LibreOffice, the editor): read again.
+    property real modified: 0
+    function modifiedTime() {
+        try { return JSON.parse(root.actions.ops.properties(root.source)).modified || 0 } catch (e) { return 0 }
+    }
+    Component.onCompleted: modified = modifiedTime()
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.visible && !!root.actions
+        onTriggered: {
+            const m = root.modifiedTime()
+            if (m && m !== root.modified) {
+                root.modified = m
+                sheetModel.reload()
+            }
+        }
+    }
 
     /// The selected cell and the other corner of the selection.
     property int currentRow: 0
@@ -60,7 +83,11 @@ Rectangle {
             select(state.cell[0], state.cell[1], false)
         }
     }
-    function viewState() { return { sheet: sheetModel.sheet, cell: [currentRow, currentColumn] } }
+    function viewState() {
+        const s = { sheet: sheetModel.sheet, cell: [currentRow, currentColumn] }
+        if (delimited) s.processor = "atlas:table"
+        return s
+    }
     function focusContent() { table.forceActiveFocus() }
 
     function select(row, column, extend) {
@@ -133,9 +160,21 @@ Rectangle {
             }
             Label { id: findInfo; color: Theme.textMuted; font.pixelSize: Theme.smallFontSize }
             Label {
+                visible: sheetModel.info.length > 0
+                text: sheetModel.info
+                color: Theme.textFaint
+                font.pixelSize: Theme.smallFontSize
+            }
+            Label {
                 text: qsTr("Nur Ansicht")
                 color: Theme.textFaint
                 font.pixelSize: Theme.smallFontSize
+            }
+            IconButton {
+                visible: root.delimited
+                iconName: "file-text"
+                tip: qsTr("Als Text anzeigen (zum Bearbeiten)")
+                onClicked: root.showSourceRequested()
             }
             IconButton { iconName: "refresh"; tip: qsTr("Neu laden"); onClicked: sheetModel.reload() }
         }

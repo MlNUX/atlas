@@ -271,6 +271,41 @@ Item {
                 check("Tabelle: Formatierung (fett, Schrift- und Füllfarbe)", test.sheetHeader[0] === true && test.sheetHeader[1] === "#c00000"
                       && test.sheetHeader[2] === "#ffff00", JSON.stringify(test.sheetHeader))
                 searchPanel.applyState({})
+                // A CSV file: text, shown as a table on request.
+                check("CSV-Aktion im Kontextmenü", (() => {
+                    fileActions.showMenu([path("tabellen/noten.csv")], path("tabellen"))
+                    const e = fileActions.contextMenu.shownEntries()
+                    fileActions.contextMenu.close()
+                    return e.indexOf("Als Tabelle anzeigen") >= 0
+                })())
+                fileActions.showAsTable(path("tabellen/noten.csv"))
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => !!v && !!v.model && v.model.revision > 0 && !v.model.loading)) return
+                const m = v.model
+                check("CSV als Tabelle (Trennzeichen erkannt)", editor.activeTab.kind === "text" && m.info === "Trennzeichen „;“ · UTF-8"
+                      && m.textAt(1, 0) === "Müller" && m.textAt(2, 2) === "mit ; Semikolon" && m.textAt(0, 1) === "Note",
+                      m.info + " " + m.textAt(1, 0) + " " + m.textAt(2, 2))
+                check("CSV: Zahlen rechtsbündig, wie geschrieben", m.textAt(1, 1) === "1,7" && m.data(m.index(1, 1), 0x0109) === 2
+                      && m.data(m.index(1, 0), 0x0109) === 0, m.textAt(1, 1))
+                check("CSV: Tabellenansicht in der Sitzung", editor.activeTab.viewState().processor === "atlas:table", JSON.stringify(editor.activeTab.viewState()))
+                test.tabsBefore = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                check("CSV geändert", app.appendToNote(path("tabellen/noten.csv"), "Neu;3,0;spät") === "")
+            },
+            () => {
+                const m = editor.activeTab.viewerItem.model
+                const found = () => { for (let r = 0; r < 8; ++r) if (m.textAt(r, 0) === "Neu") return r; return -1 }
+                if (waitFor(() => found() > 0)) return
+                check("CSV-Tabelle lädt beim Speichern neu", found() > 0 && m.textAt(found(), 1) === "3,0", found())
+                editor.activeTab.viewerItem.showSourceRequested()
+            },
+            () => {
+                const tab = editor.activeTab
+                const tabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                check("CSV: zurück zum Text im selben Tab", tab.path === path("tabellen/noten.csv") && tabs === test.tabsBefore
+                      && !tab.viewerItem.model && tab.viewerItem.text !== undefined && tab.viewerItem.text.indexOf("Müller;1,7") >= 0,
+                      tab.kind + " " + tabs + "/" + test.tabsBefore)
                 window.openTerminal(path("src"), "tab")
             },
             () => {

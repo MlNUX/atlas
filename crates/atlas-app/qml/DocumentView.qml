@@ -141,6 +141,7 @@ Item {
             : view.kind === "calendar" ? calendarComponent
             : view.kind === "ilias" ? iliasComponent
             : view.processor === "atlas:html" && view.kind !== "missing" ? htmlComponent
+            : view.processor === "atlas:table" && view.kind !== "missing" ? sheetComponent
             : view.processed && view.kind !== "missing" ? processedComponent
             : view.kind === "pdf" ? pdfComponent
             : view.kind === "atlasnote" ? atlasNoteComponent
@@ -316,6 +317,12 @@ Item {
         SheetView {
             source: view.path
             app: view.app
+            actions: view.actions
+            // CSV shown as a table ("Als Tabelle anzeigen"): back to the text.
+            onShowSourceRequested: Qt.callLater(() => {
+                view.pendingState = Object.assign({}, view.pendingState, { processor: "" })
+                view.processor = ""
+            })
         }
     }
     Component {

@@ -46,6 +46,8 @@ pub mod qobject {
         #[qproperty(QString, error, READ, NOTIFY)]
         /// The sheet has more cells than are shown.
         #[qproperty(bool, truncated, READ, NOTIFY)]
+        /// How a text table was read ("Trennzeichen „;“ · UTF-8"), "" otherwise.
+        #[qproperty(QString, info, READ, NOTIFY)]
         /// Counts loads (for the view and the smoke test).
         #[qproperty(i32, revision, READ, NOTIFY)]
         type SheetModel = super::SheetModelRust;
@@ -147,6 +149,7 @@ pub struct SheetModelRust {
     loading: bool,
     error: QString,
     truncated: bool,
+    info: QString,
     revision: i32,
     data: Option<Arc<SheetData>>,
     /// Number of the load in flight; older results are dropped.
@@ -238,6 +241,7 @@ impl qobject::SheetModel {
                         this.rows = data.rows.max(MIN_ROWS) as i32;
                         this.columns = data.cols.max(MIN_COLUMNS) as i32;
                         this.truncated = data.truncated;
+                        this.info = QString::from(data.info.as_str());
                         this.data = Some(Arc::new(data));
                         String::new()
                     }
@@ -261,6 +265,7 @@ impl qobject::SheetModel {
                 model.as_mut().rows_changed();
                 model.as_mut().columns_changed();
                 model.as_mut().truncated_changed();
+                model.as_mut().info_changed();
                 model.as_mut().error_changed();
                 model.as_mut().loading_changed();
                 model.as_mut().revision_changed();

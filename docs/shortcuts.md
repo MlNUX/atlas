@@ -77,7 +77,7 @@ alle übrigen Tasten gehen dort an das Programm im Terminal.
 | Strg+Enter (im Kommentar) | Kommentar übernehmen |
 | Esc | Auswahl aufheben, zurück zum Auswahlwerkzeug |
 
-## Tabellen (xlsx, ods …)
+## Tabellen (xlsx, ods …; CSV über „Als Tabelle anzeigen“)
 
 | Kürzel | Aktion |
 |---|---|

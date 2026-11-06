@@ -30,7 +30,8 @@ verändert weder PDFs noch Notizen ungefragt.
 - **Tabellen** (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.ods`) ansehen: Blätter als
   Reiter, Zahlen, Datum, Prozent und Währung wie in Excel, Formeln zur
   Zelle, Fett, Farben und Füllung; Suchen im Blatt, Kopieren als Text. Nur
-  Ansicht – die Datei wird nie verändert.
+  Ansicht – die Datei wird nie verändert. CSV/TSV öffnen als Text und auf
+  Wunsch „Als Tabelle anzeigen“ (Trennzeichen und Zeichensatz erkannt).
 - **Markdown** mit Live-Vorschau, Formeln (KaTeX), Diagrammen (Mermaid,
   mit Vorlagen), Tabellen, Bildern, Ordnerbäumen, Checklisten, `#Tags`,
   Wiki-Links, Backlinks und Graph; Rechtschreibprüfung Deutsch und Englisch.

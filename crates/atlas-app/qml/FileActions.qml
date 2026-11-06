@@ -78,6 +78,10 @@ Item {
     function isHtml(path) { return /\.x?html?$/i.test(path || "") }
     /// Shows an HTML file rendered (in its tab if it is open).
     function renderHtml(path) { actions.openWithState(path, { processor: "atlas:html" }) }
+    /// Text tables (CSV, TSV) can be shown as a table.
+    function isDelimited(path) { return /\.(csv|tsv|tab)$/i.test(path || "") }
+    /// Shows a CSV file as a table (in its tab if it is open).
+    function showAsTable(path) { actions.openWithState(path, { processor: "atlas:table" }) }
 
     // ------------------------------------------------------------ to PDF
 
@@ -445,6 +449,12 @@ Item {
             visible: menu.single && actions.isHtml(menu.paths[0])
             height: visible ? implicitHeight : 0
             onTriggered: actions.renderHtml(menu.paths[0])
+        }
+        MenuItem {
+            text: qsTr("Als Tabelle anzeigen")
+            visible: menu.single && actions.isDelimited(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.showAsTable(menu.paths[0])
         }
         MenuItem {
             text: qsTr("Im Editor öffnen")

@@ -233,6 +233,8 @@ ApplicationWindow {
                 list.push({ name: qsTr("Ausführen"), hint: app.fileName(current), run: () => fileActions.runScript(current) })
             if (fileActions.isHtml(current))
                 list.push({ name: qsTr("Als Webseite anzeigen"), hint: app.fileName(current), run: () => fileActions.renderHtml(current) })
+            if (fileActions.isDelimited(current))
+                list.push({ name: qsTr("Als Tabelle anzeigen"), hint: app.fileName(current), run: () => fileActions.showAsTable(current) })
             if (app.atlasDir && app.exists(current))
                 list.push({ name: qsTr("Verknüpfen mit …"), hint: app.fileName(current), run: () => app.requestRelate(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })

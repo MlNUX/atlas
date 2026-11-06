@@ -26,6 +26,14 @@ pub fn is_spreadsheet(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()).is_some_and(|e| EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
+/// Text tables (`.csv`, `.tsv`, `.tab`): text files, shown as a table on
+/// request ("Als Tabelle anzeigen").
+pub const DELIMITED: &[&str] = &["csv", "tsv", "tab"];
+
+pub fn is_delimited(path: &Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| DELIMITED.contains(&e.to_ascii_lowercase().as_str()))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SheetInfo {
     pub name: String,
@@ -91,6 +99,8 @@ pub struct SheetData {
     pub formulas: HashMap<(u32, u32), String>,
     /// More than [`MAX_CELLS`]: the rows below were left out.
     pub truncated: bool,
+    /// How a text table was read, e.g. "Trennzeichen „;“ · Windows-1252".
+    pub info: String,
 }
 
 impl SheetData {
@@ -108,6 +118,9 @@ fn open(path: &Path) -> Result<Sheets<std::io::BufReader<std::fs::File>>> {
 
 /// The sheets of the workbook at `path`, in their order.
 pub fn sheets(path: &Path) -> Result<Vec<SheetInfo>> {
+    if is_delimited(path) {
+        return Ok(vec![SheetInfo { name: sheet_name_of(path), hidden: false }]);
+    }
     let book = open(path)?;
     Ok(book
         .sheets_metadata()
@@ -168,6 +181,10 @@ fn cell_style(style: &calamine::Style) -> CellStyle {
 
 /// Sheet `index` of the workbook at `path`.
 pub fn load_sheet(path: &Path, index: usize) -> Result<SheetData> {
+    if is_delimited(path) {
+        anyhow::ensure!(index == 0, "Dieses Blatt gibt es nicht");
+        return load_delimited(path);
+    }
     let mut book = open(path)?;
     let name = book.sheet_names().get(index).cloned().context("Dieses Blatt gibt es nicht")?;
     let values = book.worksheet_range(&name).with_context(|| format!("Blatt „{name}“ nicht lesbar"))?;
@@ -220,7 +237,173 @@ pub fn load_sheet(path: &Path, index: usize) -> Result<SheetData> {
             }
         }
     }
-    Ok(SheetData { name, rows, cols, cells, styles: palette, formulas: formula_map, truncated })
+    Ok(SheetData { name, rows, cols, cells, styles: palette, formulas: formula_map, truncated, info: String::new() })
+}
+
+// ---------------------------------------------------------------- text tables
+
+/// Largest text table read.
+const MAX_DELIMITED: u64 = 256 * 1024 * 1024;
+
+fn sheet_name_of(path: &Path) -> String {
+    path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// The text of a file: UTF-8 (with or without BOM, also UTF-16 with BOM),
+/// else Windows-1252 as German Excel writes CSV.
+fn decode(bytes: &[u8]) -> (String, &'static str) {
+    if let Some((encoding, _)) = encoding_rs::Encoding::for_bom(bytes) {
+        let (text, _, _) = encoding.decode(bytes);
+        return (text.into_owned(), encoding.name());
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(text) => (text.to_owned(), "UTF-8"),
+        Err(_) => (encoding_rs::WINDOWS_1252.decode(bytes).0.into_owned(), "Windows-1252"),
+    }
+}
+
+/// The separator of a text table: the one that splits the first lines into
+/// the same number of fields most often (tab for `.tsv`).
+fn detect_delimiter(text: &str, path: &Path) -> char {
+    let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if ext == "tsv" || ext == "tab" {
+        return '\t';
+    }
+    let sample: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).take(30).collect();
+    let mut best = (',', 0usize, 0usize);
+    for candidate in [';', ',', '\t', '|'] {
+        let counts: Vec<usize> = sample.iter().map(|l| split_line(l, candidate).len()).collect();
+        let Some(&first) = counts.first() else { continue };
+        if first < 2 {
+            continue;
+        }
+        let same = counts.iter().filter(|&&c| c == first).count();
+        if (same, first) > (best.1, best.2) {
+            best = (candidate, same, first);
+        }
+    }
+    best.0
+}
+
+/// The fields of one line (for the detection; quotes respected).
+fn split_line(line: &str, delimiter: char) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut quoted = false;
+    let mut start = 0;
+    for (i, ch) in line.char_indices() {
+        if ch == '"' {
+            quoted = !quoted;
+        } else if ch == delimiter && !quoted {
+            out.push(&line[start..i]);
+            start = i + ch.len_utf8();
+        }
+    }
+    out.push(&line[start..]);
+    out
+}
+
+/// Records of a text table: fields in double quotes may hold separators,
+/// line breaks and doubled quotes ("" for ").
+fn parse_records(text: &str, delimiter: char, max_cells: usize) -> (Vec<Vec<String>>, bool) {
+    let mut records: Vec<Vec<String>> = Vec::new();
+    let mut record: Vec<String> = Vec::new();
+    let mut field = String::new();
+    let mut quoted = false;
+    let mut cells = 0usize;
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if quoted {
+            if ch == '"' {
+                if chars.peek() == Some(&'"') {
+                    field.push('"');
+                    chars.next();
+                } else {
+                    quoted = false;
+                }
+            } else if ch != '\r' {
+                // (Line breaks in a field as \n, also from Windows files.)
+                field.push(ch);
+            }
+            continue;
+        }
+        match ch {
+            '"' if field.is_empty() => quoted = true,
+            c if c == delimiter => record.push(std::mem::take(&mut field)),
+            '\r' => {}
+            '\n' => {
+                record.push(std::mem::take(&mut field));
+                cells += record.len();
+                records.push(std::mem::take(&mut record));
+                if cells > max_cells {
+                    return (records, true);
+                }
+            }
+            c => field.push(c),
+        }
+    }
+    if !field.is_empty() || !record.is_empty() {
+        record.push(field);
+        records.push(record);
+    }
+    (records, false)
+}
+
+/// Whether a field is a number ("1234", "-1,5", "1.234,50", "3.14",
+/// "1e-3", "25%", "12,50 €"): shown right-aligned, as written.
+fn looks_numeric(text: &str) -> bool {
+    let t = text.trim().trim_end_matches(['%', '€', '$']).trim().trim_start_matches(['€', '$']).trim();
+    let t = t.strip_prefix(['-', '+']).unwrap_or(t);
+    !t.is_empty()
+        && t.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '.' || c == ',')
+        && t.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | 'e' | 'E' | '-' | '+' | '\''))
+        && t.chars().any(|c| c.is_ascii_digit())
+}
+
+/// A text table as one sheet: fields as written (numbers right-aligned).
+fn load_delimited(path: &Path) -> Result<SheetData> {
+    let size = std::fs::metadata(path).with_context(|| format!("{} fehlt", path.display()))?.len();
+    anyhow::ensure!(size <= MAX_DELIMITED, "{} ist zu groß für die Tabellenansicht", path.display());
+    let bytes = std::fs::read(path).with_context(|| format!("{} ist nicht lesbar", path.display()))?;
+    let (text, encoding) = decode(&bytes);
+    let delimiter = detect_delimiter(&text, path);
+    let (records, truncated) = parse_records(&text, delimiter, MAX_CELLS);
+    let cols = records.iter().map(Vec::len).max().unwrap_or(0) as u32;
+    let cells: Vec<Vec<Cell>> = records
+        .into_iter()
+        .map(|record| {
+            let mut row: Vec<Cell> = record
+                .into_iter()
+                .map(|text| {
+                    let kind = if text.is_empty() {
+                        CellKind::Empty
+                    } else if looks_numeric(&text) {
+                        CellKind::Number
+                    } else {
+                        CellKind::Text
+                    };
+                    Cell { text, kind, style: 0 }
+                })
+                .collect();
+            while row.last().is_some_and(|c| c.kind == CellKind::Empty) {
+                row.pop();
+            }
+            row
+        })
+        .collect();
+    let shown = match delimiter {
+        '\t' => "Tabulator".to_owned(),
+        c => format!("„{c}“"),
+    };
+    Ok(SheetData {
+        name: sheet_name_of(path),
+        rows: cells.len() as u32,
+        cols,
+        cells,
+        styles: vec![CellStyle::default()],
+        formulas: HashMap::new(),
+        truncated,
+        info: format!("Trennzeichen {shown} · {encoding}"),
+    })
 }
 
 // ---------------------------------------------------------------- display
@@ -678,6 +861,43 @@ pub(crate) mod tests {
         assert!(load_sheet(&path, 5).is_err());
         let texts = search_texts(&path).unwrap();
         assert_eq!(texts[1].2, vec![(2, 2, "Gefunden im zweiten Blatt".to_owned())]);
+    }
+
+    #[test]
+    fn reads_text_tables_with_their_separator_and_encoding() {
+        let dir = tempfile::tempdir().unwrap();
+        // German Excel: semicolons, decimal commas, Windows-1252, a quoted field with a line break.
+        let path = dir.path().join("Noten.csv");
+        let mut bytes = b"Name;Note;Bemerkung\r\nM\xfcller;1,7;\"sehr gut;\r\nzweite Zeile\"\r\nSchmidt;2,3;\"sagt \"\"hallo\"\"\"\r\n".to_vec();
+        bytes.extend_from_slice(b"Leer;;\r\n");
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(is_delimited(&path) && !is_spreadsheet(&path));
+        assert_eq!(sheets(&path).unwrap(), vec![SheetInfo { name: "Noten".into(), hidden: false }]);
+        let sheet = load_sheet(&path, 0).unwrap();
+        assert_eq!((sheet.rows, sheet.cols), (4, 3));
+        assert_eq!(sheet.info, "Trennzeichen „;“ · Windows-1252");
+        let text = |r, c| sheet.cell(r, c).map(|c| c.text.clone()).unwrap_or_default();
+        assert_eq!(text(1, 0), "Müller");
+        assert_eq!(text(1, 2), "sehr gut;\nzweite Zeile");
+        assert_eq!(text(2, 2), "sagt \"hallo\"");
+        assert_eq!(sheet.cell(1, 1).unwrap().kind, CellKind::Number);
+        assert_eq!(sheet.cell(1, 0).unwrap().kind, CellKind::Text);
+        assert_eq!(sheet.cells[3].len(), 1, "empty fields at the end are dropped");
+        // Commas and UTF-8 with BOM; tabs in .tsv.
+        let path = dir.path().join("daten.csv");
+        std::fs::write(&path, "\u{feff}a,b,c\n1,2.5,x\n").unwrap();
+        let sheet = load_sheet(&path, 0).unwrap();
+        assert_eq!(
+            (sheet.cols, sheet.info.as_str(), sheet.cell(1, 1).unwrap().text.as_str()),
+            (3, "Trennzeichen „,“ · UTF-8", "2.5")
+        );
+        assert_eq!(sheet.cell(0, 0).unwrap().text, "a", "no BOM in the first cell");
+        let path = dir.path().join("daten.tsv");
+        std::fs::write(&path, "a,1\tb\n").unwrap();
+        assert_eq!(load_sheet(&path, 0).unwrap().cell(0, 0).unwrap().text, "a,1");
+        assert!(load_sheet(&path, 1).is_err());
+        assert!(["12", "-1,5", "1.234,50", "3.14", "1e-3", "25%", "12,50 €"].iter().all(|t| looks_numeric(t)));
+        assert!(!["", "abc", "12a", "-", "2026-03-01x", "P-001"].iter().any(|t| looks_numeric(t)));
     }
 
     #[test]

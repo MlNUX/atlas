@@ -112,6 +112,10 @@ Rectangle {
         if (document && actions.isHtml(document))
             out.push({ icon: "eye", name: qsTr("Als Webseite anzeigen"), enabled: true, tip: qsTr("HTML gerendert anzeigen (lädt beim Speichern neu)"),
                        run: () => actions.renderHtml(document) })
+        if (document && actions.isDelimited(document))
+            out.push({ icon: "file-table", name: qsTr("Als Tabelle anzeigen"), enabled: true,
+                       tip: qsTr("Spalten und Zeilen wie in Excel (Trennzeichen und Zeichensatz werden erkannt)"),
+                       run: () => actions.showAsTable(document) })
         if (document && app.atlasDir && app.exists(document))
             out.push({ icon: "link", name: qsTr("Verknüpfen mit …"), enabled: true, tip: qsTr("Mit einer anderen Datei verbinden, z. B. zwei PDFs (im Graph sichtbar)"),
                        run: () => app.requestRelate(document) })
