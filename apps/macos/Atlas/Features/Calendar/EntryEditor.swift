@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import AtlasKit
+import EventKit
 import SwiftUI
 
 /// New or changed entry (Linux: `EntryDialog.qml`): kind, title, times,
@@ -76,6 +77,7 @@ struct EntryEditor: View {
                         }
                     }
                 }
+                if !draft.calendar.hasPrefix(EventKitSource.prefix) {
                 Section("Checkliste") {
                     ForEach(Array(draft.checklist.enumerated()), id: \.offset) { i, item in
                         HStack {
@@ -94,14 +96,26 @@ struct EntryEditor: View {
                             newItem = ""
                         }
                 }
+                }
                 Section("Mehr") {
-                    TextField("Tags (mit Komma getrennt)", text: $draft.tags)
+                    if !draft.calendar.hasPrefix(EventKitSource.prefix) {
+                        TextField("Tags (mit Komma getrennt)", text: $draft.tags)
+                    }
                     TextField("Beschreibung", text: $draft.description, axis: .vertical).lineLimit(3...8)
                     let writable = model.calendars.filter(\.writable)
-                    if writable.count > 1 {
+                    let mac = EventKitSource.shared.active ? EventKitSource.shared.writableEventCalendars : []
+                    if writable.count + mac.count > 1 {
                         Picker("Kalender", selection: $draft.calendar) {
                             ForEach(writable, id: \.id) { Text($0.name).tag($0.id) }
+                            if !mac.isEmpty {
+                                Divider()
+                                // Target in the macOS calendars (P3.13).
+                                ForEach(mac, id: \.calendarIdentifier) { c in
+                                    Text("\(c.title) (macOS)").tag(EventKitSource.prefix + c.calendarIdentifier)
+                                }
+                            }
                         }
+                        .disabled(!draft.uid.isEmpty)
                     }
                     ForEach(draft.files, id: \.self) { f in
                         HStack {

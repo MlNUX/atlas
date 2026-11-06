@@ -67,6 +67,11 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Atlas
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 Minux · GPL-3.0-or-later"
+        # macOS calendars next to the Atlas entries (P3.13); asked only when switched on.
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Atlas zeigt deine Termine aus der Kalender-App neben den Einträgen deiner Projekte und kann neue Termine dort anlegen."
+        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "Atlas zeigt Erinnerungen mit Datum neben den Einträgen deiner Projekte."
+        # Hardened Runtime needs the calendar entitlement for EventKit (packaging/macos/ signs releases with its own).
+        CODE_SIGN_ENTITLEMENTS: ../../packaging/macos/Atlas-adhoc.entitlements
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   AtlasTests:
