@@ -36,7 +36,7 @@ final class CalendarModel {
     var error: String?
     @ObservationIgnored private var token: UUID?
     @ObservationIgnored private var reminderTask: Task<Void, Never>?
-    static let cal: Foundation.Calendar = {
+    nonisolated static let cal: Foundation.Calendar = {
         var c = Foundation.Calendar(identifier: .gregorian)
         c.locale = Locale(identifier: "de_DE")
         c.firstWeekday = 2
@@ -239,7 +239,7 @@ final class CalendarModel {
 
     // MARK: dates as the core writes them (local time)
 
-    private static func formatter(_ format: String) -> DateFormatter {
+    nonisolated private static func formatter(_ format: String) -> DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Foundation.Calendar(identifier: .gregorian)
@@ -247,21 +247,21 @@ final class CalendarModel {
         return f
     }
 
-    static func iso(_ d: Date) -> String { formatter("yyyy-MM-dd'T'HH:mm").string(from: d) }
-    static func day(_ d: Date) -> String { formatter("yyyy-MM-dd").string(from: d) }
+    nonisolated static func iso(_ d: Date) -> String { formatter("yyyy-MM-dd'T'HH:mm").string(from: d) }
+    nonisolated static func day(_ d: Date) -> String { formatter("yyyy-MM-dd").string(from: d) }
 
     /// `2026-11-06T14:30` or `2026-11-06` (all day).
-    static func date(_ text: String) -> Date? {
+    nonisolated static func date(_ text: String) -> Date? {
         text.contains("T") ? formatter("yyyy-MM-dd'T'HH:mm").date(from: String(text.prefix(16))) : formatter("yyyy-MM-dd").date(from: text)
     }
 
     /// On a 15-minute grid.
-    static func snap(_ d: Date) -> Date {
+    nonisolated static func snap(_ d: Date) -> Date {
         let quarter: TimeInterval = 900
         return Date(timeIntervalSinceReferenceDate: (d.timeIntervalSinceReferenceDate / quarter).rounded() * quarter)
     }
 
-    static func nextFullHour(after d: Date = Date()) -> Date {
+    nonisolated static func nextFullHour(after d: Date = Date()) -> Date {
         let c = cal
         let hour = c.dateInterval(of: .hour, for: d)?.start ?? d
         return c.date(byAdding: .hour, value: 1, to: hour)!
