@@ -28,6 +28,7 @@ final class MarkdownModel {
     let path: String
     var mode: Mode {
         didSet {
+            project.editor.setState(path: path, key: "mode", value: .string(mode.rawValue))
             if mode != .edit { ensurePreview() }
             if mode == .split { followEditor() }
         }
@@ -79,6 +80,8 @@ final class MarkdownModel {
             find = (text, f["caseSensitive"]?.bool ?? false, line)
         }
         editor = TextEditorController(editor: project.core.editor(), language: "Markdown", markdown: true)
+        // Spelling as set in the settings (P3.9).
+        editor.textView.isContinuousSpellCheckingEnabled = project.app.core.settings().get().spellcheck
         editor.onChange = { [weak self] text in self?.changed(text) }
         editor.onScroll = { [weak self] in self?.editorScrolled() }
         editor.onPaste = { [weak self] in self?.pasteSpecial() ?? false }

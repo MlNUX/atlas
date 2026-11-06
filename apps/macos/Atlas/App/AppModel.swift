@@ -15,12 +15,16 @@ final class AppModel {
     var error: String?
     /// Bumped on `Event.settingsChanged` / `.placesChanged`.
     private(set) var settingsRevision = 0
+    /// The project window used last (settings that belong to a project in the API).
+    var lastProject: ProjectModel? { lastRoot.flatMap { projects[$0] } ?? projects.values.first }
+    private var lastRoot: String?
 
     init() {
         Self.useBundledHelpers()
         let box = WeakBox<AppModel>()
         core = Atlas(sink: MainActorEventSink { event in box.value?.handle(event) })
         box.value = self
+        applyTheme()
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [core] _ in
@@ -45,10 +49,14 @@ final class AppModel {
 
     /// The model of the project at `root`, opened on first use (nil on errors).
     func project(at root: String) -> ProjectModel? {
-        if let open = projects[root] { return open }
+        if let open = projects[root] {
+            lastRoot = root
+            return open
+        }
         do {
             let model = try ProjectModel(app: self, root: root)
             projects[root] = model
+            lastRoot = root
             return model
         } catch {
             self.error = "\(error)"
@@ -58,10 +66,21 @@ final class AppModel {
 
     func knownProjects() -> [KnownProject] { core.knownProjects() }
 
+    /// Light, dark or as macOS (`[appearance] theme`, shared with Linux).
+    func applyTheme() {
+        let appearance: NSAppearance? = switch core.settings().get().theme {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+        NSApplication.shared.appearance = appearance
+    }
+
     private func handle(_ event: Event) {
         switch event {
         case .settingsChanged, .placesChanged:
             settingsRevision += 1
+            applyTheme()
         default:
             break
         }

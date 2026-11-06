@@ -40,6 +40,9 @@ printf '# Analysis\n\n- [ ] Blatt 3\n- [x] Blatt 2\n\n[[Lineare Algebra]] #lerne
 printf '# Lineare Algebra\n\nEigenwerte …\n' >"$sample/Notizen/Lineare Algebra.md"
 printf 'fn main() {\n    println!("Hallo");\n}\n' >"$sample/Skripte/main.rs"
 cp "$root/spikes/pdfkit/fixtures/spike.pdf" "$sample/Skript.pdf" 2>/dev/null || true
+# A picture (the first PDF page) and a web page (P3.12).
+sips -s format png "$sample/Skript.pdf" --out "$sample/Bild.png" >/dev/null 2>&1 || true
+printf '<!doctype html><title>Seite</title><h1>Hallo aus HTML</h1><p>Lokal, <b>ohne</b> Netz.</p>\n' >"$sample/Skripte/seite.html"
 
 say "Launch + screenshots"
 app="$derived/Build/Products/Debug/Atlas.app"
@@ -74,6 +77,12 @@ sleep 2
 osascript -e 'tell application "System Events" to keystroke "lin"' 2>/dev/null || true
 sleep 2
 screencapture -x "$out/atlas-quickopen.png" || true
+if [[ -n "${ATLAS_CI_SETTINGS:-}" ]]; then
+  # The settings window (⌘,) for the screenshot (P3.9).
+  osascript -e 'tell application "System Events" to keystroke "," using command down' 2>/dev/null || true
+  sleep 3
+  screencapture -x "$out/atlas-settings.png" || true
+fi
 osascript -e 'tell application "Atlas" to quit' 2>/dev/null || pkill -x Atlas || true
 sleep 2
 say "Session written for Linux (E12)"

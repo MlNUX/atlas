@@ -74,6 +74,8 @@ final class PDFModel {
 
     init(project: ProjectModel, path: String) {
         self.path = path
+        // `[pdf] dark` (settings): new tabs start dark.
+        dark = project.app.core.settings().get().pdfDark
         document = PDFDocument(url: URL(fileURLWithPath: path))
         do {
             core = try project.core.pdf(path: path)
