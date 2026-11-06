@@ -85,6 +85,8 @@ pub fn dispatch(op: &str, args: &str) -> Result<Value> {
         "tableEnter" => json!(me::table_enter(text, a.num("pos"))),
         "alignTableAt" => json!(me::align_table_at(text, a.num("pos"), a.num("cursor"))),
         "alignTables" => json!(me::align_tables(text, a.num("cursor"))),
+        // Very large notes are not drawn as tables (the text stays).
+        "drawnTables" => json!(if text.len() > 2_000_000 { Vec::new() } else { me::drawn_tables(text) }),
         "completion" => json!(me::completion_at(text, a.num("pos"))),
         "tagSuggestions" => {
             let tags: Vec<me::Tag> =

@@ -70,6 +70,7 @@ const QML_FILES: &[&str] = &[
     "qml/WebRepaint.qml",
     "qml/WebScrollbars.qml",
     "qml/SheetView.qml",
+    "qml/LiveTables.qml",
 ];
 
 const RUST_BRIDGES: &[&str] = &[

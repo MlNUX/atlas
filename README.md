@@ -36,6 +36,8 @@ verändert weder PDFs noch Notizen ungefragt.
 - **Markdown** mit Live-Vorschau, Formeln (KaTeX), Diagrammen (Mermaid,
   mit Vorlagen), Tabellen, Bildern, Ordnerbäumen, Checklisten, `#Tags`,
   Wiki-Links, Backlinks und Graph; Rechtschreibprüfung Deutsch und Englisch.
+  Tabellen erscheinen auch beim Bearbeiten als Tabelle (wie Obsidians Live
+  Preview); ein Klick in eine Zelle zeigt den Text zum Bearbeiten.
 - **Suche** (`Strg+Umschalt+F`) in Notizen, Code, dem Text aller PDFs und
   den Zellen aller Tabellen, mit Typfiltern; der Treffer ist im geöffneten Dokument markiert.
   Die **Arbeitsleiste** (`Strg+P`) findet Dateien, Aktionen, Tags, Zitate

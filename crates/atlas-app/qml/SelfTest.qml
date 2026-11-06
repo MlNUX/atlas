@@ -536,6 +536,21 @@ Item {
                 check("Tabellen ausrichten: ganze Notiz", ed.alignTables() === 1
                       && ed.text.indexOf("| c   | d    |\n| --- | ---- |\n| e   | ffff |") > 0
                       && ed.text.indexOf("```\n| x | y |\n|---|---|\n```") > 0, JSON.stringify(ed.text.slice(-120)))
+                // Live Preview: the tables are drawn (not the one in the code block).
+                ed.updateTables()
+                const live = ed.liveTableItem
+                const cd = live.layouts.find(l => l.table.header.cells[0].text === "c")
+                check("Tabellen im Editor gezeichnet (ohne Codeblock)", live.layouts.length === 3 && !!cd && cd.table.columns === 2
+                      && cd.rows.length === 2 && cd.rows[1].cells[1].text === "ffff" && cd.rows[0].header
+                      && Math.abs(cd.rows[0].h + cd.rows[1].h - cd.height) <= 1 && cd.rows[1].h > ed.lineHeight,
+                      live.layouts.length + " " + JSON.stringify(cd && cd.rows))
+                const ab = live.layouts.find(l => l.table.header.cells[0].text === "a")
+                check("Gezeichnete Tabelle: Ausrichtung aus der Trennzeile", !!ab && ab.table.align.join(",") === "c,r", ab && ab.table.align.join(","))
+                // A click into the second cell of the body row puts the cursor at the end of "ffff".
+                const pos = live.cursorFor(cd, cd.xs[1] + 4, cd.rows[1].y + 2)
+                check("Klick in eine gezeichnete Zelle setzt den Cursor in ihren Text", ed.text.slice(pos - 4, pos) === "ffff", JSON.stringify(ed.text.slice(pos - 6, pos + 2)))
+                check("Gezeichnete Zelle: **fett** als Text", live.rich("**2** und `x`").indexOf("<b>2</b>") >= 0 && live.plain("**2** und `x`") === "2 und x",
+                      live.rich("**2** und `x`"))
                 ed.applyState({ cursor: ed.text.length })
                 mdv.insertDiagram(0)
                 check("Diagramm-Vorlage einfügen", ed.text.indexOf("```mermaid\nflowchart TD") > 0)

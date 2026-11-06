@@ -46,6 +46,23 @@ Rectangle {
     property var actions: null
     /// Suggest project files after `[[` (Markdown).
     property bool wikiCompletion: false
+    /// Markdown tables drawn as tables where the cursor is not (Live Preview).
+    property bool liveTables: true
+    /// The drawn tables (for the smoke test).
+    readonly property alias liveTableItem: liveTables
+    /// Reads the tables of the note again: at once for normal notes (after
+    /// this event, so positions are laid out), a moment later for long ones.
+    function scheduleTables() {
+        if (!root.wikiCompletion || !root.liveTables) { if (liveTables.tables.length) liveTables.tables = []; return }
+        if (area.length > 200000) tablesTimer.restart()
+        else Qt.callLater(root.updateTables)
+    }
+    function updateTables() {
+        const text = area.text
+        // Only when the note has a table at all (a delimiter row).
+        liveTables.tables = /^\s*\|?\s*:?-+:?\s*\|/m.test(text) ? (root.edit("drawnTables", { text: text }) || []) : []
+    }
+    Timer { id: tablesTimer; interval: 300; onTriggered: root.updateTables() }
     /// Faster, more direct touchpad scrolling (TouchpadFling.brisk), as in
     /// the .atlasnote view.
     property bool briskScrolling: false
@@ -157,6 +174,7 @@ Rectangle {
         if (root.pendingFind) Qt.callLater(root.applyFind)
         if (root.showSymbols) root.updateSymbols()
         spellTimer.restart()
+        root.scheduleTables()
         root.synced()
     }
 
@@ -709,6 +727,7 @@ Rectangle {
                         if (root.showSymbols) symbolTimer.restart()
                         // Old underlines would sit in the wrong place until checked again.
                         if (root.spellOn) { root.spellRanges = []; root.spellMarks = []; spellTimer.restart() }
+                        root.scheduleTables()
                     }
                     onCursorPositionChanged: if (root.wikiCompletion) { completionTimer.restart(); root.cursorMoved() }
                     Keys.onPressed: (event) => {
@@ -757,6 +776,13 @@ Rectangle {
                         else if (event.key === Qt.Key_Escape && findBar.visible) { findBar.visible = false; event.accepted = true }
                     }
                     FontMetrics { id: fontMetrics; font: area.font }
+
+                    // Markdown tables drawn as tables where the cursor is not.
+                    LiveTables {
+                        id: liveTables
+                        area: area
+                        visible: root.wikiCompletion && root.liveTables
+                    }
 
                     // Misspelled words.
                     Repeater {

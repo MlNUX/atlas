@@ -582,6 +582,136 @@ pub fn align_tables(text: &str, cursor: usize) -> Vec<Edit> {
     edits
 }
 
+// ---- tables drawn in the editor --------------------------------------------
+
+/// A cell of a table for drawing it (positions in UTF-16 units of the
+/// whole text: where the cell's text starts and ends).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DrawnCell {
+    pub text: String,
+    pub start: usize,
+    pub end: usize,
+}
+
+/// A row of a drawn table: its line (UTF-16 start and end) and cells.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DrawnRow {
+    pub start: usize,
+    pub end: usize,
+    pub cells: Vec<DrawnCell>,
+}
+
+/// A table of the note as the editor draws it over its text ("Live
+/// Preview"): the header, the body rows (the delimiter row is not one),
+/// the alignment of each column (`l`, `c`, `r` or "") and where the table
+/// is (UTF-16, `delimiter` the line under the header).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DrawnTable {
+    pub start: usize,
+    pub end: usize,
+    pub columns: usize,
+    pub align: Vec<String>,
+    pub header: DrawnRow,
+    pub delimiter: (usize, usize),
+    pub rows: Vec<DrawnRow>,
+}
+
+/// Byte ranges of the cell texts of a table row (trimmed, as
+/// [`table_cells`] splits it).
+fn cell_spans(line: &str) -> Vec<(usize, usize)> {
+    let lead = line.len() - line.trim_start().len();
+    let body_end = line.trim_end().len();
+    let mut begin = lead;
+    if line[lead..].starts_with('|') {
+        begin += 1;
+    }
+    let mut end = body_end;
+    if end > begin && line[..end].ends_with('|') && !line[..end].ends_with("\\|") {
+        end -= 1;
+    }
+    let bytes = line.as_bytes();
+    let mut spans = Vec::new();
+    let mut cell_start = begin;
+    let mut i = begin;
+    let trim = |s: usize, e: usize| {
+        let raw = &line[s..e];
+        let ts = s + (raw.len() - raw.trim_start().len());
+        (ts, ts + raw.trim().len())
+    };
+    while i < end {
+        if bytes[i] == b'\\' && i + 1 < end {
+            i += 2;
+            continue;
+        }
+        if bytes[i] == b'|' {
+            spans.push(trim(cell_start, i));
+            cell_start = i + 1;
+        }
+        i += 1;
+    }
+    spans.push(trim(cell_start, end.max(cell_start)));
+    spans
+}
+
+fn drawn_row(text: &str, start: usize, line: &str) -> DrawnRow {
+    let cells = cell_spans(line)
+        .into_iter()
+        .map(|(s, e)| DrawnCell {
+            text: line[s..e].to_owned(),
+            start: utf16_at(text, start + s),
+            end: utf16_at(text, start + e),
+        })
+        .collect();
+    DrawnRow { start: utf16_at(text, start), end: utf16_at(text, start + line.len()), cells }
+}
+
+/// All tables of the note (not in code blocks), for drawing them.
+pub fn drawn_tables(text: &str) -> Vec<DrawnTable> {
+    let mut out = Vec::new();
+    let mut p = 0;
+    while p < text.len() {
+        let end = line_end(text, p);
+        let t = if p > 0 && is_delimiter(&text[p..end]) { table_at(text, p) } else { None };
+        let Some(t) = t else {
+            p = end + 1;
+            continue;
+        };
+        if out.last().is_some_and(|d: &DrawnTable| d.start == utf16_at(text, t.start)) {
+            p = t.end + 1;
+            continue;
+        }
+        let delimiter_cells = table_cells(&t.lines[1]);
+        let header = drawn_row(text, t.starts[0], &t.lines[0]);
+        let rows: Vec<DrawnRow> =
+            t.lines.iter().zip(&t.starts).skip(2).map(|(line, &start)| drawn_row(text, start, line)).collect();
+        let columns = std::iter::once(&header).chain(&rows).map(|r| r.cells.len()).max().unwrap_or(0);
+        let align = (0..columns)
+            .map(|c| {
+                let d = delimiter_cells.get(c).map_or("", String::as_str);
+                match (d.starts_with(':'), d.len() > 1 && d.ends_with(':')) {
+                    (true, true) => "c",
+                    (false, true) => "r",
+                    (true, false) => "l",
+                    _ => "",
+                }
+                .to_owned()
+            })
+            .collect();
+        let d0 = t.starts[1];
+        out.push(DrawnTable {
+            start: utf16_at(text, t.start),
+            end: utf16_at(text, t.end),
+            columns,
+            align,
+            header,
+            delimiter: (utf16_at(text, d0), utf16_at(text, d0 + t.lines[1].len())),
+            rows,
+        });
+        p = t.end + 1;
+    }
+    out
+}
+
 // ---- completion -----------------------------------------------------------
 
 static TAG: LazyLock<Regex> = LazyLock::new(|| {
@@ -657,6 +787,31 @@ pub fn accept_wiki(text: &str, start: usize, end: usize, relative: &str) -> Edit
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tables_for_drawing_with_cells_and_alignment() {
+        let text = "# Notiz\n\n| Name | Note |  Ok |\n|:-----|-----:|:---:|\n| Müller | 1,7 | ✓ |\n| a \\| b | **2** |\n\nText | kein Tisch\n\n```\n| x |\n|---|\n```\n";
+        let tables = drawn_tables(text);
+        assert_eq!(tables.len(), 1, "{tables:?}");
+        let t = &tables[0];
+        assert_eq!((t.columns, t.align.clone()), (3, vec!["l".to_owned(), "r".to_owned(), "c".to_owned()]));
+        assert_eq!(t.header.cells.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["Name", "Note", "Ok"]);
+        assert_eq!(t.rows.len(), 2);
+        assert_eq!(t.rows[1].cells.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["a \\| b", "**2**"]);
+        // Positions are UTF-16 offsets into the whole text.
+        let utf16: Vec<u16> = text.encode_utf16().collect();
+        let at = |s: usize, e: usize| String::from_utf16(&utf16[s..e]).unwrap();
+        let m = &t.rows[0].cells[0];
+        assert_eq!(at(m.start, m.end), "Müller");
+        let check = &t.rows[0].cells[2];
+        assert_eq!(at(check.start, check.end), "✓");
+        assert_eq!(at(t.start, t.start + 6), "| Name");
+        assert!(at(t.delimiter.0, t.delimiter.1).starts_with("|:---"));
+        assert_eq!(&text[text.len() - 30..].contains("| x |"), &true, "the code block is no table");
+        // Empty cells keep their place.
+        let t = &drawn_tables("| a | b |\n|---|---|\n|  | x |\n")[0];
+        assert_eq!(t.rows[0].cells.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(), ["", "x"]);
+    }
 
     /// Applies `e` and returns (text, selected text, cursor).
     fn run(text: &str, e: Edit) -> (String, String, usize) {
