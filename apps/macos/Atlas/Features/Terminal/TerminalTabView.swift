@@ -3,13 +3,26 @@
 
 import SwiftUI
 
-/// Placeholder of P3.5; the task replaces this view (same name and
-/// properties: the router in `App/FeatureRouter.swift` uses them).
+/// A terminal in an editor tab (`terminal:<dir>#<n>`; P3.5). The terminal
+/// belongs to `TerminalModel`, so it keeps running when the tab is dragged
+/// to another split; it ends when its tab is closed.
 struct TerminalTabView: View {
     let project: ProjectModel
     let path: String
 
     var body: some View {
-        FeaturePlaceholder(task: "P3.5", title: "Terminal", path: path)
+        let model = TerminalModel.of(project)
+        let session = model.tabSession(path)
+        TerminalHostView(session: session)
+            .id(path)
+            .onAppear { model.focusTab(session) }
+            .onDisappear {
+                // A dragged tab disappears and appears again elsewhere.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    model.tabMaybeClosed(path)
+                }
+            }
+            .accessibilityLabel("Terminal")
     }
 }
