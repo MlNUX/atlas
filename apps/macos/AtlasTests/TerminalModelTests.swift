@@ -70,6 +70,13 @@ struct TerminalModelTests {
         #expect(again.sessions.count == 3)
         guard case .split = again.root.items[1] else { Issue.record("tree not restored"); return }
 
+        // A tab with only a command (an action) is not stored.
+        model.run(Prepared(name: "true", argv: ["/usr/bin/true"], display: "true", cwd: project.root, env: [],
+                           confirm: false, destructive: false, placement: .panel), ownTab: false)
+        #expect(model.groups.count == 2)
+        #expect(project.editor.layout.extra["terminal"]?["groups"]?.array?.count == 1)
+        #expect(project.editor.layout.extra["terminal"]?["current"]?.int == 0)
+
         // Hidden: the processes stay, the session remembers it.
         model.hide()
         #expect(project.editor.layout.extra["terminal"]?["visible"]?.bool == false)

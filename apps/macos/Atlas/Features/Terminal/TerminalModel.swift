@@ -355,8 +355,11 @@ final class TerminalModel {
         state["visible"] = .bool(visible)
         state["height"] = .number(height.rounded())
         if !groups.isEmpty || saved == nil {
-            state["current"] = .number(Double(current))
-            state["groups"] = .array(groups.map { $0.serialize() })
+            // Tabs running only programs started by Atlas are not restored.
+            let kept = groups.filter { $0.sessions.contains { $0.prepared == nil } }
+            let index = currentGroup.flatMap { g in kept.firstIndex { $0 === g } } ?? max(0, kept.count - 1)
+            state["current"] = .number(Double(index))
+            state["groups"] = .array(kept.map { $0.serialize() })
         }
         return .object(state)
     }
