@@ -64,3 +64,21 @@ struct CalendarModelTests {
                 == CalendarModel.cal.date(bySettingHour: 9, minute: 15, second: 0, of: Date())!)
     }
 }
+
+@MainActor
+struct CalendarSyncTests {
+    @Test func noAccountUntilOneIsSaved() throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "atlas-sync-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let project = try ProjectModel(app: AppModel(), root: dir.path)
+        let sync = CalendarSyncModel(project: project)
+        defer { sync.stop() }
+        #expect(sync.account.provider == .none)
+        #expect(!sync.state.connected)
+        #expect(sync.conflicts.isEmpty)
+        // Saving „no account“ keeps it local and reports no error.
+        sync.save()
+        #expect(sync.error == nil)
+        #expect(!sync.calendar.syncState().connected)
+    }
+}

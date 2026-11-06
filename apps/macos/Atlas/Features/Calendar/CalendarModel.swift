@@ -32,6 +32,8 @@ final class CalendarModel {
     private(set) var occurrences: [Occurrence] = []
     private(set) var tasks: [Entry] = []
     private(set) var calendars: [CalendarInfo] = []
+    /// Sync state in one line (help of the cloud button); refreshed with the rest.
+    private(set) var syncStatus = ""
     var editing: EntryDraft?
     var error: String?
     @ObservationIgnored private var token: UUID?
@@ -51,7 +53,10 @@ final class CalendarModel {
             showTasks = state["tasks"] as? Bool ?? true
         }
         token = project.listen { [weak self] event in
-            if case .calendarChanged = event { self?.reload() }
+            switch event {
+            case .calendarChanged, .syncChanged: self?.reload()
+            default: break
+            }
         }
         reload()
         startReminders()
@@ -124,6 +129,8 @@ final class CalendarModel {
         }
         tasks = calendar.tasks().filter { $0.status != .done }
         calendars = calendar.calendars()
+        let s = calendar.syncState()
+        syncStatus = s.connected ? s.status + (s.pending > 0 ? " · \(s.pending) Änderung(en) warten" : "") : "Kein Konto verbunden"
     }
 
     /// Occurrences on `day` (all-day ones first).

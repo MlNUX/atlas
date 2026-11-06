@@ -27,6 +27,7 @@ struct CalendarTabView: View {
 private struct CalendarContent: View {
     @Bindable var model: CalendarModel
     @State private var calendarsShown = false
+    @State private var accountShown = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,6 +54,16 @@ private struct CalendarContent: View {
         .sheet(item: $model.editing) { draft in
             EntryEditor(model: model, draft: draft)
         }
+        .sheet(isPresented: $accountShown, onDismiss: { model.reload() }) {
+            CalendarSyncView(project: model.project)
+        }
+    }
+
+    private var syncSymbol: String {
+        let s = model.calendar.syncState()
+        if !s.connected { return "icloud.slash" }
+        if s.failed || s.conflicts > 0 { return "exclamationmark.icloud" }
+        return s.syncing ? "arrow.triangle.2.circlepath.icloud" : "checkmark.icloud"
     }
 
     private var toolbar: some View {
@@ -84,6 +95,9 @@ private struct CalendarContent: View {
                 .labelStyle(.iconOnly)
                 .help("Kalender ein- und ausblenden")
                 .popover(isPresented: $calendarsShown) { CalendarsPopover(model: model) }
+            Button("Konto und Synchronisierung", systemImage: syncSymbol) { accountShown = true }
+                .labelStyle(.iconOnly)
+                .help(model.syncStatus)
             Toggle(isOn: $model.showTasks) { Image(systemName: "checklist") }
                 .toggleStyle(.button)
                 .help("Aufgaben ohne Zeit")
@@ -119,7 +133,7 @@ private struct CalendarsPopover: View {
                     }
                 }
             }
-            Text("Nextcloud oder Google verbinden: folgt mit dem zweiten Teil von P3.7.")
+            Text("Nextcloud oder Google verbinden: Wolke in der Leiste.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(12)
