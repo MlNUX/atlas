@@ -125,7 +125,7 @@ struct TerminalHostView: NSViewRepresentable {
     var active = false
     @Environment(\.colorScheme) var colorScheme
 
-    func makeNSView(context: Context) -> NSView {
+    func makeNSView(context: NSViewRepresentableContext<Self>) -> NSView {
         let container = TerminalContainer()
         container.wantsLayer = true
         container.session = session
@@ -137,7 +137,7 @@ struct TerminalHostView: NSViewRepresentable {
         return container
     }
 
-    func updateNSView(_ container: NSView, context: Context) {
+    func updateNSView(_ container: NSView, context: NSViewRepresentableContext<Self>) {
         let view = session.view
         (container as? TerminalContainer)?.session = session
         if view.superview !== container {
