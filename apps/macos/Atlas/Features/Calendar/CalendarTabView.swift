@@ -3,6 +3,7 @@
 
 import AppKit
 import AtlasKit
+import EventKit
 import SwiftUI
 
 /// The `calendar:` tab (P3.7; Linux: `CalendarView.qml`): week, month or
@@ -54,6 +55,8 @@ private struct CalendarContent: View {
         .sheet(item: $model.editing) { draft in
             EntryEditor(model: model, draft: draft)
         }
+        // macOS calendars changed (EKEventStoreChanged) or were switched on/off.
+        .onChange(of: EventKitSource.shared.revision) { model.reload() }
         .sheet(isPresented: $accountShown, onDismiss: { model.reload() }) {
             CalendarSyncView(project: model.project)
         }
@@ -135,6 +138,8 @@ private struct CalendarsPopover: View {
             }
             Text("Nextcloud oder Google verbinden: Wolke in der Leiste.")
                 .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            MacCalendarsSection()
         }
         .padding(12)
         .frame(width: 320)
@@ -198,5 +203,33 @@ struct TaskDrag: Codable, Transferable {
     let uid: String
     static var transferRepresentation: some TransferRepresentation {
         CodableRepresentation(contentType: .json)
+    }
+}
+
+/// The calendars of macOS (P3.13): switch on, choose which to show.
+private struct MacCalendarsSection: View {
+    @Bindable private var source = EventKitSource.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Kalender von macOS zeigen", isOn: $source.enabled)
+                .toggleStyle(.switch)
+            if source.enabled {
+                ForEach(source.calendars, id: \.calendarIdentifier) { c in
+                    Toggle(isOn: Binding(get: { source.isVisible(c) }, set: { source.setVisible(c, $0) })) {
+                        HStack(spacing: 6) {
+                            Circle().fill(Color(cgColor: c.cgColor)).frame(width: 10, height: 10)
+                            Text(c.title)
+                            Text(c.allowedEntityTypes.contains(.reminder) ? "Erinnerungen" : c.source.title)
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                }
+            }
+            if let error = source.error { Text(error).font(.caption).foregroundStyle(.orange) }
+            Text("Termine und Erinnerungen mit Datum aus der Kalender-App von macOS, neben den Einträgen von Atlas. Neue Termine können dorthin gehen.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 }

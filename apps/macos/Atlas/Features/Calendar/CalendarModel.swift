@@ -127,6 +127,12 @@ final class CalendarModel {
         } catch {
             self.error = atlasMessage(error)
         }
+        // The macOS calendars (P3.13), if switched on.
+        let eventKit = EventKitSource.shared
+        if eventKit.active {
+            eventKit.loadReminders(from: from, to: to)
+            occurrences += eventKit.occurrences(from: from, to: to)
+        }
         tasks = calendar.tasks().filter { $0.status != .done }
         calendars = calendar.calendars()
         let s = calendar.syncState()
@@ -153,13 +159,21 @@ final class CalendarModel {
     }
 
     func edit(uid: String) {
+        if EventKitSource.isEventKit(uid) {
+            editing = EventKitSource.shared.draft(uid: uid)
+            return
+        }
         guard let entry = calendar.entry(uid: uid) else { return }
         editing = EntryDraft(entry: entry)
     }
 
     func save(_ draft: EntryDraft) {
         do {
-            _ = try calendar.save(entry: draft.entry())
+            if draft.calendar.hasPrefix(EventKitSource.prefix) {
+                try EventKitSource.shared.save(draft)
+            } else {
+                _ = try calendar.save(entry: draft.entry())
+            }
             editing = nil
             reload()
         } catch {
@@ -168,7 +182,9 @@ final class CalendarModel {
     }
 
     func remove(uid: String) {
-        perform { try calendar.remove(uid: uid) }
+        perform {
+            if EventKitSource.isEventKit(uid) { try EventKitSource.shared.remove(uid: uid) } else { try calendar.remove(uid: uid) }
+        }
         editing = nil
     }
 
@@ -179,6 +195,10 @@ final class CalendarModel {
         let all = allDay ?? o.allDay
         let begin = all ? Self.cal.startOfDay(for: start) : Self.snap(start)
         let end = begin.addingTimeInterval(all && !o.allDay ? 86400 : length)
+        if EventKitSource.isEventKit(o.uid) {
+            perform { try EventKitSource.shared.move(uid: o.uid, start: begin, end: end, allDay: all) }
+            return
+        }
         perform {
             try calendar.moveOccurrence(uid: o.uid, instance: o.instance, start: all ? Self.day(begin) : Self.iso(begin),
                                         end: all ? Self.day(end) : Self.iso(end), allDay: all)
@@ -186,7 +206,10 @@ final class CalendarModel {
     }
 
     func setDone(_ uid: String, _ done: Bool) {
-        perform { try calendar.setStatus(uid: uid, status: done ? .done : .planned) }
+        perform {
+            if EventKitSource.isEventKit(uid) { try EventKitSource.shared.setDone(uid: uid, done) }
+            else { try calendar.setStatus(uid: uid, status: done ? .done : .planned) }
+        }
     }
 
     /// A task as a work block from `start` (an hour, or its estimate).
