@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P3.5 (macOS port): terminal (SwiftTerm) – build, unit tests, sample
+# project with a terminal tab and the terminal panel running a command
+# (screenshots in the log, the session with the panel tree too).
+name: mac-P3.5
+
+on:
+  push:
+    branches: ["port/macos/P3.5-*"]
+    paths:
+      - ".github/workflows/mac-P3.5.yml"
+      - "apps/macos/**"
+      - "crates/atlas-api/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P3.5-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      # On failure the test lines of xcodebuild and a crash report into the log.
+      run: |
+        defaults write de.minux.atlas AtlasTerminalPanel -string "ls -la; printf '\033[1;32mAtlas\033[0m-Terminal: Grüße, 日本, 🙂\n'"
+        ATLAS_CI_OPEN_FILE=terminal: apps/macos/scripts/ci-app.sh || {
+          grep -aE -A2 "ATLAS-DIAG|✘|rash|Fatal|Restart|signal|unexpected|Assertion|Thread [0-9]+ Crashed" \
+            "$ATLAS_CI_OUT/xcodebuild.log" | grep -v "Connection\]" | tail -n 120
+          report="$(ls -t ~/Library/Logs/DiagnosticReports/Atlas* 2>/dev/null | head -n 1 || true)"
+          if [[ -n "$report" ]]; then echo "== $report"; head -c 6000 "$report"; fi
+          exit 1
+        }
+      artifact-name: mac-P3.5
+      cache-key: P3.5

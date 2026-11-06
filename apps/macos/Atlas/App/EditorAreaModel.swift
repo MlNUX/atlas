@@ -124,6 +124,14 @@ final class EditorAreaModel {
         if changedAny { changed() }
     }
 
+    /// Parts of the session layout outside the editor area (Linux keys such
+    /// as `terminal`, P3.5); `nil` removes the key. Saved with the session.
+    func setLayoutExtra(_ key: String, _ value: JSONValue?) {
+        guard layout.extra[key] != value else { return }
+        layout.extra[key] = value
+        changed()
+    }
+
     /// Tabs follow files and folders that were moved or renamed.
     func pathMoved(from: String, to: String) {
         for g in layout.groups.indices {

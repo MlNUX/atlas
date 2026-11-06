@@ -15,6 +15,7 @@ struct ProjectWindow: View {
                 .navigationSplitViewColumnWidth(min: 200, ideal: 260)
         } detail: {
             EditorAreaView(project: project)
+                .terminalPanel(project)
         }
         .inspector(isPresented: $project.inspectorVisible) {
             // Width 0 allowed: content wider than the column is clipped
