@@ -28,6 +28,7 @@ final class MarkdownModel {
     let path: String
     var mode: Mode {
         didSet {
+            project.editor.setState(path: path, key: "mode", value: .string(mode.rawValue))
             if mode != .edit { ensurePreview() }
             if mode == .split { followEditor() }
         }

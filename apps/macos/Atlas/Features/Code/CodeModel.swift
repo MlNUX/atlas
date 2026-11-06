@@ -22,7 +22,9 @@ final class CodeModel {
     private(set) var conflict = false
     /// Functions, types, headings … of the file (Linux: the symbol list).
     private(set) var symbols: [Symbol] = []
-    var symbolsVisible = false
+    var symbolsVisible = false {
+        didSet { project.editor.setState(path: path, key: "symbols", value: .bool(symbolsVisible)) }
+    }
     var goToLineVisible = false
     /// The file is a script Atlas can run (`.sh`, or executable with `#!`).
     let runnable: Bool
