@@ -79,6 +79,7 @@ Item {
     property var docsDarkAfter: null
     property var previewBg: null
     property var sheetHeader: null
+    property string newFolder: ""
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -1257,6 +1258,20 @@ Item {
             () => {
                 check("Pfadleiste: Klick daneben zum Eintippen", folderDialog.pathBar.editing)
                 folderDialog.pathBar.editing = false
+                // A new folder right in the dialog (here in notes/, which has none).
+                folderDialog.startCreate()
+                check("Ordnerauswahl: neuer Ordner fragt nach dem Namen", folderDialog.creating)
+                check("Ordnerauswahl: ungültiger Name abgelehnt", folderDialog.createFolder("a/b") === "" && folderDialog.creating)
+                test.newFolder = folderDialog.createFolder("Kapitel 1")
+                check("Ordnerauswahl: Ordner angelegt und gewählt", test.newFolder === path("notes/Kapitel 1") && app.exists(test.newFolder)
+                      && folderDialog.chosenPath === test.newFolder && !folderDialog.creating, test.newFolder + " " + folderDialog.chosenPath)
+            },
+            () => {
+                if (waitFor(() => folderDialog.folders.count === 1)) return
+                check("Ordnerauswahl: neuer Ordner in der Liste markiert", folderDialog.folders.count === 1 && folderDialog.chosenPath === test.newFolder,
+                      folderDialog.folders.count + " " + folderDialog.chosenPath)
+                // (Gone again: later steps count the folders of notes/.)
+                fileActions.ops.moveToTrash([test.newFolder])
                 folderDialog.navigate(app.projectRoot)
             },
             () => {
