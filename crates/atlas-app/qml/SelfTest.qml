@@ -330,6 +330,20 @@ Item {
             () => {
                 if (waitFor(() => !fileActions.busy && app.exists(path("tabellen/archiv (Kopie)/xl/workbook.xml")))) return
                 check("Zip: zweites Entpacken überschreibt nichts", app.exists(path("tabellen/archiv (Kopie)/xl/workbook.xml")), fileActions.message)
+                // A long note (3000 lines): what runs on every scroll step stays fast.
+                editor.open(path("lang/sehrlang.md"), 0, "tab")
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => !!md && !!md.editorItem && md.editorItem.text.length > 50000)) return
+                md.mode = "edit"
+                const ed = md.editorItem, f = ed.flickItem, max = Math.max(1, f.contentHeight - f.height)
+                let t = Date.now()
+                for (let i = 0; i < 40; i++) { f.contentY = max * i / 39; ed.updateWrappedNumbers(); ed.lineAtY(f.contentY); ed.exactLineAt(100) }
+                const per = (Date.now() - t) / 40
+                check("Lange Notiz: Scrollen bleibt flüssig (Zeilennummern, Zeile suchen)", per < 25 && ed.wrappedNumbers.length > 0,
+                      per.toFixed(1) + " ms je Schritt, " + ed.wrappedNumbers.length + " Nummern")
+                f.contentY = 0
                 window.openTerminal(path("src"), "tab")
             },
             () => {

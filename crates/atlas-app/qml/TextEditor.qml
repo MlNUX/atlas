@@ -50,6 +50,8 @@ Rectangle {
     property bool liveTables: true
     /// The drawn tables (for the smoke test).
     readonly property alias liveTableItem: liveTables
+    /// The scrolling area (for the smoke test and measurements).
+    readonly property alias flickItem: flick
     /// Reads the tables of the note again: at once for normal notes (after
     /// this event, so positions are laid out), a moment later for long ones.
     function scheduleTables() {
@@ -426,10 +428,12 @@ Rectangle {
         function onTextChanged() { numbersTimer.restart() }
         function onContentHeightChanged() { numbersTimer.restart() }
     }
+    // (area.text copies the whole document on every read: read it once.)
     function positionOfLine(n) {
+        const text = area.text
         let pos = 0
         for (let i = 1; i < n; ++i) {
-            const next = area.text.indexOf("\n", pos)
+            const next = text.indexOf("\n", pos)
             if (next < 0) break
             pos = next + 1
         }
@@ -437,8 +441,9 @@ Rectangle {
     }
     function lineAtY(y) {
         const pos = area.positionAt(0, y)
+        const text = area.text
         let count = 1, idx = -1
-        while ((idx = area.text.indexOf("\n", idx + 1)) >= 0 && idx < pos) count++
+        while ((idx = text.indexOf("\n", idx + 1)) >= 0 && idx < pos) count++
         return count
     }
     readonly property alias fling: touchpadFling
@@ -621,18 +626,21 @@ Rectangle {
                 color: Theme.editor
                 clip: true
                 Repeater {
-                    model: gutter.visible && root.wrap ? root.wrappedNumbers : []
+                    // A count, not the list: the labels stay while scrolling
+                    // (a new list would rebuild them every step).
+                    model: gutter.visible && root.wrap ? root.wrappedNumbers.length : 0
                     Text {
-                        required property var modelData
+                        required property int index
+                        readonly property var entry: root.wrappedNumbers[index] || { n: 0, y: -1000 }
                         x: 0
                         width: gutter.width - 10
                         // (positionToRectangle includes the top padding.)
-                        y: modelData.y - flick.contentY
+                        y: entry.y - flick.contentY
                         height: root.lineHeight
                         horizontalAlignment: Text.AlignRight
                         verticalAlignment: Text.AlignVCenter
-                        text: modelData.n
-                        color: area.cursorLine === modelData.n ? Theme.text : Theme.textFaint
+                        text: entry.n
+                        color: area.cursorLine === entry.n ? Theme.text : Theme.textFaint
                         font.family: Theme.monoFont
                         font.pixelSize: 12
                     }
