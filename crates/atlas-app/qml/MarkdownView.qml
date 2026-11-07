@@ -67,12 +67,14 @@ Rectangle {
     Timer {
         id: followTimer
         interval: 0
-        // Lined up in the middle of the view, where one reads: the preview
-        // sets type larger, so heights differ further up and down.
+        // Lined up in the middle of the view, where one reads (the preview
+        // sets type larger, so heights differ further up and down); near the
+        // start and the end at the top and bottom edge, so both get there
+        // together.
         onTriggered: {
             if (!root.web || !root.pageReady) return
-            const mid = Math.round(Math.min(editor.viewHeight, web.height) / 2)
-            web.runJavaScript("atlas.follow(" + editor.exactLineAt(mid) + "," + mid + ")")
+            const frac = editor.edgeFraction()
+            web.runJavaScript("atlas.follow(" + editor.exactLineAt(frac * editor.viewHeight) + ",0," + frac + ")")
         }
     }
     property real previewY: 0
@@ -465,7 +467,8 @@ Rectangle {
                                     // Split view: the editor follows the preview (#7).
                                     if (root.mode === "split" && s.exact) {
                                         root.syncedFromPreview = Date.now()
-                                        editor.scrollToExactLine(s.exact, s.at || 0)
+                                        if (s.frac !== undefined) editor.alignLine(s.exact, s.frac)
+                                        else editor.scrollToExactLine(s.exact, s.at || 0)
                                     }
                                 } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
                             }

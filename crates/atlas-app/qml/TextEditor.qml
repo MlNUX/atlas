@@ -469,13 +469,45 @@ Rectangle {
         const y0 = area.positionToRectangle(start).y
         const next = area.text.indexOf("\n", start)
         const y1 = next < 0 ? y0 + lineHeight : area.positionToRectangle(next + 1).y
-        const y = y0 + (y1 - y0) * (line - n) - (viewY || 0)
+        let y = y0 + (y1 - y0) * (line - n) - (viewY || 0)
+        // The start of line 1 is the very top (with the padding above it).
+        if (line <= 1 && !viewY) y = 0
         flick.contentY = Math.max(0, Math.min(y, flick.contentHeight - flick.height))
     }
     readonly property real viewHeight: flick.height
+    /// Split view: puts line `line` (fractional) at share `frac` of the view's
+    /// height, drawn towards the top / bottom edge near the ends like the
+    /// preview does (blendToEdge in web/preview.js), so both sides reach the
+    /// start and the end together.
+    function alignLine(line, frac) {
+        const n = Math.max(1, Math.floor(line))
+        const start = positionOfLine(n)
+        const y0 = area.positionToRectangle(start).y
+        const next = area.text.indexOf("\n", start)
+        const y1 = next < 0 ? y0 + lineHeight : area.positionToRectangle(next + 1).y
+        let y = y0 + (y1 - y0) * (line - n) - frac * flick.height
+        const max = Math.max(0, flick.contentHeight - flick.height)
+        if (frac < 0.5) y = y * (frac * 2)
+        else if (frac > 0.5) { const w = (frac - 0.5) * 2; y = y * (1 - w) + max * w }
+        flick.contentY = Math.max(0, Math.min(y, max))
+    }
+    /// Where in the view the split view lines up the preview (0 top … 1
+    /// bottom): the middle, moving to the edges in the first and last half
+    /// screen, so both sides reach the start and the end together (the same
+    /// rule as edgeFraction in web/preview.js).
+    function edgeFraction() {
+        const height = flick.height, scroll = flick.contentY
+        const max = Math.max(0, flick.contentHeight - height)
+        if (max <= 0) return 0
+        if (max <= height) return scroll / max
+        if (scroll < height / 2) return scroll / height
+        if (max - scroll < height / 2) return 1 - (max - scroll) / height
+        return 0.5
+    }
     function scrollToLine(n) {
         const rect = area.positionToRectangle(positionOfLine(n))
-        flick.contentY = Math.max(0, Math.min(rect.y, flick.contentHeight - flick.height))
+        // Line 1: the very top (with the padding above it).
+        flick.contentY = n <= 1 ? 0 : Math.max(0, Math.min(rect.y, flick.contentHeight - flick.height))
     }
 
     function viewState() { return { line: root.topLine, cursor: area.cursorPosition, symbols: root.showSymbols } }

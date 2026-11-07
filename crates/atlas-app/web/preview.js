@@ -229,10 +229,35 @@ window.atlas = (function () {
     // already scrolls smoothly – a second smoothing here lagged and caught
     // up in jerks). Movements made for the editor are not reported back.
     let ownScroll = -1;
-    /// Puts source line `line` at height `at` of the view (default: top).
-    function follow(line, at) {
+    /// Where in the view the two sides line up (0 top … 1 bottom): the
+    /// middle, moving to the top edge in the first half screen and to the
+    /// bottom edge in the last, so both reach the start and the end together
+    /// (the same rule as TextEditor.edgeFraction).
+    function edgeFraction(scroll, max, height) {
+        if (max <= 0) return 0;
+        if (max <= height) return scroll / max;
+        if (scroll < height / 2) return scroll / height;
+        if (max - scroll < height / 2) return 1 - (max - scroll) / height;
+        return 0.5;
+    }
+    /// `y` drawn towards the top (frac < 0.5) or the bottom edge (frac >
+    /// 0.5): not at all in the middle, fully at frac 0 and 1.
+    function blendToEdge(y, frac, max) {
+        if (frac < 0.5) return y * (frac * 2);
+        if (frac > 0.5) { const w = (frac - 0.5) * 2; return y * (1 - w) + max * w; }
+        return y;
+    }
+    /// Puts source line `line` at height `at` of the view (default: top);
+    /// with `frac`, at that share of the view's height instead.
+    function follow(line, at, frac) {
+        if (frac !== undefined) at = frac * window.innerHeight;
         const max = document.documentElement.scrollHeight - window.innerHeight;
-        const y = Math.max(0, Math.min(max, offsetOf(line) - (at || 0)));
+        let y = offsetOf(line) - (at || 0);
+        // Near the ends, drawn to the edge as well: the last line has no
+        // marker of its own (only its block's start), so both reach the end
+        // – and the start – together (blendToEdge, also in TextEditor).
+        if (frac !== undefined) y = blendToEdge(y, frac, max);
+        y = Math.max(0, Math.min(max, y));
         if (Math.abs(y - window.scrollY) < 0.5) return;
         ownScroll = y;
         window.scrollTo(0, y);
@@ -274,9 +299,11 @@ window.atlas = (function () {
         scrollPending = true;
         requestAnimationFrame(() => {
             scrollPending = false;
-            // The middle of the view is where content lines up with the editor.
-            const mid = Math.round(window.innerHeight / 2);
-            post("scroll", { line: topLine(), exact: exactLineAt(mid), at: mid, y: window.scrollY,
+            // Where content lines up with the editor (the middle, the edges at the ends).
+            const max = document.documentElement.scrollHeight - window.innerHeight;
+            const frac = edgeFraction(window.scrollY, max, window.innerHeight);
+            const at = Math.round(frac * window.innerHeight);
+            post("scroll", { line: topLine(), exact: exactLineAt(at), at: at, frac: frac, y: window.scrollY,
                              height: document.documentElement.scrollHeight, own: scrollOwn });
             scrollOwn = true;
         });
@@ -372,7 +399,8 @@ window.atlas = (function () {
                 target = m;
             }
             reportScroll = false;
-            window.scrollTo(0, target ? target.getBoundingClientRect().top + window.scrollY - 8 : 0);
+            // Line 1: the very top (with the page's margin above it).
+            window.scrollTo(0, target && line > 1 ? target.getBoundingClientRect().top + window.scrollY - 8 : 0);
             setTimeout(() => { reportScroll = true; }, 120);
         },
         scrollToY(y) { window.scrollTo(0, y); },

@@ -2064,11 +2064,12 @@ Item {
                 test.syncMid = Math.round(Math.min(md.editorItem.viewHeight, md.previewItem.height) / 2)
             },
             () => {
-                // Opened in the split view: lined up at once, without scrolling.
+                // Opened in the split view: lined up at once, without scrolling
+                // (at the top both start at the top edge).
                 const md = editor.activeTab.viewerItem
-                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
-                    const e = md.editorItem.exactLineAt(test.syncMid)
-                    check("Split: nach dem Öffnen gleich ausgerichtet", Math.abs(line - e) < 1, "Vorschau " + line + ", Editor " + e)
+                md.previewItem.runJavaScript("[atlas.exactLineAt(0), window.scrollY]", (r) => {
+                    const e = md.editorItem.exactLineAt(0)
+                    check("Split: nach dem Öffnen gleich ausgerichtet (oben beide am Anfang)", md.editorItem.scrollY <= 10 && r[1] <= 10, "Vorschau " + r + ", Editor " + e + " bei " + md.editorItem.scrollY)
                     md.editorItem.scrollToExactLine(81, test.syncMid)
                 })
             },
@@ -2100,6 +2101,16 @@ Item {
                     const e = md.editorItem.exactLineAt(test.syncMid)
                     check("Split: Mausrad über der Vorschau scrollt beide gemeinsam, zeilengenau", md.editorItem.scrollY > test.flingY + 50 && Math.abs(e - line) < 1,
                           test.flingY + " → " + md.editorItem.scrollY + ", Vorschau " + line + ", Editor " + e)
+                    // All the way down: the preview is at its end too (the line up moves to the bottom edge).
+                    const f = md.editorItem.flickItem
+                    f.contentY = f.contentHeight - f.height
+                })
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("[window.scrollY, document.documentElement.scrollHeight - window.innerHeight]", (r) => {
+                    check("Split: ganz unten sind beide am Ende", md.editorItem.edgeFraction() > 0.99 && r[1] - r[0] < 3,
+                          "Vorschau " + r + ", Editor " + md.editorItem.edgeFraction())
                 })
             },
             () => {
