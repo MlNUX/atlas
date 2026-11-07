@@ -10,6 +10,63 @@ die Versionen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unveröffentlicht]
 
+## [1.1.5-rc1] – 2026-11-07
+
+### Hinzugefügt
+- **Tabellen ansehen** (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.ods`), nur
+  lesend: Blätter als Reiter (ausgeblendete markiert), Spaltenbuchstaben
+  und Zeilennummern, Werte wie in Excel (Zahlenformate mit deutschen
+  Trennzeichen, Prozent, Währung, Datum, WAHR/FALSCH, Fehler), Fett,
+  Kursiv, Schrift- und Füllfarben, Ausrichtung; die gewählte Zelle mit
+  ihrer Formel, Suchen im Blatt (Strg+F), Auswahl als Text mit Tabulatoren
+  kopieren (Strg+C). Liest sich neu ein, wenn die Datei gespeichert wird.
+- **Projektsuche in Tabellen**: findet Text in allen Zellen (auch in
+  ausgeblendeten Blättern), Filter „Tabelle“, Zelladresse am Treffer; ein
+  Klick öffnet das Blatt an der Zelle.
+- **CSV/TSV „Als Tabelle anzeigen“** (Kontextmenü, Aktionen, Arbeitsleiste):
+  Trennzeichen und Zeichensatz (UTF-8, UTF-16, Windows-1252) werden
+  erkannt; ein Knopf führt zurück zum Text.
+- **Zip-Archive „Hier entpacken“** im Kontextmenü der Dateiansicht, wie in
+  Dolphin: ein Ordner oben kommt als dieser Ordner heraus, sonst in einen
+  Ordner mit dem Namen des Archivs; nichts wird überschrieben, unsichere
+  Pfade und Links werden übersprungen. Auch mehrere Archive auf einmal.
+- **Markdown-Editor: Tabellen als Tabelle** (wie Obsidians Live Preview):
+  Linien, fetter Kopf, Ausrichtung, Formatierung in den Zellen; ein Klick
+  in eine Zelle zeigt den Text zum Bearbeiten.
+- **Doku-Suche** (mitgelieferte Erweiterung, F1): die Dokumentation
+  installierter Python-Pakete (pandas, numpy, matplotlib, scipy, seaborn,
+  scikit-learn …) lokal durchsuchen – nach Namen, Rückgabetyp, Parametern,
+  Klasse/Modul, Art und Paket, in einem eigenen Fenster. Den Index baut
+  Atlas selbst aus den Quelltexten (ohne Python zu starten). Beispiele
+  mit Bildern holt sie auf Wunsch einmal aus der Online-Doku und behält
+  sie im Cache (abschaltbar).
+- **Neue Session: neuer Ordner** direkt im Dialog (auch beim Öffnen eines
+  Projektordners), Strg+Umschalt+N.
+- Erweiterungs-API: Ansichten mit `window: true` öffnen in einem eigenen
+  Fenster; Seiten bekommen ein neues Farbschema sofort (Ereignis
+  `atlas-theme`).
+
+### Geändert
+- **Geteilte Ansicht**: Editor und Vorschau scrollen gemeinsam und
+  zeilengenau (Mausrad und Touchpad über der Vorschau bewegen beide);
+  ganz oben und ganz unten stehen beide am Anfang bzw. Ende.
+- **Markdown-Vorschau**: Codeblöcke im hellen Design kräftig farbig; alle
+  Sprachen von highlight.js (u. a. MATLAB/Octave, LaTeX, Julia, Haskell,
+  Nix, Dockerfile, Fortran).
+- **Atlas-Notizen** (`.atlasnote`) im hellen Design auf weißem Papier, die
+  Tinte mit umgekehrter Helligkeit.
+- Bildlaufleisten in Erweiterungen und HTML-Seiten in Atlas' Farben (auch
+  im dunklen Design nicht mehr hell).
+
+### Behoben
+- Starkes Ruckeln beim Scrollen langer Markdown-Notizen in der
+  Bearbeiten- und der geteilten Ansicht (Zeilennummern; ein Bild 122 ms →
+  9 ms bei 1000 Zeilen).
+- Webansichten (Vorschau, HTML, Erweiterungen) nach einem
+  Arbeitsflächenwechsel nicht mehr schwarz oder mit Ladeblitz; ohne
+  Momentaufnahme in der Editorfarbe (hell weiß).
+- Die Markdown-Vorschau lädt im hellen Design weiß statt dunkel.
+
 ## [1.1.4] – 2026-11-04
 
 ### Hinzugefügt
