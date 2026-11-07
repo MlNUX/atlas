@@ -15,6 +15,12 @@
   --code-bg: #f6f8fb; --row-alt: #f7f9fc; --check-border: #9aa7ba; --zoom-bg: rgba(255, 255, 255, 0.85);
   --selection: #c8dbfa; --scroll-thumb: #c3ccd9;
 }
+/* Until Atlas has said which design (`setLight`): no background of its own,
+   so the view's (the editor colour of the current design) shows – a preview
+   still loading in the light design is white, not navy. */
+@media screen {
+  :root:not(.themed) { color-scheme: normal; --bg: transparent; }
+}
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 /* No automatic scroll corrections when content grows (images, diagrams):
    they were reported as scrolling and moved the editor in the split view. */
@@ -119,25 +125,31 @@ li:has(> input[type=checkbox]:checked), li:has(> p > input[type=checkbox]:checke
 /* Code in the light design: the colours of highlight.js' "github" theme
    over the vendored dark one. */
 :root.light .hljs { color: #24292e; }
-:root.light .hljs-doctag, :root.light .hljs-keyword, :root.light .hljs-meta .hljs-keyword,
-:root.light .hljs-template-tag, :root.light .hljs-template-variable, :root.light .hljs-type,
-:root.light .hljs-variable.language_ { color: #d73a49; }
-:root.light .hljs-title, :root.light .hljs-title.class_, :root.light .hljs-title.class_.inherited__,
-:root.light .hljs-title.function_ { color: #6f42c1; }
-:root.light .hljs-attr, :root.light .hljs-attribute, :root.light .hljs-literal, :root.light .hljs-meta,
-:root.light .hljs-number, :root.light .hljs-operator, :root.light .hljs-selector-attr,
-:root.light .hljs-selector-class, :root.light .hljs-selector-id, :root.light .hljs-variable { color: #005cc5; }
-:root.light .hljs-meta .hljs-string, :root.light .hljs-regexp, :root.light .hljs-string { color: #032f62; }
-:root.light .hljs-built_in, :root.light .hljs-symbol { color: #e36209; }
-:root.light .hljs-code, :root.light .hljs-comment, :root.light .hljs-formula { color: #6a737d; }
-:root.light .hljs-name, :root.light .hljs-quote, :root.light .hljs-selector-pseudo,
-:root.light .hljs-selector-tag { color: #22863a; }
+/* Light design: clearly coloured (like One Light), every colour readable on
+   the code background (contrast at least 4.5, comments 4). */
+:root.light .hljs-keyword, :root.light .hljs-doctag, :root.light .hljs-meta .hljs-keyword,
+:root.light .hljs-template-tag, :root.light .hljs-template-variable,
+:root.light .hljs-variable.language_ { color: #a626a4; }
+:root.light .hljs-title, :root.light .hljs-title.function_, :root.light .hljs-section { color: #2a5fcf; }
+:root.light .hljs-title.class_, :root.light .hljs-title.class_.inherited__, :root.light .hljs-type { color: #a05a00; }
+:root.light .hljs-string, :root.light .hljs-regexp, :root.light .hljs-meta .hljs-string,
+:root.light .hljs-char.escape_ { color: #2b7a2e; }
+:root.light .hljs-number, :root.light .hljs-literal, :root.light .hljs-symbol { color: #b3470a; }
+:root.light .hljs-built_in { color: #0b6e99; }
+:root.light .hljs-attr, :root.light .hljs-attribute, :root.light .hljs-variable, :root.light .hljs-property,
+:root.light .hljs-selector-attr, :root.light .hljs-selector-class, :root.light .hljs-selector-id,
+:root.light .hljs-params { color: #9a4400; }
+:root.light .hljs-params { color: #24292e; }
+:root.light .hljs-operator, :root.light .hljs-punctuation { color: #3b4350; }
+:root.light .hljs-meta { color: #0b6e99; }
+:root.light .hljs-comment, :root.light .hljs-code, :root.light .hljs-formula { color: #6f7680; font-style: italic; }
+:root.light .hljs-name, :root.light .hljs-selector-tag, :root.light .hljs-quote,
+:root.light .hljs-selector-pseudo, :root.light .hljs-tag { color: #c2283a; }
 :root.light .hljs-subst { color: #24292e; }
-:root.light .hljs-section { color: #005cc5; }
-:root.light .hljs-bullet { color: #735c0f; }
-:root.light .hljs-emphasis { color: #24292e; }
-:root.light .hljs-strong { color: #24292e; }
-:root.light .hljs-addition { color: #22863a; background-color: #f0fff4; }
+:root.light .hljs-bullet { color: #8a6400; }
+:root.light .hljs-emphasis { color: #24292e; font-style: italic; }
+:root.light .hljs-strong { color: #24292e; font-weight: 600; }
+:root.light .hljs-addition { color: #1f7a33; background-color: #e9f8ee; }
 :root.light .hljs-deletion { color: #b31d28; background-color: #ffeef0; }
 
 /* Code blocks: copy / run buttons, shown on hover. */

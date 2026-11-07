@@ -234,6 +234,7 @@ Bei `output: pdf` muss der Befehl `{output}` enthalten.
 | `applies_to` | nein | Muster: „Anzeigen mit …“ für solche Dateien; leer: nur auf dem Projekt |
 | `auto` | nein (`false`) | passende Dateien gleich mit der Ansicht öffnen (auch Text-Dateien; „Anzeigen mit → Atlas (Datei selbst)“ zeigt die Datei) |
 | `keybinding` | nein | Tastenkürzel |
+| `window` | nein (`false`) | `true`: in einem eigenen großen Fenster vor Atlas (wie die Projektsuche) statt als Tab. Die Seite bleibt geladen, wenn das Fenster zugeht, und öffnet wieder, wo sie war; `atlas.close()` schließt es (z. B. bei Esc), beim erneuten Öffnen bekommt sie das Ereignis `atlas-show`. Gedacht für Werkzeuge, die man kurz aufruft (Doku-Suche) |
 
 ### Platzhalter
 
@@ -246,6 +247,7 @@ In `command` und `cwd` (siehe auch actions.md):
 | `{dir}`, `{relative}`, `{project}` | Ordner, Pfad relativ zum Projekt, Projektordner |
 | `{line}` | Cursorzeile (Arbeitsleiste), sonst 1 |
 | `{extension}` | Ordner der Erweiterung |
+| `{cache}` | eigener Cache-Ordner der Erweiterung (`~/.cache/atlas/extensions/<name>/`, wird nicht angelegt), z. B. für einen Index; die Ansicht erreicht ihn immer (siehe Kontext `cache`) |
 | `{output}` | Verarbeitung/Exporter: Datei, in die das Ergebnis geschrieben wird |
 | `{setting:key}` | Wert einer Einstellung |
 
@@ -384,6 +386,7 @@ Programm überlassen.
 | `view` | ID der Ansicht (`view:<name>/<id>`) |
 | `settings` | Einstellungen als Objekt (ohne Geheimnisse) |
 | `files` | angemeldeter Dateizugriff (`none`, `project`, `home`, `all`) |
+| `cache` | Cache-Ordner der Erweiterung (absolut), derselbe wie `{cache}` in Befehlen |
 | `theme` | Farben von Atlas; zusätzlich als CSS-Variablen gesetzt |
 
 ### Anfragen (`atlas.call(methode, parameter)` → Promise)
@@ -407,10 +410,13 @@ Jede Anfrage liefert ein Ergebnis oder wird mit einem `Error` abgelehnt
 | `atlas.stopCommand(id)` | | beendet ihn; `false`, wenn er nicht läuft |
 | `atlas.reveal(path)` | | zeigt sie im Explorer |
 | `atlas.message(text)` | | kurze Meldung unten im Fenster |
+| `atlas.close()` | | schließt das Fenster einer Ansicht mit `window: true`; im Tab `false` |
+| `docsBuild`, `docsStatus` | – | nur für die mitgelieferte Doku-Suche (`docs`): baut ihren Index im Hintergrund in Atlas und meldet `{running, code, log}` |
 
 **Pfade** sind absolut oder relativ zum Projekt. Atlas prüft **jeden** Pfad
 gegen `permissions: files`: `..` ist verboten, symbolische Links werden vor
-der Prüfung aufgelöst. Bei `files: project` ohne geöffnetes Projekt
+der Prüfung aufgelöst. Der eigene Cache-Ordner (`cache`) ist immer
+erreichbar, auch mit `files: none`. Bei `files: project` ohne geöffnetes Projekt
 scheitern alle Dateianfragen.
 
 ### Farben

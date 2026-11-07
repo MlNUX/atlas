@@ -39,13 +39,25 @@ pub struct Query {
     pub text: bool,
     /// Search the text of PDFs.
     pub pdf: bool,
+    /// Search the cells of spreadsheets ([`crate::spreadsheet`]).
+    pub sheets: bool,
 }
 
 impl Query {
-    /// A search of text files and PDFs for `pattern`.
+    /// A search of text files, PDFs and spreadsheets for `pattern`.
     pub fn new(pattern: impl Into<String>) -> Self {
-        Self { pattern: pattern.into(), text: true, pdf: true, ..Default::default() }
+        Self { pattern: pattern.into(), text: true, pdf: true, sheets: true, ..Default::default() }
     }
+}
+
+/// Where a match in a spreadsheet is (0-based row and column).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SheetCell {
+    /// Index of the sheet.
+    pub sheet: usize,
+    pub name: String,
+    pub row: u32,
+    pub col: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +74,8 @@ pub struct Match {
     pub ranges: Vec<(usize, usize)>,
     /// Found in the text of a PDF (`line` is the page).
     pub pdf: bool,
+    /// Found in a cell of a spreadsheet (`line` is its row, 1-based).
+    pub cell: Option<SheetCell>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -78,6 +92,7 @@ pub struct Summary {
 pub const KINDS: &[(&str, &[&str])] = &[
     ("markdown", &["md", "markdown", "mdx", "qmd", "rmd"]),
     ("pdf", &["pdf"]),
+    ("sheet", crate::spreadsheet::EXTENSIONS),
     ("latex", &["tex", "bib", "sty", "cls", "bst", "ltx"]),
     (
         "code",
@@ -106,17 +121,16 @@ pub fn restrict_to_kinds(query: &mut Query, kinds: &[&str]) {
     if selected.is_empty() {
         query.text = true;
         query.pdf = true;
+        query.sheets = true;
         return;
     }
+    // PDFs and spreadsheets are read by Atlas, the rest by ripgrep.
+    let own = |name: &str| name == "pdf" || name == "sheet";
     query.pdf = selected.iter().any(|(name, _)| *name == "pdf");
-    query.text = selected.iter().any(|(name, _)| *name != "pdf");
-    let globs = selected
-        .iter()
-        .filter(|(name, _)| *name != "pdf")
-        .flat_map(|(_, exts)| exts.iter())
-        .map(|ext| format!("*.{ext}"))
-        // Without these, PDFs would no longer pass the globs.
-        .chain(query.pdf.then(|| "*.pdf".to_owned()));
+    query.sheets = selected.iter().any(|(name, _)| *name == "sheet");
+    query.text = selected.iter().any(|(name, _)| !own(name));
+    // Without the globs of PDFs and spreadsheets, those would no longer pass them.
+    let globs = selected.iter().flat_map(|(_, exts)| exts.iter()).map(|ext| format!("*.{ext}"));
     query.globs.extend(globs);
 }
 
@@ -186,7 +200,7 @@ pub fn start(
 ) -> Result<SearchHandle> {
     let started = Instant::now();
     // Checked before ripgrep starts, so a bad pattern is reported at once.
-    let pdf_regex = if query.pdf { Some(pdf_regex(&query)?) } else { None };
+    let pdf_regex = if query.pdf || query.sheets { Some(pdf_regex(&query)?) } else { None };
     let (child, stdout, stderr) = if query.text {
         let mut child = build_command(root, &query)
             .spawn()
@@ -248,12 +262,16 @@ pub fn start(
             && !summary.cancelled
             && !summary.truncated
         {
-            for path in pdf_files(&root, &query.globs) {
+            for path in document_files(&root, &query.globs, query.pdf, query.sheets) {
                 if cancelled.load(Ordering::Relaxed) {
                     summary.cancelled = true;
                     break;
                 }
-                let found = search_pdf(&path, &root, &regex);
+                let found = if crate::spreadsheet::is_spreadsheet(&path) {
+                    search_sheet(&path, &root, &regex)
+                } else {
+                    search_pdf(&path, &root, &regex)
+                };
                 summary.matches += found.len();
                 batch.extend(found);
                 if summary.matches >= MAX_MATCHES {
@@ -297,9 +315,9 @@ fn pdf_regex(query: &Query) -> Result<regex::Regex> {
         .with_context(|| format!("ungültiger Suchausdruck: {}", query.pattern))
 }
 
-/// The PDFs below `root`, with the ignore rules ripgrep uses and the
-/// `globs` of the query, sorted by path.
-fn pdf_files(root: &Path, globs: &[String]) -> Vec<PathBuf> {
+/// The PDFs (`pdf`) and spreadsheets (`sheets`) below `root`, with the
+/// ignore rules ripgrep uses and the `globs` of the query, sorted by path.
+fn document_files(root: &Path, globs: &[String], pdf: bool, sheets: bool) -> Vec<PathBuf> {
     let mut overrides = ignore::overrides::OverrideBuilder::new(root);
     for glob in globs {
         let _ = overrides.add(glob);
@@ -313,7 +331,10 @@ fn pdf_files(root: &Path, globs: &[String]) -> Vec<PathBuf> {
         .flatten()
         .filter(|e| e.file_type().is_some_and(|t| t.is_file()))
         .map(ignore::DirEntry::into_path)
-        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")))
+        .filter(|p| {
+            (pdf && p.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")))
+                || (sheets && crate::spreadsheet::is_spreadsheet(p))
+        })
         .collect();
     files.sort();
     files
@@ -345,6 +366,12 @@ struct PdfTextCache {
 }
 
 impl PdfTextCache {
+    fn remove(&mut self, path: &Path) {
+        if let Some(gone) = self.entries.remove(path) {
+            self.bytes -= gone.bytes;
+        }
+    }
+
     fn get(&mut self, path: &Path, stamp: (SystemTime, u64)) -> Option<Arc<Vec<String>>> {
         self.clock += 1;
         let clock = self.clock;
@@ -375,20 +402,101 @@ impl PdfTextCache {
 }
 
 /// The text of each page of `path`, cached by modification time and size.
-fn pdf_text(path: &Path) -> Option<Arc<Vec<String>>> {
+fn pdf_text_cache() -> &'static Mutex<PdfTextCache> {
     static CACHE: OnceLock<Mutex<PdfTextCache>> = OnceLock::new();
+    CACHE.get_or_init(Mutex::default)
+}
+
+/// Drops the cached text of `path` (new text was handed in, see
+/// [`crate::pdf::set_page_texts`]).
+pub(crate) fn forget_pdf_text(path: &Path) {
+    if let Ok(mut cache) = pdf_text_cache().lock() {
+        cache.remove(path);
+    }
+}
+
+fn pdf_text(path: &Path) -> Option<Arc<Vec<String>>> {
     let meta = std::fs::metadata(path).ok()?;
     if meta.len() > MAX_PDF_SIZE {
         return None;
     }
     let stamp = (meta.modified().ok()?, meta.len());
-    let cache = CACHE.get_or_init(Mutex::default);
+    let cache = pdf_text_cache();
     if let Some(pages) = cache.lock().ok()?.get(path, stamp) {
         return Some(pages);
     }
     let pages = Arc::new(crate::pdf::page_texts(path, PDF_TEXT_BYTES).ok()?);
     cache.lock().ok()?.insert(path, stamp, pages.clone(), PDF_CACHE_BYTES);
     Some(pages)
+}
+
+/// Options of the search window, turned into a [`Query`] the same way on
+/// every UI.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Options {
+    pub regex: bool,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
+    /// Glob filters (`*.rs`, `!docs/**`).
+    pub globs: Vec<String>,
+    /// Search build and dependency folders too.
+    pub build_dirs: bool,
+    /// Document types (`markdown`, `pdf`, `latex`, `code`, `text`); none means all.
+    pub kinds: Vec<String>,
+}
+
+impl Options {
+    pub fn query(&self, pattern: impl Into<String>) -> Query {
+        let mut query = Query {
+            regex: self.regex,
+            case_sensitive: Some(self.case_sensitive),
+            whole_word: self.whole_word,
+            globs: (!self.build_dirs)
+                .then(crate::finder::build_dir_globs)
+                .unwrap_or_default()
+                .into_iter()
+                .chain(self.globs.iter().map(|g| g.trim()).filter(|g| !g.is_empty()).map(str::to_owned))
+                .collect(),
+            ..Query::new(pattern)
+        };
+        let kinds: Vec<&str> = self.kinds.iter().map(String::as_str).collect();
+        restrict_to_kinds(&mut query, &kinds);
+        query
+    }
+}
+
+/// Longest line of the context shown around a match.
+pub const CONTEXT_LINE_CHARS: usize = 600;
+
+/// Lines `line ± radius` of a text file (1-based numbers).
+pub fn text_context(path: &Path, line: usize, radius: usize) -> Vec<(usize, String)> {
+    let Ok(file) = std::fs::File::open(path) else { return Vec::new() };
+    let line = line.max(1);
+    let first = line.saturating_sub(radius).max(1);
+    let last = line + radius;
+    BufReader::new(file)
+        .split(b'\n')
+        .map_while(std::result::Result::ok)
+        .enumerate()
+        .skip(first - 1)
+        .take(last + 1 - first)
+        .map(|(i, bytes)| {
+            let text: String =
+                String::from_utf8_lossy(&bytes).trim_end_matches('\r').chars().take(CONTEXT_LINE_CHARS).collect();
+            (i + 1, text)
+        })
+        .collect()
+}
+
+/// The non-empty lines of page `page` (1-based) of a PDF, numbered.
+pub fn pdf_context(path: &Path, page: usize) -> Vec<(usize, String)> {
+    let Some(text) = pdf_page_text(path, page.max(1)) else { return Vec::new() };
+    text.lines()
+        .map(str::trim_end)
+        .filter(|l| !l.is_empty())
+        .enumerate()
+        .map(|(i, l)| (i + 1, l.chars().take(CONTEXT_LINE_CHARS).collect()))
+        .collect()
 }
 
 /// The text of page `page` (1-based) of a PDF, from the search cache.
@@ -417,6 +525,7 @@ fn search_pdf(path: &Path, root: &Path, regex: &regex::Regex) -> Vec<Match> {
                 column: ranges[0],
                 ranges,
                 pdf: true,
+                cell: None,
             });
             if out.len() >= MAX_MATCHES {
                 return out;
@@ -424,6 +533,54 @@ fn search_pdf(path: &Path, root: &Path, regex: &regex::Regex) -> Vec<Match> {
         }
     }
     out
+}
+
+/// One match per cell of a spreadsheet whose text matches.
+fn search_sheet(path: &Path, root: &Path, regex: &regex::Regex) -> Vec<Match> {
+    let Some(sheets) = crate::spreadsheet::search_texts(path) else { return Vec::new() };
+    let relative = path.strip_prefix(root).unwrap_or(path).to_string_lossy().into_owned();
+    let mut out = Vec::new();
+    for (sheet, name, cells) in sheets.iter() {
+        for (row, col, text) in cells {
+            // A cell with line breaks: the line with the match.
+            let Some(line) = text.lines().find(|l| regex.is_match(l)) else { continue };
+            let ranges: Vec<(usize, usize)> =
+                regex.find_iter(line).filter(|m| !m.is_empty()).map(|m| (m.start(), m.end())).collect();
+            let Some(&first) = ranges.first() else { continue };
+            let (text, ranges) = clip_line(line, first.0, &ranges);
+            out.push(Match {
+                path: path.to_path_buf(),
+                relative: relative.clone(),
+                line: u64::from(*row) + 1,
+                text,
+                column: ranges[0],
+                ranges,
+                pdf: false,
+                cell: Some(SheetCell { sheet: *sheet, name: name.clone(), row: *row, col: *col }),
+            });
+            if out.len() >= MAX_MATCHES {
+                return out;
+            }
+        }
+    }
+    out
+}
+
+/// The cells of the row of a spreadsheet match around it, as context:
+/// `(column number, "B5  text")`.
+pub fn sheet_context(path: &Path, sheet: usize, row: u32) -> Vec<(usize, String)> {
+    let Some(sheets) = crate::spreadsheet::search_texts(path) else { return Vec::new() };
+    let Some((_, _, cells)) = sheets.iter().find(|(s, _, _)| *s == sheet) else { return Vec::new() };
+    let first = row.saturating_sub(2);
+    cells
+        .iter()
+        .filter(|(r, _, _)| (first..=row + 2).contains(r))
+        .take(60)
+        .map(|(r, c, text)| {
+            let text: String = text.replace('\n', " ").chars().take(CONTEXT_LINE_CHARS).collect();
+            (*r as usize + 1, format!("{}  {text}", crate::spreadsheet::cell_name(*r, *c)))
+        })
+        .collect()
 }
 
 /// Cuts very long lines (whole paragraphs in some PDFs) to the part around
@@ -488,7 +645,7 @@ fn parse_line(line: &str, root: &Path) -> Option<Match> {
     let ranges: Vec<(usize, usize)> = data.submatches.iter().map(|s| (s.start, s.end)).collect();
     let column = ranges.first().copied().unwrap_or((0, 0));
     let text = text.trim_end_matches(['\n', '\r']).to_owned();
-    Some(Match { path, relative, line: data.line_number.unwrap_or(0), text, column, ranges, pdf: false })
+    Some(Match { path, relative, line: data.line_number.unwrap_or(0), text, column, ranges, pdf: false, cell: None })
 }
 
 #[cfg(test)]
@@ -546,6 +703,7 @@ mod tests {
         assert_eq!(m[0].ranges, vec![(5, 9)]);
     }
 
+    #[cfg(feature = "pdf-poppler")]
     fn pdf_with(path: &Path, pages: &[&str]) {
         let surface = cairo::PdfSurface::new(595.0, 842.0, path).unwrap();
         let cr = cairo::Context::new(&surface).unwrap();
@@ -559,6 +717,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pdf-poppler")]
     fn finds_text_in_pdfs() {
         let d = tempfile::tempdir().unwrap();
         pdf_with(&d.path().join("skript.pdf"), &["Einleitung", "Die Fourier Transformation"]);
@@ -577,6 +736,24 @@ mod tests {
         // Globs apply to PDFs as well.
         let (m, _) = run(d.path(), Query { globs: vec!["*.md".into()], ..Query::new("Fourier") });
         assert!(m.iter().all(|m| !m.pdf));
+    }
+
+    /// Text handed in by the UI (PDFKit on macOS) is searched like engine text.
+    #[test]
+    fn finds_handed_in_pdf_text() {
+        let d = tempfile::tempdir().unwrap();
+        let pdf = d.path().join("skript.pdf");
+        std::fs::write(&pdf, b"%PDF stand-in").unwrap();
+        crate::pdf::set_page_texts(&pdf, vec!["Einleitung".into(), "Die Fourier Transformation".into()]);
+        let (m, summary) = run(d.path(), Query { case_sensitive: Some(false), ..Query::new("fourier") });
+        assert_eq!(summary.matches, 1);
+        assert!(m[0].pdf);
+        assert_eq!(m[0].line, 2, "page");
+        // New text replaces the cached one.
+        crate::pdf::set_page_texts(&pdf, vec!["Laplace".into()]);
+        let (m, _) = run(d.path(), Query::new("Laplace"));
+        assert_eq!(m.len(), 1);
+        assert_eq!(m[0].line, 1);
     }
 
     #[test]
@@ -613,7 +790,36 @@ mod tests {
     }
 
     #[test]
+    fn finds_text_in_spreadsheet_cells() {
+        let d = tempfile::tempdir().unwrap();
+        crate::spreadsheet::tests::workbook(&d.path().join("Mappe.xlsx"));
+        std::fs::write(d.path().join("notiz.md"), "auch gefunden\n").unwrap();
+        let mut q = Query::new("gefunden");
+        restrict_to_kinds(&mut q, &["sheet"]);
+        assert!(!q.text && !q.pdf && q.sheets);
+        let (m, _) = run(d.path(), q);
+        assert_eq!(m.len(), 1, "{m:?}");
+        let cell = m[0].cell.clone().expect("cell");
+        assert_eq!((cell.sheet, cell.name.as_str(), cell.row, cell.col), (1, "Zweites", 2, 2));
+        assert_eq!((m[0].line, &m[0].text[m[0].column.0..m[0].column.1]), (3, "Gefunden"));
+        // Without a filter: text files and the sheet; numbers as shown ("1.234,50").
+        let (m, _) = run(d.path(), Query::new("1.234,5"));
+        assert_eq!(
+            m.iter()
+                .filter_map(|m| m.cell.as_ref())
+                .map(|c| crate::spreadsheet::cell_name(c.row, c.col))
+                .collect::<Vec<_>>(),
+            ["B2"]
+        );
+        let (m, _) = run(d.path(), Query::new("gefunden"));
+        assert_eq!(m.len(), 2);
+        let context = sheet_context(&d.path().join("Mappe.xlsx"), 1, 2);
+        assert_eq!(context, vec![(3, "C3  Gefunden im zweiten Blatt".to_owned())]);
+    }
+
+    #[test]
     fn kind_of_files() {
+        assert_eq!(kind_of(Path::new("Tabelle.XLSX")), "sheet");
         assert_eq!(kind_of(Path::new("a/B.MD")), "markdown");
         assert_eq!(kind_of(Path::new("skript.pdf")), "pdf");
         assert_eq!(kind_of(Path::new("main.rs")), "code");

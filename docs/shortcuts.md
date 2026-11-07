@@ -77,6 +77,18 @@ alle übrigen Tasten gehen dort an das Programm im Terminal.
 | Strg+Enter (im Kommentar) | Kommentar übernehmen |
 | Esc | Auswahl aufheben, zurück zum Auswahlwerkzeug |
 
+## Tabellen (xlsx, ods …; CSV über „Als Tabelle anzeigen“)
+
+| Kürzel | Aktion |
+|---|---|
+| Pfeiltasten, Bild↑ / Bild↓, Tab, Enter | Zelle wählen |
+| Umschalt + Pfeiltasten / Klick | Auswahl erweitern; Klick auf Spalten- oder Zeilenkopf wählt sie ganz |
+| Strg + Pfeiltasten, Strg+Pos1 / Strg+Ende | an den Rand / Anfang / Ende |
+| Strg+A | Ganzes Blatt wählen |
+| Strg+C | Auswahl als Text mit Tabulatoren kopieren (zum Einfügen in Excel, LibreOffice, Python) |
+| Strg+F, Enter / Umschalt+Enter, F3 | Im Blatt suchen, nächster / vorheriger Treffer |
+| Rechtsklick | Kopieren, Zelladresse oder Formel kopieren |
+
 ## Kalender
 
 | Kürzel | Aktion |

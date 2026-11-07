@@ -251,15 +251,16 @@ pub mod qobject {
         /// Page `index` of an `.atlasnote` rendered `width` pixels wide, as a
         /// `file://` URL into the cache. Never blocks: "" while the page is
         /// rendered on a background thread (ask again a moment later).
+        /// `light`: dark pages on white paper with darkened ink (light theme).
         #[qinvokable]
         #[cxx_name = "atlasNotePage"]
-        fn atlas_note_page(self: &AppController, path: &QString, index: i32, width: i32) -> QString;
+        fn atlas_note_page(self: &AppController, path: &QString, index: i32, width: i32, light: bool) -> QString;
 
         /// Any rendering of page `index` that exists already, at another size
         /// ("" if none): shown scaled until `atlasNotePage` has the right one.
         #[qinvokable]
         #[cxx_name = "atlasNotePreview"]
-        fn atlas_note_preview(self: &AppController, path: &QString, index: i32) -> QString;
+        fn atlas_note_preview(self: &AppController, path: &QString, index: i32, light: bool) -> QString;
 
         /// Layout JSON of this device's session ("" if none).
         #[qinvokable]
@@ -954,6 +955,11 @@ impl NoteTexts {
     }
 }
 
+/// How Atlas notes are drawn in the current theme.
+fn note_look(light: bool) -> atlas_core::atlasnote::Look {
+    if light { atlas_core::atlasnote::Look::Light } else { atlas_core::atlasnote::Look::AsWritten }
+}
+
 fn path_of(s: &QString) -> PathBuf {
     PathBuf::from(s.to_string())
 }
@@ -1197,22 +1203,23 @@ impl qobject::AppController {
         qs(info.to_string())
     }
 
-    pub fn atlas_note_page(&self, path: &QString, index: i32, width: i32) -> QString {
+    pub fn atlas_note_page(&self, path: &QString, index: i32, width: i32, light: bool) -> QString {
         let Ok(note) = atlas_core::atlasnote::NoteFile::open_cached(&path_of(path)) else { return QString::default() };
         let (index, width) = (index.max(0) as usize, width.max(1) as u32);
-        match note.rendered(index, width) {
+        let look = note_look(light);
+        match note.rendered_look(index, width, look) {
             Some(file) => qs(format!("file://{}", file.display())),
             None => {
-                note.render_in_background(index, width);
+                note.render_in_background_look(index, width, look);
                 QString::default()
             }
         }
     }
 
-    pub fn atlas_note_preview(&self, path: &QString, index: i32) -> QString {
+    pub fn atlas_note_preview(&self, path: &QString, index: i32, light: bool) -> QString {
         atlas_core::atlasnote::NoteFile::open_cached(&path_of(path))
             .ok()
-            .and_then(|note| note.any_rendered(index.max(0) as usize))
+            .and_then(|note| note.any_rendered_look(index.max(0) as usize, note_look(light)))
             .map_or_else(QString::default, |file| qs(format!("file://{}", file.display())))
     }
 
@@ -1257,42 +1264,9 @@ fn is_terminal_path(path: &Path) -> bool {
     bytes.starts_with(b"terminal:") || bytes.starts_with(b"calendar:") || bytes.starts_with(b"ilias:")
 }
 
-/// Coarse file type used to pick a viewer.
+/// Coarse file type used to pick a viewer (see [`atlas_core::listing::viewer_kind`]).
 pub fn file_kind(path: &Path) -> &'static str {
-    if path.as_os_str().as_encoded_bytes().starts_with(b"calendar:") {
-        return "calendar";
-    }
-    if path.as_os_str().as_encoded_bytes().starts_with(b"ilias:") {
-        return "ilias";
-    }
-    // Terminal tabs: `terminal:<start directory>#<id>`.
-    if is_terminal_path(path) {
-        return "terminal";
-    }
-    if atlas_core::places::trash_files_dir().is_some_and(|t| t == path) {
-        return "trash";
-    }
-    if path.is_dir() {
-        return "dir";
-    }
-    if path.symlink_metadata().is_err() {
-        return "missing";
-    }
-    let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    match ext.as_str() {
-        "pdf" => "pdf",
-        // Notebooks from Atlas Tablet (ZIP); also when a sync tool appended ".zip".
-        "atlasnote" => "atlasnote",
-        "zip" if path.to_string_lossy().to_lowercase().ends_with(".atlasnote.zip") => "atlasnote",
-        "md" | "markdown" | "mdown" | "mkd" => "markdown",
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" => "image",
-        _ => {
-            // Treat as text unless the first KiB contains NUL bytes.
-            let mut buf = [0u8; 1024];
-            let n = std::fs::File::open(path).and_then(|mut f| std::io::Read::read(&mut f, &mut buf)).unwrap_or(0);
-            if buf[..n].contains(&0) { "binary" } else { "text" }
-        }
-    }
+    atlas_core::listing::viewer_kind(path)
 }
 
 /// `segment` for a URL path (everything but unreserved characters escaped).

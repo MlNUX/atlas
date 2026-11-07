@@ -103,6 +103,13 @@ endstream")
 }
 pdf "$project/docs/quelle.pdf"
 pdf "$project/docs/zweite.pdf" links
+# A workbook (xlsx, two sheets; crates/atlas-core/src/spreadsheet.rs writes it in its tests).
+mkdir -p "$project/tabellen" && cp crates/atlas-core/tests/sheets/Mappe.xlsx "$project/tabellen/Mappe.xlsx" && chmod u+w "$project/tabellen/Mappe.xlsx"
+# A long note (scrolling must stay smooth, see the self-test).
+mkdir -p "$project/lang" && for i in $(seq 1 600); do printf '## Abschnitt %s\n\nEin Absatz mit etwas Text, der in der Ansicht umbricht, wenn das Fenster schmal ist – Abschnitt %s.\n\n| a | b |\n|---|---|\n' "$i" "$i"; done > "$project/lang/sehrlang.md"
+# A zip archive to extract (an xlsx is one: several files at its top).
+cp crates/atlas-core/tests/sheets/Mappe.xlsx "$project/tabellen/archiv.zip" && chmod u+w "$project/tabellen/archiv.zip"
+printf 'Name;Note;Bemerkung\nMüller;1,7;gut\nSchmidt;2,3;"mit ; Semikolon"\n' > "$project/tabellen/noten.csv"
 
 mkdir -p "$project/.atlas"
 cat > "$project/.atlas/actions.yaml" <<'YAML'
@@ -182,7 +189,7 @@ echo "// TODO: EINZIGARTIG" > "$project/src/lib.rs"
 echo "EINZIGARTIG" > "$project/target/out.txt"
 echo "EINZIGARTIG" > "$project/node_modules/x/a.js"
 
-export ATLAS_STATE_DIR="$work/state" ATLAS_CONFIG_DIR="$work/config"
+export ATLAS_STATE_DIR="$work/state" ATLAS_CONFIG_DIR="$work/config" ATLAS_CACHE_DIR="$work/cache"
 
 # A stand-in for ILIAS on a free port (scripts/ilias-mock.py).
 ilias_port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')

@@ -29,6 +29,11 @@ impl Default for PopplerBackend {
     }
 }
 
+/// The engine for [`super::new_backend`].
+pub(super) fn backend(max_open: usize) -> Box<dyn Backend> {
+    Box::new(PopplerBackend::with_limit(max_open))
+}
+
 impl PopplerBackend {
     pub fn with_limit(max_open: usize) -> Self {
         Self { docs: HashMap::new(), recent: Vec::new(), max_open: max_open.max(1) }

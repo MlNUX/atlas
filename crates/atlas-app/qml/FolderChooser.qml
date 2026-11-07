@@ -7,8 +7,9 @@ import QtQuick.Layouts
 import Atlas
 
 // Chooses a project folder: places on the left, a clickable path bar and
-// the subfolders of the shown folder. For a new session (one per project
-// folder) it also offers a name; without one the folder name is used.
+// the subfolders of the shown folder; "Neuer Ordner" creates one in the
+// shown folder and selects it. For a new session (one per project folder)
+// it also offers a name; without one the folder name is used.
 Dialog {
     id: root
     required property AppController app
@@ -40,6 +41,7 @@ Dialog {
     }
     function navigate(path) {
         if (!path) return
+        creating = false
         folderPath = path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path
         selectedPath = ""
         list.currentIndex = -1
@@ -50,7 +52,37 @@ Dialog {
     }
     function nameOf(path) { return path === "/" ? "/" : path.slice(path.lastIndexOf("/") + 1) }
     function segments(path) { return pathEdit.segments(path) }
+    /// A new folder needs a name (the input row above the list).
+    property bool creating: false
+    /// A folder created here, selected once the list shows it.
+    property string pendingSelect: ""
+    function startCreate() {
+        creating = true
+        newFolderName.text = ""
+        newFolderError.text = ""
+        newFolderName.forceActiveFocus()
+    }
+    function cancelCreate() {
+        creating = false
+        list.forceActiveFocus()
+    }
+    /// Creates folder `name` in the shown folder and selects it; its path,
+    /// or "" (the reason is shown under the name).
+    function createFolder(name) {
+        name = (name || "").trim()
+        const problem = name ? ops.checkName(name) : qsTr("Bitte einen Namen eingeben")
+        if (problem) { newFolderError.text = problem; return "" }
+        const created = ops.newFolder(root.folderPath, name)
+        if (!created) return ""
+        creating = false
+        pendingSelect = created
+        selectedPath = created
+        folder.reload()
+        list.forceActiveFocus()
+        return created
+    }
     function accept() {
+        if (creating) { createFolder(newFolderName.text); return }
         if (!chosenPath || folder.error) return
         chosen(chosenPath, nameField.text.trim())
         close()
@@ -69,6 +101,19 @@ Dialog {
         path: root.visible ? root.folderPath : ""
         foldersOnly: true
         showHidden: hiddenButton.checked
+        // The folder just created: select it as soon as it is listed.
+        onCountChanged: {
+            if (!root.pendingSelect) return
+            const i = folder.rowOf(root.pendingSelect)
+            if (i < 0) return
+            list.currentIndex = i
+            list.positionViewAtIndex(i, ListView.Contain)
+            root.pendingSelect = ""
+        }
+    }
+    FileOps {
+        id: ops
+        onFailed: (message) => { newFolderError.text = message }
     }
 
     contentItem: ColumnLayout {
@@ -170,10 +215,64 @@ Dialog {
                         onNavigateRequested: (path) => root.navigate(path)
                     }
                     IconButton {
+                        objectName: "newFolderButton"
+                        iconName: "folder-plus"
+                        tip: qsTr("Neuer Ordner hier (Strg+Umschalt+N)")
+                        enabled: !folder.error
+                        onClicked: root.startCreate()
+                    }
+                    IconButton {
                         id: hiddenButton
                         iconName: "hidden"
                         tip: qsTr("Versteckte Ordner anzeigen")
                         checkable: true
+                    }
+                }
+
+                // ---- a new folder in the shown one
+                Rectangle {
+                    visible: root.creating
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    Layout.bottomMargin: 6
+                    implicitHeight: newFolderColumn.implicitHeight + 16
+                    radius: 7
+                    color: Theme.raised
+                    border.color: Theme.accentAlpha(0.5)
+                    ColumnLayout {
+                        id: newFolderColumn
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 4
+                        RowLayout {
+                            spacing: 8
+                            Icon { name: "folder-plus"; size: 18; color: Theme.accent }
+                            TextField {
+                                id: newFolderName
+                                objectName: "newFolderName"
+                                Layout.fillWidth: true
+                                placeholderText: qsTr("Name des neuen Ordners in „%1“").arg(root.nameOf(root.folderPath))
+                                onTextChanged: newFolderError.text = text.trim() ? ops.checkName(text.trim()) : ""
+                                onAccepted: root.createFolder(text)
+                                Keys.onEscapePressed: (event) => { root.cancelCreate(); event.accepted = true }
+                            }
+                            Button {
+                                text: qsTr("Anlegen")
+                                highlighted: true
+                                enabled: newFolderName.text.trim().length > 0 && !newFolderError.text
+                                onClicked: root.createFolder(newFolderName.text)
+                            }
+                            Button { text: qsTr("Abbrechen"); onClicked: root.cancelCreate() }
+                        }
+                        Text {
+                            id: newFolderError
+                            visible: text.length > 0
+                            Layout.fillWidth: true
+                            color: Theme.error
+                            font.pixelSize: Theme.smallFontSize
+                            wrapMode: Text.Wrap
+                        }
                     }
                 }
 
@@ -201,6 +300,8 @@ Dialog {
                             root.navigate(folder.pathAt(currentIndex))
                         } else if (event.key === Qt.Key_L && (event.modifiers & Qt.ControlModifier)) {
                             pathEdit.startEditing()
+                        } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+                            root.startCreate()
                         } else return
                         event.accepted = true
                     }
@@ -251,7 +352,7 @@ Dialog {
 
                     Text {
                         anchors.centerIn: parent
-                        visible: list.count === 0 && !folder.loading
+                        visible: list.count === 0 && !folder.loading && !root.creating
                         text: folder.error ? folder.error : qsTr("Keine Unterordner")
                         color: folder.error ? Theme.error : Theme.textFaint
                         font.pixelSize: Theme.fontSize

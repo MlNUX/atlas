@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2026 Minux
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Doku-Suche: die Dokumentation von Python-Paketen (pandas, numpy,
+matplotlib …) lokal durchsuchen, mit Filtern für Rückgabetyp, Parameter,
+Klasse/Modul, Art und Paket. Den Index baut Atlas aus den Quelltexten der
+installierten Pakete (atlas-core, pydocs; Anfrage „docsBuild“), ohne
+Python zu starten; er liegt im Cache-Ordner der Erweiterung. Läuft ohne
+Internet; nur Beispiele mit Bildern holt Atlas einmal aus der Online-Doku
+(Anfrage „docsExamples“).
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Doku-Suche</title>
+<link rel="stylesheet" href="docs.css">
+<script src="atlas://app/web/vendor/highlight/highlight.min.js"></script>
+<script src="atlas://app/web/extension.js"></script>
+</head>
+<body>
+<header>
+  <div class="query-row">
+    <span class="glass">⌕</span>
+    <input id="query" type="text" spellcheck="false" autocomplete="off"
+           placeholder="Suchen, z. B.  groupby   ·   merge -> DataFrame   ·   p:axis in:DataFrame   ·   ->Axes">
+    <button id="clear" class="icon" title="Suche leeren (Esc)">✕</button>
+    <button id="help-toggle" class="icon" title="Suchsyntax">?</button>
+  </div>
+  <div class="filters">
+    <label class="field" title="Rückgabetyp enthält … (mehrere mit |, z. B. DataFrame|Series)">
+      <span>Rückgabe</span><input id="f-returns" type="text" spellcheck="false" placeholder="z. B. DataFrame">
+    </label>
+    <label class="field wide" title="Hat alle diese Parameter (Komma); name:typ prüft auch den Typ, :bool nur den Typ, axis* Präfix">
+      <span>Parameter</span><input id="f-params" type="text" spellcheck="false" placeholder="z. B. axis, inplace  ·  :bool">
+    </label>
+    <label class="field" title="Nur in dieser Klasse oder diesem Modul (z. B. DataFrame, pyplot, Axes)">
+      <span>In</span><input id="f-in" type="text" spellcheck="false" placeholder="z. B. DataFrame">
+    </label>
+    <div class="chips" id="kinds"></div>
+    <div class="chips" id="packages"></div>
+    <label class="check" title="Auch im ganzen Beschreibungstext suchen (langsamer)"><input id="f-full" type="checkbox"> Volltext</label>
+    <label class="check" title="Veraltete (deprecated) Einträge zeigen"><input id="f-dep" type="checkbox"> Veraltete</label>
+  </div>
+  <div id="help" class="help" hidden>
+    <b>Suchsyntax</b> (im Suchfeld, kombinierbar mit den Feldern):
+    <code>-&gt;DataFrame</code> oder <code>r:DataFrame</code> Rückgabetyp ·
+    <code>p:axis</code> Parameter (<code>p:axis:int</code>, <code>p::bool</code>, <code>p:sort*</code>) ·
+    <code>in:Axes</code> Klasse/Modul ·
+    <code>k:methode</code> Art (funktion, methode, klasse, eigenschaft, modul) ·
+    <code>pkg:pandas</code> Paket ·
+    <code>"ganze phrase"</code>.
+    Alle Wörter müssen passen (Name, Pfad, Kurzbeschreibung, Parameternamen; mit „Volltext“ auch der ganze Text).
+    <b>↑/↓</b> wählen · <b>Enter</b> zum Text · <b>Strg+C</b> ohne Auswahl kopiert den Namen · <b>Esc</b> leert / schließt.
+  </div>
+</header>
+<main>
+  <section id="results-pane">
+    <div id="count" class="count"></div>
+    <div id="results" class="results" tabindex="0"></div>
+  </section>
+  <section id="detail" class="detail" tabindex="0"></section>
+</main>
+<footer>
+  <span id="status" class="status">Index wird geladen …</span>
+  <span class="spacer"></span>
+  <button id="rebuild" title="Index aus den installierten Paketen neu bauen (Einstellungen: Pakete, Umgebung)">Index neu bauen</button>
+</footer>
+<script src="docs.js"></script>
+</body>
+</html>

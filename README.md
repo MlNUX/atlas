@@ -16,7 +16,8 @@ verändert weder PDFs noch Notizen ungefragt.
 
 ## Funktionen
 
-- **Projektordner** mit Verzeichnisbaum, Dateiansicht wie in Dolphin,
+- **Projektordner** mit Verzeichnisbaum, Dateiansicht wie in Dolphin
+  (Zip-Archive per Rechtsklick „Hier entpacken“),
   Schnellansicht (Leertaste), Tabs und Splits. Jeder Ordner ist eine
   **Session**: Tabs, Splits und Baum werden automatisch gespeichert.
 - **PDFs** markieren, kommentieren und zitieren – die PDF bleibt unverändert.
@@ -27,11 +28,18 @@ verändert weder PDFs noch Notizen ungefragt.
   Seiten mit Handschrift, Textfeldern, eingefügten Bildern und
   PDF-Hintergründen. Nur Ansicht – die Datei wird nie verändert; bearbeitet
   wird auf dem Tablet.
+- **Tabellen** (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.ods`) ansehen: Blätter als
+  Reiter, Zahlen, Datum, Prozent und Währung wie in Excel, Formeln zur
+  Zelle, Fett, Farben und Füllung; Suchen im Blatt, Kopieren als Text. Nur
+  Ansicht – die Datei wird nie verändert. CSV/TSV öffnen als Text und auf
+  Wunsch „Als Tabelle anzeigen“ (Trennzeichen und Zeichensatz erkannt).
 - **Markdown** mit Live-Vorschau, Formeln (KaTeX), Diagrammen (Mermaid,
   mit Vorlagen), Tabellen, Bildern, Ordnerbäumen, Checklisten, `#Tags`,
   Wiki-Links, Backlinks und Graph; Rechtschreibprüfung Deutsch und Englisch.
-- **Suche** (`Strg+Umschalt+F`) in Notizen, Code und dem Text aller PDFs,
-  mit Typfiltern; der Treffer ist im geöffneten Dokument markiert.
+  Tabellen erscheinen auch beim Bearbeiten als Tabelle (wie Obsidians Live
+  Preview); ein Klick in eine Zelle zeigt den Text zum Bearbeiten.
+- **Suche** (`Strg+Umschalt+F`) in Notizen, Code, dem Text aller PDFs und
+  den Zellen aller Tabellen, mit Typfiltern; der Treffer ist im geöffneten Dokument markiert.
   Die **Arbeitsleiste** (`Strg+P`) findet Dateien, Aktionen, Tags, Zitate
   und Termine.
 - **Terminal** im Fenster, **eigene Aktionen** und **Erweiterungen**.
@@ -58,7 +66,7 @@ Fest in einer NixOS-Konfiguration mit Flakes:
 ```nix
 # flake.nix des Systems
 {
-  inputs.atlas.url = "github:MlNUX/atlas/v1.1.4";
+  inputs.atlas.url = "github:MlNUX/atlas/v1.1.5_rc1";
   inputs.atlas.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs = { nixpkgs, atlas, ... }: {

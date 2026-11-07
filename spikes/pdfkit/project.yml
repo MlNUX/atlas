@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# XcodeGen spec of the PDFKit spike (task P0.4, docs/porting/spike-pdfkit.md).
+name: PDFKitSpike
+options:
+  bundleIdPrefix: de.minux
+  deploymentTarget:
+    macOS: "26.0"
+settings:
+  base:
+    ARCHS: arm64
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Ad hoc signing until the Apple Developer account exists (E5).
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  PDFKitSpike:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: fixtures/spike.pdf
+        buildPhase: resources
+      - path: fixtures/spike.atlas.json
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.pdfkitspike
+        INFOPLIST_KEY_CFBundleDisplayName: Atlas PDFKit-Spike
+  PDFKitSpikeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: fixtures/spike.pdf
+        buildPhase: resources
+      - path: fixtures/spike.atlas.json
+        buildPhase: resources
+      - path: fixtures/ref-page-1.png
+        buildPhase: resources
+      - path: fixtures/ref-page-2.png
+        buildPhase: resources
+      - path: fixtures/ref-page-3.png
+        buildPhase: resources
+    dependencies:
+      - target: PDFKitSpike
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.pdfkitspike.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/PDFKitSpike.app/Contents/MacOS/PDFKitSpike"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  PDFKitSpike:
+    build:
+      targets:
+        PDFKitSpike: all
+        PDFKitSpikeTests: [test]
+    test:
+      targets: [PDFKitSpikeTests]

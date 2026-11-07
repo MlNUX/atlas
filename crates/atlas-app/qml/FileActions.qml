@@ -78,6 +78,14 @@ Item {
     function isHtml(path) { return /\.x?html?$/i.test(path || "") }
     /// Shows an HTML file rendered (in its tab if it is open).
     function renderHtml(path) { actions.openWithState(path, { processor: "atlas:html" }) }
+    /// Text tables (CSV, TSV) can be shown as a table.
+    function isDelimited(path) { return /\.(csv|tsv|tab)$/i.test(path || "") }
+    /// Shows a CSV file as a table (in its tab if it is open).
+    function showAsTable(path) { actions.openWithState(path, { processor: "atlas:table" }) }
+    /// Zip archives can be extracted (not Atlas Tablet notebooks).
+    function isZip(path) { return /\.zip$/i.test(path || "") && !/\.atlasnote\.zip$/i.test(path || "") }
+    /// Extracts each archive next to itself ("Hier entpacken", in the background).
+    function extractHere(paths) { for (const p of paths) ops.extract(p, ops.parentDir(p)) }
 
     // ------------------------------------------------------------ to PDF
 
@@ -445,6 +453,18 @@ Item {
             visible: menu.single && actions.isHtml(menu.paths[0])
             height: visible ? implicitHeight : 0
             onTriggered: actions.renderHtml(menu.paths[0])
+        }
+        MenuItem {
+            text: menu.paths.length > 1 ? qsTr("Hier entpacken (%1 Archive)").arg(menu.paths.length) : qsTr("Hier entpacken")
+            visible: menu.paths.length > 0 && menu.paths.every(p => actions.isZip(p))
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.extractHere(menu.paths)
+        }
+        MenuItem {
+            text: qsTr("Als Tabelle anzeigen")
+            visible: menu.single && actions.isDelimited(menu.paths[0])
+            height: visible ? implicitHeight : 0
+            onTriggered: actions.showAsTable(menu.paths[0])
         }
         MenuItem {
             text: qsTr("Im Editor öffnen")

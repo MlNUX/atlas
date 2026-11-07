@@ -26,6 +26,7 @@ const QML_FILES: &[&str] = &[
     "qml/ExtensionsDialog.qml",
     "qml/ExtensionSettings.qml",
     "qml/ExtensionView.qml",
+    "qml/ExtensionWindow.qml",
     "qml/FileActions.qml",
     "qml/FolderView.qml",
     "qml/Icon.qml",
@@ -67,16 +68,21 @@ const QML_FILES: &[&str] = &[
     "qml/TouchpadFling.qml",
     "qml/TrashView.qml",
     "qml/WebRepaint.qml",
+    "qml/WebScrollbars.qml",
+    "qml/SheetView.qml",
+    "qml/LiveTables.qml",
 ];
 
 const RUST_BRIDGES: &[&str] = &[
     "src/annotations_model.rs",
     "src/app.rs",
     "src/calendar_model.rs",
+    "src/context_profiles.rs",
     "src/file_ops.rs",
     "src/folder_model.rs",
     "src/formula_ocr.rs",
     "src/ilias_backend.rs",
+    "src/markdown_edit.rs",
     "src/pdf_items.rs",
     "src/qt_helpers.rs",
     "src/search_model.rs",
@@ -85,6 +91,7 @@ const RUST_BRIDGES: &[&str] = &[
     "src/test_driver.rs",
     "src/text_document.rs",
     "src/trash_model.rs",
+    "src/sheet_model.rs",
     "src/tree_model.rs",
 ];
 

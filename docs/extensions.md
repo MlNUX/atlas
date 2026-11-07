@@ -152,6 +152,95 @@ Tracebacks. Ausführen lassen sich einzelne Zellen und alle.
 - Rechte: Dateien im Projekt, die Programme `jupyter` und `python3`,
   Netzwerk nur zu 127.0.0.1.
 
+### Doku-Suche
+
+Die Dokumentation von Python-Paketen – pandas, numpy, matplotlib, scipy,
+seaborn, scikit-learn oder beliebige andere – lokal durchsuchen, in einem
+eigenen Fenster wie die Projektsuche (**F1**, „Öffnen: Doku-Suche“ in der
+Arbeitsleiste oder die Karte in der Kontextleiste). Ohne Internet und
+passend zu den Versionen, mit denen das Projekt arbeitet – nur Beispiele mit
+Bildern kommen auf Wunsch einmal aus der Online-Doku (siehe unten).
+
+- **Index:** Beim ersten Öffnen baut die Suche ihn selbst (später: „Index
+  neu bauen“ unten rechts). Atlas liest dafür **nur die Dateien** der
+  installierten Pakete aus der Einstellung „Pakete“ – es startet kein
+  Python, führt keinen Code der Pakete aus und lädt nichts herunter
+  (`crates/atlas-core/src/pydocs`, in Rust). Es folgt den Importen,
+  `__all__` und den Typ-Stubs (`.pyi`) zur öffentlichen API, liest
+  Signaturen und Docstrings und zerlegt diese (numpydoc-Format) in
+  Parameter, Rückgabe, Beispiele usw. Dazu kommen Texte, die die Pakete
+  sonst erst beim Import zusammensetzen: numpys `add_newdoc(…)`,
+  matplotlibs von `Axes` übernommene `pyplot`-Texte und
+  `%(…)s`-Bausteine, Texte geerbter Methoden, und Docstrings aus
+  kompilierten Modulen (`.so`, z. B. `np.sin`, `numpy.random`). Das dauert
+  wenige Sekunden. Abgelegt unter `~/.cache/atlas/extensions/docs/` (eine
+  JSON-Datei je Paket).
+- **Grenzen:** Was nur im kompilierten Code steht und sich nicht sicher
+  zuordnen lässt, bleibt ohne Text (lieber keiner als ein falscher) – etwa
+  die Klassentexte von `pd.Timestamp`, `pd.Timedelta`, `pd.Period`. Texte,
+  die ein Paket beim Import erst berechnet, fehlen ebenso (z. B.
+  `Axes.fill_between`). Signatur und Parameter sind dann trotzdem da.
+- **Umgebung:** Einstellung „Umgebung“ (ihr Ordner, ihr Python oder ein
+  Ordner mit Paketen), sonst sucht die Doku-Suche selbst: `.venv`, `venv`,
+  `env` im Projekt (auch in Unterordnern), die Umgebungen der angemeldeten
+  Jupyter-Kernel, die der Jupyter-Ansicht (`~/.local/share/atlas/envs`),
+  Conda-Umgebungen (`~/.conda/environments.txt`, miniforge, miniconda,
+  anaconda, micromamba), pyenv, `~/.local/lib/python3.*` und zuletzt die
+  System-Pythons mit ihrer Standardbibliothek. Jedes Paket kommt aus dem
+  ersten Ordner, der es hat. Unten steht, woher und wann der Index gebaut
+  wurde; klappt es nicht, zeigt das Fenster, wo gesucht wurde.
+- **Suchen:** Alle Wörter müssen im Namen, im Pfad, in der Kurzbeschreibung
+  oder in den Parameternamen vorkommen; „Volltext“ sucht im ganzen Text.
+  Mehrere Wörter finden auch Namen mit Unterstrich (`read csv` →
+  `read_csv`), `pd.`, `np.`, `plt.` stehen für pandas, numpy und pyplot.
+- **Filter** (Felder unter der Suche oder im Suchfeld selbst):
+
+  | Filter | Feld | Im Suchfeld | Beispiel |
+  |---|---|---|---|
+  | Rückgabetyp | Rückgabe | `->Typ`, `r:Typ` | `merge -> DataFrame`, `->Axes`, `r:Series\|DataFrame` |
+  | Parameter (alle müssen da sein) | Parameter | `p:name` | `p:axis p:inplace`, `p:bins:int` (mit Typ), `p::bool` (nur Typ), `p:sort*` (Präfix) |
+  | Klasse oder Modul | In | `in:Name` | `in:DataFrame`, `in:pyplot`, `in:Axes` |
+  | Art | Knöpfe | `k:art` | `k:funktion`, `k:methode`, `k:klasse`, `k:eigenschaft`, `k:modul` |
+  | Paket | Knöpfe | `pkg:name` | `pkg:numpy` |
+
+  Veraltete Einträge (deprecated) sind ausgeblendet, bis „Veraltete“
+  angehakt ist.
+- **Trefferliste:** je Treffer die Bibliothek (farbig), Name, Klasse oder
+  Modul, Kurzbeschreibung, die Parameter in Kurzform (Pflicht fett, die
+  gefilterten hervorgehoben), Art und Rückgabetyp.
+- **Text:** oben ein Steckbrief – Bibliothek mit Version, Klasse/Modul (ein
+  Klick zeigt sie), Art, der **Aufruf** in üblicher Schreibweise
+  (`pd.read_csv(filepath_or_buffer, …)`, `df.sum(…)`, `s.str.contains(pat, …)`,
+  `ax.hist(x, …)`; „kopieren“), die **Rückgabe** und alle **Parameter** als
+  Chips (Pflicht hervorgehoben; ein Klick springt zur Beschreibung). Darunter
+  eine Sprungleiste und die Abschnitte Beschreibung, Parameter (je Parameter
+  Typ, Standardwert, Pflicht/optional/nur als Schlüsselwort, lange Texte zum
+  Aufklappen), Rückgabe, Hinweise, Beispiele mit Syntaxfarben, Siehe auch
+  und die vollständige Signatur. Namen im Text führen zum Eintrag; ←
+  Zurück oder Rücktaste geht zurück. „Name kopieren“, „Inhalt zeigen“ bei
+  Klassen und Modulen, „Online-Doku ↗“ öffnet die Seite des Projekts im
+  Browser.
+- **Beispiele mit Bildern:** Die Bilder der Online-Doku (seaborn,
+  matplotlib, scipy …) liegen nicht in den installierten Paketen – sie
+  entstehen erst beim Bauen der Website, seaborn hält dort sogar den
+  Beispielcode. Beim ersten Öffnen eines Eintrags holt Atlas deshalb den
+  Abschnitt „Examples“ seiner offiziellen Seite – die der installierten
+  Version, sonst die aktuelle – mit Text, Code und Bildern und legt ihn im
+  Cache ab (`examples/<paket>/<version>/<eintrag>/`); danach geht es ohne
+  Internet. Hat die Online-Doku Bilder oder das Paket keine eigenen
+  Beispiele, stehen sie unter „Beispiele“, die Beispiele aus dem Paket
+  darunter zum Aufklappen. Atlas fragt dafür nur die Doku-Seiten der
+  bekannten Pakete (seaborn.pydata.org, matplotlib.org, pandas.pydata.org,
+  numpy.org, docs.scipy.org, scikit-learn.org) und übernimmt nur Text, Code
+  und Bilder, nie die Seite selbst. Abschalten: Einstellung „Beispiele aus
+  der Online-Doku“.
+- **Tasten:** ↑/↓ wählen, Enter springt in den Text, Esc leert die Suche
+  und schließt beim zweiten Mal das Fenster. Das Fenster merkt sich die
+  letzte Suche.
+- Rechte: nur der eigene Cache-Ordner, keine Programme; die Seite selbst
+  geht nicht ins Netz (die Beispiele holt Atlas).
+- Wechselt das Farbschema, wechselt die Suche sofort mit.
+
 ## Format (API 2)
 
 ```yaml
@@ -229,6 +318,7 @@ views:
     applies_to: "*.csv"         # optional: „Anzeigen mit“ für solche Dateien
     auto: false                 # true: passende Dateien gleich so öffnen
     keybinding: Ctrl+Alt+B      # optional
+    window: false               # true: eigenes Fenster statt Tab (wie die Projektsuche)
 ```
 
 Geöffnet wird sie über die Arbeitsleiste („Öffnen: …“) oder das Kürzel
@@ -263,12 +353,15 @@ die Brücke:
 | `atlas.open(path)`, `atlas.reveal(path)`, `atlas.message(text)` | Datei in Atlas öffnen, im Explorer zeigen, Meldung |
 | `atlas.runCommand(id, path?)` | einen Befehl dieser Erweiterung starten (wie aus der Arbeitsleiste) |
 | `atlas.commandStatus(id)`, `atlas.stopCommand(id)` | Zustand und Ende eines Hintergrundbefehls (`terminal: background`) |
+| `atlas.close()` | das Fenster einer Ansicht mit `window: true` schließen |
 
 Pfade sind absolut oder relativ zum Projekt. Atlas prüft **jeden** Pfad
 gegen `permissions: files` – `project` heißt nur im Projekt (auch nicht
 über symbolische Links oder `..` hinaus), `home` im persönlichen Ordner,
 `none` gar nicht. Die Farben von Atlas stehen als CSS-Variablen bereit
-(`--atlas-editor`, `--atlas-text`, `--atlas-accent`, …), KaTeX unter
+(`--atlas-editor`, `--atlas-text`, `--atlas-accent`, …); wechselt das
+Farbschema, setzt Atlas sie neu und schickt der Seite das Ereignis
+`atlas-theme` (`window.addEventListener("atlas-theme", …)`). KaTeX unter
 `atlas://app/web/vendor/katex/`.
 
 ### Rechte
@@ -324,6 +417,7 @@ eingesetzt. Zusätzlich gibt es
 |---|---|
 | `{output}` | Datei, in die das Ergebnis geschrieben wird (Verarbeitung: optional, Export: Pflicht) |
 | `{extension}` | Ordner der Erweiterung, z. B. `["{extension}/konvert.sh", "{file}"]` |
+| `{cache}` | Cache-Ordner der Erweiterung (`~/.cache/atlas/extensions/<name>/`); Ansichten erreichen ihn immer, auch mit `files: none` |
 | `{setting:schlüssel}` | Wert einer Einstellung (API 2) |
 
 ## Dateiverarbeitung

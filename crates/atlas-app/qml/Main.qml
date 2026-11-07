@@ -233,6 +233,8 @@ ApplicationWindow {
                 list.push({ name: qsTr("Ausführen"), hint: app.fileName(current), run: () => fileActions.runScript(current) })
             if (fileActions.isHtml(current))
                 list.push({ name: qsTr("Als Webseite anzeigen"), hint: app.fileName(current), run: () => fileActions.renderHtml(current) })
+            if (fileActions.isDelimited(current))
+                list.push({ name: qsTr("Als Tabelle anzeigen"), hint: app.fileName(current), run: () => fileActions.showAsTable(current) })
             if (app.atlasDir && app.exists(current))
                 list.push({ name: qsTr("Verknüpfen mit …"), hint: app.fileName(current), run: () => app.requestRelate(current) })
             list.push({ name: qsTr("Als Aufgabe einplanen"), hint: app.fileName(current), run: () => fileActions.planAsTask(current) })
@@ -363,6 +365,12 @@ ApplicationWindow {
         model: searchModel
         projectRoot: app.projectRoot
         onOpenRequested: (path, line, newPane, state) => editor.open(path, line, newPane ? "split" : "tab", state)
+    }
+
+    ExtensionWindow {
+        id: extensionWindow
+        app: app
+        actions: fileActions
     }
 
     SettingsDialog {
@@ -647,6 +655,7 @@ ApplicationWindow {
                 searchPanel: searchDialog, searchModel: searchModel, terminalPanel: terminalPanel, window: window,
                 sendToNote: sendToNote, sessionMenu: sessionMenu, folderDialog: folderDialog, relateDialog: relateDialog, settingsDialog: settingsDialog,
                 projectTree: projectTree, quickLook: quickLook, treeModel: treeModel, inspector: inspector, placesList: placesList,
+                extensionWindow: extensionWindow,
             })
             item.start()
         }
@@ -673,8 +682,12 @@ ApplicationWindow {
         }
     }
     /// Opens view `id` of an extension on `path` if it fits, otherwise on
-    /// the project.
+    /// the project (in a tab, or in its window with `window: true`).
     function openExtensionView(id, path) {
+        // Views with `window: true` (the docs search) get their own window.
+        let views = []
+        try { views = JSON.parse(app.extensionViews()) } catch (e) {}
+        if (views.some(v => v.id === id && v.window)) return extensionWindow.show(id, path || app.projectRoot)
         const fits = path && fileActions.processorsFor(path).some(p => p.id === id)
         const target = fits ? path : app.projectRoot
         if (target) editor.open(target, 0, "tab", { processor: id })

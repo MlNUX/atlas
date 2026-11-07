@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: SpikeApp
+options:
+  bundleIdPrefix: de.minux
+  deploymentTarget:
+    macOS: "26.0"
+settings:
+  base:
+    ARCHS: arm64
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  SpikeKit:
+    path: ../SpikeKit
+targets:
+  SpikeApp:
+    type: application
+    platform: macOS
+    sources: [Sources]
+    dependencies:
+      - package: SpikeKit
+        product: AtlasSpike
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.minux.atlas.spike.uniffi

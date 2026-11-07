@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Doku-Suche: die Dokumentation von Python-Paketen (pandas, numpy,
+# matplotlib …) lokal durchsuchen – nach Namen, Rückgabetyp, Parametern,
+# Klasse/Modul, Art und Paket – in einem eigenen Fenster wie die
+# Projektsuche. Den Index baut Atlas selbst (in Rust, crates/atlas-core/
+# src/pydocs) aus den Quelltexten der installierten Pakete: Es startet kein
+# Python und führt nichts aus. Er liegt im Cache-Ordner der Erweiterung.
+# Nur die Beispiele mit Bildern holt Atlas auf Wunsch einmal aus der
+# Online-Doku in denselben Ordner (src/pydocs/examples.rs); die Seite selbst
+# geht nicht ins Netz.
+atlas_api: 2
+name: docs
+title: Doku-Suche
+version: 2.2.0
+description: Dokumentation von pandas, numpy, matplotlib & Co. lokal durchsuchen – mit Filtern für Rückgabetyp, Parameter, Klasse und Art.
+context: true                 # als Karte in der Kontextleiste (abschaltbar)
+
+permissions:
+  run: []                     # startet keine Programme
+  files: none                 # nur der eigene Cache-Ordner
+  network: false
+
+settings:
+  - key: pakete
+    title: Pakete
+    description: Python-Pakete, deren Dokumentation in den Index kommt (Komma oder Leerzeichen).
+    type: string
+    default: numpy, pandas, matplotlib, scipy, seaborn, sklearn
+  - key: python
+    title: Umgebung
+    description: Leer – automatisch (Umgebungen im Projekt, Jupyter-Kernel, Conda, pyenv, System). Sonst die Umgebung mit den Paketen – ihr Ordner, ihr Python (…/.venv/bin/python) oder ihr site-packages-Ordner.
+    type: path
+    default: ""
+  - key: beispiele_online
+    title: Beispiele aus der Online-Doku
+    description: Beispiele mit Bildern (seaborn, matplotlib, scipy …) beim ersten Öffnen eines Eintrags einmal von der offiziellen Doku-Seite holen und im Cache behalten.
+    type: bool
+    default: true
+
+views:
+  - id: search
+    name: Doku-Suche
+    page: docs.html
+    window: true              # eigenes Fenster wie die Projektsuche
+    keybinding: F1

@@ -46,6 +46,25 @@ Rectangle {
     property var actions: null
     /// Suggest project files after `[[` (Markdown).
     property bool wikiCompletion: false
+    /// Markdown tables drawn as tables where the cursor is not (Live Preview).
+    property bool liveTables: true
+    /// The drawn tables (for the smoke test).
+    readonly property alias liveTableItem: liveTables
+    /// The scrolling area (for the smoke test and measurements).
+    readonly property alias flickItem: flick
+    /// Reads the tables of the note again: at once for normal notes (after
+    /// this event, so positions are laid out), a moment later for long ones.
+    function scheduleTables() {
+        if (!root.wikiCompletion || !root.liveTables) { if (liveTables.tables.length) liveTables.tables = []; return }
+        if (area.length > 200000) tablesTimer.restart()
+        else Qt.callLater(root.updateTables)
+    }
+    function updateTables() {
+        const text = area.text
+        // Only when the note has a table at all (a delimiter row).
+        liveTables.tables = /^\s*\|?\s*:?-+:?\s*\|/m.test(text) ? (root.edit("drawnTables", { text: text }) || []) : []
+    }
+    Timer { id: tablesTimer; interval: 300; onTriggered: root.updateTables() }
     /// Faster, more direct touchpad scrolling (TouchpadFling.brisk), as in
     /// the .atlasnote view.
     property bool briskScrolling: false
@@ -62,38 +81,35 @@ Rectangle {
     property string completionKind: "wiki"
     function updateCompletion() {
         const pos = area.cursorPosition
-        const before = area.getText(Math.max(0, pos - 200), pos)
+        const from = Math.max(0, pos - 200)
+        const before = area.getText(from, pos)
+        const ctx = root.edit("completion", { text: before, pos: before.length })
         // `#ta…` after a space or at the line start: tags of the project.
-        const tag = /(^|[\s(])#([^\s\d#.,;:!?()\[\]{}"'`<>|*~=+-][^\s#.,;:!?()\[\]{}"'`<>|*~=+]*)$/.exec(before)
-        if (tag && area.activeFocus && area.selectionStart === area.selectionEnd) {
-            const typed = tag[2].toLowerCase()
+        if (ctx && ctx.tag !== null && area.activeFocus && area.selectionStart === area.selectionEnd) {
             let tags = []
             try { tags = JSON.parse(root.app.noteTags()) } catch (e) {}
-            const results = tags.filter(t => t.key.startsWith(typed) && t.key !== typed)
-                .sort((a, b) => b.count - a.count).slice(0, 8)
+            const results = (root.edit("tagSuggestions", { tags: tags, typed: ctx.tag }) || [])
                 .map(t => ({ kind: "tag", title: "#" + t.display, relative: t.count === 1 ? qsTr("1 Notiz") : qsTr("%1 Notizen").arg(t.count), tag: t.display }))
             if (results.length) {
                 root.completionKind = "tag"
                 root.completionResults = results
                 root.completionCurrent = 0
-                root.completionStart = pos - tag[2].length
+                root.completionStart = from + ctx.tag_start
                 completion.open()
                 return
             }
         }
         root.completionKind = "wiki"
-        const open = before.lastIndexOf("[[")
-        const query = open >= 0 ? before.slice(open + 2) : ""
-        if (open < 0 || !area.activeFocus || /[\]\n|#]/.test(query) || area.selectionStart !== area.selectionEnd) {
+        if (!ctx || ctx.wiki === null || !area.activeFocus || area.selectionStart !== area.selectionEnd) {
             completion.close()
             return
         }
-        const results = JSON.parse(root.app.quickOpen(query.replace(/^\//, ""), 12))
+        const results = JSON.parse(root.app.quickOpen(ctx.wiki, 12))
             .filter(r => r.kind !== "dir" && root.app.exists(r.path)).slice(0, 8)
         if (!results.length) { completion.close(); return }
         root.completionResults = results
         root.completionCurrent = 0
-        root.completionStart = pos - query.length
+        root.completionStart = from + ctx.wiki_start
         completion.open()
     }
     property bool showSymbols: false
@@ -160,6 +176,7 @@ Rectangle {
         if (root.pendingFind) Qt.callLater(root.applyFind)
         if (root.showSymbols) root.updateSymbols()
         spellTimer.restart()
+        root.scheduleTables()
         root.synced()
     }
 
@@ -181,15 +198,9 @@ Rectangle {
     /// the line holds no task or the file is read-only.
     function toggleTask(n, done) {
         if (root.readOnly) return false
-        const start = positionOfLine(n)
-        let end = area.text.indexOf("\n", start)
-        if (end < 0) end = area.length
-        const line = area.text.slice(start, end)
-        const m = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])\]/.exec(line)
-        if (!m) return false
-        const at = start + m[1].length
-        area.remove(at, at + 1)
-        area.insert(at, done ? "x" : " ")
+        const cursor = area.cursorPosition
+        if (!applyEdit(edit("toggleTask", { text: area.text, line: n, done: done }))) return false
+        area.cursorPosition = cursor
         return true
     }
     function keepMine() { doc.saveKeepingMine(area.text, editGeneration) }
@@ -205,46 +216,33 @@ Rectangle {
         flashAnim.restart()
         if (root.pendingFind) applyFind()
     }
+    // ---- Lists and Markdown tables: the rules are in atlas_core::markdown_edit
+    // (via MarkdownEditCore), which returns an edit {start, end, text, anchor,
+    // cursor} in UTF-16 positions, or null when the key does what it usually
+    // does. Tables have aligned columns in the text: Tab / Shift+Tab go from
+    // cell to cell, Enter at the end of a row adds one, leaving a table aligns
+    // it; alignTables() does the whole note. Never in code blocks.
+
+    /// Runs an operation of MarkdownEditCore.
+    function edit(op, args) { return JSON.parse(MarkdownEditCore.call(op, JSON.stringify(args))) }
+    /// Applies an edit (small: remove and insert only what changes, for
+    /// undo); false for null.
+    function applyEdit(e) {
+        if (!e) return false
+        if (e.end > e.start) area.remove(e.start, e.end)
+        if (e.text.length) area.insert(e.start, e.text)
+        if (e.anchor === e.cursor) area.cursorPosition = e.cursor
+        else area.select(e.anchor, e.cursor)
+        return true
+    }
+
     /// Indents (or with `outdent` moves back) the list items on the lines of
     /// the cursor or selection by two spaces; false if the first of these
     /// lines is no list item (Tab then works as usual).
     function indentListItems(outdent) {
-        const item = /^\s*([-*+]|\d+[.)])(\s|$)/
-        const text = area.text
-        const start = Math.min(area.selectionStart, area.selectionEnd), end = Math.max(area.selectionStart, area.selectionEnd)
-        let lineStart = text.lastIndexOf("\n", start - 1) + 1
-        const firstLine = text.slice(lineStart, (text.indexOf("\n", lineStart) + 1 || text.length + 1) - 1)
-        if (!item.test(firstLine)) return false
-        const cursor = area.cursorPosition, anchor = cursor === area.selectionStart ? area.selectionEnd : area.selectionStart
-        let shiftCursor = 0, shiftAnchor = 0
-        // Back to front, so earlier positions stay valid.
-        const starts = []
-        for (let p = lineStart; p <= Math.max(start, end - (end > start ? 1 : 0)) && p <= text.length; ) {
-            starts.push(p)
-            const next = text.indexOf("\n", p)
-            if (next < 0) break
-            p = next + 1
-        }
-        for (let i = starts.length - 1; i >= 0; --i) {
-            const p = starts[i]
-            const line = text.slice(p, (text.indexOf("\n", p) + 1 || text.length + 1) - 1)
-            if (!item.test(line)) continue
-            let delta = 0
-            if (!outdent) {
-                area.insert(p, "  ")
-                delta = 2
-            } else {
-                const lead = line.startsWith("\t") ? 1 : line.startsWith("  ") ? 2 : line.startsWith(" ") ? 1 : 0
-                if (!lead) continue
-                area.remove(p, p + lead)
-                delta = -lead
-            }
-            if (cursor >= p) shiftCursor += delta
-            if (anchor >= p) shiftAnchor += delta
-        }
-        if (anchor === cursor) area.cursorPosition = Math.max(lineStart, cursor + shiftCursor)
-        else area.select(anchor + shiftAnchor, cursor + shiftCursor)
-        return true
+        const cursor = area.cursorPosition
+        const anchor = cursor === area.selectionStart ? area.selectionEnd : area.selectionStart
+        return applyEdit(edit("indentListItems", { text: area.text, anchor: anchor, cursor: cursor, outdent: !!outdent }))
     }
 
     /// Enter in a Markdown list continues it: a new bullet, a new open
@@ -253,267 +251,37 @@ Rectangle {
     /// False if the cursor is not after such a marker.
     function continueList() {
         if (area.selectionStart !== area.selectionEnd) return false
-        const pos = area.cursorPosition
-        const text = area.text
-        const lineStart = text.lastIndexOf("\n", pos - 1) + 1
-        const lineEnd = (text.indexOf("\n", pos) + 1 || text.length + 1) - 1
-        const line = text.slice(lineStart, lineEnd)
-        const m = /^(\s*)(?:([-*+])|(\d+)([.)])|(>))(\s+)(\[[ xX]\]\s+)?/.exec(line)
-        if (!m || pos < lineStart + m[0].length) return false
-        if (line.slice(m[0].length).trim() === "") {
-            if (pos !== lineEnd) return false
-            if (m[1].length > 0 && !m[5]) indentListItems(true)
-            else area.remove(lineStart, lineEnd)
-            return true
-        }
-        const marker = m[5] ? ">" : m[3] ? (parseInt(m[3]) + 1) + m[4] : m[2]
-        const insert = "\n" + m[1] + marker + m[6] + (m[7] ? "[ ] " : "")
-        area.insert(pos, insert)
-        area.cursorPosition = pos + insert.length
-        return true
+        return applyEdit(edit("continueList", { text: area.text, pos: area.cursorPosition }))
     }
 
-    // ---- Markdown tables, with aligned columns in the text: Tab / Shift+Tab
-    // go from cell to cell, Enter at the end of a row adds one, leaving a
-    // table aligns it; alignTables() does the whole note. Never in code blocks.
-
-    /// The delimiter row under the header: `| --- | :-: | --: |`.
-    readonly property var tableDelimiter: /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
-    /// Cells of a table row (trimmed; `\|` stays inside a cell).
-    function tableCells(line) {
-        let s = line.trim()
-        if (s.startsWith("|")) s = s.slice(1)
-        if (s.endsWith("|") && !s.endsWith("\\|")) s = s.slice(0, -1)
-        const cells = []
-        let cell = ""
-        for (let i = 0; i < s.length; ++i) {
-            if (s[i] === "\\" && i + 1 < s.length) { cell += s[i] + s[i + 1]; ++i }
-            else if (s[i] === "|") { cells.push(cell.trim()); cell = "" }
-            else cell += s[i]
-        }
-        cells.push(cell.trim())
-        return cells
-    }
-    /// Columns `s` takes in a monospace font (wide CJK and emoji count two,
-    /// combining marks none).
-    function textColumns(s) {
-        let w = 0
-        for (const ch of s) {
-            const c = ch.codePointAt(0)
-            if ((c >= 0x300 && c <= 0x36f) || c === 0x200d || (c >= 0xfe00 && c <= 0xfe0f)) continue
-            const wide = (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3)
-                || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60)
-                || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) || (c >= 0x20000 && c <= 0x3fffd)
-            w += wide ? 2 : 1
-        }
-        return w
-    }
-    /// The table rows `lines` (header, delimiter, body) with aligned
-    /// columns: {lines, offsets} – offsets[row][col] is where a cell's text
-    /// starts in its line. Alignment from the delimiter row is kept and
-    /// applied (`:-:` centred, `--:` right).
-    function formatTable(lines) {
-        const indent = /^\s*/.exec(lines[0])[0]
-        const rows = lines.map(l => root.tableCells(l))
-        const cols = Math.max(...rows.map(r => r.length))
-        const align = [], width = []
-        for (let c = 0; c < cols; ++c) {
-            const d = rows[1][c] || ""
-            align.push(d.length > 1 && d.startsWith(":") && d.endsWith(":") ? "c" : d.endsWith(":") ? "r" : d.startsWith(":") ? "l" : "")
-            let w = 3
-            rows.forEach((r, i) => { if (i !== 1) w = Math.max(w, root.textColumns(r[c] || "")) })
-            width.push(w)
-        }
-        const out = [], offsets = []
-        rows.forEach((r, i) => {
-            let line = indent + "|"
-            const offs = []
-            for (let c = 0; c < cols; ++c) {
-                const w = width[c], a = align[c]
-                if (i === 1) {
-                    const cell = a === "c" ? ":" + "-".repeat(w - 2) + ":" : a === "r" ? "-".repeat(w - 1) + ":"
-                        : a === "l" ? ":" + "-".repeat(w - 1) : "-".repeat(w)
-                    line += " "
-                    offs.push(line.length)
-                    line += cell + " |"
-                } else {
-                    const t = r[c] || ""
-                    const pad = w - root.textColumns(t)
-                    const left = a === "r" ? pad : a === "c" ? Math.floor(pad / 2) : 0
-                    line += " " + " ".repeat(left)
-                    offs.push(line.length)
-                    line += t + " ".repeat(pad - left) + " |"
-                }
-            }
-            out.push(line)
-            offsets.push(offs)
-        })
-        return { lines: out, offsets: offsets }
-    }
     /// A table given as text, aligned (for inserting).
-    function alignTable(markdown) { return formatTable(markdown.split("\n")).lines.join("\n") }
-
-    /// Inside a fenced code block at `pos`?
-    function inCodeFence(pos) {
-        const fences = area.text.slice(0, pos).match(/^\s*(```|~~~)/gm)
-        return !!fences && fences.length % 2 === 1
-    }
-    /// The table with the line at `pos`: {start, end, lines, starts}, or null.
-    function tableAt(pos) {
-        if (!root.wikiCompletion) return null
-        const text = area.text
-        const lineStart = (p) => text.lastIndexOf("\n", p - 1) + 1
-        const lineEnd = (p) => { const e = text.indexOf("\n", p); return e < 0 ? text.length : e }
-        const isRow = (l) => l.trim() !== "" && l.indexOf("|") >= 0
-        let s = lineStart(pos)
-        if (!isRow(text.slice(s, lineEnd(s)))) return null
-        // The block of consecutive lines with a pipe around `pos`.
-        while (s > 0) {
-            const prev = lineStart(s - 1)
-            if (!isRow(text.slice(prev, s - 1))) break
-            s = prev
-        }
-        const lines = [], starts = []
-        for (let p = s; ; ) {
-            const e = lineEnd(p)
-            const l = text.slice(p, e)
-            if (!isRow(l)) break
-            lines.push(l)
-            starts.push(p)
-            if (e >= text.length) break
-            p = e + 1
-        }
-        // The table starts at the header above the first delimiter row.
-        const k = lines.findIndex((l, i) => i > 0 && root.tableDelimiter.test(l))
-        if (k < 1) return null
-        const first = k - 1
-        if (pos < starts[first] || root.inCodeFence(starts[first])) return null
-        const last = lines.length - 1
-        return { start: starts[first], end: starts[last] + lines[last].length,
-                 lines: lines.slice(first), starts: starts.slice(first) }
-    }
-    /// Row and cell of `pos` in table `t`, and the offset into the cell text.
-    function tableCellAt(t, pos) {
-        let row = t.starts.length - 1
-        while (row > 0 && t.starts[row] > pos) --row
-        const line = t.lines[row], col = pos - t.starts[row]
-        const lead = /^\s*\|?/.exec(line)[0].length
-        let cell = 0, cellStart = lead
-        for (let i = lead; i < col && i < line.length; ++i) {
-            if (line[i] === "\\") { ++i; continue }
-            if (line[i] === "|") { ++cell; cellStart = i + 1 }
-        }
-        return { row: row, cell: cell, offset: line.slice(cellStart, col).replace(/^\s+/, "").length }
-    }
-    /// Replaces table `t` by `lines` (only the part that changed: a small
-    /// edit for undo); returns the new start of each row.
-    function replaceTable(t, lines) {
-        const old = area.text.slice(t.start, t.end), now = lines.join("\n")
-        if (old !== now) {
-            let p = 0
-            while (p < old.length && p < now.length && old[p] === now[p]) ++p
-            let q = 0
-            while (q < old.length - p && q < now.length - p && old[old.length - 1 - q] === now[now.length - 1 - q]) ++q
-            area.remove(t.start + p, t.start + old.length - q)
-            area.insert(t.start + p, now.slice(p, now.length - q))
-        }
-        const starts = []
-        let at = t.start
-        for (const l of lines) { starts.push(at); at += l.length + 1 }
-        return starts
-    }
-    /// Puts the cursor into a cell, its text selected (typing replaces it).
-    function selectCell(f, starts, row, cell) {
-        const begin = starts[row] + f.offsets[row][cell]
-        const line = f.lines[row]
-        let end = begin
-        while (end - starts[row] < line.length && !(line[end - starts[row]] === "|" && line[end - starts[row] - 1] !== "\\")) ++end
-        const text = area.text.slice(begin, end).replace(/\s+$/, "")
-        area.select(begin, begin + text.length)
-    }
+    function alignTable(markdown) { return edit("alignTable", { markdown: markdown }) }
+    /// The table with the line at `pos`: {start, end}, or null.
+    function tableAt(pos) { return root.wikiCompletion ? edit("tableAt", { text: area.text, pos: pos }) : null }
     /// Tab / Shift+Tab in a table: align it and go to the next / previous
     /// cell (Tab in the last cell adds a row). False outside a table.
     function tableTab(back) {
-        if (root.readOnly) return false
-        const pos = area.cursorPosition
-        const t = tableAt(pos)
-        if (!t) return false
-        const at = tableCellAt(t, pos)
-        let lines = t.lines
-        const cols = Math.max(...lines.map(l => root.tableCells(l).length))
-        let row = at.row, cell = Math.min(at.cell, cols - 1) + (back ? -1 : 1)
-        if (cell >= cols) { ++row; cell = 0 }
-        if (cell < 0) { --row; cell = cols - 1 }
-        if (row === 1) row += back ? -1 : 1
-        if (row < 0) { row = 0; cell = 0 }
-        if (row >= lines.length) lines = lines.concat(["|" + " |".repeat(cols)])
-        const f = formatTable(lines)
-        selectCell(f, replaceTable(t, f.lines), row, cell)
-        return true
+        if (root.readOnly || !root.wikiCompletion) return false
+        return applyEdit(edit("tableTab", { text: area.text, pos: area.cursorPosition, back: !!back }))
     }
     /// Enter at the end of a table row: align the table and add an empty row
     /// below (below the delimiter for the header). In an empty last row:
     /// the row goes and the table ends, as with lists. False otherwise.
     function tableEnter() {
-        if (root.readOnly || area.selectionStart !== area.selectionEnd) return false
-        const pos = area.cursorPosition
-        const t = tableAt(pos)
-        if (!t) return false
-        const at = tableCellAt(t, pos)
-        if (pos !== t.starts[at.row] + t.lines[at.row].length) return false
-        const last = t.lines.length - 1
-        if (at.row === last && at.row > 1 && root.tableCells(t.lines[last]).every(c => c === "")) {
-            const f = formatTable(t.lines.slice(0, last))
-            const starts = replaceTable({ start: t.start, end: t.end }, f.lines.concat([""]))
-            area.cursorPosition = starts[last]
-            return true
-        }
-        const cols = Math.max(...t.lines.map(l => root.tableCells(l).length))
-        const row = Math.max(2, at.row + 1)
-        const lines = t.lines.slice(0, row).concat(["|" + " |".repeat(cols)], t.lines.slice(row))
-        const f = formatTable(lines)
-        selectCell(f, replaceTable(t, f.lines), row, 0)
-        return true
+        if (root.readOnly || !root.wikiCompletion || area.selectionStart !== area.selectionEnd) return false
+        return applyEdit(edit("tableEnter", { text: area.text, pos: area.cursorPosition }))
     }
     /// Aligns the table at `pos`, keeping the cursor in its cell.
     function alignTableAt(pos) {
-        const t = tableAt(pos)
-        if (!t) return
-        const f = formatTable(t.lines)
-        if (f.lines.join("\n") === area.text.slice(t.start, t.end)) return
-        const cursor = area.cursorPosition
-        const inside = cursor >= t.start && cursor <= t.end
-        const at = inside ? tableCellAt(t, cursor) : null
-        const delta = f.lines.join("\n").length - (t.end - t.start)
-        const starts = replaceTable(t, f.lines)
-        if (at) {
-            const cellText = root.tableCells(f.lines[at.row])[Math.min(at.cell, f.offsets[at.row].length - 1)] || ""
-            area.cursorPosition = starts[at.row] + f.offsets[at.row][Math.min(at.cell, f.offsets[at.row].length - 1)]
-                + Math.min(at.offset, cellText.length)
-        } else if (cursor > t.end) area.cursorPosition = cursor + delta
-        else area.cursorPosition = cursor
+        if (!root.wikiCompletion) return
+        applyEdit(edit("alignTableAt", { text: area.text, pos: pos, cursor: area.cursorPosition }))
     }
-    /// Aligns every table of the note (from the bottom, so positions above
-    /// stay valid). Returns how many changed.
+    /// Aligns every table of the note. Returns how many changed.
     function alignTables() {
         if (root.readOnly || !root.wikiCompletion) return 0
-        const found = []
-        const text = area.text
-        let p = 0
-        while (p < text.length) {
-            const e = text.indexOf("\n", p)
-            const end = e < 0 ? text.length : e
-            const t = root.tableDelimiter.test(text.slice(p, end)) && p > 0 ? tableAt(p) : null
-            if (t && (found.length === 0 || found[found.length - 1].start !== t.start)) found.push(t)
-            p = (t ? t.end : end) + 1
-        }
-        let changed = 0
-        for (let i = found.length - 1; i >= 0; --i) {
-            const before = area.text
-            alignTableAt(found[i].start)
-            if (area.text !== before) ++changed
-        }
-        return changed
+        const edits = edit("alignTables", { text: area.text, cursor: area.cursorPosition }) || []
+        for (const e of edits) applyEdit(e)
+        return edits.length
     }
     // Leaving a table aligns it (a moment later: not while selecting).
     property int lastTablePos: -1
@@ -660,10 +428,12 @@ Rectangle {
         function onTextChanged() { numbersTimer.restart() }
         function onContentHeightChanged() { numbersTimer.restart() }
     }
+    // (area.text copies the whole document on every read: read it once.)
     function positionOfLine(n) {
+        const text = area.text
         let pos = 0
         for (let i = 1; i < n; ++i) {
-            const next = area.text.indexOf("\n", pos)
+            const next = text.indexOf("\n", pos)
             if (next < 0) break
             pos = next + 1
         }
@@ -671,8 +441,9 @@ Rectangle {
     }
     function lineAtY(y) {
         const pos = area.positionAt(0, y)
+        const text = area.text
         let count = 1, idx = -1
-        while ((idx = area.text.indexOf("\n", idx + 1)) >= 0 && idx < pos) count++
+        while ((idx = text.indexOf("\n", idx + 1)) >= 0 && idx < pos) count++
         return count
     }
     readonly property alias fling: touchpadFling
@@ -698,13 +469,45 @@ Rectangle {
         const y0 = area.positionToRectangle(start).y
         const next = area.text.indexOf("\n", start)
         const y1 = next < 0 ? y0 + lineHeight : area.positionToRectangle(next + 1).y
-        const y = y0 + (y1 - y0) * (line - n) - (viewY || 0)
+        let y = y0 + (y1 - y0) * (line - n) - (viewY || 0)
+        // The start of line 1 is the very top (with the padding above it).
+        if (line <= 1 && !viewY) y = 0
         flick.contentY = Math.max(0, Math.min(y, flick.contentHeight - flick.height))
     }
     readonly property real viewHeight: flick.height
+    /// Split view: puts line `line` (fractional) at share `frac` of the view's
+    /// height, drawn towards the top / bottom edge near the ends like the
+    /// preview does (blendToEdge in web/preview.js), so both sides reach the
+    /// start and the end together.
+    function alignLine(line, frac) {
+        const n = Math.max(1, Math.floor(line))
+        const start = positionOfLine(n)
+        const y0 = area.positionToRectangle(start).y
+        const next = area.text.indexOf("\n", start)
+        const y1 = next < 0 ? y0 + lineHeight : area.positionToRectangle(next + 1).y
+        let y = y0 + (y1 - y0) * (line - n) - frac * flick.height
+        const max = Math.max(0, flick.contentHeight - flick.height)
+        if (frac < 0.5) y = y * (frac * 2)
+        else if (frac > 0.5) { const w = (frac - 0.5) * 2; y = y * (1 - w) + max * w }
+        flick.contentY = Math.max(0, Math.min(y, max))
+    }
+    /// Where in the view the split view lines up the preview (0 top … 1
+    /// bottom): the middle, moving to the edges in the first and last half
+    /// screen, so both sides reach the start and the end together (the same
+    /// rule as edgeFraction in web/preview.js).
+    function edgeFraction() {
+        const height = flick.height, scroll = flick.contentY
+        const max = Math.max(0, flick.contentHeight - height)
+        if (max <= 0) return 0
+        if (max <= height) return scroll / max
+        if (scroll < height / 2) return scroll / height
+        if (max - scroll < height / 2) return 1 - (max - scroll) / height
+        return 0.5
+    }
     function scrollToLine(n) {
         const rect = area.positionToRectangle(positionOfLine(n))
-        flick.contentY = Math.max(0, Math.min(rect.y, flick.contentHeight - flick.height))
+        // Line 1: the very top (with the padding above it).
+        flick.contentY = n <= 1 ? 0 : Math.max(0, Math.min(rect.y, flick.contentHeight - flick.height))
     }
 
     function viewState() { return { line: root.topLine, cursor: area.cursorPosition, symbols: root.showSymbols } }
@@ -717,18 +520,9 @@ Rectangle {
     function acceptCompletion() {
         const r = root.completionResults[root.completionCurrent]
         if (!r || root.completionStart < 0) { completion.close(); return }
-        const end = area.cursorPosition
-        if (r.kind === "tag") {
-            area.remove(root.completionStart, end)
-            area.insert(root.completionStart, r.tag)
-            area.cursorPosition = root.completionStart + r.tag.length
-            completion.close()
-            return
-        }
-        const closing = area.text.slice(end, end + 2) === "]]" ? "" : "]]"
-        area.remove(root.completionStart, end)
-        area.insert(root.completionStart, "/" + r.relative + closing)
-        area.cursorPosition = root.completionStart + r.relative.length + 1 + 2
+        const args = { text: area.text, start: root.completionStart, end: area.cursorPosition }
+        if (r.kind === "tag") applyEdit(edit("acceptTag", Object.assign(args, { tag: r.tag })))
+        else applyEdit(edit("acceptWiki", Object.assign(args, { relative: r.relative })))
         completion.close()
     }
     function moveCompletion(step) {
@@ -864,18 +658,21 @@ Rectangle {
                 color: Theme.editor
                 clip: true
                 Repeater {
-                    model: gutter.visible && root.wrap ? root.wrappedNumbers : []
+                    // A count, not the list: the labels stay while scrolling
+                    // (a new list would rebuild them every step).
+                    model: gutter.visible && root.wrap ? root.wrappedNumbers.length : 0
                     Text {
-                        required property var modelData
+                        required property int index
+                        readonly property var entry: root.wrappedNumbers[index] || { n: 0, y: -1000 }
                         x: 0
                         width: gutter.width - 10
                         // (positionToRectangle includes the top padding.)
-                        y: modelData.y - flick.contentY
+                        y: entry.y - flick.contentY
                         height: root.lineHeight
                         horizontalAlignment: Text.AlignRight
                         verticalAlignment: Text.AlignVCenter
-                        text: modelData.n
-                        color: area.cursorLine === modelData.n ? Theme.text : Theme.textFaint
+                        text: entry.n
+                        color: area.cursorLine === entry.n ? Theme.text : Theme.textFaint
                         font.family: Theme.monoFont
                         font.pixelSize: 12
                     }
@@ -970,6 +767,7 @@ Rectangle {
                         if (root.showSymbols) symbolTimer.restart()
                         // Old underlines would sit in the wrong place until checked again.
                         if (root.spellOn) { root.spellRanges = []; root.spellMarks = []; spellTimer.restart() }
+                        root.scheduleTables()
                     }
                     onCursorPositionChanged: if (root.wikiCompletion) { completionTimer.restart(); root.cursorMoved() }
                     Keys.onPressed: (event) => {
@@ -1018,6 +816,13 @@ Rectangle {
                         else if (event.key === Qt.Key_Escape && findBar.visible) { findBar.visible = false; event.accepted = true }
                     }
                     FontMetrics { id: fontMetrics; font: area.font }
+
+                    // Markdown tables drawn as tables where the cursor is not.
+                    LiveTables {
+                        id: liveTables
+                        area: area
+                        visible: root.wikiCompletion && root.liveTables
+                    }
 
                     // Misspelled words.
                     Repeater {

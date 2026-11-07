@@ -6,19 +6,34 @@
 //! The library is not thread safe in the way the UI needs, so a worker
 //! thread ("actor") owns it and all open documents. Requests are queued; the
 //! result is handed to a callback on the worker thread. The engine sits
-//! behind the [`Backend`] trait so that it can be exchanged later.
+//! behind the public [`Backend`] trait: Poppler with the feature
+//! `pdf-poppler` (default), otherwise a stand-in that reports every call as
+//! unavailable; [`set_backend_factory`] installs another engine.
+//!
+//! Page text for the project search comes from, in this order: text handed
+//! in with [`set_page_texts`] (e.g. by a UI that displays PDFs itself, like
+//! PDFKit on macOS), a [`PageTextSource`] set with [`set_page_text_source`],
+//! the engine.
 //!
 //! Rendered pages are BGRA, premultiplied, 4 bytes per pixel, rows without
 //! padding – i.e. `QImage::Format_ARGB32_Premultiplied` on little endian.
 
 pub mod formulas;
+#[cfg(feature = "pdf-poppler")]
 mod poppler;
+#[cfg(not(feature = "pdf-poppler"))]
+mod unavailable;
+
+#[cfg(feature = "pdf-poppler")]
+use poppler as engine;
+#[cfg(not(feature = "pdf-poppler"))]
+use unavailable as engine;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
 use crossbeam_channel::{Sender, select, unbounded};
@@ -112,8 +127,9 @@ pub struct Selection {
     pub text: String,
 }
 
-/// Engine specific implementation; lives on the worker thread.
-trait Backend {
+/// Engine specific implementation; lives on the worker thread that created
+/// it (see [`set_backend_factory`]), so it need not be `Send`.
+pub trait Backend {
     fn open(&mut self, path: &Path) -> Result<Vec<(f64, f64)>>;
     fn render(&mut self, path: &Path, page: usize, width_px: u32) -> Result<(u32, u32, Vec<u8>)>;
     fn text(&mut self, path: &Path, page: usize) -> Result<String>;
@@ -144,7 +160,13 @@ trait Backend {
 /// document of its own: callable from any thread, e.g. the project search.
 /// Stops after `max_bytes` of text (the pages read so far).
 pub fn page_texts(path: &Path, max_bytes: usize) -> Result<Vec<String>> {
-    let mut backend = poppler::PopplerBackend::with_limit(1);
+    if let Some(pages) = injected_page_texts(path) {
+        return Ok(truncate_pages(pages, max_bytes));
+    }
+    if let Some(source) = PAGE_TEXT_SOURCE.get() {
+        return Ok(truncate_pages(source.page_texts(path, max_bytes)?, max_bytes));
+    }
+    let mut backend = new_backend(1);
     let pages = backend.open(path)?.len();
     let mut out = Vec::new();
     let mut bytes = 0;
@@ -158,6 +180,104 @@ pub fn page_texts(path: &Path, max_bytes: usize) -> Result<Vec<String>> {
         }
     }
     Ok(out)
+}
+
+/// The pages up to the one that reaches `max_bytes` of text (like the engine path).
+fn truncate_pages(mut pages: Vec<String>, max_bytes: usize) -> Vec<String> {
+    let mut bytes = 0;
+    if let Some(end) = pages.iter().position(|p| {
+        bytes += p.len();
+        bytes >= max_bytes
+    }) {
+        pages.truncate(end + 1);
+    }
+    pages
+}
+
+/// Creates an engine that keeps at most `max_open` documents open.
+pub type BackendFactory = fn(max_open: usize) -> Box<dyn Backend>;
+
+static BACKEND_FACTORY: OnceLock<BackendFactory> = OnceLock::new();
+
+/// Replaces the built-in engine. Must be called before the first PDF call
+/// ([`PdfService::get`], [`page_texts`]); returns `false` if an engine was
+/// already chosen.
+pub fn set_backend_factory(factory: BackendFactory) -> bool {
+    BACKEND_FACTORY.set(factory).is_ok()
+}
+
+fn new_backend(max_open: usize) -> Box<dyn Backend> {
+    match BACKEND_FACTORY.get() {
+        Some(factory) => factory(max_open),
+        None => engine::backend(max_open),
+    }
+}
+
+/// Supplies page text on request, e.g. from the UI's own PDF library, for
+/// PDFs that were never opened (the project search reads every PDF).
+pub trait PageTextSource: Send + Sync {
+    /// The plain text of each page, lines separated by `\n`; may stop once
+    /// `max_bytes` of text are reached.
+    fn page_texts(&self, path: &Path, max_bytes: usize) -> Result<Vec<String>>;
+}
+
+static PAGE_TEXT_SOURCE: OnceLock<Box<dyn PageTextSource>> = OnceLock::new();
+
+/// Sets the [`PageTextSource`] (once per process); returns `false` if one was set already.
+pub fn set_page_text_source(source: Box<dyn PageTextSource>) -> bool {
+    PAGE_TEXT_SOURCE.set(source).is_ok()
+}
+
+/// Page texts handed in with [`set_page_texts`] kept at most (least recently set dropped).
+const MAX_INJECTED: usize = 64;
+
+struct Injected {
+    /// Modification time and size of the file when the text was handed in.
+    stamp: (SystemTime, u64),
+    pages: Vec<String>,
+    set: u64,
+}
+
+fn injected() -> &'static Mutex<(u64, HashMap<PathBuf, Injected>)> {
+    static INJECTED: OnceLock<Mutex<(u64, HashMap<PathBuf, Injected>)>> = OnceLock::new();
+    INJECTED.get_or_init(Mutex::default)
+}
+
+fn file_stamp(path: &Path) -> Option<(SystemTime, u64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.modified().ok()?, meta.len()))
+}
+
+/// Hands in the text of each page of the PDF at `path` (one string per page,
+/// lines separated by `\n`), as read by the UI. Used instead of the engine
+/// until the file changes on disk. Ignored if the file does not exist.
+pub fn set_page_texts(path: &Path, pages: Vec<String>) {
+    let Some(stamp) = file_stamp(path) else { return };
+    let Ok(mut guard) = injected().lock() else { return };
+    let (clock, map) = &mut *guard;
+    *clock += 1;
+    map.insert(path.to_path_buf(), Injected { stamp, pages, set: *clock });
+    while map.len() > MAX_INJECTED {
+        let Some(oldest) = map.iter().min_by_key(|(_, i)| i.set).map(|(p, _)| p.clone()) else { break };
+        map.remove(&oldest);
+    }
+    drop(guard);
+    crate::search::forget_pdf_text(path);
+}
+
+/// Text from [`set_page_texts`] if it still matches the file.
+fn injected_page_texts(path: &Path) -> Option<Vec<String>> {
+    let stamp = file_stamp(path)?;
+    let mut guard = injected().lock().ok()?;
+    let (_, map) = &mut *guard;
+    match map.get(path) {
+        Some(i) if i.stamp == stamp => Some(i.pages.clone()),
+        Some(_) => {
+            map.remove(path);
+            None
+        }
+        None => None,
+    }
 }
 
 /// Splits a drag from `start` to `end` (`(page, x, y)`, points) into one
@@ -254,10 +374,10 @@ impl PdfService {
         std::thread::Builder::new()
             .name("atlas-pdf".into())
             .spawn(move || {
-                let mut backend = poppler::PopplerBackend::default();
+                let mut backend = new_backend(MAX_OPEN_DOCUMENTS);
                 let mut docs = HashMap::new();
                 for job in rx {
-                    job(&mut backend, &mut docs);
+                    job(backend.as_mut(), &mut docs);
                 }
             })
             .expect("spawn pdf worker");
@@ -272,7 +392,7 @@ impl PdfService {
             std::thread::Builder::new()
                 .name(format!("atlas-pdf-render-{i}"))
                 .spawn(move || {
-                    let mut backend = poppler::PopplerBackend::with_limit(MAX_OPEN_DOCUMENTS / 2);
+                    let mut backend = new_backend(MAX_OPEN_DOCUMENTS / 2);
                     // Documents open here, with the close number they were opened at.
                     let mut open: HashMap<PathBuf, u64> = HashMap::new();
                     loop {
@@ -592,12 +712,12 @@ impl PdfService {
         annotations: Vec<crate::annotations::Annotation>,
         done: impl FnOnce(Result<usize>) + Send + 'static,
     ) {
-        self.submit(Box::new(move |_, _| done(poppler::export_annotated(&src, &dst, &annotations))));
+        self.submit(Box::new(move |_, _| done(engine::export_annotated(&src, &dst, &annotations))));
     }
 
     /// Annotations stored inside a PDF: (0-based page, poppler type).
     pub fn list_annotations(&self, path: &Path) -> Result<Vec<(usize, i32)>> {
-        poppler::list_annotations(path)
+        engine::list_annotations(path)
     }
 
     /// Synchronous helpers for benchmarks and tests.
@@ -627,11 +747,12 @@ impl PdfService {
 }
 
 /// Pixel height for a page rendered at `width_px`.
+#[cfg(feature = "pdf-poppler")]
 fn scaled_height(size: (f64, f64), width_px: u32) -> u32 {
     ((size.1 / size.0) * f64::from(width_px)).round().max(1.0) as u32
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "pdf-poppler"))]
 pub(crate) mod tests {
     use super::*;
 
@@ -938,7 +1059,7 @@ pub(crate) mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "pdf-poppler"))]
 mod outline_tests {
     use super::*;
 
@@ -1055,7 +1176,7 @@ mod outline_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "pdf-poppler"))]
 mod annotation_tests {
     use super::*;
     use crate::annotations::{Annotation, Kind};
@@ -1078,18 +1199,6 @@ mod annotation_tests {
         let (tx, rx) = crossbeam_channel::bounded(1);
         f(tx);
         rx.recv().unwrap()
-    }
-
-    #[test]
-    fn spans_cover_pages_between_start_and_end() {
-        let sizes = vec![(100.0, 200.0); 4];
-        assert_eq!(selection_spans(&sizes, (1, 10.0, 20.0), (1, 50.0, 60.0)), vec![(1, [10.0, 20.0, 50.0, 60.0])]);
-        let spans = selection_spans(&sizes, (2, 50.0, 60.0), (0, 10.0, 20.0));
-        assert_eq!(
-            spans,
-            vec![(0, [10.0, 20.0, 100.0, 200.0]), (1, [0.0, 0.0, 100.0, 200.0]), (2, [0.0, 0.0, 50.0, 60.0])],
-            "dragging upwards selects the same range"
-        );
     }
 
     #[test]
@@ -1164,5 +1273,46 @@ mod annotation_tests {
         let err =
             blocking(|tx| service.export_annotated(path.clone(), path.clone(), list, move |r| tx.send(r).unwrap()));
         assert!(err.is_err(), "exporting over the original is refused");
+    }
+}
+
+/// Tests that need no PDF engine (they also run without `pdf-poppler`).
+#[cfg(test)]
+mod engine_free_tests {
+    use super::*;
+
+    #[test]
+    fn spans_cover_pages_between_start_and_end() {
+        let sizes = vec![(100.0, 200.0); 4];
+        assert_eq!(selection_spans(&sizes, (1, 10.0, 20.0), (1, 50.0, 60.0)), vec![(1, [10.0, 20.0, 50.0, 60.0])]);
+        let spans = selection_spans(&sizes, (2, 50.0, 60.0), (0, 10.0, 20.0));
+        assert_eq!(
+            spans,
+            vec![(0, [10.0, 20.0, 100.0, 200.0]), (1, [0.0, 0.0, 100.0, 200.0]), (2, [0.0, 0.0, 50.0, 60.0])],
+            "dragging upwards selects the same range"
+        );
+    }
+
+    #[test]
+    fn truncates_after_the_page_that_reaches_the_limit() {
+        let pages = || vec!["aaaa".to_string(), "bbbb".into(), "cccc".into()];
+        assert_eq!(truncate_pages(pages(), 100).len(), 3);
+        assert_eq!(truncate_pages(pages(), 8).len(), 2);
+        assert_eq!(truncate_pages(pages(), 1).len(), 1);
+    }
+
+    #[test]
+    fn injected_page_text_is_used_until_the_file_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skript.pdf");
+        std::fs::write(&path, b"not parsed").unwrap();
+        set_page_texts(&path, vec!["Seite eins".into(), "Seite zwei".into()]);
+        assert_eq!(page_texts(&path, 1 << 20).unwrap(), vec!["Seite eins", "Seite zwei"]);
+        // Another size: the handed-in text is stale and dropped.
+        std::fs::write(&path, b"changed on disk").unwrap();
+        assert!(injected_page_texts(&path).is_none());
+        // Missing files are ignored.
+        set_page_texts(&dir.path().join("fehlt.pdf"), vec!["x".into()]);
+        assert!(injected_page_texts(&dir.path().join("fehlt.pdf")).is_none());
     }
 }

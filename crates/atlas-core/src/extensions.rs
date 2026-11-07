@@ -229,6 +229,9 @@ pub struct View {
     /// Opened automatically for matching files.
     pub auto: bool,
     pub keybinding: Option<String>,
+    /// Shown in its own large window in front of Atlas (like the project
+    /// search) instead of a tab (`window: true`).
+    pub window: bool,
     globs: Option<globset::GlobSet>,
 }
 
@@ -656,6 +659,7 @@ fn parse_view(entry: &Yaml, ext: &str, dir: &Path) -> Result<View> {
         applies_to,
         auto: entry["auto"].as_bool().unwrap_or(false),
         keybinding,
+        window: entry["window"].as_bool().unwrap_or(false),
     })
 }
 
@@ -772,6 +776,7 @@ pub fn load(dir: &Path, location: Location) -> Extension {
     ext.errors.extend(errors.into_iter().map(|e: LoadError| e.message));
     for action in &mut ext.actions {
         action.base_dir = Some(dir.to_path_buf());
+        action.extra = vec![cache_placeholder(&name)];
     }
     for (i, entry) in doc["processors"].as_vec().into_iter().flatten().enumerate() {
         match parse_processor(entry, &name, dir) {
@@ -910,7 +915,7 @@ impl Extension {
 
     /// Hands the setting values to every command of the extension.
     pub fn apply_settings(&mut self, all: &toml::Table) {
-        let mut applied = Applied::default();
+        let mut applied = Applied { extra: vec![cache_placeholder(&self.name)], ..Applied::default() };
         for (setting, value) in self.setting_values(all) {
             if setting.kind == SettingKind::Secret {
                 applied.secrets.push((setting.env_name(), secret_store(&self.name, &setting.key)));
@@ -1058,6 +1063,17 @@ pub const BUNDLED: &[Bundled] = &[
             ("job.sh", include_str!("../bundled/jupyter/job.sh"), true),
         ],
     },
+    Bundled {
+        name: "docs",
+        title: "Doku-Suche",
+        description: "Dokumentation von pandas, numpy, matplotlib & Co. lokal durchsuchen – nach Rückgabetyp, Parametern und Klasse.",
+        files: &[
+            (MANIFEST, include_str!("../bundled/docs/extension.yaml"), false),
+            ("docs.html", include_str!("../bundled/docs/docs.html"), false),
+            ("docs.css", include_str!("../bundled/docs/docs.css"), false),
+            ("docs.js", include_str!("../bundled/docs/docs.js"), false),
+        ],
+    },
 ];
 
 /// Installs (or updates) the bundled extension `name` among the user's
@@ -1108,6 +1124,22 @@ pub fn update_bundled(user_root: &Path) -> Vec<String> {
         }
     }
     updated
+}
+
+/// The cache folder of extension `name`
+/// (`$XDG_CACHE_HOME/atlas/extensions/<name>/`): its commands get it as
+/// `{cache}`, its views as `cache` in the context, and the bridge lets the
+/// view read and write in it whatever `permissions: files` says. Not
+/// created here.
+pub fn cache_dir(name: &str) -> PathBuf {
+    let base = std::env::var_os("ATLAS_CACHE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("atlas"));
+    base.join(DIR).join(name)
+}
+
+fn cache_placeholder(name: &str) -> (String, String) {
+    ("{cache}".to_owned(), cache_dir(name).to_string_lossy().into_owned())
 }
 
 pub fn user_root(config_dir: &Path) -> PathBuf {
@@ -1468,16 +1500,11 @@ const MAX_BRIDGE_FILE: u64 = 32 * 1024 * 1024;
 
 /// `path` (absolute, or relative to the project) if the extension may use
 /// it: inside the project (`files: project`), the home folder (`home`) or
-/// anywhere (`all`). Links are followed before checking, so a link in the
-/// project cannot lead outside.
+/// anywhere (`all`), and always in its cache folder ([`cache_dir`]). Links
+/// are followed before checking, so a link in the project cannot lead
+/// outside.
 pub fn scoped_path(ext: &Extension, project: Option<&Path>, path: &str) -> Result<PathBuf> {
     let access = ext.permissions.as_ref().map(|p| p.files).unwrap_or(FileAccess::None);
-    let root = match access {
-        FileAccess::None => bail!("„{}“ hat keinen Dateizugriff angemeldet", ext.title),
-        FileAccess::Project => project.context("kein Projekt geöffnet")?.to_path_buf(),
-        FileAccess::Home => dirs::home_dir().context("kein persönlicher Ordner")?,
-        FileAccess::All => PathBuf::from("/"),
-    };
     let wanted = Path::new(path);
     let joined = if wanted.is_absolute() {
         wanted.to_path_buf()
@@ -1487,8 +1514,28 @@ pub fn scoped_path(ext: &Extension, project: Option<&Path>, path: &str) -> Resul
     if joined.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
         bail!("„..“ ist in Pfaden nicht erlaubt");
     }
-    // The nearest existing folder decides (the file may not exist yet).
-    let mut existing = joined.as_path();
+    let real = resolved(&joined)?;
+    // Its own cache folder is always open to the extension.
+    if resolved(&cache_dir(&ext.name)).is_ok_and(|cache| real.starts_with(cache)) {
+        return Ok(real);
+    }
+    let root = match access {
+        FileAccess::None => bail!("„{}“ hat keinen Dateizugriff angemeldet", ext.title),
+        FileAccess::Project => project.context("kein Projekt geöffnet")?.to_path_buf(),
+        FileAccess::Home => dirs::home_dir().context("kein persönlicher Ordner")?,
+        FileAccess::All => PathBuf::from("/"),
+    };
+    let root = root.canonicalize().unwrap_or(root);
+    if !real.starts_with(&root) {
+        bail!("„{}“ liegt außerhalb dessen, was „{}“ angemeldet hat ({})", path, ext.title, access.as_str());
+    }
+    Ok(real)
+}
+
+/// `path` with links followed; the nearest existing folder decides (the
+/// file may not exist yet).
+fn resolved(path: &Path) -> Result<PathBuf> {
+    let mut existing = path;
     let mut rest = Vec::new();
     while !existing.exists() {
         rest.push(existing.file_name().context("ungültiger Pfad")?.to_owned());
@@ -1498,20 +1545,22 @@ pub fn scoped_path(ext: &Extension, project: Option<&Path>, path: &str) -> Resul
     for part in rest.into_iter().rev() {
         real.push(part);
     }
-    let root = root.canonicalize().unwrap_or(root);
-    if !real.starts_with(&root) {
-        bail!("„{}“ liegt außerhalb dessen, was „{}“ angemeldet hat ({})", path, ext.title, access.as_str());
-    }
     Ok(real)
 }
 
 /// Answers a request of a view's page (`atlas.call(method, params)`):
 ///
-/// - `context`: project, settings (without secrets), permissions
+/// - `context`: project, settings (without secrets), permissions, the
+///   cache folder ([`cache_dir`])
 /// - `listFiles {dir, pattern?}`: entries of a folder
 /// - `readFile {path}` → text, `writeFile {path, text}` (atomic, creates
 ///   folders), `exists {path}`
 /// - `renameFile {path, name}` → new path, `trashFile {path}`
+/// - `docsBuild`, `docsStatus` (only the docs search): build its index in
+///   the background ([`crate::pydocs`]) and how far it got;
+///   `docsExamples {package, id, kind, parent, version, retry?}`: examples
+///   with pictures from the online documentation
+///   ([`crate::pydocs::examples::get`])
 ///
 /// Paths are checked with [`scoped_path`]. Opening files, messages and the
 /// theme are answered by the user interface.
@@ -1538,6 +1587,7 @@ pub fn call(
                 "project": project.map(|p| p.to_string_lossy().into_owned()),
                 "settings": values,
                 "files": ext.permissions.as_ref().map(|p| p.files.as_str()).unwrap_or("none"),
+                "cache": cache_dir(&ext.name).to_string_lossy(),
             })
         }
         "listFiles" => {
@@ -1600,6 +1650,52 @@ pub fn call(
         "trashFile" => {
             crate::fileops::trash(&[path("path")?])?;
             json!(true)
+        }
+        // The docs search (bundled extension "docs"): its index is built in
+        // Atlas from the installed packages' sources (crate::pydocs), into
+        // its cache folder.
+        "docsBuild" if ext.name == "docs" => {
+            let values: HashMap<String, toml::Value> =
+                ext.setting_values(settings).into_iter().map(|(s, v)| (s.key.clone(), v)).collect();
+            let text = |key: &str| values.get(key).and_then(toml::Value::as_str).unwrap_or_default().to_owned();
+            let packages = crate::pydocs::package_list(&text("pakete"));
+            if packages.is_empty() {
+                bail!("Keine Pakete eingestellt");
+            }
+            let started =
+                crate::pydocs::start(cache_dir(&ext.name), packages, text("python"), project.map(Path::to_path_buf));
+            if !started {
+                bail!("Der Index wird schon gebaut");
+            }
+            json!(true)
+        }
+        "docsStatus" if ext.name == "docs" => {
+            json!(
+                crate::pydocs::status(&cache_dir(&ext.name))
+                    .map(|s| serde_json::to_value(s).unwrap_or_default())
+                    .unwrap_or_else(|| json!({}))
+            )
+        }
+        // Examples with pictures from the online documentation, fetched once
+        // in the background into the cache (crate::pydocs::examples).
+        "docsExamples" if ext.name == "docs" => {
+            let online = ext
+                .setting_values(settings)
+                .into_iter()
+                .find(|(s, _)| s.key == "beispiele_online")
+                .is_none_or(|(_, v)| v.as_bool() != Some(false));
+            if !online {
+                bail!("Beispiele aus der Online-Doku sind in den Einstellungen ausgeschaltet");
+            }
+            let field = |key: &str| params[key].as_str().unwrap_or_default().to_owned();
+            let entry = crate::pydocs::examples::Entry {
+                package: field("package"),
+                id: field("id"),
+                kind: field("kind"),
+                parent: field("parent"),
+                version: field("version"),
+            };
+            crate::pydocs::examples::get(&cache_dir(&ext.name), &entry, params["retry"].as_bool() == Some(true))
         }
         "renderMarkdown" => {
             let source = text("text")?;
@@ -1714,6 +1810,36 @@ mod tests {
         install_bundled(&root, "bnki").unwrap();
         let again = load(&ext_dir, Location::User);
         assert_eq!(again.setting_values(&load_settings(&config))[0].1.as_str(), Some("bnki"));
+    }
+
+    #[test]
+    fn docs_search_has_a_window_and_its_own_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let ext_dir = install_bundled(&dir.path().join("extensions"), "docs").unwrap();
+        let ext = load(&ext_dir, Location::User);
+        assert!(ext.errors.is_empty(), "{:?}", ext.errors);
+        assert_eq!(ext.permissions.as_ref().unwrap().files, FileAccess::None);
+        let view = &ext.views[0];
+        assert!(view.window && view.id == "view:docs/search" && view.keybinding.as_deref() == Some("F1"));
+        // No commands: the index is built in Atlas (docsBuild).
+        assert!(ext.actions.is_empty());
+        let project = dir.path().join("projekt");
+        std::fs::create_dir_all(&project).unwrap();
+        let cache = cache_dir("docs");
+        // The bridge: the cache folder yes, anything else no (files: none).
+        let inside = cache.join("pandas.json");
+        assert_eq!(scoped_path(&ext, Some(&project), &inside.to_string_lossy()).unwrap(), resolved(&inside).unwrap());
+        assert!(scoped_path(&ext, Some(&project), "notiz.md").is_err());
+        let context = call(&ext, Some(&project), &toml::Table::new(), "context", &serde_json::json!({})).unwrap();
+        assert_eq!(context["cache"], serde_json::json!(cache.to_string_lossy()));
+        // Only the docs search may build the index.
+        let other = write_ext(dir.path(), "andere", "atlas_api: 2\nname: andere\n");
+        let other = load(&other, Location::User);
+        assert!(call(&other, Some(&project), &toml::Table::new(), "docsBuild", &serde_json::json!({})).is_err());
+        assert_eq!(
+            call(&ext, Some(&project), &toml::Table::new(), "docsStatus", &serde_json::json!({})).unwrap(),
+            serde_json::json!({})
+        );
     }
 
     #[test]

@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+[package]
+name = "atlas-api"
+description = "UI-neutral facade over the Atlas core (used by the SwiftUI app via atlas-ffi)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+# UniFFI derives and exports (atlas-ffi turns them on). Without it the crate
+# has no UniFFI dependency.
+ffi = ["dep:uniffi"]
+# PDF engine of the core (Linux); the macOS app runs without it.
+pdf-poppler = ["atlas-core/pdf-poppler"]
+
+[dependencies]
+atlas-core = { path = "../atlas-core", default-features = false }
+atlas-spell = { path = "../atlas-spell" }
+atlas-ilias = { path = "../atlas-ilias" }
+atlas-terminal = { path = "../atlas-terminal" }
+anyhow = "1"
+chrono = "0.4"
+chrono-tz = "0.10"
+thiserror = "2"
+futures-channel = "0.3"
+log = "0.4"
+libc = "0.2"
+ignore = "0.4"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+uniffi = { version = "0.32", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+atlas-ilias = { path = "../atlas-ilias" }
+serde_json = "1"
+atlas-core = { path = "../atlas-core", default-features = false }

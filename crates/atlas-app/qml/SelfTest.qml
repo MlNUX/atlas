@@ -69,6 +69,17 @@ Item {
     property var bnkiView: null
     property var bnkiPage: null
     property var jupyterPage: null
+    property var extensionWindow
+    property string docsCache: ""
+    property int docsTabs: 0
+    property bool docsReady: false
+    property var docsSearch: null
+    property var docsExamples: null
+    property var docsDark: null
+    property var docsDarkAfter: null
+    property var previewBg: null
+    property var sheetHeader: null
+    property string newFolder: ""
     property var zoomPoint: null
     property var zoomAnchor: null
     /// Widths of the editor area and its splits, for messages.
@@ -222,7 +233,117 @@ Item {
                       editor.activeTab.path + " „" + (md && md.editorItem.selectedText) + "“")
                 md.previewItem.runJavaScript("document.querySelectorAll('mark.search-hit.current').length + ':' + (document.querySelector('mark.search-hit') || {}).textContent",
                     (r) => check("Markdown-Treffer in der Vorschau markiert", r === "1:Ziele", r))
+                // Spreadsheets: the cells are searched (here in a hidden second sheet).
+                searchPanel.applyState({ query: "zweiten blatt", kinds: ["sheet"] })
+            },
+            () => {
+                if (waitFor(() => !searchModel.running && searchModel.count > 0)) return
+                const e = JSON.parse(searchModel.entry(0))
+                check("Suche findet Text in Tabellen (mit Blatt und Zelle)", searchModel.count === 1 && e.relative === "tabellen/Mappe.xlsx"
+                      && !!e.sheet && e.sheet.name === "Zweites" && e.sheet.address === "C3" && e.line === 3, searchModel.count + " " + JSON.stringify(e))
+                const ctx = JSON.parse(searchModel.sheetContext(e.path || "", 1, 2))
+                check("Suche: Vorschau der Tabellenzeile", ctx.length === 1 && ctx[0].text === "C3  Gefunden im zweiten Blatt", JSON.stringify(ctx))
+                searchPanel.openRow(0, false)
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => !!v && v.model && v.model.revision > 0 && !v.model.loading && v.model.sheet === 1)) return
+                check("Tabellen-Treffer öffnet das Blatt an der Zelle", editor.activeTab.kind === "sheet" && v.model.sheet === 1
+                      && v.currentRow === 2 && v.currentColumn === 2 && v.model.textAt(2, 2) === "Gefunden im zweiten Blatt",
+                      editor.activeTab.kind + " " + (v && [v.model.sheet, v.currentRow, v.currentColumn]))
+                check("Tabelle: Blätter als Reiter, ausgeblendetes markiert", v.sheetList.length === 2 && v.sheetList[0].name === "Daten"
+                      && !v.sheetList[0].hidden && v.sheetList[1].hidden, JSON.stringify(v.sheetList))
+                v.model.sheet = 0
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => v.model.sheet === 0 && !v.model.loading && v.model.textAt(1, 1) !== "")) return
+                const m = v.model
+                check("Tabelle: Zahlen, Prozent, Datum, Währung wie in Excel", [1, 2, 3, 7].map(c => m.textAt(1, c)).join("|") === "1.234,50|25%|15.03.2023|-19,90 €",
+                      [1, 2, 3, 7].map(c => m.textAt(1, c)).join("|"))
+                check("Tabelle: Formel zum Wert", m.formulaAt(1, 4) === "B2*2" && m.textAt(1, 4) === "2469" && m.formulaAt(1, 1) === "",
+                      m.formulaAt(1, 4) + " " + m.textAt(1, 4))
+                check("Tabelle: Spalten- und Zellnamen", m.columnName(27) === "AB" && m.cellName(1, 4) === "E2")
+                check("Tabelle: Auswahl als Text mit Tabulatoren", m.copyText(0, 0, 1, 2) === "Name\tWert\t\nAlpha\t1.234,50\t25%", JSON.stringify(m.copyText(0, 0, 1, 2)))
+                const hit = JSON.parse(m.find("wahr", 0, 0, false))
+                check("Tabelle: Suchen im Blatt", hit.row === 1 && hit.column === 5 && hit.count === 1, JSON.stringify(hit))
+                // The header: bold, red on yellow.
+                test.sheetHeader = [m.data(m.index(0, 0), 0x0102), m.data(m.index(0, 0), 0x0106), m.data(m.index(0, 0), 0x0108)]
+                check("Tabelle: Formatierung (fett, Schrift- und Füllfarbe)", test.sheetHeader[0] === true && test.sheetHeader[1] === "#c00000"
+                      && test.sheetHeader[2] === "#ffff00", JSON.stringify(test.sheetHeader))
                 searchPanel.applyState({})
+                // A CSV file: text, shown as a table on request.
+                check("CSV-Aktion im Kontextmenü", (() => {
+                    fileActions.showMenu([path("tabellen/noten.csv")], path("tabellen"))
+                    const e = fileActions.contextMenu.shownEntries()
+                    fileActions.contextMenu.close()
+                    return e.indexOf("Als Tabelle anzeigen") >= 0
+                })())
+                fileActions.showAsTable(path("tabellen/noten.csv"))
+            },
+            () => {
+                const v = editor.activeTab.viewerItem
+                if (waitFor(() => !!v && !!v.model && v.model.revision > 0 && !v.model.loading)) return
+                const m = v.model
+                check("CSV als Tabelle (Trennzeichen erkannt)", editor.activeTab.kind === "text" && m.info === "Trennzeichen „;“ · UTF-8"
+                      && m.textAt(1, 0) === "Müller" && m.textAt(2, 2) === "mit ; Semikolon" && m.textAt(0, 1) === "Note",
+                      m.info + " " + m.textAt(1, 0) + " " + m.textAt(2, 2))
+                check("CSV: Zahlen rechtsbündig, wie geschrieben", m.textAt(1, 1) === "1,7" && m.data(m.index(1, 1), 0x0109) === 2
+                      && m.data(m.index(1, 0), 0x0109) === 0, m.textAt(1, 1))
+                check("CSV: Tabellenansicht in der Sitzung", editor.activeTab.viewState().processor === "atlas:table", JSON.stringify(editor.activeTab.viewState()))
+                test.tabsBefore = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                check("CSV geändert", app.appendToNote(path("tabellen/noten.csv"), "Neu;3,0;spät") === "")
+            },
+            () => {
+                const m = editor.activeTab.viewerItem.model
+                const found = () => { for (let r = 0; r < 8; ++r) if (m.textAt(r, 0) === "Neu") return r; return -1 }
+                if (waitFor(() => found() > 0)) return
+                check("CSV-Tabelle lädt beim Speichern neu", found() > 0 && m.textAt(found(), 1) === "3,0", found())
+                editor.activeTab.viewerItem.showSourceRequested()
+            },
+            () => {
+                const tab = editor.activeTab
+                const tabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                check("CSV: zurück zum Text im selben Tab", tab.path === path("tabellen/noten.csv") && tabs === test.tabsBefore
+                      && !tab.viewerItem.model && tab.viewerItem.text !== undefined && tab.viewerItem.text.indexOf("Müller;1,7") >= 0,
+                      tab.kind + " " + tabs + "/" + test.tabsBefore)
+                // Zip archives: "Hier entpacken" in the context menu.
+                const entries = (paths) => {
+                    fileActions.showMenu(paths, path("tabellen"))
+                    const e = fileActions.contextMenu.shownEntries()
+                    fileActions.contextMenu.close()
+                    return e
+                }
+                check("Zip: „Hier entpacken“ im Kontextmenü", entries([path("tabellen/archiv.zip")]).indexOf("Hier entpacken") >= 0
+                      && entries([path("tabellen/noten.csv")]).indexOf("Hier entpacken") < 0)
+                fileActions.extractHere([path("tabellen/archiv.zip")])
+            },
+            () => {
+                if (waitFor(() => !fileActions.busy && app.exists(path("tabellen/archiv/xl/workbook.xml")))) return
+                check("Zip entpackt in einen Ordner mit seinem Namen", app.exists(path("tabellen/archiv/xl/worksheets/sheet2.xml"))
+                      && app.exists(path("tabellen/archiv/[Content_Types].xml")) && app.exists(path("tabellen/archiv.zip")),
+                      fileActions.message)
+                check("Zip: Meldung nennt Ziel und Anzahl", fileActions.message.indexOf("entpackt nach „archiv“ (8 Dateien)") >= 0, fileActions.message)
+                // Again: nothing is overwritten.
+                fileActions.extractHere([path("tabellen/archiv.zip")])
+            },
+            () => {
+                if (waitFor(() => !fileActions.busy && app.exists(path("tabellen/archiv (Kopie)/xl/workbook.xml")))) return
+                check("Zip: zweites Entpacken überschreibt nichts", app.exists(path("tabellen/archiv (Kopie)/xl/workbook.xml")), fileActions.message)
+                // A long note (3000 lines): what runs on every scroll step stays fast.
+                editor.open(path("lang/sehrlang.md"), 0, "tab")
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => !!md && !!md.editorItem && md.editorItem.text.length > 50000)) return
+                md.mode = "edit"
+                const ed = md.editorItem, f = ed.flickItem, max = Math.max(1, f.contentHeight - f.height)
+                let t = Date.now()
+                for (let i = 0; i < 40; i++) { f.contentY = max * i / 39; ed.updateWrappedNumbers(); ed.lineAtY(f.contentY); ed.exactLineAt(100) }
+                const per = (Date.now() - t) / 40
+                check("Lange Notiz: Scrollen bleibt flüssig (Zeilennummern, Zeile suchen)", per < 25 && ed.wrappedNumbers.length > 0,
+                      per.toFixed(1) + " ms je Schritt, " + ed.wrappedNumbers.length + " Nummern")
+                f.contentY = 0
                 window.openTerminal(path("src"), "tab")
             },
             () => {
@@ -430,6 +551,21 @@ Item {
                 check("Tabellen ausrichten: ganze Notiz", ed.alignTables() === 1
                       && ed.text.indexOf("| c   | d    |\n| --- | ---- |\n| e   | ffff |") > 0
                       && ed.text.indexOf("```\n| x | y |\n|---|---|\n```") > 0, JSON.stringify(ed.text.slice(-120)))
+                // Live Preview: the tables are drawn (not the one in the code block).
+                ed.updateTables()
+                const live = ed.liveTableItem
+                const cd = live.layouts.find(l => l.table.header.cells[0].text === "c")
+                check("Tabellen im Editor gezeichnet (ohne Codeblock)", live.layouts.length === 3 && !!cd && cd.table.columns === 2
+                      && cd.rows.length === 2 && cd.rows[1].cells[1].text === "ffff" && cd.rows[0].header
+                      && Math.abs(cd.rows[0].h + cd.rows[1].h - cd.height) <= 1 && cd.rows[1].h > ed.lineHeight,
+                      live.layouts.length + " " + JSON.stringify(cd && cd.rows))
+                const ab = live.layouts.find(l => l.table.header.cells[0].text === "a")
+                check("Gezeichnete Tabelle: Ausrichtung aus der Trennzeile", !!ab && ab.table.align.join(",") === "c,r", ab && ab.table.align.join(","))
+                // A click into the second cell of the body row puts the cursor at the end of "ffff".
+                const pos = live.cursorFor(cd, cd.xs[1] + 4, cd.rows[1].y + 2)
+                check("Klick in eine gezeichnete Zelle setzt den Cursor in ihren Text", ed.text.slice(pos - 4, pos) === "ffff", JSON.stringify(ed.text.slice(pos - 6, pos + 2)))
+                check("Gezeichnete Zelle: **fett** als Text", live.rich("**2** und `x`").indexOf("<b>2</b>") >= 0 && live.plain("**2** und `x`") === "2 und x",
+                      live.rich("**2** und `x`"))
                 ed.applyState({ cursor: ed.text.length })
                 mdv.insertDiagram(0)
                 check("Diagramm-Vorlage einfügen", ed.text.indexOf("```mermaid\nflowchart TD") > 0)
@@ -633,6 +769,85 @@ Item {
             () => {
                 const tab = editor.activeTab
                 check("Jupyter: „Datei selbst“ zeigt das JSON", !!tab && tab.shownProcessor === "" && tab.kind === "text", tab ? tab.kind + " " + tab.shownProcessor : "kein Tab")
+                // ---- Docs search: a view in its own window, index from Python's json module
+                check("Doku-Suche installiert", app.installBundled("docs") === "")
+                check("Doku-Suche: Fenster mit F1", JSON.parse(app.keybindings()).some(k => k.sequence === "F1" && k.id === "view:docs/search"), app.keybindings())
+                app.setExtensionSetting("docs", "pakete", JSON.stringify("json"))
+                const ctx = JSON.parse(app.extensionCall("docs", "context", "{}"))
+                test.docsCache = ctx.ok ? ctx.value.cache : ""
+                check("Doku-Suche: eigener Cache-Ordner im Kontext", test.docsCache.indexOf("/extensions/docs") > 0, JSON.stringify(ctx))
+                const own = JSON.parse(app.extensionCall("docs", "writeFile", JSON.stringify({ path: test.docsCache + "/probe.txt", text: "x" })))
+                const foreign = JSON.parse(app.extensionCall("docs", "readFile", JSON.stringify({ path: path("notes/idee.md") })))
+                check("Doku-Suche: Cache-Ordner offen, Projekt zu (files: none)", own.ok && !foreign.ok, JSON.stringify([own, foreign]))
+                test.docsTabs = editor.groups.reduce((n, g) => n + g.tabs.length, 0)
+                window.openExtensionView("view:docs/search", "")
+            },
+            () => {
+                const w = extensionWindow
+                if (waitFor(() => w.visible)) return
+                check("Doku-Suche: eigenes Fenster statt Tab", w.visible && w.viewId === "view:docs/search"
+                      && editor.groups.reduce((n, g) => n + g.tabs.length, 0) === test.docsTabs, w.viewId + " " + w.visible)
+            },
+            () => {
+                const page = extensionWindow.page
+                if (waitFor(() => !!page && page.started === true && !!test.docsReady)) {
+                    if (page && page.started) page.webItem.runJavaScript("state.entries.length", (n) => { test.docsReady = n > 0 })
+                    return
+                }
+                check("Doku-Suche: Index aus dem installierten Paket gebaut", !!test.docsReady && app.exists(test.docsCache + "/json.json"),
+                      page ? JSON.stringify(page.pageErrors) : "keine Seite")
+                if (page) page.webItem.runJavaScript(
+                    "const ids = (q) => { els.query.value = q; render(); return state.results.map(e => e.id) };"
+                    + "[ids('loads')[0], ids('p:fp k:funktion'), ids('in:JSONEncoder').indexOf('json.JSONEncoder.encode') >= 0, ids('pkg:json k:klasse').indexOf('json.JSONDecoder') >= 0,"
+                    + " (ids('loads'), document.querySelector('#detail h1').textContent.trim().split(' ')[0])]",
+                    (r) => { test.docsSearch = r })
+            },
+            () => {
+                const r = test.docsSearch
+                if (waitFor(() => !!r)) return
+                check("Doku-Suche: Name zuerst", !!r && r[0] === "json.loads", JSON.stringify(r))
+                check("Doku-Suche: Filter Parameter und Art", !!r && r[1].indexOf("json.dump") >= 0 && r[1].indexOf("json.load") >= 0
+                      && r[1].indexOf("json.loads") < 0 && r[1].indexOf("json.JSONDecoder") < 0, JSON.stringify(r))
+                check("Doku-Suche: Filter In und Art Klasse", !!r && r[2] === true && r[3] === true, JSON.stringify(r))
+                check("Doku-Suche: Text des Treffers gezeigt", !!r && r[4] === "loads", JSON.stringify(r))
+                // Online examples, already in the cache (no network here): a
+                // seaborn entry whose package keeps its examples outside.
+                const dir = test.docsCache + "/examples/seaborn/0.13.2/seaborn.heatmap"
+                const svg = dir + "/01-heatmap.svg"
+                app.extensionCall("docs", "writeFile", JSON.stringify({ path: svg,
+                    text: '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="red"/></svg>' }))
+                app.extensionCall("docs", "writeFile", JSON.stringify({ path: dir + "/examples.json", text: JSON.stringify({ format: 1,
+                    url: "https://seaborn.pydata.org/generated/seaborn.heatmap.html",
+                    blocks: [{ text: "Pass a <code>DataFrame</code>:" }, { code: "sns.heatmap(glue)" }, { image: svg }] }) }))
+                extensionWindow.page.webItem.runJavaScript(
+                    "(() => { const e = { id: 'seaborn.heatmap', k: 'function', sum: 'Plot rectangular data.',"
+                    + " doc: 'Plot rectangular data.\\n\\n§examples\\n.. include:: ../docstrings/heatmap.rst\\n', p: [] };"
+                    + " prepare(e, 'seaborn', '0.13.2'); show(e); return true })()")
+            },
+            () => {
+                const page = extensionWindow.page
+                page.webItem.runJavaScript("(() => { const img = document.querySelector('#ex-online img.ex-img');"
+                    + " return [!!img && img.complete && img.naturalWidth > 0, document.querySelector('#ex-online pre.code')?.textContent,"
+                    + " document.querySelector('#ex-online .ex-text')?.innerHTML, !!document.querySelector('.toc [data-jump=\"s-examples\"]') || !document.querySelector('.toc'),"
+                    + " document.documentElement.classList.contains('dark')] })()", (r) => { test.docsExamples = r })
+                const r = test.docsExamples
+                if (waitFor(() => !!r && r[0] === true)) return
+                check("Doku-Suche: Beispiele mit Bild aus dem Cache", !!r && r[0] === true && r[1] === "sns.heatmap(glue)"
+                      && r[2] === "Pass a <code>DataFrame</code>:" && r[3] === true, JSON.stringify(r))
+                test.docsDark = !!r && r[4]
+                app.theme = test.docsDark ? "light" : "dark"
+            },
+            () => {
+                extensionWindow.page.webItem.runJavaScript("document.documentElement.classList.contains('dark')", (d) => { test.docsDarkAfter = d })
+                if (waitFor(() => test.docsDarkAfter === !test.docsDark)) return
+                check("Doku-Suche: Farbschema wechselt sofort", test.docsDarkAfter === !test.docsDark, test.docsDark + " → " + test.docsDarkAfter)
+                app.theme = test.docsDark ? "dark" : "light"
+                // Esc with an empty search closes the window (atlas.close()).
+                extensionWindow.page.webItem.runJavaScript("clearAll(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))")
+            },
+            () => {
+                if (waitFor(() => !extensionWindow.visible)) return
+                check("Doku-Suche: Esc schließt das Fenster", !extensionWindow.visible)
                 // ---- Phase 2: project calendar
                 window.openCalendar({ mode: "week", date: "2026-10-19" })
             },
@@ -982,12 +1197,44 @@ Item {
                 // … covers it at once when coming back, until Chromium painted.
                 const r = editor.activeTab.viewerItem.previewRepaint
                 check("Vorschau: Momentaufnahme beim Verlassen", r.hasSnapshot)
+                test.repaints = r.painted
                 r.showCover()
                 check("Zurück: Momentaufnahme sofort sichtbar statt Schwarz", r.covering)
             },
             () => {
                 const r = editor.activeTab.viewerItem.previewRepaint
-                check("… und danach wieder die echte Vorschau", !r.covering)
+                // (Gone because the page reported its frame: the fallback takes 2 s.)
+                check("… und danach wieder die echte Vorschau, sobald sie gezeichnet ist", !r.covering && r.painted > test.repaints,
+                      r.covering + " " + test.repaints + " → " + r.painted)
+                // Another workspace: covered already while away (the first frame back is never black) …
+                r.leave(true)
+                check("Auf anderer Arbeitsfläche: Vorschau schon abgedeckt", r.covering && r.away)
+                // … and live again once the content changes (or the mouse is over it, or the window is back).
+                test.repaints = r.painted
+                r.request()
+                // The spare preview loaded ahead has no colours of its own yet: it
+                // shows the view's (white in the light design), never navy.
+                const spare = PreviewPool.spare
+                if (spare && spare.ready) spare.runJavaScript("(() => { const bg = () => getComputedStyle(document.body).backgroundColor;"
+                    + " const before = bg(); atlas.setLight(true); const after = bg();"
+                    + " const probe = document.createElement('pre'); probe.innerHTML = '<code class=\\'hljs\\'><span class=\\'hljs-string\\'>x</span></code>';"
+                    + " document.body.appendChild(probe); const string = getComputedStyle(probe.querySelector('span')).color; probe.remove();"
+                    + " const langs = !!hljs.getLanguage('matlab') && !!hljs.getLanguage('octave') && !!hljs.getLanguage('latex') && !!hljs.getLanguage('julia');"
+                    + " document.documentElement.classList.remove('themed', 'light'); atlas.setLight(false); document.documentElement.classList.remove('themed');"
+                    + " return [before, after, string, langs] })()", (v) => { test.previewBg = v })
+                else test.previewBg = ["kein Ersatz"]
+            },
+            () => {
+                const v = test.previewBg
+                const r = editor.activeTab.viewerItem.previewRepaint
+                if (waitFor(() => !!v && !r.covering)) return
+                check("Zurück auf der Arbeitsfläche: wieder die echte Vorschau", !r.covering && !r.away && r.painted > test.repaints,
+                      r.covering + " " + r.away + " " + test.repaints + " → " + r.painted)
+                check("Ohne Momentaufnahme: Abdeckung in der Editorfarbe (hell weiß, nicht schwarz)", Qt.colorEqual(r.coverColor, Theme.editor), r.coverColor)
+                check("Vorschau lädt im hellen Design weiß statt dunkel (bis zum Inhalt durchsichtig)",
+                      !!v && v[0] === "rgba(0, 0, 0, 0)" && v[1] === "rgb(255, 255, 255)", JSON.stringify(v))
+                check("Vorschau: Code im hellen Design farbig (Zeichenketten grün)", !!v && v[2] === "rgb(43, 122, 46)", JSON.stringify(v))
+                check("Vorschau: Code-Hervorhebung auch für MATLAB, Octave, LaTeX, Julia", !!v && v[3] === true, JSON.stringify(v))
             },
             () => {
                 // A single click opens a file for good: no preview tab that the
@@ -1035,6 +1282,20 @@ Item {
             () => {
                 check("Pfadleiste: Klick daneben zum Eintippen", folderDialog.pathBar.editing)
                 folderDialog.pathBar.editing = false
+                // A new folder right in the dialog (here in notes/, which has none).
+                folderDialog.startCreate()
+                check("Ordnerauswahl: neuer Ordner fragt nach dem Namen", folderDialog.creating)
+                check("Ordnerauswahl: ungültiger Name abgelehnt", folderDialog.createFolder("a/b") === "" && folderDialog.creating)
+                test.newFolder = folderDialog.createFolder("Kapitel 1")
+                check("Ordnerauswahl: Ordner angelegt und gewählt", test.newFolder === path("notes/Kapitel 1") && app.exists(test.newFolder)
+                      && folderDialog.chosenPath === test.newFolder && !folderDialog.creating, test.newFolder + " " + folderDialog.chosenPath)
+            },
+            () => {
+                if (waitFor(() => folderDialog.folders.count === 1)) return
+                check("Ordnerauswahl: neuer Ordner in der Liste markiert", folderDialog.folders.count === 1 && folderDialog.chosenPath === test.newFolder,
+                      folderDialog.folders.count + " " + folderDialog.chosenPath)
+                // (Gone again: later steps count the folders of notes/.)
+                fileActions.ops.moveToTrash([test.newFolder])
                 folderDialog.navigate(app.projectRoot)
             },
             () => {
@@ -1803,11 +2064,12 @@ Item {
                 test.syncMid = Math.round(Math.min(md.editorItem.viewHeight, md.previewItem.height) / 2)
             },
             () => {
-                // Opened in the split view: lined up at once, without scrolling.
+                // Opened in the split view: lined up at once, without scrolling
+                // (at the top both start at the top edge).
                 const md = editor.activeTab.viewerItem
-                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
-                    const e = md.editorItem.exactLineAt(test.syncMid)
-                    check("Split: nach dem Öffnen gleich ausgerichtet", Math.abs(line - e) < 1, "Vorschau " + line + ", Editor " + e)
+                md.previewItem.runJavaScript("[atlas.exactLineAt(0), window.scrollY]", (r) => {
+                    const e = md.editorItem.exactLineAt(0)
+                    check("Split: nach dem Öffnen gleich ausgerichtet (oben beide am Anfang)", md.editorItem.scrollY <= 10 && r[1] <= 10, "Vorschau " + r + ", Editor " + e + " bei " + md.editorItem.scrollY)
                     md.editorItem.scrollToExactLine(81, test.syncMid)
                 })
             },
@@ -1825,6 +2087,30 @@ Item {
                 md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
                     const e = md.editorItem.exactLineAt(test.syncMid)
                     check("Split: Editor folgt der Vorschau, Mitte auf gleicher Höhe", line < 78 && Math.abs(e - line) < 1, "Vorschau " + line + ", Editor " + e)
+                    // The wheel over the preview moves the editor (one source; the preview follows).
+                    test.flingY = md.editorItem.scrollY
+                    const pv = md.previewItem
+                    const p = pv.mapToItem(null, pv.width / 2, pv.height / 2)
+                    TestDriver.sendWheel(window, p.x, p.y, -240, 0)
+                })
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => md.editorItem.scrollY > test.flingY + 50)) return
+                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
+                    const e = md.editorItem.exactLineAt(test.syncMid)
+                    check("Split: Mausrad über der Vorschau scrollt beide gemeinsam, zeilengenau", md.editorItem.scrollY > test.flingY + 50 && Math.abs(e - line) < 1,
+                          test.flingY + " → " + md.editorItem.scrollY + ", Vorschau " + line + ", Editor " + e)
+                    // All the way down: the preview is at its end too (the line up moves to the bottom edge).
+                    const f = md.editorItem.flickItem
+                    f.contentY = f.contentHeight - f.height
+                })
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                md.previewItem.runJavaScript("[window.scrollY, document.documentElement.scrollHeight - window.innerHeight]", (r) => {
+                    check("Split: ganz unten sind beide am Ende", md.editorItem.edgeFraction() > 0.99 && r[1] - r[0] < 3,
+                          "Vorschau " + r + ", Editor " + md.editorItem.edgeFraction())
                 })
             },
             () => {

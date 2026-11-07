@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 Minux
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Task P2.10 (macOS port): atlas-api (ILIAS without network) on macOS,
+# with and without the UniFFI feature.
+name: mac-P2.10
+
+on:
+  push:
+    branches: ["port/macos/P2.10-*"]
+    paths:
+      - ".github/workflows/mac-P2.10.yml"
+      - "crates/atlas-api/**"
+      - "crates/atlas-core/**"
+      - "crates/atlas-ilias/**"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-P2.10-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/macos-setup.yml
+    with:
+      artifact-name: mac-P2.10
+      cache-key: P2.10
+      run: |
+        export CARGO_TERM_COLOR=never
+        cargo test --locked -p atlas-api --test ilias 2>&1 | tee "$ATLAS_CI_OUT/cargo-test.log"
+        cargo check --locked -p atlas-api --features ffi 2>&1 | tee "$ATLAS_CI_OUT/cargo-check-ffi.log"
+        {
+          echo "# P2.10 – atlas-api auf macOS"
+          echo
+          echo '```'
+          grep -E '^test result|FAILED|^error|^warning' "$ATLAS_CI_OUT/cargo-test.log" "$ATLAS_CI_OUT/cargo-check-ffi.log" || true
+          echo '```'
+        } >"$ATLAS_CI_OUT/summary.md"

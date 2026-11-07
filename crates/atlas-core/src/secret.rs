@@ -9,6 +9,11 @@
 //!   bound to this machine (host key or TPM), useless elsewhere;
 //! - `<name>.secret`: only if that is unavailable, plain text readable only
 //!   by the user (mode 600).
+//!
+//! On macOS the protected form is the login keychain instead of
+//! `systemd-creds` (service `de.minux.atlas`, account `<name>`); it counts
+//! as [`Kind::Encrypted`]. `systemd-creds` stand-ins (tests,
+//! `ATLAS_SYSTEMD_CREDS`) work there too.
 
 use std::io::{Read, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -21,7 +26,7 @@ use anyhow::{Context, Result, bail};
 /// How a secret is kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// Encrypted with `systemd-creds`.
+    /// Encrypted with `systemd-creds`, or in the keychain on macOS.
     Encrypted,
     /// Plain text, mode 600.
     File,
@@ -48,30 +53,68 @@ fn unique() -> String {
 pub struct SecretStore {
     dir: PathBuf,
     name: String,
-    /// The `systemd-creds` program (replaceable for tests).
-    creds: String,
+    vault: Vault,
+    /// Keychain account: `<name>` for the default place, otherwise
+    /// `<dir>#<name>` so that stores in other folders (tests) never meet.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    account: String,
+}
+
+/// Where the protected form lives.
+#[derive(Debug, Clone)]
+enum Vault {
+    /// `<name>.cred` written by this `systemd-creds` program.
+    Creds(String),
+    /// The macOS login keychain.
+    #[cfg(target_os = "macos")]
+    Keychain,
 }
 
 impl SecretStore {
     /// `name`: letters, digits, `-` and `_` (also the credential name).
     pub fn new(dir: impl Into<PathBuf>, name: &str) -> Self {
         let name: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect();
-        Self { dir: dir.into(), name, creds: "systemd-creds".into() }
+        #[cfg(target_os = "macos")]
+        let vault = Vault::Keychain;
+        #[cfg(not(target_os = "macos"))]
+        let vault = Vault::Creds("systemd-creds".into());
+        let dir = dir.into();
+        let account = format!("{}#{name}", dir.display());
+        Self { dir, name, vault, account }
     }
 
     /// The default place: `<state>/secrets/`. `ATLAS_SYSTEMD_CREDS` replaces
-    /// the `systemd-creds` program (tests).
+    /// the `systemd-creds` program (tests; also on macOS, instead of the keychain).
     pub fn default_for(name: &str) -> Self {
-        let store = Self::new(crate::paths::state_root().join("secrets"), name);
+        let mut store = Self::new(crate::paths::state_root().join("secrets"), name);
+        store.account = store.name.clone();
         match std::env::var("ATLAS_SYSTEMD_CREDS") {
             Ok(program) if !program.is_empty() => store.with_creds_program(&program),
             _ => store,
         }
     }
 
+    /// Uses `systemd-creds` (or a stand-in) for the protected form.
     pub fn with_creds_program(mut self, program: &str) -> Self {
-        self.creds = program.into();
+        self.vault = Vault::Creds(program.into());
         self
+    }
+
+    /// Whether the protected form is there.
+    fn has_protected(&self) -> bool {
+        match &self.vault {
+            Vault::Creds(_) => self.encrypted_path().exists(),
+            #[cfg(target_os = "macos")]
+            Vault::Keychain => crate::platform::keychain::contains(&self.account),
+        }
+    }
+
+    fn remove_protected(&self) -> Result<()> {
+        match &self.vault {
+            Vault::Creds(_) => remove_if_exists(&self.encrypted_path()),
+            #[cfg(target_os = "macos")]
+            Vault::Keychain => crate::platform::keychain::delete(&self.account),
+        }
     }
 
     fn encrypted_path(&self) -> PathBuf {
@@ -84,7 +127,7 @@ impl SecretStore {
 
     /// How the secret is kept now (`None`: not remembered).
     pub fn kind(&self) -> Option<Kind> {
-        if self.encrypted_path().exists() {
+        if self.has_protected() {
             Some(Kind::Encrypted)
         } else if self.file_path().exists() {
             Some(Kind::File)
@@ -108,8 +151,11 @@ impl SecretStore {
                 Kind::File
             }
         };
-        let other = if kind == Kind::Encrypted { self.file_path() } else { self.encrypted_path() };
-        remove_if_exists(&other)?;
+        if kind == Kind::Encrypted {
+            remove_if_exists(&self.file_path())?;
+        } else {
+            self.remove_protected()?;
+        }
         Ok(kind)
     }
 
@@ -126,15 +172,28 @@ impl SecretStore {
     }
 
     fn encrypt(&self, secret: &str) -> Result<()> {
+        let creds = match &self.vault {
+            Vault::Creds(program) => program,
+            #[cfg(target_os = "macos")]
+            Vault::Keychain => {
+                crate::platform::keychain::set(&self.account, secret)?;
+                return match crate::platform::keychain::get(&self.account)? {
+                    Some(back) if back == secret => Ok(()),
+                    _ => {
+                        let _ = crate::platform::keychain::delete(&self.account);
+                        bail!("der Schlüsselbund liefert ein anderes Passwort zurück")
+                    }
+                };
+            }
+        };
         let target = self.encrypted_path();
         let tmp = self.dir.join(format!(".{}.cred.tmp-{}", self.name, unique()));
         let name = format!("--name={}", self.name);
         let tmp_arg = tmp.to_string_lossy().into_owned();
-        let result =
-            run(&self.creds, &["--user", "encrypt", &name, "-", &tmp_arg], Some(secret.as_bytes())).and_then(|_| {
-                std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
-                std::fs::rename(&tmp, &target).with_context(|| format!("cannot replace {}", target.display()))
-            });
+        let result = run(creds, &["--user", "encrypt", &name, "-", &tmp_arg], Some(secret.as_bytes())).and_then(|_| {
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+            std::fs::rename(&tmp, &target).with_context(|| format!("cannot replace {}", target.display()))
+        });
         if result.is_err() {
             let _ = std::fs::remove_file(&tmp);
         }
@@ -154,9 +213,16 @@ impl SecretStore {
     }
 
     fn decrypt(&self) -> Result<String> {
+        let creds = match &self.vault {
+            Vault::Creds(program) => program,
+            #[cfg(target_os = "macos")]
+            Vault::Keychain => {
+                return crate::platform::keychain::get(&self.account)?.context("Passwort fehlt im Schlüsselbund");
+            }
+        };
         let name = format!("--name={}", self.name);
         let path = self.encrypted_path().to_string_lossy().into_owned();
-        let out = run(&self.creds, &["--user", "decrypt", &name, &path, "-"], None)?;
+        let out = run(creds, &["--user", "decrypt", &name, &path, "-"], None)?;
         let text = String::from_utf8(out).context("entschlüsseltes Passwort ist kein UTF-8")?;
         Ok(text.trim_end_matches(['\n', '\r']).to_owned())
     }
@@ -181,7 +247,7 @@ impl SecretStore {
 
     /// Forgets the secret (both forms).
     pub fn forget(&self) -> Result<()> {
-        remove_if_exists(&self.encrypted_path())?;
+        self.remove_protected()?;
         remove_if_exists(&self.file_path())
     }
 }
@@ -273,6 +339,23 @@ fn run(program: &str, args: &[&str], input: Option<&[u8]>) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Round trip through the real login keychain (CI runner or a Mac).
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn keychain_on_macos() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = SecretStore::new(tmp.path().join("secrets"), "atlas-test");
+        assert_eq!(store.kind(), None);
+        assert_eq!(store.store("geheim 123").unwrap(), Kind::Encrypted);
+        assert!(!tmp.path().join("secrets/atlas-test.cred").exists());
+        assert_eq!(store.load().unwrap(), Some(("geheim 123".to_owned(), Kind::Encrypted)));
+        store.store("neu").unwrap();
+        assert_eq!(store.load().unwrap().unwrap().0, "neu");
+        store.forget().unwrap();
+        assert_eq!(store.kind(), None);
+        assert_eq!(store.load().unwrap(), None);
+    }
 
     fn fake_creds(dir: &Path) -> String {
         // Stands in for systemd-creds: "encrypts" with ROT13 (`tr` is in

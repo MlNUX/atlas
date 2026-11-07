@@ -151,6 +151,8 @@ Rectangle {
             }
             // Never stays black after a workspace switch (#2).
             WebRepaint { id: webRepaint }
+            // Scrollbars in Atlas' colours (not Chromium's light ones in the dark scheme).
+            WebScrollbars { view: web }
         }
     }
 }

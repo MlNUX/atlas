@@ -61,6 +61,11 @@ pub mod qobject {
         fn transfer(self: Pin<&mut FileOps>, kind: &QString, paths: &QStringList, dest: &QString, policy: &QString);
 
         /// Moves `paths` to the trash.
+        /// Extracts a zip archive into `dir` in the background (one folder
+        /// at its top as that folder, else a folder named after it).
+        #[qinvokable]
+        fn extract(self: Pin<&mut FileOps>, archive: &QString, dir: &QString);
+
         #[qinvokable]
         #[cxx_name = "moveToTrash"]
         fn move_to_trash(self: Pin<&mut FileOps>, paths: &QStringList);
@@ -145,6 +150,10 @@ pub mod qobject {
         /// Items were moved to the trash.
         #[qsignal]
         fn trashed(self: Pin<&mut FileOps>, paths: QStringList);
+
+        /// An archive was extracted to `target`.
+        #[qsignal]
+        fn extracted(self: Pin<&mut FileOps>, target: QString);
 
         /// A finished background operation (for the status bar).
         #[qsignal]
@@ -273,6 +282,42 @@ impl qobject::FileOps {
                         if skipped > 0 {
                             msg += &format!(", {skipped} übersprungen");
                         }
+                        ops.finished(qs(msg));
+                    }
+                    Err(err) => ops.fail(err),
+                }
+            });
+        });
+    }
+
+    pub fn extract(mut self: Pin<&mut Self>, archive: &QString, dir: &QString) {
+        let archive = PathBuf::from(archive.to_string());
+        let dir = PathBuf::from(dir.to_string());
+        self.as_mut().set_busy(true, &format!("Entpacke „{}“ …", name_of(&archive)));
+        let thread = self.qt_thread();
+        std::thread::spawn(move || {
+            let progress_thread = thread.clone();
+            let result = atlas_core::archive::extract_zip(&archive, &dir, |done, total| {
+                let _ = progress_thread.queue(move |mut ops| {
+                    ops.as_mut().rust_mut().status = qs(format!("Entpacke {done}/{total} …"));
+                    ops.status_changed();
+                });
+            });
+            let _ = thread.queue(move |mut ops| {
+                ops.as_mut().set_busy(false, "");
+                match result {
+                    Ok(out) => {
+                        let mut msg = format!(
+                            "„{}“ entpackt nach „{}“ ({} Datei{})",
+                            name_of(&archive),
+                            name_of(&out.target),
+                            out.files,
+                            if out.files == 1 { "" } else { "en" }
+                        );
+                        if out.skipped > 0 {
+                            msg += &format!(", {} unsichere Einträge übersprungen", out.skipped);
+                        }
+                        ops.as_mut().extracted(qs(out.target.to_string_lossy()));
                         ops.finished(qs(msg));
                     }
                     Err(err) => ops.fail(err),

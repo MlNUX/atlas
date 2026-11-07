@@ -124,6 +124,8 @@
             "atlas-spell"
             "-p"
             "atlas-ilias"
+            "-p"
+            "atlas-api"
           ];
 
           meta = {

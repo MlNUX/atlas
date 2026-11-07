@@ -39,7 +39,7 @@ Rectangle {
 
     readonly property var activeTab: editor.activeTab
     /// File of the active tab ("" for calendar, terminals, folders).
-    readonly property string document: activeTab && activeTab.path && ["pdf", "markdown", "text", "image", "binary"].indexOf(activeTab.kind) >= 0
+    readonly property string document: activeTab && activeTab.path && ["pdf", "markdown", "text", "image", "sheet", "binary"].indexOf(activeTab.kind) >= 0
         ? activeTab.path : lastDocument
     property string lastDocument: ""
     /// The PDF whose annotations are shown: the active one, otherwise the
@@ -49,7 +49,7 @@ Rectangle {
     Connections { target: inspector.activeTab; ignoreUnknownSignals: true; function onPathChanged() { inspector.remember() } }
     function remember() {
         if (!activeTab || !activeTab.path) return
-        if (["pdf", "markdown", "text", "image", "binary"].indexOf(activeTab.kind) >= 0) lastDocument = activeTab.path
+        if (["pdf", "markdown", "text", "image", "sheet", "binary"].indexOf(activeTab.kind) >= 0) lastDocument = activeTab.path
         if (activeTab.kind === "pdf") pdfPath = activeTab.path
     }
     readonly property var pdfViewer: pdfPath && editor.groups.length >= 0 ? editor.viewerFor(pdfPath) : null
@@ -112,6 +112,10 @@ Rectangle {
         if (document && actions.isHtml(document))
             out.push({ icon: "eye", name: qsTr("Als Webseite anzeigen"), enabled: true, tip: qsTr("HTML gerendert anzeigen (lädt beim Speichern neu)"),
                        run: () => actions.renderHtml(document) })
+        if (document && actions.isDelimited(document))
+            out.push({ icon: "file-table", name: qsTr("Als Tabelle anzeigen"), enabled: true,
+                       tip: qsTr("Spalten und Zeilen wie in Excel (Trennzeichen und Zeichensatz werden erkannt)"),
+                       run: () => actions.showAsTable(document) })
         if (document && app.atlasDir && app.exists(document))
             out.push({ icon: "link", name: qsTr("Verknüpfen mit …"), enabled: true, tip: qsTr("Mit einer anderen Datei verbinden, z. B. zwei PDFs (im Graph sichtbar)"),
                        run: () => app.requestRelate(document) })

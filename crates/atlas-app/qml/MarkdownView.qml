@@ -67,12 +67,14 @@ Rectangle {
     Timer {
         id: followTimer
         interval: 0
-        // Lined up in the middle of the view, where one reads: the preview
-        // sets type larger, so heights differ further up and down.
+        // Lined up in the middle of the view, where one reads (the preview
+        // sets type larger, so heights differ further up and down); near the
+        // start and the end at the top and bottom edge, so both get there
+        // together.
         onTriggered: {
             if (!root.web || !root.pageReady) return
-            const mid = Math.round(Math.min(editor.viewHeight, web.height) / 2)
-            web.runJavaScript("atlas.follow(" + editor.exactLineAt(mid) + "," + mid + ")")
+            const frac = editor.edgeFraction()
+            web.runJavaScript("atlas.follow(" + editor.exactLineAt(frac * editor.viewHeight) + ",0," + frac + ")")
         }
     }
     property real previewY: 0
@@ -465,7 +467,8 @@ Rectangle {
                                     // Split view: the editor follows the preview (#7).
                                     if (root.mode === "split" && s.exact) {
                                         root.syncedFromPreview = Date.now()
-                                        editor.scrollToExactLine(s.exact, s.at || 0)
+                                        if (s.frac !== undefined) editor.alignLine(s.exact, s.frac)
+                                        else editor.scrollToExactLine(s.exact, s.at || 0)
                                     }
                                 } else if (level !== WebEngineView.InfoMessageLevel) console.warn("preview:", text)
                             }
@@ -505,12 +508,22 @@ Rectangle {
                             property real carry: 0
                             anchors.fill: parent
                             z: 2
-                            flickable: pageScroll
+                            // Split view: wheel and touchpad over the preview move the
+                            // editor (one source, the preview follows line by line in
+                            // the same frame) – the two sides never pull at each other.
+                            readonly property bool drivesEditor: root.mode === "split" && !!editor.flickItem
+                            flickable: drivesEditor ? editor.flickItem : pageScroll
                             brisk: true
                             horizontal: false
                             active: root.app.touchpadFling
                             app: root.app
                             scroller: (dx, dy) => {
+                                if (pageFling.drivesEditor) {
+                                    const f = editor.flickItem
+                                    const top = Math.max(0, f.contentHeight - f.height)
+                                    f.contentY = Math.max(0, Math.min(top, f.contentY + dy))
+                                    return
+                                }
                                 const before = pageScroll.contentY
                                 const max = Math.max(0, pageScroll.contentHeight - pageScroll.height)
                                 pageScroll.contentY = Math.max(0, Math.min(max, before + dy / webHost.webView.zoomFactor))

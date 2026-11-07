@@ -97,7 +97,7 @@ QtObject {
         if (ext === "pdf") return ["file-pdf", kindColors.pdf]
         if (ext === "atlasnote" || fileName.toLowerCase().endsWith(".atlasnote.zip")) return ["pen", kindColors.atlasnote]
         if (["md", "markdown", "mdown", "mkd", "txt", "rst"].indexOf(ext) >= 0) return ["file-text", kindColors.markdown]
-        if (["csv", "tsv", "xlsx", "ods"].indexOf(ext) >= 0) return ["file-table", kindColors.csv]
+        if (["csv", "tsv", "xlsx", "xlsm", "xlsb", "xls", "ods"].indexOf(ext) >= 0) return ["file-table", kindColors.csv]
         if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].indexOf(ext) >= 0) return ["file-image", kindColors.image]
         if (["rs", "py", "js", "ts", "c", "h", "cpp", "go", "java", "qml", "sh", "toml", "yaml", "yml", "json", "nix", "html", "css", "lock"].indexOf(ext) >= 0)
             return ["file-code", kindColors.code]

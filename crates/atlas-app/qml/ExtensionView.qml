@@ -36,10 +36,15 @@ Rectangle {
     property bool started: false
     readonly property alias webItem: web
 
+    /// The page asked to be closed (`atlas.close()`); only a window does.
+    signal closeRequested()
+
     color: Theme.editor
 
     function viewState() { return { processor: root.viewId } }
     function focusContent() { web.forceActiveFocus() }
+    /// Tells the page it is shown again (a window that was closed).
+    function notifyShown() { web.runJavaScript("window.dispatchEvent(new Event('atlas-show'))") }
 
     readonly property var theme: ({
         window: String(Theme.window), editor: String(Theme.editor), header: String(Theme.header), raised: String(Theme.raised),
@@ -47,6 +52,9 @@ Rectangle {
         faint: String(Theme.textFaint), accent: String(Theme.accent), "accent-soft": String(Theme.accentSoft),
         ok: String(Theme.ok), warn: String(Theme.warn), error: String(Theme.error),
     })
+
+    // A new colour scheme reaches the page at once (not only on reload).
+    onThemeChanged: if (root.started) web.runJavaScript("window.atlas && atlas._theme && atlas._theme(" + JSON.stringify(root.theme) + ")")
 
     function reply(id, ok, value) {
         if (id) web.runJavaScript("window.atlas && atlas._reply(" + id + "," + ok + "," + JSON.stringify(value === undefined ? null : value) + ")")
@@ -74,6 +82,9 @@ Rectangle {
             return root.reply(request.id, true, JSON.parse(root.app.backgroundStatus(root.info.extension + "/" + String(p.id || ""))))
         case "stopCommand":
             return root.reply(request.id, true, root.app.stopBackground(root.info.extension + "/" + String(p.id || "")))
+        case "close":
+            root.closeRequested()
+            return root.reply(request.id, true, !!root.info.window)
         }
         const r = JSON.parse(root.app.extensionCall(root.info.extension || "", request.method, JSON.stringify(p)))
         root.reply(request.id, r.ok, r.ok ? r.value : r.error)
@@ -140,6 +151,8 @@ Rectangle {
                 if (event.key === Qt.Key_F5) { web.reload(); event.accepted = true }
             }
             WebRepaint {}
+            // Scrollbars in Atlas' colours (not Chromium's light ones in the dark scheme).
+            WebScrollbars { view: web }
         }
     }
 }
