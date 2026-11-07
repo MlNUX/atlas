@@ -505,12 +505,22 @@ Rectangle {
                             property real carry: 0
                             anchors.fill: parent
                             z: 2
-                            flickable: pageScroll
+                            // Split view: wheel and touchpad over the preview move the
+                            // editor (one source, the preview follows line by line in
+                            // the same frame) – the two sides never pull at each other.
+                            readonly property bool drivesEditor: root.mode === "split" && !!editor.flickItem
+                            flickable: drivesEditor ? editor.flickItem : pageScroll
                             brisk: true
                             horizontal: false
                             active: root.app.touchpadFling
                             app: root.app
                             scroller: (dx, dy) => {
+                                if (pageFling.drivesEditor) {
+                                    const f = editor.flickItem
+                                    const top = Math.max(0, f.contentHeight - f.height)
+                                    f.contentY = Math.max(0, Math.min(top, f.contentY + dy))
+                                    return
+                                }
                                 const before = pageScroll.contentY
                                 const max = Math.max(0, pageScroll.contentHeight - pageScroll.height)
                                 pageScroll.contentY = Math.max(0, Math.min(max, before + dy / webHost.webView.zoomFactor))

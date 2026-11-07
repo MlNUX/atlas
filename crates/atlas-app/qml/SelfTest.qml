@@ -2086,6 +2086,20 @@ Item {
                 md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
                     const e = md.editorItem.exactLineAt(test.syncMid)
                     check("Split: Editor folgt der Vorschau, Mitte auf gleicher Höhe", line < 78 && Math.abs(e - line) < 1, "Vorschau " + line + ", Editor " + e)
+                    // The wheel over the preview moves the editor (one source; the preview follows).
+                    test.flingY = md.editorItem.scrollY
+                    const pv = md.previewItem
+                    const p = pv.mapToItem(null, pv.width / 2, pv.height / 2)
+                    TestDriver.sendWheel(window, p.x, p.y, -240, 0)
+                })
+            },
+            () => {
+                const md = editor.activeTab.viewerItem
+                if (waitFor(() => md.editorItem.scrollY > test.flingY + 50)) return
+                md.previewItem.runJavaScript("atlas.exactLineAt(" + test.syncMid + ")", (line) => {
+                    const e = md.editorItem.exactLineAt(test.syncMid)
+                    check("Split: Mausrad über der Vorschau scrollt beide gemeinsam, zeilengenau", md.editorItem.scrollY > test.flingY + 50 && Math.abs(e - line) < 1,
+                          test.flingY + " → " + md.editorItem.scrollY + ", Vorschau " + line + ", Editor " + e)
                 })
             },
             () => {
