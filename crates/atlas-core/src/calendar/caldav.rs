@@ -322,6 +322,9 @@ pub struct Client {
     account: Account,
     auth: Auth,
     agent: ureq::Agent,
+    /// The last request was sent more than once (an interrupted read): its
+    /// first attempt may have reached the server.
+    resent: std::sync::atomic::AtomicBool,
 }
 
 /// How requests sign in.
@@ -358,7 +361,7 @@ impl Client {
     /// `use_proxy`: honour `HTTPS_PROXY`/`HTTP_PROXY` (off for tests on
     /// localhost).
     pub fn new(account: Account, password: &str, use_proxy: bool) -> Self {
-        Self { account, auth: Auth::Basic(password.to_owned()), agent: agent(use_proxy) }
+        Self { account, auth: Auth::Basic(password.to_owned()), agent: agent(use_proxy), resent: Default::default() }
     }
 
     /// A Google account (`email`), signed in with `refresh` from the OAuth
@@ -374,6 +377,7 @@ impl Client {
             account: Account { user: email.to_owned(), ..Default::default() },
             auth: Auth::Google { client, refresh: refresh.to_owned(), endpoints, token: Default::default() },
             agent: agent(use_proxy),
+            resent: Default::default(),
         }
     }
 
@@ -495,6 +499,7 @@ impl Client {
                 other => break other,
             }
         };
+        self.resent.store(attempts > 1, std::sync::atomic::Ordering::Relaxed);
         let mut response = result.map_err(|e| match e {
             ureq::Error::StatusCode(code) => DavError::Http(code, String::new()),
             ureq::Error::BadUri(u) => DavError::Invalid(format!("ungültige Adresse {u}")),
@@ -726,6 +731,9 @@ impl Remote for Client {
         let (status, new_etag, text) = self.request("PUT", href, &headers, Some(data))?;
         match status {
             200..=299 => Ok(Write::Done(new_etag)),
+            // Sent again after an interrupted read: "exists already" means the
+            // first attempt created it – written (the ETag comes with the next listing).
+            412 if etag.is_none() && self.resent.load(std::sync::atomic::Ordering::Relaxed) => Ok(Write::Done(None)),
             412 => Ok(Write::Changed),
             404 | 410 if etag.is_some() => Ok(Write::Gone),
             s => Err(failed("PUT", href, s, &text)),
@@ -1228,7 +1236,10 @@ pub(crate) mod tests {
         let href = format!("{cal}{}", object_name("a@atlas"));
         let data =
             "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a@atlas\r\nSUMMARY:Test & mehr\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-        let Write::Done(Some(etag)) = client.put(&href, data, None).unwrap() else { panic!("created") };
+        let etag = match client.put(&href, data, None) {
+            Ok(Write::Done(Some(etag))) => etag,
+            other => panic!("created with an ETag, got {other:?} (server: {:?})", server.state.lock().unwrap().puts),
+        };
         assert_eq!(client.put(&href, data, None).unwrap(), Write::Changed, "If-None-Match prevents duplicates");
         let etags = client.etags(&cal).unwrap().unwrap();
         assert_eq!(etags.get(&href), Some(&etag));
