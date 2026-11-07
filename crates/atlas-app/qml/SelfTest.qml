@@ -1192,6 +1192,12 @@ Item {
                 // (Gone because the page reported its frame: the fallback takes 2 s.)
                 check("… und danach wieder die echte Vorschau, sobald sie gezeichnet ist", !r.covering && r.painted > test.repaints,
                       r.covering + " " + test.repaints + " → " + r.painted)
+                // Another workspace: covered already while away (the first frame back is never black) …
+                r.leave(true)
+                check("Auf anderer Arbeitsfläche: Vorschau schon abgedeckt", r.covering && r.away)
+                // … and live again once the content changes (or the mouse is over it, or the window is back).
+                test.repaints = r.painted
+                r.request()
                 // The spare preview loaded ahead has no colours of its own yet: it
                 // shows the view's (white in the light design), never navy.
                 const spare = PreviewPool.spare
@@ -1206,7 +1212,11 @@ Item {
             },
             () => {
                 const v = test.previewBg
-                if (waitFor(() => !!v)) return
+                const r = editor.activeTab.viewerItem.previewRepaint
+                if (waitFor(() => !!v && !r.covering)) return
+                check("Zurück auf der Arbeitsfläche: wieder die echte Vorschau", !r.covering && !r.away && r.painted > test.repaints,
+                      r.covering + " " + r.away + " " + test.repaints + " → " + r.painted)
+                check("Ohne Momentaufnahme: Abdeckung in der Editorfarbe (hell weiß, nicht schwarz)", Qt.colorEqual(r.coverColor, Theme.editor), r.coverColor)
                 check("Vorschau lädt im hellen Design weiß statt dunkel (bis zum Inhalt durchsichtig)",
                       !!v && v[0] === "rgba(0, 0, 0, 0)" && v[1] === "rgb(255, 255, 255)", JSON.stringify(v))
                 check("Vorschau: Code im hellen Design farbig (Zeichenketten grün)", !!v && v[2] === "rgb(43, 122, 46)", JSON.stringify(v))
